@@ -76,6 +76,15 @@ struct ConsoleSink: EventSink {
     /// The groups this sink prints; everything else is filtered out.
     private let groups: Set<EventGroup>
 
+    /// A per-event refinement applied after the group filter — how
+    /// `devices --watch --type` narrows device events to one kind without
+    /// a bespoke output path.
+    private let isIncluded: @Sendable (EventBusEvent) -> Bool
+
+    /// Renders human-mode lines; the file sink shares the identical
+    /// format (see `LogLineFormatter`).
+    private let formatter: LogLineFormatter
+
     /// Where rendered lines go. Defaults per mode (standard error for
     /// human lines, standard output for NDJSON); tests inject a collector.
     private let emit: @Sendable (String) -> Void
@@ -89,39 +98,33 @@ struct ConsoleSink: EventSink {
         return encoder
     }()
 
-    /// Creates a sink for the given mode and group filter, writing to the
-    /// mode's default stream unless `emit` is injected.
+    /// Creates a sink for the given mode, group filter, and optional
+    /// per-event refinement, writing to the mode's default stream unless
+    /// `emit` is injected.
     init(
         mode: Mode,
         groups: Set<EventGroup> = ConsoleSink.defaultGroups,
+        isIncluded: @escaping @Sendable (EventBusEvent) -> Bool = { _ in true },
+        formatter: LogLineFormatter = LogLineFormatter(),
         emit: (@Sendable (String) -> Void)? = nil
     ) {
         self.mode = mode
         self.groups = groups
+        self.isIncluded = isIncluded
+        self.formatter = formatter
         self.emit = emit ?? Self.defaultEmit(for: mode)
     }
 
     func receive(_ event: EventBusEvent) async {
-        guard groups.contains(event.group) else { return }
+        guard groups.contains(event.group), isIncluded(event) else { return }
         switch mode {
         case .human:
-            emit(Self.humanLine(for: event))
+            emit(formatter.line(for: event))
         case .json:
             if let line = Self.jsonLine(for: event) {
                 emit(line)
             }
         }
-    }
-
-    /// The formatted human line: time, group, domain, name, and the params
-    /// as a sorted `key=value` list.
-    static func humanLine(for event: EventBusEvent) -> String {
-        let time = event.date.formatted(date: .omitted, time: .standard)
-        let params =
-            event.params.map { params in
-                " " + params.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: " ")
-            } ?? ""
-        return "\(time) \(event.group.rawValue) \(event.domain.rawValue) \(event.name)\(params)"
     }
 
     /// The event as one NDJSON line, or nil if encoding is impossible —

@@ -52,11 +52,32 @@ public protocol Input: Sendable {
     /// start is a normal event, never an error.
     func start() async throws
 
-    /// The stream of captured frames, GPU-resident, timestamped on the
-    /// master clock. Finishes when the input stops.
+    /// The stream of captured video frames, GPU-resident, timestamped on
+    /// the master clock. Finishes when the input stops. Audio-only inputs
+    /// keep the default implementation, an already-finished stream.
     func frames() -> AsyncStream<CapturedFrame>
+
+    /// The stream of captured audio buffers, timestamped on the master
+    /// clock (PTS from `AVAudioTime` host time, see CLOCK.md). Finishes
+    /// when the input stops. Video-only inputs keep the default
+    /// implementation, an already-finished stream.
+    func audio() -> AsyncStream<CapturedAudio>
 
     /// Stops producing frames and releases the underlying device or
     /// resources. Safe to call more than once.
     func stop() async
+}
+
+extension Input {
+    /// By default an input produces no video: an already-finished stream.
+    /// Video inputs (cameras, displays, video generators) override this.
+    public func frames() -> AsyncStream<CapturedFrame> {
+        AsyncStream { $0.finish() }
+    }
+
+    /// By default an input produces no audio: an already-finished stream.
+    /// Audio inputs (microphones, audio generators) override this.
+    public func audio() -> AsyncStream<CapturedAudio> {
+        AsyncStream { $0.finish() }
+    }
 }

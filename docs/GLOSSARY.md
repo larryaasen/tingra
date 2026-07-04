@@ -88,6 +88,10 @@ A project is the saved file for an entire show. A project contains presets. A pr
 
 **Event domain** — the attribution axis of an event: which part of the system emitted it. Well known domains mirror the engine services (`capture`, `output`, …); third party plug-ins use their plug-in identifier. Open ended by design.
 
+**Log session** — the four-digit identifier every human log line carries in square brackets (`[0042]`), incrementing exactly once per cold start, so it anchors which process wrote which lines in an interleaved log file (see EVENTS.md, "The human log line format"). Not to be confused with the engine **session** above — a log session is purely a logging anchor.
+
+**Error identifier** — the stable, machine-readable code every `error` event carries in its `identifier` param (`inputNotFound`, `authorizationDenied`, …), alongside a human `message` whose wording may change. Exit codes and MCP tool errors key off identifiers, never message text. The registry lives in CLI.md ("Error identifiers"); identifiers are append-only and never renamed.
+
 ## Extensibility
 
 **Engine** — the whole media and control core: the host plus every loaded plug-in, organized as services (capture, composition, audio, compression, output, plug-in, MCP/control, platform — see ARCHITECTURE.md, "Engine services"). The engine has no UI; every front end — `tingra-cli`, AI agents over MCP, and eventually the app — is a client driving it through host-exposed protocols, never a fork of its pipeline. In the product path one engine runs per user, owned by the daemon; the **session** is its live running state.

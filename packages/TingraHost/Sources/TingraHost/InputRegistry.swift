@@ -56,6 +56,14 @@ public actor InputRegistry {
         inputs[input.id] = input
     }
 
+    /// Removes a previously registered input, keeping the registry current
+    /// as devices disconnect. Removing an identifier that is not
+    /// registered is harmless and does nothing — disconnection is a normal
+    /// event, never an error.
+    public func unregister(_ id: InputID) {
+        inputs[id] = nil
+    }
+
     /// The input with the given identifier, if one is registered.
     public func input(withID id: InputID) -> (any Input)? {
         inputs[id]

@@ -25,60 +25,55 @@ struct CaptureDevice: Sendable, Equatable {
     let kind: InputKind
 }
 
-/// Errors thrown by the capture inputs.
+/// Errors thrown by the capture inputs when they start.
+///
+/// Device disconnection after a successful start is a normal event, never
+/// an error (CLAUDE.md, Data Flow Rules).
 enum CaptureInputError: Error, Equatable {
-    /// `start()` was called on a discovery-only input.
-    case captureNotImplemented(InputID)
+    /// TCC denied access to the device's kind (camera or microphone).
+    case authorizationDenied(InputKind, InputID)
+
+    /// The device has disconnected since discovery, so capture cannot
+    /// start from it.
+    case deviceUnavailable(InputID)
+
+    /// The capture framework rejected the configuration; the string names
+    /// the rejected step.
+    case configurationRejected(InputID, String)
+}
+
+extension CaptureInputError {
+    /// The stable error identifier this error reports under (see CLI.md,
+    /// "Error identifiers").
+    var identifier: ErrorIdentifier {
+        switch self {
+        case .authorizationDenied: return .authorizationDenied
+        case .deviceUnavailable: return .inputNotFound
+        case .configurationRejected: return .pipelineError
+        }
+    }
 }
 
 extension CaptureInputError: CustomStringConvertible {
     var description: String {
         switch self {
-        case .captureNotImplemented(let id):
+        case .authorizationDenied(let kind, let id):
+            let permission = kind == .camera ? "Camera" : "Microphone"
             return """
-                The input '\(id.rawValue)' was discovered but cannot capture yet — camera and \
-                microphone capture arrives with roadmap step 2. Until then this input supports \
-                discovery only (`tingra-cli devices`).
+                \(permission) access for the input '\(id.rawValue)' was denied. Grant it in \
+                System Settings > Privacy & Security > \(permission), or use a generator \
+                (`--video-generator bars`, `--audio-generator tone`) to run without hardware.
+                """
+        case .deviceUnavailable(let id):
+            return """
+                The input '\(id.rawValue)' is no longer connected. Reconnect the device, or run \
+                `tingra-cli devices` to pick one that is currently available.
+                """
+        case .configurationRejected(let id, let step):
+            return """
+                The input '\(id.rawValue)' could not be configured for capture: \(step). The device \
+                may be in use by another app — close it and try again.
                 """
         }
     }
-}
-
-/// A discovered capture device, registered as an input.
-///
-/// Discovery-only for now: `start()` throws a descriptive error until
-/// capture lands (roadmap step 2), and `frames()` returns an
-/// already-finished stream.
-struct CaptureDeviceInput: Input {
-    /// The discovered device this input wraps.
-    private let device: CaptureDevice
-
-    /// Creates an input over a discovered device.
-    init(device: CaptureDevice) {
-        self.device = device
-    }
-
-    /// The stable identifier — the device's unique ID, verbatim, so
-    /// `devices --json` output works as a selector across launches.
-    var id: InputID { InputID(rawValue: device.uniqueID) }
-
-    /// The user-facing device name.
-    var name: String { device.name }
-
-    /// Whether this input is a camera or a microphone.
-    var kind: InputKind { device.kind }
-
-    /// Throws ``CaptureInputError/captureNotImplemented(_:)`` — capture
-    /// arrives with roadmap step 2.
-    func start() async throws {
-        throw CaptureInputError.captureNotImplemented(id)
-    }
-
-    /// An already-finished stream; frames arrive with roadmap step 2.
-    func frames() -> AsyncStream<CapturedFrame> {
-        AsyncStream { $0.finish() }
-    }
-
-    /// Nothing to release while the input is discovery-only.
-    func stop() async {}
 }

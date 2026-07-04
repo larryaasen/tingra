@@ -20,7 +20,7 @@ Display/window inputs, shot composition, transitions, and multiple destinations 
 
 ## Repository and package layout
 
-`tingra-cli` lives in the Tingra monorepo at `apps/tingra-cli`, one of the runnable products under `apps/` (alongside `apps/ingest-simulator` and, in phase 3, the `apps/tingra` app). It builds on the engine libraries under `packages/`: the host/core package, the plug-in protocol package, and the first party feature plug-ins (see "Repository structure" in ARCHITECTURE.md). Package names are not finalized. In the CLI era, bundled plug-ins are compiled into the binary but register through the same code path the external bundle loader will use.
+`tingra-cli` lives in the Tingra monorepo at `apps/tingra-cli`, one of the runnable products under `apps/` (alongside `apps/ingest-simulator` and, in phase 3, the `apps/tingra` app). It builds on the engine libraries under `packages/`: `TingraHost`, `TingraPlugInKit`, `TingraEventBus`, and the first party feature plug-ins `TingraCapturePlugIns` and `TingraGeneratorPlugIns` (names finalized; see "Repository structure" in ARCHITECTURE.md). In the CLI era, bundled plug-ins are compiled into the binary but register through the same code path the external bundle loader will use.
 
 Argument parsing uses Apple's [swift-argument-parser](https://github.com/apple/swift-argument-parser), which generates `--help` text and completion scripts.
 
@@ -61,7 +61,7 @@ SUBCOMMANDS
 Lists inputs available for capture (input discovery). Default output is a human readable table; `--json` emits stable identifiers for scripting.
 
 ```
-tingra-cli devices [--type camera|mic|all] [--json]
+tingra-cli devices [--type camera|mic|all] [--json] [--watch]
 ```
 
 Example output:
@@ -75,7 +75,9 @@ MICROPHONES
   1  Shure MV7                     (id: AppleUSBAudioEngine:Shure:MV7)
 ```
 
-Device connection and disconnection is a normal event, not an error; the engine reports current state at the moment of the call.
+Device connection and disconnection is a normal event, not an error; without `--watch`, the engine reports current state at the moment of the call.
+
+**`--watch`** keeps the process alive to observe device connection and disconnection live: it prints the current listing first, then one line per `device.connected` / `device.disconnected` event on the bus as devices come and go, until Ctrl-C / SIGTERM. The capture plug-in keeps the input registry current as devices change, so in human mode each reported change is followed by the refreshed listing on standard output — plug in a microphone and the MICROPHONES table reprints with it included. Under `--json`, the initial listing document is the first line, followed by the same NDJSON event lines the console sink emits everywhere else (EVENTS.md) — no bespoke output path, and the document is not re-emitted (scripts fold the event lines into it). `--type` filters the events and the reprinted listing the same way it filters the initial listing. The events come from the capture plug-in's device notifications behind the `Input` seam, never from polling. Exit code 0 on a clean stop.
 
 ### `tingra-cli stream`
 
@@ -124,9 +126,19 @@ tingra-cli stream --url <destination> [--key <stream key>] [options]
 
 | Option | Description |
 | :----- | :---------- |
-| `--record <path>` | Simultaneously record the program to `.mp4`/`.mov` via AVAssetWriter, independent of streaming output. Post v1: arrives at roadmap step 5, after streaming ships. |
+| `--record <path>` | Simultaneously record the program to `.mp4`/`.mov` via AVAssetWriter, independent of streaming output. Post v1: arrives at roadmap step 5, after streaming ships (the flag is not in the option surface until then). |
 | `--duration <sec>` | Stop automatically after N seconds. |
-| `--dry-run` | Resolve inputs, build the pipeline, print the resolved configuration, and exit without connecting. |
+| `--dry-run` | Resolve inputs, build the pipeline, print the resolved configuration, and exit without connecting. See "Dry run" below. |
+
+#### Dry run
+
+`--dry-run` (available since roadmap step 2; going live arrives at step 3) parses and validates the full option surface, resolves the input selectors against the registry, reports the resolved plan, and exits 0 — no network, no TCC authorization request, and the stream key is never read (`--key-stdin` is validated for exclusivity only; the key is read at connect time, which a dry run never reaches).
+
+**Selector resolution** (also how a live `stream` will resolve): an exact ID from `devices --json` wins outright; otherwise an integer selects by position in the listing order `devices` prints; anything else matches case-insensitively against input names and must match exactly one. Without `--camera`/`--mic` the system default device is resolved and reported; without a connected default the run fails with `inputNotFound`.
+
+**Output.** In human mode the plan prints to standard output as the command result. Under `--json` the plan is one `stream.plan` event line on the standard NDJSON stream — flat, stable params (`url`, `keySource`, `videoInput`, `videoInputName`, `resolution`, `fps`, `videoCodec`, `videoBitrate`, `keyframeInterval`, `audioInput`, `audioInputName`, `audioCodec`, `audioBitrate`, `audioSamplerate`, `reconnect`, `reconnectDelay`, `statsInterval`, plus `duration`/`logFile` when set). A side disabled by `--no-video`/`--no-audio` omits its whole block; the stream key never appears in any output, only `keySource` (`none`, `option`, `environment`, `stdin`).
+
+**Failures.** Flag and cross-flag validation problems are usage errors (exit 64, argument-parser message on stderr). Registry resolution failures flow through the event bus as `error` events carrying `identifier` and `message` params (see "Error identifiers") and exit with the identifier's code.
 
 #### Output and logging
 
@@ -146,6 +158,20 @@ tingra-cli stream --url <destination> [--key <stream key>] [options]
 | 69 | Input not found or authorization denied (camera/mic TCC). |
 | 70 | Internal pipeline error. |
 | 75 | Connection failed or lost after all reconnect attempts. |
+
+#### Error identifiers
+
+Every `error` event the CLI emits carries a stable, machine-readable `identifier` param alongside a human `message`; exit-code semantics map to these identifiers, not to message wording (MCP.md, "Errors that teach" — the MCP tools reuse the same identifiers). This registry is the authoritative list. Identifiers are lowerCamelCase, bare (no dots — the dotted name on the event says *where* it happened; the identifier says *what kind* of failure it is), and **append-only: an identifier, once shipped, is never renamed or reused** (decided 2026-07-04). The Swift constants live in the plug-in protocol package (`ErrorIdentifier`) under its API stability contract.
+
+| Identifier | Exit code | Meaning |
+| :--------- | :-------- | :------ |
+| `invalidArgument` | 64 | An option value failed validation: malformed URL, bad `--resolution` form, odd program dimensions, unparseable bitrate, conflicting flags. |
+| `inputNotFound` | 69 | No registered input matches the selector (or no device of the required kind is connected to default to). |
+| `inputAmbiguous` | 69 | A name-substring selector matches more than one input of that kind; the message lists the matches. |
+| `authorizationDenied` | 69 | Camera or microphone TCC authorization was denied; the message names the permission and the System Settings fix. |
+| `pipelineError` | 70 | An internal pipeline error: a stage failed in a way that is not the caller's input or the network. |
+| `connectionFailed` | 75 | The initial connection or handshake to the destination was rejected or unreachable. |
+| `connectionLost` | 75 | The connection dropped and was not recovered within the configured reconnect attempts. |
 
 ### `tingra-cli serve` and `tingra-cli mcp`
 

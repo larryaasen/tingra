@@ -59,6 +59,20 @@ struct InputRegistryTests {
         }
     }
 
+    @Test("unregistering removes the input; unknown identifiers are harmless")
+    func unregisterRemovesInput() async throws {
+        let registry = InputRegistry()
+        let id = InputID(rawValue: "mock.camera.0")
+        try await registry.register(MockInput(id: id))
+
+        await registry.unregister(id)
+        #expect(await registry.input(withID: id) == nil)
+
+        // Disconnection is a normal event — removing again does nothing.
+        await registry.unregister(id)
+        #expect(await registry.allInputs.isEmpty)
+    }
+
     @Test("allInputs returns every registered input")
     func allInputsReturnsEverything() async throws {
         let registry = InputRegistry()

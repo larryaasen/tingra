@@ -80,16 +80,20 @@ struct ConsoleSinkTests {
         #expect(lines[0].contains("stream.connect.timeout"))
     }
 
-    @Test("a human line carries group, domain, name, and sorted key=value params")
+    @Test("a human line carries level, session, domain, name, and sorted key=value params")
     func humanLineFormat() async {
         let lines = await emittedLines(
-            makeSink: { ConsoleSink(mode: .human, emit: $0) },
+            makeSink: {
+                ConsoleSink(mode: .human, formatter: LogLineFormatter(sessionID: 42), emit: $0)
+            },
             send: { bus in
                 bus.event("stream.started", domain: .output, params: ["fps": 30, "bitrate": .string("4500k")])
             }
         )
         #expect(lines.count == 1)
-        #expect(lines[0].hasSuffix("event output stream.started bitrate=4500k fps=30"))
+        #expect(lines[0].hasPrefix("INFO  "))
+        #expect(lines[0].contains("[0042] @ "))
+        #expect(lines[0].hasSuffix("@ output stream.started bitrate=4500k fps=30"))
     }
 
     @Test("a JSON line is one NDJSON record with the stable ts/group/domain/name/params keys")

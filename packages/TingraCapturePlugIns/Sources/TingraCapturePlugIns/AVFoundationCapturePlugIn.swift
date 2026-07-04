@@ -11,15 +11,12 @@ import AVFoundation
 import TingraPlugInKit
 
 /// The AVFoundation-backed capture plug-in: contributes the Mac's cameras
-/// and microphones as inputs with stable identifiers.
+/// and microphones as inputs with stable identifiers, and reports device
+/// connection and disconnection on the event bus.
 ///
 /// AVFoundation is imported only here, behind the `Input` seam — nothing
 /// downstream of the registry knows which framework produced these inputs
 /// (see ARCHITECTURE.md, "Dependency Injection Pattern").
-///
-/// Roadmap status: input discovery (step 1). The registered inputs carry
-/// stable identifiers, names, and kinds, but capture itself arrives with
-/// roadmap step 2.
 public struct AVFoundationCapturePlugIn: PlugIn {
     /// The plug-in's stable identifier; also its event domain.
     public let id = PlugInID(rawValue: "com.moonwink.tingra.capture.avfoundation")
@@ -32,26 +29,39 @@ public struct AVFoundationCapturePlugIn: PlugIn {
     /// camera, microphone, or TCC authorization is needed on runners.
     private let enumerateDevices: @Sendable () -> [CaptureDevice]
 
+    /// The device connection/disconnection stream. Production observes
+    /// AVFoundation's notifications; tests inject a scripted stream.
+    private let deviceChanges: @Sendable () -> AsyncStream<DeviceChange>
+
     /// Creates the production plug-in, enumerating real AVFoundation
-    /// devices.
+    /// devices and observing real device notifications.
     public init() {
-        self.init(enumerateDevices: Self.connectedDevices)
+        self.init(enumerateDevices: Self.connectedDevices, deviceChanges: DeviceEventReporter.liveChanges)
     }
 
-    /// Creates a plug-in over an injected device enumerator (the test seam).
-    init(enumerateDevices: @escaping @Sendable () -> [CaptureDevice]) {
+    /// Creates a plug-in over an injected device enumerator and change
+    /// stream (the test seams).
+    init(
+        enumerateDevices: @escaping @Sendable () -> [CaptureDevice],
+        deviceChanges: @escaping @Sendable () -> AsyncStream<DeviceChange> = DeviceEventReporter.liveChanges
+    ) {
         self.enumerateDevices = enumerateDevices
+        self.deviceChanges = deviceChanges
     }
 
     /// Registers one input per connected camera and microphone, reporting
-    /// each discovery as a `trace` event.
+    /// each discovery as a `trace` event, then keeps the registry current
+    /// from device notifications, reporting each change as a
+    /// `device.connected` / `device.disconnected` event — normal events,
+    /// never errors, never polling (`stream` sessions and
+    /// `devices --watch` both consume them).
     ///
     /// Throws if the registry rejects an input (a duplicate identifier);
     /// the host's loader reports that as an `error` event and the engine
     /// keeps running.
     public func activate(in context: PlugInContext) async throws {
         for device in enumerateDevices() {
-            try await context.inputs.register(CaptureDeviceInput(device: device))
+            try await context.inputs.register(Self.makeInput(for: device))
             context.eventBus.trace(
                 "input.discovered",
                 domain: .capture,
@@ -62,6 +72,22 @@ public struct AVFoundationCapturePlugIn: PlugIn {
                 ]
             )
         }
+
+        // Fire and forget for the life of the process: the reporter ends
+        // when its notification stream does. There is no deactivation hook
+        // yet — plug-ins live as long as the engine.
+        let reporter = DeviceEventReporter(changes: deviceChanges(), makeInput: Self.makeInput)
+        let eventBus = context.eventBus
+        let inputs = context.inputs
+        Task {
+            await reporter.run(on: eventBus, inputs: inputs)
+        }
+    }
+
+    /// The plug-in's input factory: a camera or microphone input over a
+    /// discovered device, used at activation and for later connections.
+    private static func makeInput(for device: CaptureDevice) -> any Input {
+        device.kind == .camera ? CameraInput(device: device) : MicrophoneInput(device: device)
     }
 
     /// Reads the connected cameras and microphones from AVFoundation.

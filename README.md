@@ -29,11 +29,13 @@ The zero-dependency event bus: the structured event spine every part of the engi
 
 The plug-in protocol package: the stability contract first- and third-party plug-ins build against, importable without the engine (see [ARCHITECTURE.md](docs/ARCHITECTURE.md), "Plug-in API stability and versioning").
 
-- `Input` — the protocol for anything producing video or audio frames: cameras, displays, microphones, media, generators; carries the stable identifier, user-facing name, and kind that discovery lists.
+- `Input` — the protocol for anything producing video or audio frames: cameras, displays, microphones, media, generators; carries the stable identifier, user-facing name, and kind that discovery lists, with `frames()` and `audio()` streams (each defaulting to an already-finished stream for the media the input does not produce).
 - `InputID` — the stable identifier for an input, as surfaced by input discovery.
-- `InputKind` — the kind of input (camera, microphone), driving discovery grouping and selector resolution.
-- `InputRegistering` — the registration seam where input plug-ins attach; the host's `InputRegistry` conforms.
-- `CapturedFrame` — one GPU-resident video frame plus its presentation time on the master clock; carries the frame ownership rule.
+- `InputKind` — the kind of input (camera, microphone, generator), driving discovery grouping and selector resolution.
+- `InputRegistering` — the registration seam where input plug-ins attach (register on connect, unregister on disconnect); the host's `InputRegistry` conforms.
+- `CapturedFrame` — one GPU-resident video frame plus its presentation time on the master clock; `@unchecked Sendable` under the frame ownership rule (ARCHITECTURE.md, "Frame ownership across the `Input` seam").
+- `CapturedAudio` — one captured audio buffer whose PTS is the actual host time of capture; the audio half of the frame ownership rule.
+- `ErrorIdentifier` — the stable, machine-readable failure identifiers error events carry (`inputNotFound`, `authorizationDenied`, …); the registry lives in CLI.md, and identifiers are append-only, never renamed.
 - `StreamingService` — the output seam: sends program media to a destination (HaishinKit lives behind this protocol).
 - `Destination` — a configured streaming target: URL plus optional stream key (deliberately not `Codable` — the key is a secret).
 - `EngineClock` — the master clock seam: current time and the absolute-deadline tick stream (see [CLOCK.md](docs/CLOCK.md)).
@@ -46,20 +48,30 @@ The plug-in protocol package: the stability contract first- and third-party plug
 The host/core package: plug-in loading, registries, frame transport, session/state, secure storage, and authorization — the minimal core that is not a plug-in (see [ARCHITECTURE.md](docs/ARCHITECTURE.md), "Engine model: host and plug-ins").
 
 - `HostClock` — the production `EngineClock`: the host time clock with a `ContinuousClock`-based absolute-deadline tick loop.
-- `InputRegistry` — the actor where input plug-ins register the inputs they contribute and the engine resolves them from; the host's concrete `InputRegistering`.
+- `InputRegistry` — the actor where input plug-ins register the inputs they contribute and the engine resolves them from (by stable ID, listing index, or unique name substring via `resolveInput(selector:ofKind:)`); the host's concrete `InputRegistering`.
 - `InputRegistryError` — errors thrown by the registry (e.g. registering a duplicate input identifier).
+- `InputSelectorError` — selector resolution failures (`notFound`, `ambiguous`), each mapped to its stable error identifier.
 - `PlugInLoader` — the host's plug-in lifecycle: activates plug-ins against a `PlugInContext`, reporting each outcome on the event bus; a throwing plug-in is skipped, never fatal.
-- `OSLogSink` — the always-on system-of-record sink: routes every event to OSLog (`subsystem` `com.moonwink.tingra`, `category` = domain), params `.private`.
+- `OSLogSink` — the system-of-record sink: routes every event to OSLog (`subsystem` `com.moonwink.tingra`, `category` = domain), params `.private`. `tingra-cli` skips attaching it when standard error is a terminal — the OS's own terminal mirror already echoes the process's events there (see EVENTS.md, "OSLog sink").
 
 ### `packages/TingraCapturePlugIns`
 
-The first party capture plug-ins: camera and microphone discovery now, the full inputs at roadmap step 2. AVFoundation is imported only inside this package, behind the `Input` seam.
+The first party capture plug-ins: camera and microphone discovery and capture, and the device connection/disconnection events on the bus. AVFoundation and Core Audio are imported only inside this package, behind the `Input` seam.
 
-- `AVFoundationCapturePlugIn` — contributes the Mac's cameras and microphones as inputs with stable identifiers (`AVCaptureDevice.uniqueID`); discovery-only until capture lands.
+- `AVFoundationCapturePlugIn` — contributes the Mac's cameras and microphones as inputs with stable identifiers (`AVCaptureDevice.uniqueID`), backed by `AVCaptureSession` (camera; IOSurface 32BGRA, BT.709 tagged at the seam) and an `AVAudioEngine` input tap (microphone; PTS from `AVAudioTime` host time), and keeps the registry current from the framework's device notifications, reporting each change as a `device.connected`/`device.disconnected` event — never polling.
+- `SystemDefaultInputs` — the system default camera and microphone as input identifiers, for resolving the `stream` defaults without importing AVFoundation elsewhere.
+
+### `packages/TingraGeneratorPlugIns`
+
+The first party generator plug-ins — inputs that synthesize their content from the injected clock, so they run anywhere with no camera, microphone, or TCC: the permanent CI test surface.
+
+- `GeneratorPlugIn` — contributes both generators as inputs through the same registration seam as capture.
+- `BarsGenerator` — SMPTE color bars with burned in timecode (`--video-generator bars`): one IOSurface-backed 32BGRA, BT.709-tagged frame per clock tick.
+- `ToneGenerator` — the 440 Hz test tone (`--audio-generator tone`): mono float32 buffers with phase continuity, one per clock tick.
 
 ### `apps/tingra-cli`
 
-The headless front end over the engine (see [CLI.md](docs/CLI.md)): one invocation selects inputs, configures compression, and streams. An executable, so it exposes no public types; its surface is its subcommands — `devices` (input discovery: human table and stable `--json`, see [CLI.md](docs/CLI.md)) and `version` so far, with `stream`, `probe`, `serve`, and `mcp` arriving per the roadmap.
+The headless front end over the engine (see [CLI.md](docs/CLI.md)): one invocation selects inputs, configures compression, and streams. An executable, so it exposes no public types; its surface is its subcommands — `devices` (input discovery: human table and stable `--json`; `--watch` streams live device connect/disconnect events), `stream` (`--dry-run` today: validate, resolve inputs, report the plan; going live arrives at roadmap step 3), and `version`, with `probe`, `serve`, and `mcp` arriving per the roadmap.
 
 ### `apps/ingest-simulator` (planned)
 

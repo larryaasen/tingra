@@ -63,6 +63,18 @@ One canonical working format and one delivery standard, decided up front — mis
 - **One conversion point.** Composition and the sinks never re-convert; they trust the tags set at input normalization. Core Image manages its own (linear) working space; hand written Metal shaders that blend or sample must be deliberate about sRGB vs. linear texture views rather than relying on defaults.
 - **SDR only for now.** Wide gamut and HDR program output (P3, HLG/PQ) are out of scope until well after the app era; if they come, they enter at the same input normalization seam and become a program-wide setting, not a per-input one.
 
+## Frame ownership across the `Input` seam
+
+`CVPixelBuffer` and `CMSampleBuffer` are not `Sendable`, yet frames and audio buffers must cross isolation boundaries from an input's capture callback to the compositor and the sinks. Tingra resolves this with one deliberate, documented ownership rule instead of scattered ad hoc `@unchecked Sendable` (decided 2026-07-04; the rule CLAUDE.md's strict-concurrency note calls for). Every producer and consumer of media buffers observes it:
+
+1. **Transfer at yield.** The producer (an `Input`) hands the buffer off when it yields to its `frames()`/`audio()` stream and never touches it again — no reuse, no late writes, no retained references.
+2. **One holder at a time.** Exactly one consumer owns the buffer at any moment. The compositor's latest-wins slot releases its previous frame when a newer one replaces it; a sink that needs the buffer beyond its call must be handed ownership explicitly, never share it.
+3. **Immutable after transfer.** Nothing writes to the buffer after the yield. Downstream stages read, composite, and encode from it only; any stage that needs modified pixels renders into a new buffer.
+
+Under this rule a buffer is only ever read after the unique transfer point, which is exactly the guarantee `Sendable` encodes — so the wrapper types `CapturedFrame` and `CapturedAudio` in the plug-in protocol package carry `@unchecked Sendable` soundly. **Those two types are the only sanctioned `@unchecked Sendable` in the codebase.** They are the single choke point every media buffer crosses; any new `@unchecked Sendable` anywhere else needs its own documented rule and review, and "the frame path needed it" is not a reason — the frame path already has its rule here.
+
+The rule is enforced by convention and review, not the compiler — which is why it lives in this document, is restated on the two wrapper types, and is deliberately short enough to hold in your head while writing an input.
+
 ## Engine model: host and plug-ins
 
 The engine splits into two kinds of code.

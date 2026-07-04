@@ -13,24 +13,15 @@ import CoreVideo
 /// One video frame moving through the pipeline: an `IOSurface`-backed pixel
 /// buffer plus its presentation time on the master clock.
 ///
-/// ## Frame ownership rule (draft — under review, see TODO.md)
+/// ## Frame ownership rule
 ///
 /// `CVPixelBuffer` is not `Sendable`, so this type's `@unchecked Sendable`
-/// conformance is sound only under the following ownership rule, which every
-/// producer and consumer must observe:
-///
-/// 1. **Transfer at yield.** The producer (an `Input`) hands the frame off
-///    when it yields to its `frames()` stream and never touches the pixel
-///    buffer again.
-/// 2. **One holder at a time.** Exactly one consumer owns the frame at any
-///    moment; the compositor's latest-wins slot releases its previous frame
-///    when a newer one replaces it.
-/// 3. **Immutable after transfer.** No one writes to the pixel buffer after
-///    the yield — downstream stages read, composite, and encode from it only.
-///
-/// This is the deliberate, documented rule CLAUDE.md requires in place of ad
-/// hoc `@unchecked` — the rule itself still needs a permanent home in
-/// ARCHITECTURE.md once reviewed.
+/// conformance is sound only under the frame ownership rule in
+/// ARCHITECTURE.md ("Frame ownership across the `Input` seam"), which every
+/// producer and consumer must observe: **transfer at yield** (the producer
+/// never touches the buffer after yielding it), **one holder at a time**,
+/// and **immutable after transfer**. This type and ``CapturedAudio`` are the
+/// only sanctioned `@unchecked Sendable` in the codebase.
 public struct CapturedFrame: @unchecked Sendable {
     /// The frame's pixels: `IOSurface`-backed, in the working format
     /// (32BGRA, SDR, tagged BT.709). An untagged buffer is a defect.

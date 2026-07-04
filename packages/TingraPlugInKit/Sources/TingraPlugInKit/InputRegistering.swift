@@ -20,4 +20,10 @@ public protocol InputRegistering: Sendable {
     /// Throws a descriptive error if the input cannot be accepted — for
     /// example, when its identifier is already registered.
     func register(_ input: any Input) async throws
+
+    /// Removes a previously registered input — how a capture plug-in keeps
+    /// the registry current when a device disconnects (a normal event,
+    /// never an error, so removing an identifier that is not registered is
+    /// harmless and does nothing).
+    func unregister(_ id: InputID) async
 }

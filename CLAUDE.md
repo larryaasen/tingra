@@ -20,9 +20,11 @@ packages/                       # Engine libraries
   TingraPlugInKit/              # Plug-in protocol package: shared protocols (Input, StreamingService,
                                 #   PlugIn, ...), importable by third parties without pulling in the engine
   TingraEventBus/               # The event bus: the structured event spine (see EVENTS.md)
-  TingraCapturePlugIns/         # First-party capture plug-ins (camera/microphone discovery now,
-                                #   the full inputs at roadmap step 2); further feature plug-in
-                                #   packages (generators, effects, outputs, recording) land alongside
+  TingraCapturePlugIns/         # First-party capture plug-ins: camera/microphone discovery and
+                                #   capture, device connect/disconnect events
+  TingraGeneratorPlugIns/       # First-party generator plug-ins (bars, tone): the permanent CI
+                                #   test surface; further feature plug-in packages (effects,
+                                #   outputs, recording) land alongside
   (UI packages)                 # Phase 2 — arrive once the engine is proven
 docs/                           # The project documentation set (ARCHITECTURE.md, GLOSSARY.md, CLI.md,
                                 #   SIMULATOR.md, CLOCK.md, EVENTS.md, MCP.md, TODO.md) and screenshots
@@ -150,7 +152,9 @@ packages/  TingraPlugInKit        →  TingraEventBus; importable standalone by 
 packages/  TingraHost             →  TingraPlugInKit + TingraEventBus
 packages/  TingraCapturePlugIns   →  TingraPlugInKit + TingraEventBus (registers through the
                                      `InputRegistering` seam, so no TingraHost dependency)
-apps/      tingra-cli             →  TingraHost + TingraCapturePlugIns (+ swift-argument-parser)
+packages/  TingraGeneratorPlugIns →  TingraPlugInKit + TingraEventBus (same seam-only design)
+apps/      tingra-cli             →  TingraHost + TingraCapturePlugIns + TingraGeneratorPlugIns
+                                     (+ swift-argument-parser)
 apps/      tingra (phase 3)       →  TingraHost + feature plug-ins + UI packages
 apps/      ingest-simulator       →  none of the above (wraps MediaMTX; see SIMULATOR.md)
 ```

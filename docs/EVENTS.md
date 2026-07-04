@@ -46,6 +46,8 @@ The domain answers "who said it." Well known domains mirror the engine services 
 
 The two axes compose without ambiguity: a stream connection failure is `group: .error, domain: .output, name: "stream.connect.timeout"` — it routes as an error in every sink, and filters as output activity.
 
+`error` events additionally carry a stable `identifier` param (plus a human `message`): the machine-readable failure code scripts and exit-code mapping key off, drawn from the append-only registry in CLI.md ("Error identifiers").
+
 ## Sinks
 
 ```
@@ -53,15 +55,33 @@ engine services & plug-ins
         │  eventBus.send(...)
         ▼
     EventBus (host)
-        ├──►  OSLog sink        always on; Console.app, `log stream`, sysdiagnose
+        ├──►  OSLog sink        Console.app, `log stream`, sysdiagnose (skipped when stderr is a terminal)
         ├──►  Console sink      tingra-cli human output, or NDJSON under --json
         ├──►  File sink         attached by --log-file
         └──►  Status sink       feeds MCP stream_status and --stats-interval
 ```
 
-- **OSLog sink** — the system of record, always attached. Uses `os.Logger` with `subsystem` = `com.moonwink.tingra` and `category` = the event's **domain** (a 1:1 mapping). Group maps to level per the table above. Event names and groups interpolate as public; **params interpolate as `privacy: .private` by default**.
-- **Console sink** — owned by `tingra-cli`. In human mode it prints formatted lines; under `--json` it serializes the same events as newline delimited JSON (`{"ts": …, "group": …, "domain": …, "name": …, "params": …}`). The `--json` status events in CLI.md (started, stats, reconnecting, stopped, error) *are* bus events — one source of truth for humans, scripts, and agents. `--verbose`/`--quiet` are group/level filters on this sink; timestamps use `Date.FormatStyle`, never legacy formatters.
-- **File sink** — attached when `--log-file` is passed; same formatted lines as the console's human mode.
+- **OSLog sink** — the system of record. Uses `os.Logger` with `subsystem` = `com.moonwink.tingra` and `category` = the event's **domain** (a 1:1 mapping). Group maps to level per the table above. Event names and groups interpolate as public; **params interpolate as `privacy: .private` by default**.
+
+  `tingra-cli` attaches it unless standard error is a terminal (decided 2026-07-04): when stderr is a TTY, macOS's own unified-logging terminal mirror already echoes the process's `os_log` traffic there, so attaching the sink too would print every event a second time, interleaved with the console sink's formatted lines. Interactive runs lose nothing — the console sink already told the human everything — while every non-interactive context (scripts, launchd, redirected or piped output, `--json` consumers) still gets OSLog as the system of record, since the terminal mirror never runs there. This is a `tingra-cli` policy, not a change to the sink itself; a future host that always runs non-interactively (the `serve` daemon) attaches it unconditionally.
+- **Console sink** — owned by `tingra-cli`. In human mode it prints formatted lines (the shared format below); under `--json` it serializes the same events as newline delimited JSON (`{"ts": …, "group": …, "domain": …, "name": …, "params": …}`). The `--json` status events in CLI.md (started, stats, reconnecting, stopped, error) *are* bus events — one source of truth for humans, scripts, and agents. `--verbose`/`--quiet` are group/level filters on this sink; timestamps use `Date.FormatStyle`, never legacy formatters.
+- **File sink** — attached when `--log-file` is passed; same formatted lines as the console's human mode, byte for byte.
+
+### The human log line format
+
+The console's human mode and the file sink share one line format:
+
+```
+LEVEL MM-DD-YYYY HH:MM:SS.mmm TZ [SSSS] @ domain name key=value …
+```
+
+— a fixed-width level (`INFO`, `DEBUG`, `ERROR`: the group's default sink level from the table above), a local-time timestamp with milliseconds and time zone, the four-digit **log session ID** in square brackets, `@`, then the event's domain, name, and sorted `key=value` params. Example:
+
+```
+INFO  07-04-2026 15:50:02.250 EDT [0042] @ capture device.connected id=BuiltInMicrophoneDevice kind=microphone name=MacBook Pro Microphone
+```
+
+The log session ID increments exactly once per cold start (persisted in Application Support; for `tingra-cli` today every launch is a cold start, and the `serve` daemon's warm starts will keep the same ID). That makes it a reliable cold-start anchor: a change from `[0042]` to `[0043]` marks a new process, and grouping lines by session ID separates the sessions interleaved in one file. It is a log anchor only — distinct from the engine **session** in GLOSSARY.md.
 - **Status sink** — retains recent stats/state events so MCP's `stream_status` and the CLI's `--stats-interval` report from live data without polling the pipeline.
 
 Sinks subscribe over `AsyncStream` and each applies its own filtering; attaching or detaching a sink never affects emitters or other sinks.
