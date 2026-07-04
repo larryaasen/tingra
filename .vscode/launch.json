@@ -1,0 +1,24 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:tingra}/apps/tingra-cli",
+            "name": "Debug tingra-cli (apps/tingra-cli)",
+            "target": "tingra-cli",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug tingra-cli (apps/tingra-cli)"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:tingra}/apps/tingra-cli",
+            "name": "Release tingra-cli (apps/tingra-cli)",
+            "target": "tingra-cli",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release tingra-cli (apps/tingra-cli)"
+        }
+    ]
+}

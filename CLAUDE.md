@@ -67,7 +67,7 @@ Package names and the exact `packages/` layout are **not finalized** (see "Repos
 - **Prefer static member lookup** over constructing the type where an idiom exists (`.circle` over `Circle()`, `.borderedProminent` over `BorderedProminentButtonStyle()`).
 
 ## Swift File Header
-Start every Swift source file with this header. `<ModuleName>` is the containing package or app (e.g. the host/core package, `tingra-cli`), not a single fixed name. The license line reflects the repo's MIT [LICENSE](LICENSE) — do not write "All rights reserved."
+Start every Swift source file with this header. `<ModuleName>` is the containing package or app (e.g. the host/core package, `tingra-cli`), not a single fixed name. The copyright line plus the machine-readable `SPDX-License-Identifier` (per the SPDX/REUSE convention) reflect the repo's MIT [LICENSE](LICENSE) — do not write "All rights reserved.", and keep both lines (MIT requires preserving the copyright notice; the SPDX tag is what license scanners parse).
 
 ```swift
 //
@@ -75,9 +75,12 @@ Start every Swift source file with this header. `<ModuleName>` is the containing
 //  <ModuleName>
 //
 //  Created by <Author> on <YYYY-MM-DD>.
-//  Copyright © 2026 Larry Aasen. Released under the MIT License. See LICENSE.
+//  Copyright © 2026 Larry Aasen.
+//  SPDX-License-Identifier: MIT
 //
 ```
+
+(In `Package.swift` manifests the `// swift-tools-version:` line must stay first; the header block follows it.)
 
 ## Build & Test Commands
 
@@ -243,10 +246,11 @@ Before completing a swap, verify:
 4. Git diff shows ONLY the changes required by the swap.
 
 ## Documentation
-- Add doc comments for public APIs.
+- **Every type, property, method, and function gets a doc comment (`///`) — public, internal, and private alike.** Public API gets full API-reference treatment (purpose, parameters, thrown errors); private helpers still get at least a brief `///` stating what they do and why they exist. Access level is never a reason to skip documentation.
 - All properties and methods in the host/core, plug-in protocol, and feature plug-in packages should be clearly documented.
 - Keep inline comments focused on "why" not "what".
 - Update relevant documentation ([README.md](README.md), [ARCHITECTURE.md](ARCHITECTURE.md), [GLOSSARY.md](GLOSSARY.md), [CLI.md](CLI.md), [SIMULATOR.md](SIMULATOR.md)) when making architectural changes; keep [README.md](README.md) reflecting the current state and intended usage.
+- **[README.md](README.md) lists every package and app** with a one-line description, and under each, **every public type** with a one-liner. Update that listing in the same change whenever a package, app, or public type is added, renamed, or removed — it must never drift from the code.
 - Update [GLOSSARY.md](GLOSSARY.md) if you introduce new user-facing vocabulary.
 - Use clear, descriptive variable and function names that reduce need for comments.
 

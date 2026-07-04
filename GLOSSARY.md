@@ -90,11 +90,15 @@ A project is the saved file for an entire show. A project contains presets. A pr
 
 ## Extensibility
 
+**Engine** — the whole media and control core: the host plus every loaded plug-in, organized as services (capture, composition, audio, compression, output, plug-in, MCP/control, platform — see ARCHITECTURE.md, "Engine services"). The engine has no UI; every front end — `tingra-cli`, AI agents over MCP, and eventually the app — is a client driving it through host-exposed protocols, never a fork of its pipeline. In the product path one engine runs per user, owned by the daemon; the **session** is its live running state.
+
 **Plug-in** — a separately built bundle that adds capability to the engine: inputs, generators, effects, transitions, outputs, automation. Note the spelling: always "plug-in," the one sanctioned hyphenated word in Tingra writing. All of Tingra's own features are built as plug-ins that ship with the product; third party plug-ins use the identical protocol and registries.
 
 **Host** — the minimal core that is not a plug-in: the plug-in loader and lifecycle, the registries, frame transport, the session, the event bus, logging, secure storage, and authorization.
 
 **Registry** — the seam where plug-ins attach: each capability type (inputs, effects, transitions, outputs, tools) has a registry that plug-ins register implementations into and the engine resolves from.
+
+**Seam** — a deliberate protocol boundary where one implementation can be swapped for another without the code on the other side changing. `Input` is the seam for capture frameworks, `StreamingService` for streaming output (HaishinKit lives behind it), `EngineClock` for time, and a registry is the seam where plug-ins attach. A seam is both an isolation point (only the code behind it imports the underlying framework or library) and a test point (tests substitute generators, mocks, or a synthetic clock there). Borrowed from software engineering, where a seam is "a place where you can alter behavior without editing code in that place."
 
 ## System
 

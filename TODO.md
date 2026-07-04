@@ -1,6 +1,21 @@
 # TODO
 
-Open items from the pre-scaffold documentation review (2026-07-03). Each decision item should end as a sentence or two in the doc that owns it — none of these need a rewrite.
+Open decisions and roadmap progress. The authoritative step sequencing is ARCHITECTURE.md, "Roadmap sequencing"; the progress section here tracks where the work actually stands. Decision items (below) should each end as a sentence or two in the doc that owns them — none need a rewrite.
+
+## Roadmap progress
+
+- [ ] **Step 1 — Monorepo scaffold + `tingra-cli devices`** *(in progress)*
+  - [x] `apps/`/`packages/` split scaffolded: `TingraEventBus` (bus, redaction, 17 tests), `TingraPlugInKit` (protocol seams: `Input`, `StreamingService`, `EngineClock`, `PlugIn`), `TingraHost` (`HostClock`, `InputRegistry`), `tingra-cli` skeleton (`devices` stub, `version`).
+  - [ ] Review of package names, type names, and conventions (Larry) — then record the final names in CLAUDE.md "Project Structure" and ARCHITECTURE.md "Repository structure".
+  - [ ] Camera and microphone **input discovery** behind the `Input` seam (AVFoundation stays inside the plug-in), registered through `InputRegistry`, with stable identifiers.
+  - [ ] `tingra-cli devices` for real: human table + `--json` (stable identifiers per CLI.md), wired through the event bus console sink.
+  - [ ] First event bus **sinks** (OSLog sink always-on; console sink owned by the CLI).
+  - [ ] `scripts/format-swift.sh` / `check-format.sh` and the GitHub Actions workflows (formatting, build, unit tests per package).
+- [ ] **Step 2** — camera/microphone inputs + generators (bars, tone) as the first plug-ins; `stream --dry-run`.
+- [ ] **Step 3** — streaming: simulator harness (SIMULATOR.md), HaishinKit behind `StreamingService`; **`tingra-cli` v1 ships here**.
+- [ ] **Step 4** — MCP server: `serve` daemon (launchd socket activation) + `mcp` proxy (MCP.md).
+- [ ] **Step 5** — local recording (`--record`).
+- [ ] **Steps 6–8** — app era: Metal composition/preview, production features, SRT/multiple destinations.
 
 ## Decisions to settle
 
