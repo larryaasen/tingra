@@ -7,32 +7,35 @@ You are a Senior macOS Engineer, specializing in SwiftUI, AppKit, and Apple's me
 
 ## Project Structure
 
-This is a Swift monorepo using **Swift Package Manager** (no CocoaPods). The root splits into **`apps/`** (runnable products — executables and the GUI app) and **`packages/`** (the engine libraries they build on). Per [ARCHITECTURE.md](ARCHITECTURE.md), the intended layout is:
+This is a Swift monorepo using **Swift Package Manager** (no CocoaPods). The root splits into **`apps/`** (runnable products — executables and the GUI app) and **`packages/`** (the engine libraries they build on). The layout is:
 
 ```
 apps/                           # Runnable products
   tingra-cli/                   # Headless front end over the engine; ships first, v1 (see CLI.md)
-  ingest-simulator/             # Local RTMP/SRT ingest server for tests (see SIMULATOR.md)
-  tingra/                       # Phase 3 — the assembled SwiftUI/AppKit app
+  ingest-simulator/             # Local RTMP/SRT ingest server for tests (see SIMULATOR.md); not yet scaffolded
+  tingra/                       # Phase 3 — the assembled SwiftUI/AppKit app; not yet scaffolded
 packages/                       # Engine libraries
-  (host/core package)           # Plug-in loader/lifecycle, registries, frame transport,
-                                #   session/state, event bus, logging, secure storage, authorization
-  (plug-in protocol package)    # Shared protocols (Input, StreamingService, ...), importable
-                                #   by third parties without pulling in the engine
-  (feature plug-ins)            # Capture inputs, generators, effects, transitions, outputs,
-                                #   recording — one package or several
+  TingraHost/                   # Host/core: plug-in loader/lifecycle, registries, frame transport,
+                                #   session/state, event bus sinks, logging, secure storage, authorization
+  TingraPlugInKit/              # Plug-in protocol package: shared protocols (Input, StreamingService,
+                                #   PlugIn, ...), importable by third parties without pulling in the engine
+  TingraEventBus/               # The event bus: the structured event spine (see EVENTS.md)
+  TingraCapturePlugIns/         # First-party capture plug-ins (camera/microphone discovery now,
+                                #   the full inputs at roadmap step 2); further feature plug-in
+                                #   packages (generators, effects, outputs, recording) land alongside
   (UI packages)                 # Phase 2 — arrive once the engine is proven
-docs/                           # Supplementary documentation and screenshots
-scripts/                        # Formatting and CI scripts
+docs/                           # The project documentation set (ARCHITECTURE.md, GLOSSARY.md, CLI.md,
+                                #   SIMULATOR.md, CLOCK.md, EVENTS.md, MCP.md, TODO.md) and screenshots
+scripts/                        # Formatting and CI scripts; not yet added
 ```
 
-Package names and the exact `packages/` layout are **not finalized** (see "Repository structure" in [ARCHITECTURE.md](ARCHITECTURE.md)) — none of `apps/`, `packages/`, or `scripts/` exist in this repo yet. Update this section once the monorepo is scaffolded (roadmap step 1).
+The package names are **finalized** (reviewed 2026-07-03; also recorded in "Repository structure" in [ARCHITECTURE.md](docs/ARCHITECTURE.md)): `TingraEventBus`, `TingraPlugInKit`, and `TingraHost` under `packages/`, and `apps/tingra-cli` (executable product `tingra-cli`, module `TingraCLI` — module names can't contain a hyphen).
 
 **Key facts:**
 - Within each package's or app's `Sources/`, keep files flat by default; use a named subdirectory only for features with **more than one UI or implementation file**. Do not create generic folders like `Views/`, `Components/`, or `Helpers/`.
 - `packages/` holds local SPM library packages (the engine); `apps/` holds the runnable products (`tingra-cli`, `ingest-simulator`, and the phase-3 `tingra` app) that consume them.
-- Companion docs, each authoritative for its area: [README.md](README.md) (project overview), [ARCHITECTURE.md](ARCHITECTURE.md) (technical plan and engine design), [GLOSSARY.md](GLOSSARY.md) (canonical vocabulary), [CLI.md](CLI.md) (`tingra-cli` spec), [SIMULATOR.md](SIMULATOR.md) (local RTMP/SRT test server), [CLOCK.md](CLOCK.md) (master clock, program tick, and A/V sync model), [EVENTS.md](EVENTS.md) (event bus, sinks, and logging/redaction policy), [MCP.md](MCP.md) (engine daemon, socket transport, and the agent-facing MCP server).
-- **Vocabulary is not optional.** Use [GLOSSARY.md](GLOSSARY.md) terms exactly — in code, comments, commit messages, and UI text: `input`, `generator`, `shot`, `preset`, `project`, `program`, `preview`, `compression`, `output`, `destination`, `plug-in` (always hyphenated), `host`, `registry`. Never use terminology (`source`, `scene`, `encoder`, `ingest`, `egress`) except at an explicit external protocol boundary (e.g., an RTSP "source" stays a source in that protocol's own terms).
+- Companion docs, each authoritative for its area: [README.md](README.md) (project overview), [ARCHITECTURE.md](docs/ARCHITECTURE.md) (technical plan and engine design), [GLOSSARY.md](docs/GLOSSARY.md) (canonical vocabulary), [CLI.md](docs/CLI.md) (`tingra-cli` spec), [SIMULATOR.md](docs/SIMULATOR.md) (local RTMP/SRT test server), [CLOCK.md](docs/CLOCK.md) (master clock, program tick, and A/V sync model), [EVENTS.md](docs/EVENTS.md) (event bus, sinks, and logging/redaction policy), [MCP.md](docs/MCP.md) (engine daemon, socket transport, and the agent-facing MCP server).
+- **Vocabulary is not optional.** Use [GLOSSARY.md](docs/GLOSSARY.md) terms exactly — in code, comments, commit messages, and UI text: `input`, `generator`, `shot`, `preset`, `project`, `program`, `preview`, `compression`, `output`, `destination`, `plug-in` (always hyphenated), `host`, `registry`. Never use terminology (`source`, `scene`, `encoder`, `ingest`, `egress`) except at an explicit external protocol boundary (e.g., an RTSP "source" stays a source in that protocol's own terms).
 - `AGENTS.md` is a pointer to this file and should not be edited separately.
 
 ## General Guidelines
@@ -84,14 +87,13 @@ Start every Swift source file with this header. `<ModuleName>` is the containing
 
 ## Build & Test Commands
 
-The monorepo isn't scaffolded yet, so there's no fixed command table. Until then, follow this pattern and fill in the table as packages land:
-
 | Action | Command |
 |--------|---------|
-| Build a library package | `cd packages/<PackageName> && swift build` |
+| Build a library package | `cd packages/<PackageName> && swift build` (e.g. `packages/TingraHost`) |
 | Test a library package | `cd packages/<PackageName> && swift test` |
-| Run the CLI locally | `cd apps/tingra-cli && swift run tingra-cli <subcommand> [options]` (see [CLI.md](CLI.md)) |
-| Start the local ingest simulator | `apps/ingest-simulator/sim.sh start` (see [SIMULATOR.md](SIMULATOR.md)) |
+| Build/test the CLI | `cd apps/tingra-cli && swift build` / `swift test` |
+| Run the CLI locally | `cd apps/tingra-cli && swift run tingra-cli <subcommand> [options]` (see [CLI.md](docs/CLI.md)) |
+| Start the local ingest simulator | `apps/ingest-simulator/sim.sh start` (see [SIMULATOR.md](docs/SIMULATOR.md)) |
 | Format all Swift files | `scripts/format-swift.sh` (to be added) |
 | Check formatting (CI) | `scripts/check-format.sh` (to be added) |
 
@@ -101,15 +103,15 @@ The monorepo isn't scaffolded yet, so there's no fixed command table. Until then
   - **Formatting verification** — `scripts/check-format.sh`.
   - **Unit tests** — `swift test` per package (Swift Testing). Generators and mocks mean no camera, microphone, or TCC authorization is needed on runners.
   - **Builds** — every package and app builds warning-clean (see Other Rules, Strict Compilation).
-  - **Integration tests** — against the local ingest simulator ([SIMULATOR.md](SIMULATOR.md)); a separate job, run on streaming/output changes rather than blocking every PR.
-  - **Packaging** — Apple Silicon (arm64) only. Release artifacts are Developer ID signed (hardened runtime; identifiers under `com.moonwink.tingra.*`) and notarized via `notarytool`; each release ships a zip for the Homebrew tap (bare binaries can't be stapled — Gatekeeper checks the ticket online) plus a stapled `.pkg` for offline installs. See [CLI.md](CLI.md) "Distribution" for the full recipe (embedded `__info_plist`, entitlements, CI verification). Signing certificates and the notarization API key live in GitHub Actions secrets, never in the repo.
+  - **Integration tests** — against the local ingest simulator ([SIMULATOR.md](docs/SIMULATOR.md)); a separate job, run on streaming/output changes rather than blocking every PR.
+  - **Packaging** — Apple Silicon (arm64) only. Release artifacts are Developer ID signed (hardened runtime; identifiers under `com.moonwink.tingra.*`) and notarized via `notarytool`; each release ships a zip for the Homebrew tap (bare binaries can't be stapled — Gatekeeper checks the ticket online) plus a stapled `.pkg` for offline installs. See [CLI.md](docs/CLI.md) "Distribution" for the full recipe (embedded `__info_plist`, entitlements, CI verification). Signing certificates and the notarization API key live in GitHub Actions secrets, never in the repo.
   - Any other CI needs as they arise.
 - PRs must pass formatting, build, and unit tests before merge.
 
 ## SwiftUI, AppKit & Media Frameworks
 - Use SwiftUI for new UI development once the UI packages/app target exist; use AppKit where SwiftUI doesn't yet cover a need (e.g., hosting Metal preview content in an `MTKView`).
 - Keep the media pipeline GPU-resident from capture through compositing to compression — frames move as `IOSurface`-backed `CVPixelBuffer`s; avoid CPU round-trips.
-- **Follow the color conventions in [ARCHITECTURE.md](ARCHITECTURE.md) ("Color and pixel format conventions").** Working format: IOSurface-backed 32BGRA, SDR, tagged BT.709; delivery: 4:2:0 video-range BT.709 with color info in the bitstream; every `CVPixelBuffer` carries color attachments (an untagged buffer is a defect); conversion happens once, at input normalization — composition and sinks never re-convert.
+- **Follow the color conventions in [ARCHITECTURE.md](docs/ARCHITECTURE.md) ("Color and pixel format conventions").** Working format: IOSurface-backed 32BGRA, SDR, tagged BT.709; delivery: 4:2:0 video-range BT.709 with color info in the bitstream; every `CVPixelBuffer` carries color attachments (an untagged buffer is a defect); conversion happens once, at input normalization — composition and sinks never re-convert.
 - Every capture input, generator, effect, transition, and output implements a shared protocol (`Input`, `StreamingService`, ...) so downstream code never imports a capture or networking framework directly — only the plug-in behind the protocol does.
 - Use `@MainActor` annotations appropriately for UI-related async code.
 - Prefer `AsyncSequence`/`AsyncStream` and structured concurrency over Combine for reactive data streams — the frame and event paths are already `AsyncStream`-based.
@@ -120,13 +122,13 @@ The monorepo isn't scaffolded yet, so there's no fixed command table. Until then
 - Supported translation languages are **German (`de`) and Spanish (`es`)**. When you add or change a user-facing string, add it to the catalog with translations for both languages so coverage stays complete.
 - Xcode auto-extracts new English strings on build, but auto-extracted entries are left untranslated. Provide the `de`/`es` values explicitly (state `translated`) rather than relying on extraction.
 - When a string is removed from code, leave its catalog entry in place unless doing a deliberate cleanup — Xcode marks unused entries `stale` automatically.
-- Vocabulary in every language must still follow [GLOSSARY.md](GLOSSARY.md) — translate the concept, not a borrowed term.
+- Vocabulary in every language must still follow [GLOSSARY.md](docs/GLOSSARY.md) — translate the concept, not a borrowed term.
 - **Localization applies to the app/UI layer only.** `tingra-cli` output stays locale-independent: `--json` events, field names, error identifiers, and any machine-readable output are never localized — they are a scripting contract, and exit codes (not message wording) carry the meaning callers key off. Human-readable help and log text could in principle be localized later, but the default is English-only for the CLI. Note that Foundation localization selects language via `AppleLanguages` (overridable per run with `-AppleLanguages '(es)'`), not the POSIX `LANG`/`LC_*` environment variables.
 
 ## Platform Support
-- **Target macOS 15.0+, Apple Silicon (arm64) only — no Intel, no universal binaries.** Every Apple Silicon Mac can run macOS 15, so the floor excludes no supported hardware; it stays ahead of macOS 14's security-support wind-down and keeps current framework APIs usable without availability guards. The underlying frameworks sit lower (ScreenCaptureKit 12.3+, its system audio capture 13.0+, HaishinKit 2.x needs a Swift 6 toolchain) — see [ARCHITECTURE.md](ARCHITECTURE.md). Revisit raising the app target's floor when phase 3 begins.
+- **Target macOS 15.0+, Apple Silicon (arm64) only — no Intel, no universal binaries.** Every Apple Silicon Mac can run macOS 15, so the floor excludes no supported hardware; it stays ahead of macOS 14's security-support wind-down and keeps current framework APIs usable without availability guards. The underlying frameworks sit lower (ScreenCaptureKit 12.3+, its system audio capture 13.0+, HaishinKit 2.x needs a Swift 6 toolchain) — see [ARCHITECTURE.md](docs/ARCHITECTURE.md). Revisit raising the app target's floor when phase 3 begins.
 - Don't use deprecated APIs — ensure all code is up-to-date with the latest SDKs.
-- Tingra is Mac-first by design (see [ARCHITECTURE.md](ARCHITECTURE.md) design principles) — don't add cross-platform abstractions speculatively. If a future iPadOS build is undertaken, platform-specific code should use `#if os(macOS)` / `#if canImport(AppKit)` guards at that point, not before.
+- Tingra is Mac-first by design (see [ARCHITECTURE.md](docs/ARCHITECTURE.md) design principles) — don't add cross-platform abstractions speculatively. If a future iPadOS build is undertaken, platform-specific code should use `#if os(macOS)` / `#if canImport(AppKit)` guards at that point, not before.
 
 ## Architecture
 - Keep host responsibilities (plug-in loader/lifecycle, registries, frame transport, session/state, event bus, logging, secure storage, authorization) in the host/core package — the host has no feature a user would directly see.
@@ -134,26 +136,26 @@ The monorepo isn't scaffolded yet, so there's no fixed command table. Until then
 - The host/plug-in boundary test: if removing it breaks plug-ins in general, it's host; if removing it breaks one capability, it's a plug-in.
 - Define a protocol seam at every framework boundary (e.g. `Input` for capture, `StreamingService` for RTMP/SRT output) so the rest of the app depends only on the protocol, never the concrete framework or third-party library behind it.
 - Services should accept dependencies via initializer injection.
-- **Follow the timing model in [CLOCK.md](CLOCK.md).** One master clock (the host time clock) for every timestamp; the host's program tick paces the compositor (pull-based, latest frame wins) — never a display link and never an input's cadence; audio PTS comes from `AVAudioTime` host time, never a synthetic sample-count position; the clock is a protocol-typed injected dependency (synthetic clock in tests), never a global.
-- **Follow the events model in [EVENTS.md](EVENTS.md).** All observability flows as structured events on the host's event bus (group = kind, `app`/`error`/`event`/`network`/`tap`/`trace`; domain = emitting area); sinks (OSLog, CLI console/`--json`, file, status) subscribe and route — code never logs directly. Control plane only: never put per-frame events on the bus. Secrets never become event params.
-- **Follow the daemon/transport model in [MCP.md](MCP.md).** The `serve` daemon is the one owner of the engine and speaks MCP JSON-RPC natively over a per-user Unix domain socket (launchd socket activated); `tingra-cli mcp` is a transparent byte proxy with no protocol logic. Never add a second internal RPC protocol, and never open a TCP listener.
-- **The plug-in protocol package is a stability contract** (see [ARCHITECTURE.md](ARCHITECTURE.md) "Plug-in API stability and versioning"). SemVer from its first tag — 0.x during the CLI era, 1.0.0 when the external bundle loader ships, breaking changes only in majors thereafter. Never remove/rename public symbols, change signatures or semantics, add protocol requirements without default implementations, or tighten `Sendable`/isolation on existing API outside a major; deprecate (with a replacement named) at least one minor before removal. The same rules bind the event bus package it depends on. CI runs `swift package diagnose-api-breaking-changes` against the latest tag on both.
+- **Follow the timing model in [CLOCK.md](docs/CLOCK.md).** One master clock (the host time clock) for every timestamp; the host's program tick paces the compositor (pull-based, latest frame wins) — never a display link and never an input's cadence; audio PTS comes from `AVAudioTime` host time, never a synthetic sample-count position; the clock is a protocol-typed injected dependency (synthetic clock in tests), never a global.
+- **Follow the events model in [EVENTS.md](docs/EVENTS.md).** All observability flows as structured events on the host's event bus (group = kind, `app`/`error`/`event`/`network`/`tap`/`trace`; domain = emitting area); sinks (OSLog, CLI console/`--json`, file, status) subscribe and route — code never logs directly. Control plane only: never put per-frame events on the bus. Secrets never become event params.
+- **Follow the daemon/transport model in [MCP.md](docs/MCP.md).** The `serve` daemon is the one owner of the engine and speaks MCP JSON-RPC natively over a per-user Unix domain socket (launchd socket activated); `tingra-cli mcp` is a transparent byte proxy with no protocol logic. Never add a second internal RPC protocol, and never open a TCP listener.
+- **The plug-in protocol package is a stability contract** (see [ARCHITECTURE.md](docs/ARCHITECTURE.md) "Plug-in API stability and versioning"). SemVer from its first tag — 0.x during the CLI era, 1.0.0 when the external bundle loader ships, breaking changes only in majors thereafter. Never remove/rename public symbols, change signatures or semantics, add protocol requirements without default implementations, or tighten `Sendable`/isolation on existing API outside a major; deprecate (with a replacement named) at least one minor before removal. The same rules bind the event bus package it depends on. CI runs `swift package diagnose-api-breaking-changes` against the latest tag on both.
 
 ### Package Dependency Graph
 
 ```
-packages/  host/core package         no engine-internal dependencies
-packages/  plug-in protocol package  no engine-internal deps; importable standalone by third parties
-packages/  feature plug-ins       →  plug-in protocol + host/core
-apps/      tingra-cli             →  host/core + feature plug-ins
-apps/      tingra (phase 3)       →  host/core + feature plug-ins + UI packages
+packages/  TingraEventBus         no engine-internal dependencies
+packages/  TingraPlugInKit        →  TingraEventBus; importable standalone by third parties
+packages/  TingraHost             →  TingraPlugInKit + TingraEventBus
+packages/  TingraCapturePlugIns   →  TingraPlugInKit + TingraEventBus (registers through the
+                                     `InputRegistering` seam, so no TingraHost dependency)
+apps/      tingra-cli             →  TingraHost + TingraCapturePlugIns (+ swift-argument-parser)
+apps/      tingra (phase 3)       →  TingraHost + feature plug-ins + UI packages
 apps/      ingest-simulator       →  none of the above (wraps MediaMTX; see SIMULATOR.md)
 ```
 
-Exact package names are not finalized — see "Repository structure" in [ARCHITECTURE.md](ARCHITECTURE.md).
-
 ### Engine Services
-The engine is organized as services, each exposing its capabilities through plug-in registries (see [ARCHITECTURE.md](ARCHITECTURE.md) "Engine services"):
+The engine is organized as services, each exposing its capabilities through plug-in registries (see [ARCHITECTURE.md](docs/ARCHITECTURE.md) "Engine services"):
 
 1. **Capture** – inputs, generators, input discovery, device connection/disconnection
 2. **Composition** – presets, shots, layer tree, transitions, Metal renderer, effects, program/preview buses
@@ -168,7 +170,7 @@ The engine is organized as services, each exposing its capabilities through plug
 - Capture inputs → Metal compositor → program frame (GPU-resident) → compression sinks (streaming output via `StreamingService`, local recording via `AVAssetWriter`) → destinations.
 - UI, CLI, and MCP callers talk to the engine only through host-exposed protocols/services — never by importing a capture, compositing, or networking framework directly.
 - Device connection and disconnection are normal events, not errors — never surface them as failure states.
-- One active stream session at a time in v1 (see [CLI.md](CLI.md)); don't design around concurrent sessions until that changes.
+- One active stream session at a time in v1 (see [CLI.md](docs/CLI.md)); don't design around concurrent sessions until that changes.
 
 ### Dependency Injection Pattern
 
@@ -186,7 +188,7 @@ The preferred pattern for cross-module boundaries is **protocol-first**:
 
 ## Error Handling
 - Always provide user-friendly error messages.
-- Report errors as `error` events on the event bus; sinks turn them into logs (see [EVENTS.md](EVENTS.md)). Never format log lines, open log files, or import a logging framework in engine or plug-in code — only sinks do that.
+- Report errors as `error` events on the event bus; sinks turn them into logs (see [EVENTS.md](docs/EVENTS.md)). Never format log lines, open log files, or import a logging framework in engine or plug-in code — only sinks do that.
 - Use proper Swift error types (enum conforming to Error).
 - Handle async errors with proper try/catch blocks.
 - **Never log secrets.** Stream keys, and any secure-storage contents, must never reach the console, `--json` output, log files, or error messages — redact them (`live_xxxx…`) at the boundary.
@@ -207,7 +209,7 @@ The preferred pattern for cross-module boundaries is **protocol-first**:
 ## Data Models
 Tingra's Codable models are primarily the `tingra-cli --json` output events (started, stats, reconnecting, stopped, error), the `devices --json` shapes, and the MCP tool input/output payloads.
 - Define each model as a `struct` conforming to `Codable`.
-- **JSON keys are a stable scripting contract** (see the CLI/MCP notes and [CLI.md](CLI.md)) — use `camelCase`, keep names stable across releases, and don't rename casually. Map to Swift properties explicitly rather than relying on key-conversion strategies.
+- **JSON keys are a stable scripting contract** (see the CLI/MCP notes and [CLI.md](docs/CLI.md)) — use `camelCase`, keep names stable across releases, and don't rename casually. Map to Swift properties explicitly rather than relying on key-conversion strategies.
 - Document each type, property, and function with a brief description of its purpose.
 - Verify round-trip stability: a model must encode back to JSON accurately (encode → decode → compare), so the scripting contract can't silently drift.
 
@@ -215,7 +217,7 @@ Tingra's Codable models are primarily the `tingra-cli --json` output events (sta
 - Use **Swift Testing** exclusively (the framework introduced with Swift 6: `@Test` suites, `#expect`, `#require`) for every test in the monorepo — it handles concurrency well and gives clear failure messages. Legacy test frameworks are not used in this project.
 - Write unit tests for engine and service logic (argument parsing, input selector resolution, config validation, etc.).
 - Prefer generators (bars, tone) and mocks over real hardware or live services in unit tests — no camera, microphone, or TCC authorization required.
-- Integration tests against the local simulator ([SIMULATOR.md](SIMULATOR.md)) are valuable and are the permanent integration test surface for the engine, but they're slower and spin up a local server — run them when working on streaming/output code or when asked, not as a blanket default alongside every unit test pass.
+- Integration tests against the local simulator ([SIMULATOR.md](docs/SIMULATOR.md)) are valuable and are the permanent integration test surface for the engine, but they're slower and spin up a local server — run them when working on streaming/output code or when asked, not as a blanket default alongside every unit test pass.
 - Verify error handling paths are tested.
 - For Codable models: verify a decoding error is thrown for each missing required field (`.keyNotFound`), test round-trip backwards-encoding, and cover missing optional keys.
 - For types conforming to `Equatable`, include both matching (equal) and mismatching (not-equal) cases.
@@ -249,9 +251,9 @@ Before completing a swap, verify:
 - **Every type, property, method, and function gets a doc comment (`///`) — public, internal, and private alike.** Public API gets full API-reference treatment (purpose, parameters, thrown errors); private helpers still get at least a brief `///` stating what they do and why they exist. Access level is never a reason to skip documentation.
 - All properties and methods in the host/core, plug-in protocol, and feature plug-in packages should be clearly documented.
 - Keep inline comments focused on "why" not "what".
-- Update relevant documentation ([README.md](README.md), [ARCHITECTURE.md](ARCHITECTURE.md), [GLOSSARY.md](GLOSSARY.md), [CLI.md](CLI.md), [SIMULATOR.md](SIMULATOR.md)) when making architectural changes; keep [README.md](README.md) reflecting the current state and intended usage.
+- Update relevant documentation ([README.md](README.md), [ARCHITECTURE.md](docs/ARCHITECTURE.md), [GLOSSARY.md](docs/GLOSSARY.md), [CLI.md](docs/CLI.md), [SIMULATOR.md](docs/SIMULATOR.md)) when making architectural changes; keep [README.md](README.md) reflecting the current state and intended usage.
 - **[README.md](README.md) lists every package and app** with a one-line description, and under each, **every public type** with a one-liner. Update that listing in the same change whenever a package, app, or public type is added, renamed, or removed — it must never drift from the code.
-- Update [GLOSSARY.md](GLOSSARY.md) if you introduce new user-facing vocabulary.
+- Update [GLOSSARY.md](docs/GLOSSARY.md) if you introduce new user-facing vocabulary.
 - Use clear, descriptive variable and function names that reduce need for comments.
 
 # Other Rules

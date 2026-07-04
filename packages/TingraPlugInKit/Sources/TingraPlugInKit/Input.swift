@@ -36,6 +36,15 @@ public protocol Input: Sendable {
     /// The input's stable identifier.
     var id: InputID { get }
 
+    /// A short user-facing name for discovery listings and pickers, e.g.
+    /// "FaceTime HD Camera". Also a selector form: `--camera BRIO` matches
+    /// by unique name substring (see CLI.md, "Input selection").
+    var name: String { get }
+
+    /// The kind of input, driving grouping in discovery output and selector
+    /// resolution.
+    var kind: InputKind { get }
+
     /// Begins producing frames.
     ///
     /// Throws a descriptive error if the input cannot start — authorization

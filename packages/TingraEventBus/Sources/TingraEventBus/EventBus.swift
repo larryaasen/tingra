@@ -66,6 +66,24 @@ public final class EventBus: Sendable {
         }
     }
 
+    /// Finishes every subscription: each sink's stream delivers what it has
+    /// already buffered, then ends, letting its consuming task complete.
+    ///
+    /// The host calls this once at orderly teardown (the CLI awaits its sink
+    /// tasks afterwards so buffered events reach their destination before
+    /// the process exits). Emitting after shutdown is harmless — the events
+    /// go nowhere.
+    public func shutdown() {
+        let continuations = subscriptions.withLock { store in
+            let values = Array(store.values)
+            store.removeAll()
+            return values
+        }
+        for continuation in continuations {
+            continuation.finish()
+        }
+    }
+
     /// Subscribes a sink to the bus.
     ///
     /// Each sink gets its own stream and applies its own filtering; attaching

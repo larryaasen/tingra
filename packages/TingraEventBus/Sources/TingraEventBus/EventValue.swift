@@ -53,6 +53,19 @@ extension EventValue: Codable {
     }
 }
 
+extension EventValue: CustomStringConvertible {
+    /// The bare value as text (`live`, `4500`, `29.97`, `true`) — what sinks
+    /// print in their human readable formats (`key=value`).
+    public var description: String {
+        switch self {
+        case .string(let value): value
+        case .int(let value): String(value)
+        case .double(let value): "\(value)"
+        case .bool(let value): String(value)
+        }
+    }
+}
+
 // Literal conformances so call sites read naturally:
 // `params: ["bitrate": 4500, "codec": "h264"]`.
 

@@ -24,10 +24,13 @@ public struct PlugInID: RawRepresentable, Hashable, Sendable, Codable {
 }
 
 /// What the host hands a plug-in when it loads: the shared host
-/// infrastructure a plug-in is allowed to touch.
+/// infrastructure a plug-in is allowed to touch, plus the registration
+/// seams it contributes capabilities through.
 ///
-/// Everything else — registries, session state — is reached through the
-/// registration path, keeping the host/plug-in boundary explicit.
+/// Each registration seam is a protocol defined in this package and
+/// conformed to by the host's registry, keeping the host/plug-in boundary
+/// explicit. Further seams (generators, effects, outputs, tools) join as
+/// their registries land.
 public struct PlugInContext: Sendable {
     /// The host's event bus. Plug-ins report everything that happens as
     /// events; they never log directly (see EVENTS.md).
@@ -37,10 +40,15 @@ public struct PlugInContext: Sendable {
     /// timestamps; generators stamp synthesized frames with it.
     public let clock: any EngineClock
 
+    /// The input registration seam: where the plug-in registers the inputs
+    /// it contributes during ``PlugIn/activate(in:)``.
+    public let inputs: any InputRegistering
+
     /// Creates the context the host hands a plug-in at activation.
-    public init(eventBus: EventBus, clock: any EngineClock) {
+    public init(eventBus: EventBus, clock: any EngineClock, inputs: any InputRegistering) {
         self.eventBus = eventBus
         self.clock = clock
+        self.inputs = inputs
     }
 }
 

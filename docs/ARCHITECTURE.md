@@ -167,7 +167,7 @@ struct HaishinKitStreamingService: StreamingService { /* ... */ }
 
 ## Repository structure
 
-The repo is a monorepo (multi package workspace) with two top-level folders. **`apps/`** holds the runnable products: `tingra-cli` (see CLI.md), `ingest-simulator` (the local RTMP/SRT test server, see SIMULATOR.md), and the assembled `tingra` app (phase 3). **`packages/`** holds the engine libraries the apps build on: a host/core package, the plug-in protocol package (importable by third parties without the engine), and first party feature plug-ins as their own package or packages. UI packages arrive under `packages/` in phase 2. Package names and the exact layout are not finalized.
+The repo is a monorepo (multi package workspace) with two top-level folders. **`apps/`** holds the runnable products: `tingra-cli` (see CLI.md), `ingest-simulator` (the local RTMP/SRT test server, see SIMULATOR.md), and the assembled `tingra` app (phase 3). **`packages/`** holds the engine libraries the apps build on. The package names are finalized (reviewed 2026-07-03): **`TingraHost`** (the host/core package), **`TingraPlugInKit`** (the plug-in protocol package, importable by third parties without the engine), and **`TingraEventBus`** (the event bus both build on, see EVENTS.md); first party feature plug-ins land as their own packages alongside them, starting with **`TingraCapturePlugIns`** (camera and microphone). UI packages arrive under `packages/` in phase 2.
 
 ## UI layer
 - **SwiftUI + AppKit**, with Metal preview content hosted in an `MTKView` (or a `CAMetalLayer` bridged into the view hierarchy).

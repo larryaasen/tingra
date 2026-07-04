@@ -67,3 +67,7 @@ public actor InputRegistry {
         Array(inputs.values)
     }
 }
+
+/// The registry is the concrete `InputRegistering` seam the host hands
+/// plug-ins through `PlugInContext.inputs`.
+extension InputRegistry: InputRegistering {}

@@ -6,10 +6,10 @@ Open decisions and roadmap progress. The authoritative step sequencing is ARCHIT
 
 - [ ] **Step 1 — Monorepo scaffold + `tingra-cli devices`** *(in progress)*
   - [x] `apps/`/`packages/` split scaffolded: `TingraEventBus` (bus, redaction, 17 tests), `TingraPlugInKit` (protocol seams: `Input`, `StreamingService`, `EngineClock`, `PlugIn`), `TingraHost` (`HostClock`, `InputRegistry`), `tingra-cli` skeleton (`devices` stub, `version`).
-  - [ ] Review of package names, type names, and conventions (Larry) — then record the final names in CLAUDE.md "Project Structure" and ARCHITECTURE.md "Repository structure".
-  - [ ] Camera and microphone **input discovery** behind the `Input` seam (AVFoundation stays inside the plug-in), registered through `InputRegistry`, with stable identifiers.
-  - [ ] `tingra-cli devices` for real: human table + `--json` (stable identifiers per CLI.md), wired through the event bus console sink.
-  - [ ] First event bus **sinks** (OSLog sink always-on; console sink owned by the CLI).
+  - [x] Review of package names, type names, and conventions (Larry, approved 2026-07-03) — final names recorded in CLAUDE.md "Project Structure" and ARCHITECTURE.md "Repository structure".
+  - [x] Camera and microphone **input discovery** behind the `Input` seam: `packages/TingraCapturePlugIns` (`AVFoundationCapturePlugIn`, AVFoundation imported only there), registered through the `InputRegistering` seam into `InputRegistry` with `AVCaptureDevice.uniqueID` identifiers, activated via `PlugInLoader`.
+  - [x] `tingra-cli devices` for real: human table + `--json` (stable `cameras`/`microphones` document per CLI.md); errors flow through the event bus console sink; listing output stays clean on stdout.
+  - [x] First event bus **sinks**: `EventSink` protocol + `attach`/`shutdown` on the bus, `OSLogSink` (TingraHost, always-on), `ConsoleSink` (owned by the CLI; human lines to stderr, NDJSON to stdout).
   - [ ] `scripts/format-swift.sh` / `check-format.sh` and the GitHub Actions workflows (formatting, build, unit tests per package).
 - [ ] **Step 2** — camera/microphone inputs + generators (bars, tone) as the first plug-ins; `stream --dry-run`.
 - [ ] **Step 3** — streaming: simulator harness (SIMULATOR.md), HaishinKit behind `StreamingService`; **`tingra-cli` v1 ships here**.
@@ -21,7 +21,7 @@ Open decisions and roadmap progress. The authoritative step sequencing is ARCHIT
 
 - [ ] **MCP implementation dependency.** MCP.md commits the daemon to speaking MCP JSON-RPC natively but not *how*: the official `modelcontextprotocol/swift-sdk` or hand-rolled JSON-RPC framing. Recommendation: adopt the official Swift SDK behind the MCP/Control service boundary (JSON-RPC lifecycle, capability negotiation, and notifications are exactly the "thankless standardized parts" ARCHITECTURE.md design principle 4 says to adopt). Record the decision in MCP.md and CLAUDE.md's sanctioned-dependency list.
 - [ ] **Sanction `swift-argument-parser` explicitly.** CLI.md already commits to it, but CLAUDE.md's sanctioned third-party dependency list names only HaishinKit and MediaMTX. Add it (Apple-authored, effectively first party).
-- [ ] **Finalize package names.** The scaffold proposes `TingraEventBus`, `TingraPlugInKit`, and `TingraHost` under `packages/` — review, tweak, then update the "Repository structure" section in ARCHITECTURE.md and the Project Structure section in CLAUDE.md to record the final names.
+- [x] **Finalize package names.** Approved as scaffolded (2026-07-03): `TingraEventBus`, `TingraPlugInKit`, `TingraHost` under `packages/`, `apps/tingra-cli`. Recorded in ARCHITECTURE.md "Repository structure" and CLAUDE.md "Project Structure".
 - [ ] **EventBusBasics identity.** Decide: evolve the shared personal `EventBusBasics` package upstream, or keep the Tingra-named port. The scaffold starts `TingraEventBus` as a port; the deltas in EVENTS.md are generic enough to upstream later. The SemVer/API-diff CI obligation from ARCHITECTURE.md lands on whichever package wins.
 - [ ] **Frame ownership rule for the `Input` seam.** `CVPixelBuffer`/`CMSampleBuffer` are not `Sendable`; CLAUDE.md requires a deliberate, documented ownership rule rather than ad hoc `@unchecked`. A draft rule is written as the doc comment on `CapturedFrame` in `TingraPlugInKit` — review it, then give it a proper home (an ARCHITECTURE.md section or its own short doc).
 - [ ] **Stream-key retention policy in the daemon.** MCP.md says keys pass through tool input into Keychain-backed secure storage, but not whether they persist. Recommendation: transient in v1 (key required per `stream_start`, deleted when the stream stops); persistence arrives with the destination model. One sentence in MCP.md.

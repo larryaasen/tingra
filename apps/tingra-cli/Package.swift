@@ -21,6 +21,8 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-argument-parser", from: "1.5.0"),
+        .package(path: "../../packages/TingraCapturePlugIns"),
+        .package(path: "../../packages/TingraEventBus"),
         .package(path: "../../packages/TingraHost"),
         .package(path: "../../packages/TingraPlugInKit"),
     ],
@@ -29,9 +31,12 @@ let package = Package(
             name: "TingraCLI",
             dependencies: [
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
+                .product(name: "TingraCapturePlugIns", package: "TingraCapturePlugIns"),
+                .product(name: "TingraEventBus", package: "TingraEventBus"),
                 .product(name: "TingraHost", package: "TingraHost"),
                 .product(name: "TingraPlugInKit", package: "TingraPlugInKit"),
             ]
-        )
+        ),
+        .testTarget(name: "TingraCLITests", dependencies: ["TingraCLI"]),
     ]
 )

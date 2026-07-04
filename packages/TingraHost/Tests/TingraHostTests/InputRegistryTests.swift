@@ -16,6 +16,8 @@ import TingraPlugInKit
 /// generators-and-mocks testing rule.
 private struct MockInput: Input {
     let id: InputID
+    let name = "Mock Camera"
+    let kind = InputKind.camera
 
     func start() async throws {}
 
