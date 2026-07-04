@@ -117,9 +117,10 @@ struct ConsoleSink: EventSink {
     /// as a sorted `key=value` list.
     static func humanLine(for event: EventBusEvent) -> String {
         let time = event.date.formatted(date: .omitted, time: .standard)
-        let params = event.params.map { params in
-            " " + params.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: " ")
-        } ?? ""
+        let params =
+            event.params.map { params in
+                " " + params.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: " ")
+            } ?? ""
         return "\(time) \(event.group.rawValue) \(event.domain.rawValue) \(event.name)\(params)"
     }
 

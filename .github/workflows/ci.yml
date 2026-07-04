@@ -1,0 +1,61 @@
+# CI for the Tingra monorepo (see CLAUDE.md "Toolchain & CI"): formatting
+# verification, warning-clean builds, and unit tests for every package and app.
+# Tests use generators and mocks only — no camera, microphone, or TCC
+# authorization is needed on runners.
+#
+# The toolchain floor is Xcode 26.6 / Swift 6.3.3. The macos-26 arm64 image
+# ships Xcode 26.6 but defaults to an older version, so DEVELOPER_DIR pins it
+# explicitly (verified 2026-07-04; see docs/TODO.md "Release mechanics").
+#
+# Deferred jobs, tracked in docs/TODO.md "CI follow-ups": integration tests
+# (needs the ingest simulator, roadmap step 3), packaging/notarization (needs
+# the release tooling), and the API-diff job for TingraPlugInKit and
+# TingraEventBus (needs their first tags).
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+
+jobs:
+  format:
+    name: Formatting
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check formatting
+        run: scripts/check-format.sh
+
+  build-and-test:
+    name: Build & test (${{ matrix.package }})
+    runs-on: macos-26
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - packages/TingraEventBus
+          - packages/TingraPlugInKit
+          - packages/TingraHost
+          - packages/TingraCapturePlugIns
+          - apps/tingra-cli
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build (warning-clean, including tests)
+        working-directory: ${{ matrix.package }}
+        run: |
+          set -o pipefail
+          swift build --build-tests 2>&1 | tee "$RUNNER_TEMP/build.log"
+          # Warning-clean per CLAUDE.md "Strict Compilation"; dependency
+          # checkouts under .build/ are excluded from the check.
+          if grep "warning:" "$RUNNER_TEMP/build.log" | grep -v "/.build/"; then
+            echo "::error::swift build produced warnings (listed above)"
+            exit 1
+          fi
+      - name: Test
+        working-directory: ${{ matrix.package }}
+        run: swift test --skip-build

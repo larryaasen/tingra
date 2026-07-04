@@ -26,7 +26,8 @@ packages/                       # Engine libraries
   (UI packages)                 # Phase 2 — arrive once the engine is proven
 docs/                           # The project documentation set (ARCHITECTURE.md, GLOSSARY.md, CLI.md,
                                 #   SIMULATOR.md, CLOCK.md, EVENTS.md, MCP.md, TODO.md) and screenshots
-scripts/                        # Formatting and CI scripts; not yet added
+scripts/                        # Formatting scripts (format-swift.sh, check-format.sh)
+.github/workflows/              # GitHub Actions CI (ci.yml; see Toolchain & CI)
 ```
 
 The package names are **finalized** (reviewed 2026-07-03; also recorded in "Repository structure" in [ARCHITECTURE.md](docs/ARCHITECTURE.md)): `TingraEventBus`, `TingraPlugInKit`, and `TingraHost` under `packages/`, and `apps/tingra-cli` (executable product `tingra-cli`, module `TingraCLI` — module names can't contain a hyphen).
@@ -48,11 +49,11 @@ The package names are **finalized** (reviewed 2026-07-03; also recorded in "Repo
 - Never use periodic polling — the engine and its session state are event-driven (device connect/disconnect, stream status, etc.); model changes as events, not poll loops.
 - Don't ever use hacks to solve a problem.
 - **No UI code yet.** Current work is the engine (`packages/`) and `tingra-cli`; the SwiftUI/AppKit app is phase 3. Don't write UI code until that phase begins — the UI-facing rules below (SwiftUI, Localization) are forward-looking.
-- **Prefer native Apple frameworks; add third-party dependencies only behind a seam and with justification.** The only sanctioned third-party dependencies are **HaishinKit** (RTMP/SRT output, isolated behind `StreamingService`) and **MediaMTX** (the `ingest-simulator`, a test-only binary, not linked into the product). Don't introduce a new third-party dependency without a clear reason and a protocol seam that keeps the rest of the code from importing it directly.
+- **Prefer native Apple frameworks; add third-party dependencies only behind a seam and with justification.** The only sanctioned third-party dependencies are **HaishinKit** (RTMP/SRT output, isolated behind `StreamingService`), **MediaMTX** (the `ingest-simulator`, a test-only binary, not linked into the product), and **swift-argument-parser** (Apple-authored, effectively first party; command/option parsing in `tingra-cli` per [CLI.md](docs/CLI.md) — confined to the CLI target, no seam required). Don't introduce a new third-party dependency without a clear reason and a protocol seam that keeps the rest of the code from importing it directly.
 
 ## Code Quality
 - Use SwiftLint standards for code style (no force unwrapping, proper optional handling).
-- Format Swift code using SwiftFormat (swift-format).
+- Format Swift code using SwiftFormat (swift-format); the configuration lives in the root `.swift-format` (4-space indent, 120 columns, matching the existing code) — run `scripts/format-swift.sh`.
 - Prefer value types (structs, enums) over reference types (classes) where appropriate — reach for classes where reference semantics are required (e.g., a stateful capture session implementing `Input`).
 - Use `guard` statements for early returns instead of nested if statements.
 - Always use optional chaining or guard statements instead of force unwrapping (`!`); likewise avoid force `try` (`try!`) — reserve both for the genuinely unrecoverable.
@@ -94,12 +95,12 @@ Start every Swift source file with this header. `<ModuleName>` is the containing
 | Build/test the CLI | `cd apps/tingra-cli && swift build` / `swift test` |
 | Run the CLI locally | `cd apps/tingra-cli && swift run tingra-cli <subcommand> [options]` (see [CLI.md](docs/CLI.md)) |
 | Start the local ingest simulator | `apps/ingest-simulator/sim.sh start` (see [SIMULATOR.md](docs/SIMULATOR.md)) |
-| Format all Swift files | `scripts/format-swift.sh` (to be added) |
-| Check formatting (CI) | `scripts/check-format.sh` (to be added) |
+| Format all Swift files | `scripts/format-swift.sh` (swift-format over every package and app; config in the root `.swift-format`) |
+| Check formatting (CI) | `scripts/check-format.sh` (read-only; exits nonzero if `format-swift.sh` would change anything) |
 
 ## Toolchain & CI
 - **Toolchain floor: Xcode 26.6 and Swift 6.3.3.** Develop and build with these minimums; every `Package.swift` declares `swift-tools-version: 6.3.3` (see Swift Language & Idioms). This is the *development* toolchain floor — the *deployment* target (macOS 15.0+, Apple Silicon only) is separate; see Platform Support.
-- **CI runs on GitHub Actions (macOS runners).** Workflows land with the monorepo scaffold (roadmap step 1) and cover:
+- **CI runs on GitHub Actions (macOS runners).** `.github/workflows/ci.yml` runs on the `macos-26` arm64 image with `DEVELOPER_DIR` pinned to Xcode 26.6 — the image ships 26.6 but defaults to an older version (verified 2026-07-04; see [TODO.md](docs/TODO.md)). Workflows land with the monorepo scaffold (roadmap step 1) and cover:
   - **Formatting verification** — `scripts/check-format.sh`.
   - **Unit tests** — `swift test` per package (Swift Testing). Generators and mocks mean no camera, microphone, or TCC authorization is needed on runners.
   - **Builds** — every package and app builds warning-clean (see Other Rules, Strict Compilation).
@@ -254,6 +255,7 @@ Before completing a swap, verify:
 - Update relevant documentation ([README.md](README.md), [ARCHITECTURE.md](docs/ARCHITECTURE.md), [GLOSSARY.md](docs/GLOSSARY.md), [CLI.md](docs/CLI.md), [SIMULATOR.md](docs/SIMULATOR.md)) when making architectural changes; keep [README.md](README.md) reflecting the current state and intended usage.
 - **[README.md](README.md) lists every package and app** with a one-line description, and under each, **every public type** with a one-liner. Update that listing in the same change whenever a package, app, or public type is added, renamed, or removed — it must never drift from the code.
 - Update [GLOSSARY.md](docs/GLOSSARY.md) if you introduce new user-facing vocabulary.
+- Never reference "the Tingra plan" — the pre-repo planning document that guided this repo's creation is not part of the repo. Cite the in-repo docs (ARCHITECTURE.md, etc.) instead.
 - Use clear, descriptive variable and function names that reduce need for comments.
 
 # Other Rules

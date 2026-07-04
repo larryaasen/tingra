@@ -40,7 +40,7 @@ Signed and notarized binary for Apple Silicon (arm64) only, distributed through 
 
 **CI verification.** The packaging job asserts identity, entitlements, and the embedded plist on every release — `codesign --verify --strict`, `codesign -d --entitlements -`, and an `otool -s __TEXT __info_plist` presence check — so a regression fails the pipeline, not a user's Mac.
 
-Open question tracked in the plan: how bundled plug-ins ship next to a bare binary (app bundle style layout, compiled in, or a plug-ins directory installed by the formula).
+Open question tracked in TODO.md: how bundled plug-ins ship next to a bare binary (app bundle style layout, compiled in, or a plug-ins directory installed by the formula). For the CLI era they are compiled in (see ARCHITECTURE.md); the question is what changes when the external bundle loader ships.
 
 ## Command structure
 
@@ -149,7 +149,7 @@ tingra-cli stream --url <destination> [--key <stream key>] [options]
 
 ### `tingra-cli serve` and `tingra-cli mcp`
 
-The MCP server, not raw CLI shell invocation, is the primary AI agent interface (decided in the Tingra plan).
+The MCP server, not raw CLI shell invocation, is the primary AI agent interface (see MCP.md — a first class interface, not an internal tool).
 
 `serve` runs the persistent engine process — the daemon. It owns the session: which inputs are active, what is streaming, connection state. Because the process persists, pipeline state survives across individual tool calls, and TCC authorization attaches to one long running identity. In the product path the daemon is launchd managed and socket activated (a LaunchAgent installed by `serve --install` or the Homebrew formula), starting on the first connection and idle-exiting when quiet; manual `serve` in a terminal remains the development path. See MCP.md for the transport, lifecycle, and the TCC attribution rationale behind the launchd decision.
 

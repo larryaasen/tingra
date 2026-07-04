@@ -50,15 +50,17 @@ struct DeviceListBuildingTests {
         let listing = DeviceList(inputs: fixtureInputs, type: .all)
 
         let cameras = try #require(listing.cameras)
-        #expect(cameras == [
-            Device(index: 0, name: "FaceTime HD Camera", id: "0x8020000005ac8514"),
-            Device(index: 1, name: "Logitech BRIO", id: "0x14100000046d085e"),
-        ])
+        #expect(
+            cameras == [
+                Device(index: 0, name: "FaceTime HD Camera", id: "0x8020000005ac8514"),
+                Device(index: 1, name: "Logitech BRIO", id: "0x14100000046d085e"),
+            ])
         let microphones = try #require(listing.microphones)
-        #expect(microphones == [
-            Device(index: 0, name: "MacBook Pro Microphone", id: "BuiltInMicrophoneDevice"),
-            Device(index: 1, name: "Shure MV7", id: "AppleUSBAudioEngine:Shure:MV7"),
-        ])
+        #expect(
+            microphones == [
+                Device(index: 0, name: "MacBook Pro Microphone", id: "BuiltInMicrophoneDevice"),
+                Device(index: 1, name: "Shure MV7", id: "AppleUSBAudioEngine:Shure:MV7"),
+            ])
     }
 
     @Test("devices sharing a name sort by identifier, so indexes stay deterministic")
@@ -145,12 +147,13 @@ struct DeviceListCodableTests {
         #expect(decoded.microphones == nil)
     }
 
-    @Test("a device missing a required field throws keyNotFound",
-          arguments: [
+    @Test(
+        "a device missing a required field throws keyNotFound",
+        arguments: [
             #"{"name": "FaceTime HD Camera", "id": "0x8020000005ac8514"}"#,
             #"{"index": 0, "id": "0x8020000005ac8514"}"#,
             #"{"index": 0, "name": "FaceTime HD Camera"}"#,
-          ])
+        ])
     func missingRequiredFieldThrows(json: String) {
         #expect(throws: DecodingError.self) {
             try JSONDecoder().decode(Device.self, from: Data(json.utf8))

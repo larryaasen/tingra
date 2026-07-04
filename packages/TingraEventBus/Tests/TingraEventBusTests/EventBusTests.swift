@@ -153,7 +153,8 @@ struct EventBusEventTests {
             ("params", #"{"bitrate": 4500}"#),
             ("from", #""EventBusTests.swift:makeEvent()""#),
         ]
-        let body = fields
+        let body =
+            fields
             .filter { $0.key != omitted }
             .map { #""\#($0.key)": \#($0.json)"# }
             .joined(separator: ", ")
