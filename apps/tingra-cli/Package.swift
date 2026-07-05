@@ -25,6 +25,7 @@ let package = Package(
         .package(path: "../../packages/TingraEventBus"),
         .package(path: "../../packages/TingraGeneratorPlugIns"),
         .package(path: "../../packages/TingraHost"),
+        .package(path: "../../packages/TingraOutputPlugIns"),
         .package(path: "../../packages/TingraPlugInKit"),
     ],
     targets: [
@@ -36,6 +37,7 @@ let package = Package(
                 .product(name: "TingraEventBus", package: "TingraEventBus"),
                 .product(name: "TingraGeneratorPlugIns", package: "TingraGeneratorPlugIns"),
                 .product(name: "TingraHost", package: "TingraHost"),
+                .product(name: "TingraOutputPlugIns", package: "TingraOutputPlugIns"),
                 .product(name: "TingraPlugInKit", package: "TingraPlugInKit"),
             ]
         ),

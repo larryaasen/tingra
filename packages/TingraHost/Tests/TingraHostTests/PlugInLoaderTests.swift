@@ -56,7 +56,12 @@ struct PlugInLoaderTests {
         let eventBus = EventBus()
         let events = eventBus.events()
         let registry = InputRegistry()
-        let context = PlugInContext(eventBus: eventBus, clock: HostClock(), inputs: registry)
+        let context = PlugInContext(
+            eventBus: eventBus,
+            clock: HostClock(),
+            inputs: registry,
+            outputs: OutputRegistry()
+        )
         let plugIns: [any PlugIn] = [
             MockPlugIn(id: PlugInID(rawValue: "com.example.one")),
             MockPlugIn(id: PlugInID(rawValue: "com.example.two")),
@@ -82,7 +87,12 @@ struct PlugInLoaderTests {
         let eventBus = EventBus()
         let events = eventBus.events()
         let registry = InputRegistry()
-        let context = PlugInContext(eventBus: eventBus, clock: HostClock(), inputs: registry)
+        let context = PlugInContext(
+            eventBus: eventBus,
+            clock: HostClock(),
+            inputs: registry,
+            outputs: OutputRegistry()
+        )
         let plugIns: [any PlugIn] = [
             MockPlugIn(id: PlugInID(rawValue: "com.example.rejecting"), rejection: MockActivationError()),
             MockPlugIn(id: PlugInID(rawValue: "com.example.healthy")),
@@ -109,7 +119,12 @@ struct PlugInLoaderTests {
     func emptyListIsANoOp() async {
         let eventBus = EventBus()
         let events = eventBus.events()
-        let context = PlugInContext(eventBus: eventBus, clock: HostClock(), inputs: InputRegistry())
+        let context = PlugInContext(
+            eventBus: eventBus,
+            clock: HostClock(),
+            inputs: InputRegistry(),
+            outputs: OutputRegistry()
+        )
 
         let activated = await PlugInLoader().activate([], in: context)
         eventBus.shutdown()

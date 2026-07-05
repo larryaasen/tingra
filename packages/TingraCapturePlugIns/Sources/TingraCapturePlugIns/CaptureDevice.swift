@@ -27,9 +27,10 @@ struct CaptureDevice: Sendable, Equatable {
 
 /// Errors thrown by the capture inputs when they start.
 ///
-/// Device disconnection after a successful start is a normal event, never
-/// an error (CLAUDE.md, Data Flow Rules).
-enum CaptureInputError: Error, Equatable {
+/// Public so front ends (the CLI's `stream`) can map the cases to their
+/// stable error identifiers. Device disconnection after a successful start
+/// is a normal event, never an error (CLAUDE.md, Data Flow Rules).
+public enum CaptureInputError: Error, Equatable {
     /// TCC denied access to the device's kind (camera or microphone).
     case authorizationDenied(InputKind, InputID)
 
@@ -45,7 +46,7 @@ enum CaptureInputError: Error, Equatable {
 extension CaptureInputError {
     /// The stable error identifier this error reports under (see CLI.md,
     /// "Error identifiers").
-    var identifier: ErrorIdentifier {
+    public var identifier: ErrorIdentifier {
         switch self {
         case .authorizationDenied: return .authorizationDenied
         case .deviceUnavailable: return .inputNotFound
@@ -55,7 +56,7 @@ extension CaptureInputError {
 }
 
 extension CaptureInputError: CustomStringConvertible {
-    var description: String {
+    public var description: String {
         switch self {
         case .authorizationDenied(let kind, let id):
             let permission = kind == .camera ? "Camera" : "Microphone"

@@ -28,13 +28,25 @@ private actor MockInputRegistrar: InputRegistering {
     }
 }
 
+/// A no-op output registration seam — the generator plug-in never
+/// registers outputs.
+private struct UnusedOutputRegistrar: OutputRegistering {
+    /// Never called by this plug-in.
+    func register(_ provider: any StreamingServiceProvider) async throws {}
+}
+
 @Suite("GeneratorPlugIn")
 struct GeneratorPlugInTests {
     @Test("activation registers the bars and tone generators with their stable identifiers")
     func activationRegistersGenerators() async throws {
         let plugIn = GeneratorPlugIn()
         let registrar = MockInputRegistrar()
-        let context = PlugInContext(eventBus: EventBus(), clock: SyntheticClock(), inputs: registrar)
+        let context = PlugInContext(
+            eventBus: EventBus(),
+            clock: SyntheticClock(),
+            inputs: registrar,
+            outputs: UnusedOutputRegistrar()
+        )
 
         try await plugIn.activate(in: context)
 
@@ -51,7 +63,12 @@ struct GeneratorPlugInTests {
         let eventBus = EventBus()
         let events = eventBus.events()
         let plugIn = GeneratorPlugIn()
-        let context = PlugInContext(eventBus: eventBus, clock: SyntheticClock(), inputs: MockInputRegistrar())
+        let context = PlugInContext(
+            eventBus: eventBus,
+            clock: SyntheticClock(),
+            inputs: MockInputRegistrar(),
+            outputs: UnusedOutputRegistrar()
+        )
 
         try await plugIn.activate(in: context)
         eventBus.shutdown()

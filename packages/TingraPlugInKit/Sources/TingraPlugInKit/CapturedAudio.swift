@@ -41,4 +41,31 @@ public struct CapturedAudio: @unchecked Sendable {
     public init(sampleBuffer: CMSampleBuffer) {
         self.sampleBuffer = sampleBuffer
     }
+
+    /// A copy of this buffer with its presentation time moved onto a
+    /// session timeline: `PTS = hostTime − T0` (see CLOCK.md, Timestamp
+    /// rules — the form every sink consumes). The sample data is shared,
+    /// not copied; only the timing changes, so the ownership rule carries
+    /// over to the returned buffer. Returns nil if Core Media cannot
+    /// create the retimed copy.
+    ///
+    /// - Parameter t0: The session start on the master clock, shared by
+    ///   every sink.
+    public func rebased(by t0: CMTime) -> CapturedAudio? {
+        var timing = CMSampleTimingInfo(
+            duration: CMSampleBufferGetDuration(sampleBuffer),
+            presentationTimeStamp: CMTimeSubtract(presentationTime, t0),
+            decodeTimeStamp: .invalid
+        )
+        var copyOut: CMSampleBuffer?
+        let status = CMSampleBufferCreateCopyWithNewTiming(
+            allocator: kCFAllocatorDefault,
+            sampleBuffer: sampleBuffer,
+            sampleTimingEntryCount: 1,
+            sampleTimingArray: &timing,
+            sampleBufferOut: &copyOut
+        )
+        guard status == noErr, let copy = copyOut else { return nil }
+        return CapturedAudio(sampleBuffer: copy)
+    }
 }

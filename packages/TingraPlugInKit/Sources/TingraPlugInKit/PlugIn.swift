@@ -44,11 +44,22 @@ public struct PlugInContext: Sendable {
     /// it contributes during ``PlugIn/activate(in:)``.
     public let inputs: any InputRegistering
 
+    /// The output registration seam: where the plug-in registers the
+    /// streaming service providers it contributes during
+    /// ``PlugIn/activate(in:)``.
+    public let outputs: any OutputRegistering
+
     /// Creates the context the host hands a plug-in at activation.
-    public init(eventBus: EventBus, clock: any EngineClock, inputs: any InputRegistering) {
+    public init(
+        eventBus: EventBus,
+        clock: any EngineClock,
+        inputs: any InputRegistering,
+        outputs: any OutputRegistering
+    ) {
         self.eventBus = eventBus
         self.clock = clock
         self.inputs = inputs
+        self.outputs = outputs
     }
 }
 

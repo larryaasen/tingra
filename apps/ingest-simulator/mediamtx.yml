@@ -1,0 +1,40 @@
+# MediaMTX configuration for the local ingest simulator (see
+# docs/SIMULATOR.md). A real RTMP/SRT ingest server on the developer's
+# machine, indistinguishable from a production service as far as the client
+# is concerned: real handshake, real key validation, real media handling.
+#
+# Test-only — never linked into the product. sim.sh launches MediaMTX with
+# this file.
+
+logLevel: info
+
+# Ingest protocols (SIMULATOR.md, "What 'looks like a real service' means").
+rtmp: yes
+rtmpAddress: :1935
+srt: yes
+srtAddress: :8890
+
+# Readback for verification: tests confirm the stream actually arrived
+# (codec, resolution, fps) by reading it back with ffprobe.
+rtsp: yes
+rtspAddress: :8554
+rtspTransports: [tcp]
+hls: yes
+hlsAddress: :8888
+
+# Everything else off — the simulator reproduces ingest, nothing more.
+webrtc: no
+moq: no
+api: no
+metrics: no
+pprof: no
+playback: no
+
+# Only the known test-key paths exist; publishing to any other path is
+# rejected at connect time, which is exactly how a wrong stream key behaves
+# on a real service (the keys are fake values, committed in keys.env).
+paths:
+  # Twitch shaped ingest: rtmp://localhost:1935/live/{stream_key}
+  "live/tingra_test_key": {}
+  # YouTube shaped ingest: rtmp://localhost:1935/live2/{stream_key}
+  "live2/tingra_test_key": {}

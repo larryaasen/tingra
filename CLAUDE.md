@@ -12,7 +12,8 @@ This is a Swift monorepo using **Swift Package Manager** (no CocoaPods). The roo
 ```
 apps/                           # Runnable products
   tingra-cli/                   # Headless front end over the engine; ships first, v1 (see CLI.md)
-  ingest-simulator/             # Local RTMP/SRT ingest server for tests (see SIMULATOR.md); not yet scaffolded
+  ingest-simulator/             # Local RTMP/SRT ingest server for tests (see SIMULATOR.md):
+                                #   pinned MediaMTX + sim.sh; test-only, never linked into the product
   tingra/                       # Phase 3 — the assembled SwiftUI/AppKit app; not yet scaffolded
 packages/                       # Engine libraries
   TingraHost/                   # Host/core: plug-in loader/lifecycle, registries, frame transport,
@@ -24,12 +25,15 @@ packages/                       # Engine libraries
                                 #   capture, device connect/disconnect events
   TingraGeneratorPlugIns/       # First-party generator plug-ins (bars, tone): the permanent CI
                                 #   test surface; further feature plug-in packages (effects,
-                                #   outputs, recording) land alongside
+                                #   recording) land alongside
+  TingraOutputPlugIns/          # First-party streaming output plug-in: the HaishinKit-backed
+                                #   StreamingService (RTMP/RTMPS); the only package importing HaishinKit
   (UI packages)                 # Phase 2 — arrive once the engine is proven
 docs/                           # The project documentation set (ARCHITECTURE.md, GLOSSARY.md, CLI.md,
                                 #   SIMULATOR.md, CLOCK.md, EVENTS.md, MCP.md, TODO.md) and screenshots
-scripts/                        # Formatting scripts (format-swift.sh, check-format.sh)
-.github/workflows/              # GitHub Actions CI (ci.yml; see Toolchain & CI)
+scripts/                        # Formatting scripts (format-swift.sh, check-format.sh) and the
+                                #   streaming integration tests (integration-test.sh)
+.github/workflows/              # GitHub Actions CI (ci.yml, integration.yml; see Toolchain & CI)
 ```
 
 The package names are **finalized** (reviewed 2026-07-03; also recorded in "Repository structure" in [ARCHITECTURE.md](docs/ARCHITECTURE.md)): `TingraEventBus`, `TingraPlugInKit`, and `TingraHost` under `packages/`, and `apps/tingra-cli` (executable product `tingra-cli`, module `TingraCLI` — module names can't contain a hyphen).
@@ -51,7 +55,7 @@ The package names are **finalized** (reviewed 2026-07-03; also recorded in "Repo
 - Never use periodic polling — the engine and its session state are event-driven (device connect/disconnect, stream status, etc.); model changes as events, not poll loops.
 - Don't ever use hacks to solve a problem.
 - **No UI code yet.** Current work is the engine (`packages/`) and `tingra-cli`; the SwiftUI/AppKit app is phase 3. Don't write UI code until that phase begins — the UI-facing rules below (SwiftUI, Localization) are forward-looking.
-- **Prefer native Apple frameworks; add third-party dependencies only behind a seam and with justification.** The only sanctioned third-party dependencies are **HaishinKit** (RTMP/SRT output, isolated behind `StreamingService`), **MediaMTX** (the `ingest-simulator`, a test-only binary, not linked into the product), and **swift-argument-parser** (Apple-authored, effectively first party; command/option parsing in `tingra-cli` per [CLI.md](docs/CLI.md) — confined to the CLI target, no seam required). Don't introduce a new third-party dependency without a clear reason and a protocol seam that keeps the rest of the code from importing it directly.
+- **Prefer native Apple frameworks; add third-party dependencies only behind a seam and with justification.** The only sanctioned third-party dependencies are **HaishinKit** (RTMP/SRT output, isolated behind `StreamingService` in `TingraOutputPlugIns` — the only package that imports it; its **Logboard** logging façade rides along there solely to reroute HaishinKit's internal console logging into OSLog, keeping stdout clean for the `--json` contract), **MediaMTX** (the `ingest-simulator`, a test-only binary, not linked into the product), and **swift-argument-parser** (Apple-authored, effectively first party; command/option parsing in `tingra-cli` per [CLI.md](docs/CLI.md) — confined to the CLI target, no seam required). Don't introduce a new third-party dependency without a clear reason and a protocol seam that keeps the rest of the code from importing it directly.
 
 ## Code Quality
 - Use SwiftLint standards for code style (no force unwrapping, proper optional handling).
@@ -97,6 +101,7 @@ Start every Swift source file with this header. `<ModuleName>` is the containing
 | Build/test the CLI | `cd apps/tingra-cli && swift build` / `swift test` |
 | Run the CLI locally | `cd apps/tingra-cli && swift run tingra-cli <subcommand> [options]` (see [CLI.md](docs/CLI.md)) |
 | Start the local ingest simulator | `apps/ingest-simulator/sim.sh start` (see [SIMULATOR.md](docs/SIMULATOR.md)) |
+| Run the streaming integration tests | `scripts/integration-test.sh` (generators → simulator, verified server side with ffprobe; needs ffmpeg installed) |
 | Format all Swift files | `scripts/format-swift.sh` (swift-format over every package and app; config in the root `.swift-format`) |
 | Check formatting (CI) | `scripts/check-format.sh` (read-only; exits nonzero if `format-swift.sh` would change anything) |
 
@@ -153,8 +158,10 @@ packages/  TingraHost             →  TingraPlugInKit + TingraEventBus
 packages/  TingraCapturePlugIns   →  TingraPlugInKit + TingraEventBus (registers through the
                                      `InputRegistering` seam, so no TingraHost dependency)
 packages/  TingraGeneratorPlugIns →  TingraPlugInKit + TingraEventBus (same seam-only design)
+packages/  TingraOutputPlugIns    →  TingraPlugInKit + TingraEventBus (same seam-only design;
+                                     + HaishinKit and its Logboard façade, imported nowhere else)
 apps/      tingra-cli             →  TingraHost + TingraCapturePlugIns + TingraGeneratorPlugIns
-                                     (+ swift-argument-parser)
+                                     + TingraOutputPlugIns (+ swift-argument-parser)
 apps/      tingra (phase 3)       →  TingraHost + feature plug-ins + UI packages
 apps/      ingest-simulator       →  none of the above (wraps MediaMTX; see SIMULATOR.md)
 ```

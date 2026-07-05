@@ -37,6 +37,15 @@ The compositor does not render when inputs deliver frames; it renders when the *
 - **Not `CVDisplayLink` / `CADisplayLink`.** Display links throttle or stop when the display sleeps or the app is occluded. A broadcaster must keep sending frames regardless. Display links are fine for pacing *preview drawing* — preview may sample the program at display rate — but preview never drives output.
 - **Not a capture input's cadence.** With multiple inputs and shot switching, the "driving" input would keep changing, and its stalls would become program stalls.
 
+### The tick before composition exists (CLI era)
+
+Until the Metal compositor arrives (roadmap step 6), v1 streams one video input and one audio input with no composition stage. The program tick still applies (decided 2026-07-04) — the pipeline is **tick-paced latest-wins**, not capture-cadence pass-through:
+
+- **Video:** the host's pacer consumes the input's frame stream into a latest-wins slot; on each program tick it takes the most recent frame and restamps it with the tick's clock time — a one-layer composition with no rendering. If no new frame arrived since the last tick, the previous frame is re-sent with the new tick's time (a stalled camera must not stall the stream); ticks before the first frame arrives send nothing.
+- **Audio:** passes through at capture cadence with its true host-time PTS, untouched. Audio is continuous and unforgiving (rule 3); the tick paces video only.
+
+This is the CLOCK.md model applied to a single input rather than a departure from it: the design-principle-2 guarantees (output pacing independent of any input; constant-rate monotonic PTS into compression; `--fps` meaning what it says regardless of a camera's native cadence) hold from v1 on, and when the compositor lands it replaces the pacer's "take the latest frame" with "render the layer tree" — the tick, the slot semantics, and the timestamps do not change.
+
 ### Scheduler implementation
 
 GCD is banned project wide, so the scheduler is one of:

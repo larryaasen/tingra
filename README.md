@@ -36,12 +36,19 @@ The plug-in protocol package: the stability contract first- and third-party plug
 - `CapturedFrame` — one GPU-resident video frame plus its presentation time on the master clock; `@unchecked Sendable` under the frame ownership rule (ARCHITECTURE.md, "Frame ownership across the `Input` seam").
 - `CapturedAudio` — one captured audio buffer whose PTS is the actual host time of capture; the audio half of the frame ownership rule.
 - `ErrorIdentifier` — the stable, machine-readable failure identifiers error events carry (`inputNotFound`, `authorizationDenied`, …); the registry lives in CLI.md, and identifiers are append-only, never renamed.
-- `StreamingService` — the output seam: sends program media to a destination (HaishinKit lives behind this protocol).
+- `StreamingService` — the output seam: connects, appends program media on the shared session timeline, reports connection events, and stops (HaishinKit lives behind this protocol).
+- `StreamingServiceProvider` — what an output plug-in registers: a factory keyed by destination URL scheme that creates a configured `StreamingService` per stream.
+- `StreamingServiceEvent` — a connection event reported after a successful start (`connectionLost`); the session drives reconnect policy from it.
+- `StreamingServiceError` — the error currency of `StreamingService.start(to:)` (`unsupportedDestination`, `connectionRejected`), each mapped to its stable error identifier.
+- `StreamingStatistics` — a point-in-time snapshot of a service's delivery counters, feeding the periodic `stream.stats` events.
+- `StreamConfiguration` — the compression and program settings a stream session runs with (resolution, frame rate, codecs, bitrates); contains no secrets.
+- `OutputID` — the stable identifier for a registered output.
+- `OutputRegistering` — the registration seam where output plug-ins attach; the host's `OutputRegistry` conforms.
 - `Destination` — a configured streaming target: URL plus optional stream key (deliberately not `Codable` — the key is a secret).
 - `EngineClock` — the master clock seam: current time and the absolute-deadline tick stream (see [CLOCK.md](docs/CLOCK.md)).
 - `PlugIn` — the protocol every plug-in conforms to: identity plus an activation hook for registering capabilities.
 - `PlugInID` — the stable reverse-DNS identifier for a plug-in; doubles as its event domain.
-- `PlugInContext` — the host infrastructure handed to a plug-in at activation: the event bus, the clock, and the input registration seam.
+- `PlugInContext` — the host infrastructure handed to a plug-in at activation: the event bus, the clock, and the input and output registration seams.
 
 ### `packages/TingraHost`
 
@@ -53,6 +60,10 @@ The host/core package: plug-in loading, registries, frame transport, session/sta
 - `InputSelectorError` — selector resolution failures (`notFound`, `ambiguous`), each mapped to its stable error identifier.
 - `PlugInLoader` — the host's plug-in lifecycle: activates plug-ins against a `PlugInContext`, reporting each outcome on the event bus; a throwing plug-in is skipped, never fatal.
 - `OSLogSink` — the system-of-record sink: routes every event to OSLog (`subsystem` `com.moonwink.tingra`, `category` = domain), params `.private`. `tingra-cli` skips attaching it when standard error is a terminal — the OS's own terminal mirror already echoes the process's events there (see EVENTS.md, "OSLog sink").
+- `OutputRegistry` — the actor where output plug-ins register their streaming service providers and the engine resolves a destination's URL scheme to a provider; the host's concrete `OutputRegistering`.
+- `OutputRegistryError` — errors thrown by the output registry (a scheme already served by another provider).
+- `ProgramPacer` — the tick-paced latest-wins video pacing for the CLI era: one frame per program tick, restamped with the tick's time, re-sending the held frame across an input stall (see CLOCK.md, "The tick before composition exists").
+- `StreamSession` — one live stream: owns the shared timeline (`T0`), pumps paced video and pass-through audio into the streaming service, emits the `stream.*` status events, and drives the reconnect policy (attempts, delay, and the stability window that keeps a flapping connection from reconnecting forever).
 
 ### `packages/TingraCapturePlugIns`
 
@@ -69,13 +80,21 @@ The first party generator plug-ins — inputs that synthesize their content from
 - `BarsGenerator` — SMPTE color bars with burned in timecode (`--video-generator bars`): one IOSurface-backed 32BGRA, BT.709-tagged frame per clock tick.
 - `ToneGenerator` — the 440 Hz test tone (`--audio-generator tone`): mono float32 buffers with phase continuity, one per clock tick.
 
+### `packages/TingraOutputPlugIns`
+
+The first party streaming output plug-in: the HaishinKit-backed `StreamingService` for RTMP/RTMPS destinations. HaishinKit (and its Logboard logging façade, rerouted to OSLog) is imported only inside this package, behind the `StreamingService` seam.
+
+- `HaishinKitOutputPlugIn` — contributes the RTMP/RTMPS provider through the output registration seam.
+- `RTMPStreamingServiceProvider` — the provider serving `rtmp://` and `rtmps://` destinations; creates a fresh service per stream.
+- `HaishinKitStreamingService` — the concrete service: connects and publishes, compresses internally (VideoToolbox via HaishinKit), appends program video as uncompressed sample buffers and audio as PCM buffers carrying the session-timeline PTS, watches for connection loss, and reports delivery counters.
+
 ### `apps/tingra-cli`
 
-The headless front end over the engine (see [CLI.md](docs/CLI.md)): one invocation selects inputs, configures compression, and streams. An executable, so it exposes no public types; its surface is its subcommands — `devices` (input discovery: human table and stable `--json`; `--watch` streams live device connect/disconnect events), `stream` (`--dry-run` today: validate, resolve inputs, report the plan; going live arrives at roadmap step 3), and `version`, with `probe`, `serve`, and `mcp` arriving per the roadmap.
+The headless front end over the engine (see [CLI.md](docs/CLI.md)): one invocation selects inputs, configures compression, and streams. An executable, so it exposes no public types; its surface is its subcommands — `devices` (input discovery: human table and stable `--json`; `--watch` streams live device connect/disconnect events), `stream` (live streaming with `--reconnect`, `--duration`, clean Ctrl-C/SIGTERM stop, the `stream.*` status events, and `--dry-run` plan reporting), `probe` (validate a destination URL/key without going live), and `version`, with `serve` and `mcp` arriving per the roadmap.
 
-### `apps/ingest-simulator` (planned)
+### `apps/ingest-simulator`
 
-The local RTMP/SRT ingest server used for integration testing (see [SIMULATOR.md](docs/SIMULATOR.md)); a MediaMTX-based harness, not yet scaffolded.
+The local RTMP/SRT ingest server used for integration testing (see [SIMULATOR.md](docs/SIMULATOR.md)): a pinned MediaMTX binary wrapped in `sim.sh` (`start | stop | status | verify`) with key-validating paths (`mediamtx.yml`, `keys.env`). Test-only — never linked into the product. The streaming integration scenarios run against it via `scripts/integration-test.sh`.
 
 ## License
 

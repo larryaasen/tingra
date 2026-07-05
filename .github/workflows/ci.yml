@@ -7,10 +7,11 @@
 # ships Xcode 26.6 but defaults to an older version, so DEVELOPER_DIR pins it
 # explicitly (verified 2026-07-04; see docs/TODO.md "Release mechanics").
 #
-# Deferred jobs, tracked in docs/TODO.md "CI follow-ups": integration tests
-# (needs the ingest simulator, roadmap step 3), packaging/notarization (needs
-# the release tooling), and the API-diff job for TingraPlugInKit and
-# TingraEventBus (needs their first tags).
+# Deferred jobs, tracked in docs/TODO.md "CI follow-ups": packaging/
+# notarization (needs the release tooling) and the API-diff job for
+# TingraPlugInKit and TingraEventBus (needs their first tags). Integration
+# tests against the ingest simulator live in integration.yml — a separate
+# workflow triggered on streaming/output changes, not blocking every PR.
 
 name: CI
 
@@ -43,6 +44,7 @@ jobs:
           - packages/TingraHost
           - packages/TingraCapturePlugIns
           - packages/TingraGeneratorPlugIns
+          - packages/TingraOutputPlugIns
           - apps/tingra-cli
     steps:
       - uses: actions/checkout@v4

@@ -11,10 +11,9 @@ import ArgumentParser
 
 /// The `tingra-cli` root command (see CLI.md, "Command structure").
 ///
-/// Subcommand rollout follows the roadmap: `devices` completes in step 1
-/// (`--watch` in step 2), `stream` spans steps 2–3 (`--dry-run` now, going
-/// live at step 3), `probe` arrives with streaming, and `serve`/`mcp` land
-/// in step 4.
+/// Subcommand rollout follows the roadmap: `devices` completed in step 1
+/// (`--watch` in step 2), `stream` and `probe` went live in step 3, and
+/// `serve`/`mcp` land in step 4.
 @main
 struct TingraCLI: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
@@ -24,6 +23,7 @@ struct TingraCLI: AsyncParsableCommand {
         subcommands: [
             Stream.self,
             Devices.self,
+            Probe.self,
             Version.self,
         ]
     )

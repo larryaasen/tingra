@@ -13,14 +13,13 @@ import TingraCapturePlugIns
 import TingraEventBus
 import TingraGeneratorPlugIns
 import TingraHost
+import TingraOutputPlugIns
 import TingraPlugInKit
 
-/// `tingra-cli stream` — start capture and stream until stopped (CLI.md).
-///
-/// Roadmap status: `--dry-run` (step 2) parses and validates the full
-/// argument surface, resolves input selectors against the registry, reports
-/// the resolved plan, and exits — no network, no streaming output. Going
-/// live arrives with roadmap step 3.
+/// `tingra-cli stream` — start capture and stream until stopped (CLI.md):
+/// Ctrl-C / SIGTERM stops cleanly (flushing compression and closing the
+/// connection), `--duration` stops automatically, and `--dry-run` reports
+/// the resolved plan without connecting.
 struct Stream: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "Start streaming (the main one shot command)."
@@ -209,15 +208,6 @@ struct Stream: AsyncParsableCommand {
     }
 
     func run() async throws {
-        guard dryRun else {
-            throw ValidationError(
-                """
-                Going live arrives with roadmap step 3 (see ARCHITECTURE.md); today `stream` \
-                supports --dry-run, which resolves inputs and reports the plan without connecting.
-                """
-            )
-        }
-
         let eventBus = EventBus()
         // Human mode keeps the console to errors (the plan on stdout is the
         // command result); --json emits the standard event stream; --verbose
@@ -253,8 +243,13 @@ struct Stream: AsyncParsableCommand {
         }
 
         let registry = InputRegistry()
-        let context = PlugInContext(eventBus: eventBus, clock: HostClock(), inputs: registry)
-        await PlugInLoader().activate([AVFoundationCapturePlugIn(), GeneratorPlugIn()], in: context)
+        let outputs = OutputRegistry()
+        let clock = HostClock()
+        let context = PlugInContext(eventBus: eventBus, clock: clock, inputs: registry, outputs: outputs)
+        await PlugInLoader().activate(
+            [AVFoundationCapturePlugIn(), GeneratorPlugIn(), HaishinKitOutputPlugIn()],
+            in: context
+        )
 
         do {
             let plan = try await StreamPlan.resolve(
@@ -262,16 +257,44 @@ struct Stream: AsyncParsableCommand {
                 registry: registry,
                 defaults: .system
             )
-            eventBus.event("stream.plan", domain: .session, params: plan.eventParams)
-            if !json {
-                print(plan.humanDescription)
+            if dryRun {
+                eventBus.event("stream.plan", domain: .session, params: plan.eventParams)
+                if !json {
+                    print(plan.humanDescription)
+                }
+                await drainSinks()
+                return
+            }
+            let outcome = try await goLive(
+                plan: plan,
+                registry: registry,
+                outputs: outputs,
+                clock: clock,
+                eventBus: eventBus
+            )
+            if outcome == .connectionLost {
+                eventBus.error(
+                    "stream.connection",
+                    domain: .output,
+                    params: [
+                        "identifier": .string(ErrorIdentifier.connectionLost.rawValue),
+                        "message": .string(
+                            "The connection was lost and not recovered within \(reconnect) reconnect attempts."
+                        ),
+                    ]
+                )
+                await drainSinks()
+                throw ExitCode(ErrorIdentifier.connectionLost.exitCode)
             }
             await drainSinks()
+        } catch let exitCode as ExitCode {
+            throw exitCode
         } catch {
             let identifier = Self.identifier(for: error)
+            let (name, domain) = Self.errorEvent(for: error)
             eventBus.error(
-                "input.resolve",
-                domain: .capture,
+                name,
+                domain: domain,
                 params: [
                     "identifier": .string(identifier.rawValue),
                     "message": .string(String(describing: error)),
@@ -282,15 +305,115 @@ struct Stream: AsyncParsableCommand {
         }
     }
 
-    /// The stable error identifier for a plan resolution failure.
+    /// Connects and streams until stopped: builds the destination and the
+    /// session from the resolved plan, wires Ctrl-C / SIGTERM to a clean
+    /// stop, and returns why the session ended.
+    private func goLive(
+        plan: StreamPlan,
+        registry: InputRegistry,
+        outputs: OutputRegistry,
+        clock: HostClock,
+        eventBus: EventBus
+    ) async throws -> StreamSession.Outcome {
+        // The URL parsed at validation; the scheme resolves the provider.
+        guard let destinationURL = URL(string: request.url), let scheme = destinationURL.scheme?.lowercased()
+        else {
+            throw StreamingServiceError.unsupportedDestination("The --url value is not a valid URL.")
+        }
+        guard let provider = await outputs.provider(forScheme: scheme) else {
+            throw StreamingServiceError.unsupportedDestination(
+                """
+                No registered output serves '\(scheme)://' destinations in v1 — SRT output arrives \
+                at roadmap step 8. Stream to an rtmp:// or rtmps:// destination.
+                """
+            )
+        }
+
+        // The key is read only here, at connect time, and only ever handed
+        // to the destination — never an event param, never printed.
+        let streamKey = try StreamKey.read(option: key, environmentVariable: keyEnv, stdin: keyStdin)
+        let destination = Destination(url: destinationURL, streamKey: streamKey)
+
+        var videoInput: (any Input)?
+        if let video = plan.video {
+            videoInput = await registry.input(withID: InputID(rawValue: video.id))
+        }
+        var audioInput: (any Input)?
+        if let audio = plan.audio {
+            audioInput = await registry.input(withID: InputID(rawValue: audio.id))
+        }
+
+        let configuration = streamConfiguration
+        let session = StreamSession(
+            videoInput: videoInput,
+            audioInput: audioInput,
+            service: provider.makeStreamingService(configuration: configuration),
+            destination: destination,
+            configuration: configuration,
+            policy: StreamSession.Policy(
+                reconnectAttempts: reconnect,
+                reconnectDelaySeconds: reconnectDelay,
+                statsIntervalSeconds: statsInterval,
+                durationSeconds: duration
+            ),
+            clock: clock,
+            eventBus: eventBus
+        )
+
+        // Ctrl-C / SIGTERM is a clean stop: flush compression, close the
+        // connection, exit 0 (CLI.md exit codes).
+        let signalTask = Task {
+            await TerminationSignal.wait()
+            await session.stop()
+        }
+        defer { signalTask.cancel() }
+        return try await session.run()
+    }
+
+    /// The session's stream configuration from the validated options.
+    private var streamConfiguration: StreamConfiguration {
+        StreamConfiguration(
+            width: resolution.width,
+            height: resolution.height,
+            frameRate: fps,
+            videoCodec: videoCodec == .hevc ? .hevc : .h264,
+            videoBitsPerSecond: videoBitrate.bitsPerSecond,
+            keyframeInterval: keyframeInterval,
+            audioCodec: .aac,
+            audioBitsPerSecond: audioBitrate.bitsPerSecond,
+            audioSampleRate: audioSamplerate
+        )
+    }
+
+    /// The stable error identifier for a stream failure.
     private static func identifier(for error: any Error) -> ErrorIdentifier {
         switch error {
         case let selectorError as InputSelectorError:
             return selectorError.identifier
         case let planError as StreamPlanError:
             return planError.identifier
+        case let captureError as CaptureInputError:
+            return captureError.identifier
+        case let serviceError as StreamingServiceError:
+            return serviceError.identifier
+        case let keyError as StreamKeyError:
+            return keyError.identifier
         default:
             return .pipelineError
+        }
+    }
+
+    /// The event name and domain a stream failure reports under: input
+    /// and authorization problems belong to capture, everything at or
+    /// past the connection belongs to output.
+    private static func errorEvent(for error: any Error) -> (name: String, domain: EventDomain) {
+        switch error {
+        case is InputSelectorError, is StreamPlanError:
+            return ("input.resolve", .capture)
+        case is CaptureInputError:
+            return ("input.start", .capture)
+        default:
+            return ("stream.start", .output)
         }
     }
 }

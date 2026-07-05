@@ -155,6 +155,8 @@ Concretely:
 - All compression for streaming, RTMP/SRT connection setup, reconnection, and muxing is delegated to HaishinKit.
 - A thin `StreamingService` protocol wraps HaishinKit so the rest of Tingra never imports it directly. This keeps the dependency swappable and the seam explicit; the HaishinKit backed implementation is itself an output plug-in.
 
+**The output registration seam** (decided 2026-07-04, mirroring the input seam): a `StreamingService` is per-session state, so what an output plug-in registers is a **`StreamingServiceProvider`** — a factory declaring the destination URL schemes it serves (`rtmp`/`rtmps` for the HaishinKit RTMP provider) and creating a configured `StreamingService` per stream. The provider and the `OutputRegistering` seam protocol live in the plug-in protocol package; the host's `OutputRegistry` conforms and arrives through `PlugInContext.outputs`, exactly as `InputRegistry` arrives through `PlugInContext.inputs`. The engine resolves a destination to a provider by URL scheme; one provider per scheme, duplicates rejected at registration. Recording (roadmap step 5) registers through the same seam when it lands.
+
 ```swift
 // Sketch of the boundary — not final API.
 protocol StreamingService {
@@ -179,7 +181,7 @@ struct HaishinKitStreamingService: StreamingService { /* ... */ }
 
 ## Repository structure
 
-The repo is a monorepo (multi package workspace) with two top-level folders. **`apps/`** holds the runnable products: `tingra-cli` (see CLI.md), `ingest-simulator` (the local RTMP/SRT test server, see SIMULATOR.md), and the assembled `tingra` app (phase 3). **`packages/`** holds the engine libraries the apps build on. The package names are finalized (reviewed 2026-07-03): **`TingraHost`** (the host/core package), **`TingraPlugInKit`** (the plug-in protocol package, importable by third parties without the engine), and **`TingraEventBus`** (the event bus both build on, see EVENTS.md); first party feature plug-ins land as their own packages alongside them, starting with **`TingraCapturePlugIns`** (camera and microphone). UI packages arrive under `packages/` in phase 2.
+The repo is a monorepo (multi package workspace) with two top-level folders. **`apps/`** holds the runnable products: `tingra-cli` (see CLI.md), `ingest-simulator` (the local RTMP/SRT test server, see SIMULATOR.md), and the assembled `tingra` app (phase 3). **`packages/`** holds the engine libraries the apps build on. The package names are finalized (reviewed 2026-07-03): **`TingraHost`** (the host/core package), **`TingraPlugInKit`** (the plug-in protocol package, importable by third parties without the engine), and **`TingraEventBus`** (the event bus both build on, see EVENTS.md); first party feature plug-ins land as their own packages alongside them: **`TingraCapturePlugIns`** (camera and microphone), **`TingraGeneratorPlugIns`** (bars and tone, the permanent CI test surface), and **`TingraOutputPlugIns`** (the HaishinKit backed streaming output — the only package that imports HaishinKit). UI packages arrive under `packages/` in phase 2.
 
 ## UI layer
 - **SwiftUI + AppKit**, with Metal preview content hosted in an `MTKView` (or a `CAMetalLayer` bridged into the view hierarchy).

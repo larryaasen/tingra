@@ -57,7 +57,12 @@ struct Devices: AsyncParsableCommand {
         let osLogTask = OSLogAttachment.attachIfNeeded(to: eventBus)
 
         let registry = InputRegistry()
-        let context = PlugInContext(eventBus: eventBus, clock: HostClock(), inputs: registry)
+        let context = PlugInContext(
+            eventBus: eventBus,
+            clock: HostClock(),
+            inputs: registry,
+            outputs: OutputRegistry()
+        )
         await PlugInLoader().activate([AVFoundationCapturePlugIn()], in: context)
 
         let listing = await DeviceList(inputs: registry.allInputs, type: type)

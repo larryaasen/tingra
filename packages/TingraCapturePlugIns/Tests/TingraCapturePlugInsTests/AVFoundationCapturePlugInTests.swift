@@ -65,9 +65,21 @@ private let noChanges: @Sendable () -> AsyncStream<DeviceChange> = {
     AsyncStream { $0.finish() }
 }
 
+/// A no-op output registration seam — the capture plug-in never registers
+/// outputs.
+private struct UnusedOutputRegistrar: OutputRegistering {
+    /// Never called by this plug-in.
+    func register(_ provider: any StreamingServiceProvider) async throws {}
+}
+
 /// Builds a context over a fresh bus and mock registrar.
 private func makeContext(registrar: MockInputRegistrar, eventBus: EventBus = EventBus()) -> PlugInContext {
-    PlugInContext(eventBus: eventBus, clock: SyntheticClock(), inputs: registrar)
+    PlugInContext(
+        eventBus: eventBus,
+        clock: SyntheticClock(),
+        inputs: registrar,
+        outputs: UnusedOutputRegistrar()
+    )
 }
 
 @Suite("AVFoundationCapturePlugIn")

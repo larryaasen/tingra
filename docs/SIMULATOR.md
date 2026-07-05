@@ -73,7 +73,9 @@ The MediaMTX version is pinned in `sim.sh` so test behavior is reproducible.
 | Encoding matrix | Loop resolutions/codecs/bitrates; `verify` asserts what arrived matches what was requested. |
 | Recording parity | Stream with `--record`; compare recorded file properties against the received stream. (Applies once `--record` ships, roadmap step 5.) |
 
-These run locally today and in CI later (MediaMTX also ships Linux binaries, and generators need no camera or TCC authorization).
+These run locally today and in CI (MediaMTX also ships Linux binaries, and generators need no camera or TCC authorization). `scripts/integration-test.sh` runs the shipped scenarios — happy path, bad key, probe, and reconnect across an outage — end to end against this harness; the `integration.yml` workflow runs it on streaming/output changes rather than blocking every PR.
+
+One behavioral note for the bad-key scenario: MediaMTX accepts the RTMP publish command for any path and only rejects (by closing the connection) once media flows. A data-free `probe` therefore passes with a bad key against the simulator; the `stream` scenario is what asserts the exit-75 rejection, via the reconnect stability window (CLI.md, "Reconnect semantics").
 
 ## Out of scope
 

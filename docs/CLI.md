@@ -98,6 +98,10 @@ tingra-cli stream --url <destination> [--key <stream key>] [options]
 | `--reconnect <n>` | Reconnection attempts on connection loss (default 3, `0` disables). |
 | `--reconnect-delay <sec>` | Delay between attempts (default 2). |
 
+**v1 scope: RTMP and RTMPS go live; SRT output arrives at roadmap step 8** (decided 2026-07-04, see TODO.md — an RTMP-only build stays fully source, with no prebuilt libsrt). `srt://` URLs still parse, but resolve no registered output and report a clear `invalidArgument` error naming the roadmap step.
+
+**Reconnect semantics.** A lost connection gets up to `--reconnect` attempts, `--reconnect-delay` seconds apart. A reconnected stream must then survive a stability window (10 seconds) before it counts as recovered: a connection that drops again within the window is the same outage and keeps draining the attempt budget. Without this, a destination that accepts every publish and closes the connection moments later — how most services reject a bad stream key — would reconnect forever. When the budget is exhausted, the stream ends with `connectionLost` (exit 75).
+
 #### Input selection
 
 | Option | Description |
@@ -130,9 +134,23 @@ tingra-cli stream --url <destination> [--key <stream key>] [options]
 | `--duration <sec>` | Stop automatically after N seconds. |
 | `--dry-run` | Resolve inputs, build the pipeline, print the resolved configuration, and exit without connecting. See "Dry run" below. |
 
+#### Status events
+
+The `--json` status events are bus events on the standard NDJSON stream (EVENTS.md): one source of truth for humans, scripts, and agents. All are `event`-group events in the `output` domain; their param names mirror `stream.plan`'s and are a stable scripting contract (append-only, like every JSON shape here).
+
+| Event | When | Params |
+| :---- | :--- | :----- |
+| `stream.started` | The connection and publish succeeded; media is flowing. | `url`, plus the resolved video block (`videoInput`, `videoInputName`, `resolution`, `fps`, `videoCodec`, `videoBitrate`, `keyframeInterval`) and audio block (`audioInput`, `audioInputName`, `audioCodec`, `audioBitrate`, `audioSamplerate`); a disabled side omits its block. |
+| `stream.stats` | Every `--stats-interval` seconds. | `elapsed`, `bytesSent`, `bitrate` (bits/second), `fps`. |
+| `stream.reconnecting` | A reconnect attempt is starting. | `attempt`, `maxAttempts`, `delay`, `reason`. |
+| `stream.reconnected` | A reconnect attempt succeeded. | `attempt`. |
+| `stream.stopped` | The stream ended, however it ended. | `reason`: `stopRequested` (Ctrl-C/SIGTERM), `durationElapsed`, or `connectionLost`. |
+
+Failures ride the same stream as `error` events carrying `identifier` + `message` (see "Error identifiers"). The stream key never appears in any event; the bus redacts key-suffixed params as a backstop, but the key is never made a param in the first place.
+
 #### Dry run
 
-`--dry-run` (available since roadmap step 2; going live arrives at step 3) parses and validates the full option surface, resolves the input selectors against the registry, reports the resolved plan, and exits 0 — no network, no TCC authorization request, and the stream key is never read (`--key-stdin` is validated for exclusivity only; the key is read at connect time, which a dry run never reaches).
+`--dry-run` parses and validates the full option surface, resolves the input selectors against the registry, reports the resolved plan, and exits 0 — no network, no TCC authorization request, and the stream key is never read (`--key-stdin` is validated for exclusivity only; the key is read at connect time, which a dry run never reaches).
 
 **Selector resolution** (also how a live `stream` will resolve): an exact ID from `devices --json` wins outright; otherwise an integer selects by position in the listing order `devices` prints; anything else matches case-insensitively against input names and must match exactly one. Without `--camera`/`--mic` the system default device is resolved and reported; without a connected default the run fails with `inputNotFound`.
 
@@ -231,9 +249,9 @@ tingra-cli stream --url rtmp://localhost:1935/live --key tingra_test_key \
 
 - **Authorization:** camera and microphone access require TCC authorization. The CLI requests it on first run; in headless contexts (SSH/CI) generators avoid TCC entirely. The stable signing identity (see Distribution) keeps grants valid across updates. Attribution nuance: a one shot `stream` launched from a terminal gets its prompt attributed to the terminal app (the responsible process), so that grant lands on Terminal/iTerm/etc.; the launchd managed daemon (see MCP.md) is attributed to Tingra itself. Both paths run the same binary under the same identity, and the embedded usage descriptions are mandatory in every path — absent strings mean TCC kills the process rather than prompting.
 - **Seam discipline:** the CLI talks only to engine types. HaishinKit stays behind `StreamingService`, capture frameworks stay behind `Input`, per ARCHITECTURE.md.
-- **`probe` subcommand:** performs the RTMP/SRT handshake and immediately disconnects, letting scripts validate credentials before an event without going live.
+- **`probe` subcommand:** performs the RTMP handshake and publish, watches briefly for the destination closing the connection (how services that validate at publish reject a bad key), then disconnects — no media is ever sent. Key options mirror `stream` (`--key`/`--key-env`/`--key-stdin`); success is exit 0 (a `probe.succeeded` event under `--json`), rejection or unreachability exit 75. Honesty note: key validation is only as strong as the service's publish-time enforcement — an ingest that only rejects once media flows (MediaMTX included) passes a data-free probe with a bad key; the `stream` path catches those via the reconnect stability window.
 - **Roadmap alignment:** the CLI spans roadmap steps 1 to 4 in ARCHITECTURE.md (scaffold + `devices` → inputs and generators → streaming → MCP). v1 ships at step 3, before recording, composition, or any app UI. It is the first shippable milestone and the permanent integration test surface for the engine.
 
 ## Testing
 
-Unit tests cover argument parsing, input selector resolution, and config validation. Integration tests run `tingra-cli stream` with generators against the local simulator and verify the stream server side. See SIMULATOR.md.
+Unit tests cover argument parsing, input selector resolution, and config validation. Integration tests run `tingra-cli stream` with generators against the local simulator and verify the stream server side: `scripts/integration-test.sh` runs the SIMULATOR.md scenarios (happy path, bad key, probe, reconnect across an outage) locally and in the separate `integration.yml` CI workflow, which triggers on streaming/output changes rather than blocking every PR. See SIMULATOR.md.

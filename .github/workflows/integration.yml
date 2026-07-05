@@ -1,0 +1,48 @@
+# Streaming integration tests against the local ingest simulator
+# (SIMULATOR.md; scripts/integration-test.sh): tingra-cli with generators →
+# MediaMTX, verified server side with ffprobe. A separate workflow from
+# ci.yml, run on streaming/output changes rather than blocking every PR
+# (CLAUDE.md "Toolchain & CI"; docs/TODO.md "CI follow-ups").
+#
+# Generators need no camera, microphone, or TCC authorization, so the
+# scenarios run unmodified on runners.
+
+name: Integration
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/TingraOutputPlugIns/**"
+      - "packages/TingraHost/**"
+      - "packages/TingraPlugInKit/**"
+      - "packages/TingraGeneratorPlugIns/**"
+      - "apps/tingra-cli/**"
+      - "apps/ingest-simulator/**"
+      - "scripts/integration-test.sh"
+      - ".github/workflows/integration.yml"
+  pull_request:
+    paths:
+      - "packages/TingraOutputPlugIns/**"
+      - "packages/TingraHost/**"
+      - "packages/TingraPlugInKit/**"
+      - "packages/TingraGeneratorPlugIns/**"
+      - "apps/tingra-cli/**"
+      - "apps/ingest-simulator/**"
+      - "scripts/integration-test.sh"
+      - ".github/workflows/integration.yml"
+  workflow_dispatch:
+
+env:
+  DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+
+jobs:
+  integration:
+    name: Simulator integration tests
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ffprobe
+        run: command -v ffprobe > /dev/null || brew install ffmpeg
+      - name: Run the integration scenarios
+        run: scripts/integration-test.sh
