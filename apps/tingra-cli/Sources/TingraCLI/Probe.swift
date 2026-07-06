@@ -108,7 +108,8 @@ struct Probe: AsyncParsableCommand {
             eventBus: eventBus,
             clock: HostClock(),
             inputs: InputRegistry(),
-            outputs: outputs
+            outputs: outputs,
+            tools: ToolRegistry()
         )
         await PlugInLoader().activate([HaishinKitOutputPlugIn()], in: context)
 

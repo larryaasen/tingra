@@ -59,7 +59,10 @@ struct Stream: AsyncParsableCommand {
     @Flag(help: "Video only stream.")
     var noAudio = false
 
-    @Option(help: "A video generator instead of a camera (bars: SMPTE color bars with timecode).")
+    @Option(
+        help:
+            "A video generator instead of a camera (bars: SMPTE color bars with timecode; alignment: cached alignment pattern; pluge: black-level calibration pattern; pluge-strict: stricter broadcast-style PLUGE)."
+    )
     var videoGenerator: VideoGeneratorKind?
 
     @Option(help: "An audio generator instead of a microphone (tone: 440 Hz).")
@@ -245,7 +248,13 @@ struct Stream: AsyncParsableCommand {
         let registry = InputRegistry()
         let outputs = OutputRegistry()
         let clock = HostClock()
-        let context = PlugInContext(eventBus: eventBus, clock: clock, inputs: registry, outputs: outputs)
+        let context = PlugInContext(
+            eventBus: eventBus,
+            clock: clock,
+            inputs: registry,
+            outputs: outputs,
+            tools: ToolRegistry()
+        )
         await PlugInLoader().activate(
             [AVFoundationCapturePlugIn(), GeneratorPlugIn(), HaishinKitOutputPlugIn()],
             in: context

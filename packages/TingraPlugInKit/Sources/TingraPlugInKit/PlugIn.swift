@@ -49,17 +49,24 @@ public struct PlugInContext: Sendable {
     /// ``PlugIn/activate(in:)``.
     public let outputs: any OutputRegistering
 
+    /// The tool registration seam: where the plug-in registers the MCP
+    /// tools it contributes during ``PlugIn/activate(in:)`` (see MCP.md,
+    /// "Tool surface").
+    public let tools: any ToolRegistering
+
     /// Creates the context the host hands a plug-in at activation.
     public init(
         eventBus: EventBus,
         clock: any EngineClock,
         inputs: any InputRegistering,
-        outputs: any OutputRegistering
+        outputs: any OutputRegistering,
+        tools: any ToolRegistering
     ) {
         self.eventBus = eventBus
         self.clock = clock
         self.inputs = inputs
         self.outputs = outputs
+        self.tools = tools
     }
 }
 

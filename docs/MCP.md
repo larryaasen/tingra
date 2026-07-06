@@ -47,6 +47,16 @@ XPC is the native RPC, but it is wrong for this seam: a Mach service would coupl
 
 A TCP listener on 127.0.0.1 is reachable by every local process **and by browser JavaScript** — DNS rebinding and CSRF against localhost servers are documented attack classes that the MCP spec itself warns about, requiring Origin validation and auth to mitigate. A Unix domain socket in a `0700` directory is immune by construction: same user only, and browsers cannot open one. If remote control ships later, it will be MCP Streamable HTTP as a deliberate, authenticated opt-in — not a default listener.
 
+## Implementation: a hand-rolled JSON-RPC layer, not the official SDK
+
+The daemon speaks MCP JSON-RPC through a small, first-party protocol layer in `packages/TingraMCP`, not the official [`modelcontextprotocol/swift-sdk`](https://github.com/modelcontextprotocol/swift-sdk) (decided 2026-07-05; TODO.md carried the open question). The SDK is a fine piece of work — Apache-2.0/MIT (license-compatible), Swift 6 with strict concurrency, and a `Transport` seam that could in principle carry our UDS — but adopting it is the wrong trade for Tingra:
+
+- **Dependency weight against the grain.** The SDK pulls in SwiftNIO, swift-log, swift-system, and an SSE `eventsource` client transitively. That is a server-side networking stack for a Mac-only app that CLAUDE.md says "never runs server side," and it drags **swift-log** back in — the exact dependency EVENTS.md rejected by name ("a third dependency for zero gain"). Our OSLog sink stays the system of record; nothing should smuggle swift-log underneath it.
+- **The subset we need is tiny.** v1 speaks newline-delimited JSON-RPC 2.0 over a UDS — `initialize`, `tools/list`, `tools/call`, and one notification. That is a few hundred lines behind the MCP/Control seam, fully under our Swift 6 strict-concurrency and warning-clean rules, with no custom-transport impedance mismatch against a library built around its own async model.
+- **We owe direct socket clients a documented wire format regardless.** MCP.md commits to letting users script the engine over the raw socket without the proxy (see "The transport"). Owning the framing and message types makes that contract explicit and unit-testable rather than an emergent property of a third-party library.
+
+This is the flip side of ARCHITECTURE.md design principle 4: adopt the standardized *protocol* (MCP, verbatim on the wire), implement the *thin transport* ourselves rather than importing a heavy stack for it — the same reasoning that keeps HaishinKit (a genuinely large, differentiated body of work) as a dependency while the JSON-RPC framing is not. If the protocol layer ever grows past what is comfortable to maintain by hand (Streamable HTTP, resource subscriptions, sampling), revisit the SDK then, behind the same seam. The layer stays confined to `TingraMCP`; the rest of the engine sees only the tool registry and the MCP/Control service.
+
 ## Lifecycle: launchd socket activation
 
 The daemon is a **LaunchAgent, socket activated**: the LaunchAgent plist declares the socket path, launchd owns the listening socket, and the first connection starts `tingra-cli serve` (which adopts the socket via `launch_activate_socket`).
@@ -55,8 +65,32 @@ The daemon is a **LaunchAgent, socket activated**: the LaunchAgent plist declare
 
 - **Registration:** the LaunchAgent (label `com.moonwink.tingra.serve`) is installed and bootstrapped on first use (`tingra-cli serve --install`, also run by the Homebrew formula). `serve --uninstall` removes it.
 - **Idle exit:** the daemon exits after a quiet period with no connections **and** nothing streaming or recording. It never idle-exits mid-stream. launchd revives it on the next connection, so clients simply connect and the engine is there — no client ever manages daemon lifetime.
-- **Manual mode:** running `tingra-cli serve` in a terminal (foreground, creating the socket itself) remains supported for development and debugging.
+- **Manual mode:** running `tingra-cli serve` in a terminal (foreground, creating the socket itself) remains supported for development and debugging. **This is what ships with roadmap step 4;** the launchd install path below (the `--install`/`--uninstall` flags and the plist) is a recorded follow-up, landing once manual mode is proven.
 - **Crash recovery:** if the daemon dies, launchd restarts it on the next connection. Honest semantics: an active stream dies with the daemon, and v1 session state is rebuilt fresh — clients discover this through the `initialize` handshake and status tools, never by guessing.
+
+**The LaunchAgent plist (recorded design for the follow-up).** `serve --install` writes `~/Library/LaunchAgents/com.moonwink.tingra.serve.plist` and bootstraps it (`launchctl bootstrap gui/$UID …`); `--uninstall` reverses it (`launchctl bootout` then remove the file). launchd owns the listening socket declared under `Sockets` and hands it to the daemon on first connection, which adopts it with `launch_activate_socket("Socket")` in place of `manual` mode's own `bind`/`listen`. The plist:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>            <string>com.moonwink.tingra.serve</string>
+    <key>ProgramArguments</key>  <array><string>/opt/homebrew/bin/tingra-cli</string><string>serve</string></array>
+    <key>Sockets</key>
+    <dict>
+        <key>Socket</key>
+        <dict>
+            <key>SockPathName</key> <string>/Users/USER/Library/Application Support/Tingra/tingra.sock</string>
+            <key>SockPathMode</key> <integer>384</integer> <!-- 0600 -->
+        </dict>
+    </dict>
+    <!-- No RunAtLoad: socket activation starts the daemon on first connect, not at login. -->
+</dict>
+</plist>
+```
+
+The key seam already exists: `Daemon.init(listeningDescriptor:…)` takes a ready descriptor, so the launchd path constructs the daemon with the adopted socket while `Daemon.manual(socketPath:…)` (what step 4 uses) creates its own — the accept loop, sessions, and idle-exit are identical either way. The `TCC attribution` reason above is why this follow-up matters for the product path even though manual mode is functionally complete.
 
 ## Sessions and concurrency
 

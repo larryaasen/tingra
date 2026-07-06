@@ -11,14 +11,15 @@
 
 SIM := ../ingest-simulator/sim.sh
 RTMP_URL := rtmp://localhost:1935/live
+TWITCH_URL := rtmp://live.twitch.tv/app
 GOOD_KEY := tingra_test_key
 BAD_KEY := wrong_key
-GENERATORS := --video-generator bars --audio-generator tone
+GENERATORS := --video-generator alignment --audio-generator tone
 
 .PHONY: help build test clean format check-format version \
 	devices devices-json devices-camera devices-mic devices-watch \
 	sim-start sim-stop sim-status sim-verify \
-	stream stream-json stream-dry-run stream-no-video stream-no-audio \
+	stream stream-twitch stream-json stream-dry-run stream-no-video stream-no-audio \
 	stream-camera stream-bad-key stream-reconnect \
 	probe probe-bad-key probe-down \
 	integration-test
@@ -83,7 +84,11 @@ sim-verify: ## ffprobe the simulator's RTSP readback; prints codec/resolution/fp
 # MARK: - Stream (generators; run `make sim-start` first)
 
 stream: ## Stream generated bars + tone to the simulator for 15s
-	swift run tingra-cli stream --url $(RTMP_URL) --key $(GOOD_KEY) $(GENERATORS) --duration 15
+	swift run tingra-cli stream --url $(RTMP_URL) --key $(GOOD_KEY) $(GENERATORS) --duration 15 --verbose
+
+stream-twitch: ## Stream generated bars + tone to Twitch (set TWITCH_KEY in env)
+	@test -n "$(TWITCH_KEY)" || (echo "Set TWITCH_KEY to your Twitch stream key."; exit 2)
+	swift run tingra-cli stream --url $(TWITCH_URL) --key $(TWITCH_KEY) $(GENERATORS) --verbose
 
 stream-json: ## Same, emitting NDJSON status events instead of human logs
 	swift run tingra-cli stream --url $(RTMP_URL) --key $(GOOD_KEY) $(GENERATORS) --duration 15 --json

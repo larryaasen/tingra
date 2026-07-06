@@ -145,6 +145,96 @@ if grep -q '"name":"stream.reconnecting"' "$OUT_DIR/reconnect.json" \
 fi
 report "reconnecting/reconnected events were emitted" "$reconnect_events_ok"
 
+echo "== Scenario: MCP daemon stream lifecycle (serve + socket client, verified server side)"
+# Start the daemon on a private socket (idle-exit disabled for the test), then
+# drive it over the real socket with a minimal MCP client: initialize,
+# tools/list, devices_list, then the stream lifecycle (start/status/stop)
+# against the simulator with generators. This mirrors how an agent uses the
+# engine (MCP.md), end to end.
+MCP_SOCK="$OUT_DIR/tingra.sock"
+"$CLI" serve --socket "$MCP_SOCK" --idle-timeout 0 --json > "$OUT_DIR/serve.json" 2>&1 &
+serve_pid=$!
+for _ in $(seq 1 50); do [[ -S "$MCP_SOCK" ]] && break; sleep 0.1; done
+
+python3 - "$MCP_SOCK" "$RTMP_URL" "$GOOD_KEY" > "$OUT_DIR/mcp.out" 2>&1 <<'PY' &
+import json, socket, sys, time
+
+sock_path, url, key = sys.argv[1], sys.argv[2], sys.argv[3]
+conn = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+conn.connect(sock_path)
+stream = conn.makefile("rwb")
+next_id = [0]
+
+def call(method, params=None):
+    next_id[0] += 1
+    request = {"jsonrpc": "2.0", "id": next_id[0], "method": method, "params": params or {}}
+    stream.write((json.dumps(request) + "\n").encode())
+    stream.flush()
+    while True:  # Skip status notifications (no matching id) until the response.
+        line = stream.readline()
+        if not line:
+            raise SystemExit("connection closed before a response")
+        message = json.loads(line.decode())
+        if message.get("id") == next_id[0]:
+            return message
+
+assert call("initialize")["result"]["serverInfo"]["name"] == "tingra"
+tools = [t["name"] for t in call("tools/list")["result"]["tools"]]
+assert "stream_start" in tools, tools
+assert call("tools/call", {"name": "devices_list"})["result"]["isError"] is False
+
+start = call("tools/call", {"name": "stream_start", "arguments": {
+    "url": url, "key": key, "videoGenerator": "bars", "audioGenerator": "tone",
+    "resolution": "640x360", "statsInterval": 2,
+}})
+assert start["result"]["isError"] is False, start
+session_id = start["result"]["structuredContent"]["sessionId"]
+print("STARTED", session_id, flush=True)
+
+time.sleep(9)
+status = call("tools/call", {"name": "stream_status", "arguments": {"sessionId": session_id}})
+print("STATUS", json.dumps(status["result"]["structuredContent"]), flush=True)
+assert call("tools/call", {"name": "stream_stop", "arguments": {"sessionId": session_id}})["result"]["isError"] is False
+print("STOPPED", flush=True)
+conn.close()
+PY
+client_pid=$!
+
+# While the MCP-driven stream runs, verify the media server side.
+sleep 5
+mcp_verify_ok=false
+if "$SIM" verify "live/$GOOD_KEY" | grep -q "codec_name=h264"; then
+    mcp_verify_ok=true
+fi
+report "MCP stream_start publishes H.264 to the simulator" "$mcp_verify_ok"
+
+client_ok=false
+if wait "$client_pid"; then
+    client_ok=true
+fi
+report "MCP client round-trips initialize/devices_list/start/status/stop" "$client_ok"
+
+mcp_flow_ok=false
+if grep -q '^STARTED ' "$OUT_DIR/mcp.out" \
+    && grep -q '"state": "live"' "$OUT_DIR/mcp.out" \
+    && grep -q '^STOPPED' "$OUT_DIR/mcp.out"; then
+    mcp_flow_ok=true
+fi
+report "MCP lifecycle markers (started/live/stopped) observed" "$mcp_flow_ok"
+
+kill -INT "$serve_pid" 2> /dev/null || true
+shutdown_ok=false
+if wait "$serve_pid"; then
+    shutdown_ok=true
+fi
+report "the daemon shuts down cleanly (exit 0)" "$shutdown_ok"
+
+mcp_key_ok=true
+if grep -q "$GOOD_KEY" "$OUT_DIR/serve.json"; then
+    mcp_key_ok=false
+fi
+report "the stream key never appears in the daemon log" "$mcp_key_ok"
+
 echo
 if [[ $failures -gt 0 ]]; then
     echo "$failures scenario check(s) did not pass."

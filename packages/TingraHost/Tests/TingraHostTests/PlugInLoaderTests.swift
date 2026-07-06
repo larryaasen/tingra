@@ -60,7 +60,8 @@ struct PlugInLoaderTests {
             eventBus: eventBus,
             clock: HostClock(),
             inputs: registry,
-            outputs: OutputRegistry()
+            outputs: OutputRegistry(),
+            tools: ToolRegistry()
         )
         let plugIns: [any PlugIn] = [
             MockPlugIn(id: PlugInID(rawValue: "com.example.one")),
@@ -91,7 +92,8 @@ struct PlugInLoaderTests {
             eventBus: eventBus,
             clock: HostClock(),
             inputs: registry,
-            outputs: OutputRegistry()
+            outputs: OutputRegistry(),
+            tools: ToolRegistry()
         )
         let plugIns: [any PlugIn] = [
             MockPlugIn(id: PlugInID(rawValue: "com.example.rejecting"), rejection: MockActivationError()),
@@ -123,7 +125,8 @@ struct PlugInLoaderTests {
             eventBus: eventBus,
             clock: HostClock(),
             inputs: InputRegistry(),
-            outputs: OutputRegistry()
+            outputs: OutputRegistry(),
+            tools: ToolRegistry()
         )
 
         let activated = await PlugInLoader().activate([], in: context)

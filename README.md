@@ -45,10 +45,15 @@ The plug-in protocol package: the stability contract first- and third-party plug
 - `OutputID` — the stable identifier for a registered output.
 - `OutputRegistering` — the registration seam where output plug-ins attach; the host's `OutputRegistry` conforms.
 - `Destination` — a configured streaming target: URL plus optional stream key (deliberately not `Codable` — the key is a secret).
+- `IdentifiedError` — the protocol the engine's error enums (`StreamingServiceError`, `CaptureInputError`, `InputSelectorError`) conform to, so a front end maps any of them to its stable `ErrorIdentifier` without knowing the concrete type.
+- `Tool` — the MCP tool seam: a control the engine exposes to agents, with a machine name, a JSON-Schema input, and a `call(_:)` returning structured JSON; plug-in contributed like inputs and outputs.
+- `ToolError` — a structured, actionable tool failure keyed off the append-only `ErrorIdentifier` registry (never message wording).
+- `ToolRegistering` — the registration seam where tool plug-ins attach; the host's `ToolRegistry` conforms.
+- `JSONValue` — an arbitrary JSON value (the currency of the tool seam): scalars, arrays, and objects, encoding as natural JSON; more general than the event bus's scalar-only `EventValue`.
 - `EngineClock` — the master clock seam: current time and the absolute-deadline tick stream (see [CLOCK.md](docs/CLOCK.md)).
 - `PlugIn` — the protocol every plug-in conforms to: identity plus an activation hook for registering capabilities.
 - `PlugInID` — the stable reverse-DNS identifier for a plug-in; doubles as its event domain.
-- `PlugInContext` — the host infrastructure handed to a plug-in at activation: the event bus, the clock, and the input and output registration seams.
+- `PlugInContext` — the host infrastructure handed to a plug-in at activation: the event bus, the clock, and the input, output, and tool registration seams.
 
 ### `packages/TingraHost`
 
@@ -64,6 +69,9 @@ The host/core package: plug-in loading, registries, frame transport, session/sta
 - `OutputRegistryError` — errors thrown by the output registry (a scheme already served by another provider).
 - `ProgramPacer` — the tick-paced latest-wins video pacing for the CLI era: one frame per program tick, restamped with the tick's time, re-sending the held frame across an input stall (see CLOCK.md, "The tick before composition exists").
 - `StreamSession` — one live stream: owns the shared timeline (`T0`), pumps paced video and pass-through audio into the streaming service, emits the `stream.*` status events, and drives the reconnect policy (attempts, delay, and the stability window that keeps a flapping connection from reconnecting forever).
+- `ToolRegistry` — the actor where tool plug-ins register the MCP tools they contribute and the MCP/Control service lists and resolves them from; the host's concrete `ToolRegistering`.
+- `ToolRegistryError` — errors thrown by the tool registry (a tool name already registered).
+- `StatusSink` — the status sink: retains the latest control-plane status events for point reads (`stream_status`) and re-broadcasts them to subscribers (the MCP notifications), so status is reported without polling (see EVENTS.md, "Sinks").
 
 ### `packages/TingraCapturePlugIns`
 
@@ -76,8 +84,11 @@ The first party capture plug-ins: camera and microphone discovery and capture, a
 
 The first party generator plug-ins — inputs that synthesize their content from the injected clock, so they run anywhere with no camera, microphone, or TCC: the permanent CI test surface.
 
-- `GeneratorPlugIn` — contributes both generators as inputs through the same registration seam as capture.
+- `GeneratorPlugIn` — contributes the built-in generators as inputs through the same registration seam as capture.
 - `BarsGenerator` — SMPTE color bars with burned in timecode (`--video-generator bars`): one IOSurface-backed 32BGRA, BT.709-tagged frame per clock tick.
+- `AlignmentGenerator` — industry-standard-style alignment pattern (`--video-generator alignment`): a cached crosshatch/alignment frame generated once at runtime and copied into fresh buffers thereafter.
+- `PlugeGenerator` — PLUGE black-level calibration pattern (`--video-generator pluge`): reference-black background with below-black, near-black, and shadow-detail patches for monitor setup.
+- `PlugeStrictGenerator` — stricter broadcast-style PLUGE pattern (`--video-generator pluge-strict`): a sparse reference-black field with the classic below-black / reference-black / above-black trio.
 - `ToneGenerator` — the 440 Hz test tone (`--audio-generator tone`): mono float32 buffers with phase continuity, one per clock tick.
 
 ### `packages/TingraOutputPlugIns`
@@ -88,9 +99,24 @@ The first party streaming output plug-in: the HaishinKit-backed `StreamingServic
 - `RTMPStreamingServiceProvider` — the provider serving `rtmp://` and `rtmps://` destinations; creates a fresh service per stream.
 - `HaishinKitStreamingService` — the concrete service: connects and publishes, compresses internally (VideoToolbox via HaishinKit), appends program video as uncompressed sample buffers and audio as PCM buffers carrying the session-timeline PTS, watches for connection loss, and reports delivery counters.
 
+### `packages/TingraMCP`
+
+The MCP/Control service (see [MCP.md](docs/MCP.md)): the hand-rolled MCP JSON-RPC layer, the engine daemon, the transparent stdio↔socket proxy, and the first-party control tools that mirror the CLI surface. Speaks MCP verbatim on the wire but takes no third-party dependency — the JSON-RPC framing is a few hundred lines behind this seam rather than the official swift-sdk's SwiftNIO/swift-log/eventsource stack.
+
+- `Daemon` — the engine daemon (`tingra-cli serve`): accepts connections on a Unix domain socket, verifies each peer's uid, serves each as an independent `MCPSession` against the shared engine, and idle-exits when quiet but never mid-stream. `manual(socketPath:…)` binds its own socket; the launchd socket-activated path uses `init` with a supplied descriptor.
+- `MCPSession` — one per-connection MCP session: the `initialize` handshake (carrying the daemon build version), `tools/list`, `tools/call` dispatch, and status-change notifications fed by the status sink.
+- `StreamCoordinator` — owns the one active stream in v1 on behalf of the stream tools; reuses the host's `StreamSession`, confirms the stream went live before `stream_start` returns, and keys `stream_status`/`stream_stop` off the session id.
+- `StreamDefaults` — the system default input identifiers, injected so the coordinator never imports the capture package.
+- `ControlToolsPlugIn` — registers the first-party tools (`devices_list`, `probe`, `stream_start`, `stream_status`, `stream_stop`) through the same `ToolRegistering` seam a third party uses.
+- `DaemonInfo` — the daemon identity (name, version) reported in the `initialize` result so a client can detect version skew.
+- `StdioSocketProxy` — the transparent byte pipe behind `tingra-cli mcp`: copies bytes between stdin/stdout and the daemon socket with no protocol logic (stdin EOF closes the connection; the connection closing exits).
+- `SocketLocation` — the per-user socket path (`~/Library/Application Support/Tingra/tingra.sock`) and its `0700` directory setup.
+- `JSONRPCID`, `JSONRPCError`, `JSONRPCErrorCode`, `JSONRPCResponse`, `JSONRPCNotification`, `JSONRPCIncoming` — the documented JSON-RPC 2.0 wire types, so direct socket clients can script the engine without the proxy.
+- `MCPProtocol` — the MCP method names, notification names, and the protocol version the daemon speaks.
+
 ### `apps/tingra-cli`
 
-The headless front end over the engine (see [CLI.md](docs/CLI.md)): one invocation selects inputs, configures compression, and streams. An executable, so it exposes no public types; its surface is its subcommands — `devices` (input discovery: human table and stable `--json`; `--watch` streams live device connect/disconnect events), `stream` (live streaming with `--reconnect`, `--duration`, clean Ctrl-C/SIGTERM stop, the `stream.*` status events, and `--dry-run` plan reporting), `probe` (validate a destination URL/key without going live), and `version`, with `serve` and `mcp` arriving per the roadmap.
+The headless front end over the engine (see [CLI.md](docs/CLI.md)): one invocation selects inputs, configures compression, and streams. An executable, so it exposes no public types; its surface is its subcommands — `devices` (input discovery: human table and stable `--json`; `--watch` streams live device connect/disconnect events), `stream` (live streaming with `--reconnect`, `--duration`, clean Ctrl-C/SIGTERM stop, the `stream.*` status events, and `--dry-run` plan reporting), `probe` (validate a destination URL/key without going live), `serve` (the persistent engine daemon behind a Unix domain socket, manual mode), `mcp` (the transparent stdio↔socket proxy agents point at), and `version`.
 
 ### `apps/ingest-simulator`
 

@@ -106,6 +106,15 @@ enum AudioCodec: String, Sendable, ExpressibleByArgument, CaseIterable {
 enum VideoGeneratorKind: String, Sendable, ExpressibleByArgument, CaseIterable {
     /// SMPTE color bars with burned in timecode.
     case bars
+
+    /// Industry-standard-style alignment pattern, cached after first generation.
+    case alignment
+
+    /// PLUGE black-level calibration pattern.
+    case pluge
+
+    /// Stricter broadcast-style PLUGE black-level calibration pattern.
+    case plugeStrict = "pluge-strict"
 }
 
 /// The audio generators `--audio-generator` accepts (CLI.md, "Input

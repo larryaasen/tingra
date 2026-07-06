@@ -35,9 +35,16 @@ private struct UnusedOutputRegistrar: OutputRegistering {
     func register(_ provider: any StreamingServiceProvider) async throws {}
 }
 
+/// A no-op tool registration seam — the generator plug-in never registers
+/// tools.
+private struct UnusedToolRegistrar: ToolRegistering {
+    /// Never called by this plug-in.
+    func register(_ tool: any Tool) async throws {}
+}
+
 @Suite("GeneratorPlugIn")
 struct GeneratorPlugInTests {
-    @Test("activation registers the bars and tone generators with their stable identifiers")
+    @Test("activation registers the built-in generators with their stable identifiers")
     func activationRegistersGenerators() async throws {
         let plugIn = GeneratorPlugIn()
         let registrar = MockInputRegistrar()
@@ -45,17 +52,24 @@ struct GeneratorPlugInTests {
             eventBus: EventBus(),
             clock: SyntheticClock(),
             inputs: registrar,
-            outputs: UnusedOutputRegistrar()
+            outputs: UnusedOutputRegistrar(),
+            tools: UnusedToolRegistrar()
         )
 
         try await plugIn.activate(in: context)
 
         let registered = await registrar.registered
-        try #require(registered.count == 2)
+        try #require(registered.count == 5)
         #expect(registered[0].id == BarsGenerator.inputID)
         #expect(registered[0].kind == .generator)
-        #expect(registered[1].id == ToneGenerator.inputID)
+        #expect(registered[1].id == AlignmentGenerator.inputID)
         #expect(registered[1].kind == .generator)
+        #expect(registered[2].id == PlugeGenerator.inputID)
+        #expect(registered[2].kind == .generator)
+        #expect(registered[3].id == PlugeStrictGenerator.inputID)
+        #expect(registered[3].kind == .generator)
+        #expect(registered[4].id == ToneGenerator.inputID)
+        #expect(registered[4].kind == .generator)
     }
 
     @Test("each registration is reported as a trace event on the bus")
@@ -67,7 +81,8 @@ struct GeneratorPlugInTests {
             eventBus: eventBus,
             clock: SyntheticClock(),
             inputs: MockInputRegistrar(),
-            outputs: UnusedOutputRegistrar()
+            outputs: UnusedOutputRegistrar(),
+            tools: UnusedToolRegistrar()
         )
 
         try await plugIn.activate(in: context)
@@ -77,9 +92,12 @@ struct GeneratorPlugInTests {
         for await event in events {
             received.append(event)
         }
-        #expect(received.count == 2)
+        #expect(received.count == 5)
         #expect(received.allSatisfy { $0.group == .trace && $0.domain == .capture && $0.name == "input.registered" })
         #expect(received.first?.params?["id"] == .string("bars"))
+        #expect(received.dropFirst().first?.params?["id"] == .string("alignment"))
+        #expect(received.dropFirst(2).first?.params?["id"] == .string("pluge"))
+        #expect(received.dropFirst(3).first?.params?["id"] == .string("pluge-strict"))
         #expect(received.last?.params?["id"] == .string("tone"))
     }
 

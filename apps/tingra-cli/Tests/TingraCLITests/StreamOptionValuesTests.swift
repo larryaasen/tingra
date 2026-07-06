@@ -141,6 +141,24 @@ struct StreamValidationTests {
         }
     }
 
+    @Test("the PLUGE video generator parses as a stable identifier")
+    func plugeGeneratorParses() throws {
+        let stream = try parse(["--video-generator", "pluge"])
+        #expect(stream.videoGenerator == .pluge)
+    }
+
+    @Test("the alignment video generator parses as a stable identifier")
+    func alignmentGeneratorParses() throws {
+        let stream = try parse(["--video-generator", "alignment"])
+        #expect(stream.videoGenerator == .alignment)
+    }
+
+    @Test("the strict PLUGE video generator parses as a stable identifier")
+    func plugeStrictGeneratorParses() throws {
+        let stream = try parse(["--video-generator", "pluge-strict"])
+        #expect(stream.videoGenerator == .plugeStrict)
+    }
+
     @Test("odd program dimensions throw — 4:2:0 delivery requires even")
     func oddResolutionThrows() {
         #expect(throws: (any Error).self) {

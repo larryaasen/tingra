@@ -25,7 +25,7 @@ private struct MockInput: Input {
     func stop() async {}
 }
 
-/// A registry loaded with the CLI.md example devices plus both generators.
+/// A registry loaded with the CLI.md example devices plus the built-in generators.
 private func makeRegistry() async throws -> InputRegistry {
     let registry = InputRegistry()
     let fixtures = [
@@ -34,6 +34,9 @@ private func makeRegistry() async throws -> InputRegistry {
         MockInput(id: InputID(rawValue: "BuiltInMicrophoneDevice"), name: "MacBook Pro Microphone", kind: .microphone),
         MockInput(id: InputID(rawValue: "AppleUSBAudioEngine:Shure:MV7"), name: "Shure MV7", kind: .microphone),
         MockInput(id: InputID(rawValue: "bars"), name: "SMPTE Bars", kind: .generator),
+        MockInput(id: InputID(rawValue: "alignment"), name: "Alignment Pattern", kind: .generator),
+        MockInput(id: InputID(rawValue: "pluge"), name: "PLUGE", kind: .generator),
+        MockInput(id: InputID(rawValue: "pluge-strict"), name: "PLUGE Strict", kind: .generator),
         MockInput(id: InputID(rawValue: "tone"), name: "440 Hz Tone", kind: .generator),
     ]
     for fixture in fixtures {
@@ -84,7 +87,7 @@ struct StreamPlanTests {
     @Test("generators resolve by their stable identifiers, no hardware involved")
     func generatorsResolve() async throws {
         var request = StreamRequest(url: "rtmp://localhost/live")
-        request.videoGenerator = .bars
+        request.videoGenerator = .alignment
         request.audioGenerator = .tone
 
         let plan = try await StreamPlan.resolve(
@@ -93,7 +96,7 @@ struct StreamPlanTests {
             defaults: noDefaults
         )
 
-        #expect(plan.video?.id == "bars")
+        #expect(plan.video?.id == "alignment")
         #expect(plan.audio?.id == "tone")
     }
 

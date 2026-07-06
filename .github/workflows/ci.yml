@@ -45,6 +45,7 @@ jobs:
           - packages/TingraCapturePlugIns
           - packages/TingraGeneratorPlugIns
           - packages/TingraOutputPlugIns
+          - packages/TingraMCP
           - apps/tingra-cli
     steps:
       - uses: actions/checkout@v4

@@ -28,6 +28,9 @@ packages/                       # Engine libraries
                                 #   recording) land alongside
   TingraOutputPlugIns/          # First-party streaming output plug-in: the HaishinKit-backed
                                 #   StreamingService (RTMP/RTMPS); the only package importing HaishinKit
+  TingraMCP/                    # The MCP/Control service (see MCP.md): the hand-rolled MCP JSON-RPC
+                                #   layer, the engine daemon, the stdio<->socket proxy, and the
+                                #   first-party control tools (no third-party dependency)
   (UI packages)                 # Phase 2 — arrive once the engine is proven
 docs/                           # The project documentation set (ARCHITECTURE.md, GLOSSARY.md, CLI.md,
                                 #   SIMULATOR.md, CLOCK.md, EVENTS.md, MCP.md, TODO.md) and screenshots
@@ -55,7 +58,7 @@ The package names are **finalized** (reviewed 2026-07-03; also recorded in "Repo
 - Never use periodic polling — the engine and its session state are event-driven (device connect/disconnect, stream status, etc.); model changes as events, not poll loops.
 - Don't ever use hacks to solve a problem.
 - **No UI code yet.** Current work is the engine (`packages/`) and `tingra-cli`; the SwiftUI/AppKit app is phase 3. Don't write UI code until that phase begins — the UI-facing rules below (SwiftUI, Localization) are forward-looking.
-- **Prefer native Apple frameworks; add third-party dependencies only behind a seam and with justification.** The only sanctioned third-party dependencies are **HaishinKit** (RTMP/SRT output, isolated behind `StreamingService` in `TingraOutputPlugIns` — the only package that imports it; its **Logboard** logging façade rides along there solely to reroute HaishinKit's internal console logging into OSLog, keeping stdout clean for the `--json` contract), **MediaMTX** (the `ingest-simulator`, a test-only binary, not linked into the product), and **swift-argument-parser** (Apple-authored, effectively first party; command/option parsing in `tingra-cli` per [CLI.md](docs/CLI.md) — confined to the CLI target, no seam required). Don't introduce a new third-party dependency without a clear reason and a protocol seam that keeps the rest of the code from importing it directly.
+- **Prefer native Apple frameworks; add third-party dependencies only behind a seam and with justification.** The only sanctioned third-party dependencies are **HaishinKit** (RTMP/SRT output, isolated behind `StreamingService` in `TingraOutputPlugIns` — the only package that imports it; its **Logboard** logging façade rides along there solely to reroute HaishinKit's internal console logging into OSLog, keeping stdout clean for the `--json` contract), **MediaMTX** (the `ingest-simulator`, a test-only binary, not linked into the product), and **swift-argument-parser** (Apple-authored, effectively first party; command/option parsing in `tingra-cli` per [CLI.md](docs/CLI.md) — confined to the CLI target, no seam required). Don't introduce a new third-party dependency without a clear reason and a protocol seam that keeps the rest of the code from importing it directly. **The MCP server takes no third-party dependency:** the JSON-RPC/MCP layer is hand-rolled in `TingraMCP` behind the MCP/Control seam rather than using the official `modelcontextprotocol/swift-sdk`, whose transitive SwiftNIO/swift-log/`eventsource` stack is server-side weight for a Mac-only app and would reintroduce the swift-log dependency EVENTS.md rejected (decided 2026-07-05; rationale in [MCP.md](docs/MCP.md), "Implementation: a hand-rolled JSON-RPC layer").
 
 ## Code Quality
 - Use SwiftLint standards for code style (no force unwrapping, proper optional handling).
@@ -160,8 +163,12 @@ packages/  TingraCapturePlugIns   →  TingraPlugInKit + TingraEventBus (registe
 packages/  TingraGeneratorPlugIns →  TingraPlugInKit + TingraEventBus (same seam-only design)
 packages/  TingraOutputPlugIns    →  TingraPlugInKit + TingraEventBus (same seam-only design;
                                      + HaishinKit and its Logboard façade, imported nowhere else)
+packages/  TingraMCP              →  TingraHost + TingraPlugInKit + TingraEventBus (the MCP/Control
+                                     service: the daemon owns the engine, so it depends on the host;
+                                     the `ToolRegistering` seam itself lives in TingraPlugInKit. No
+                                     third-party dependency — the JSON-RPC layer is hand-rolled)
 apps/      tingra-cli             →  TingraHost + TingraCapturePlugIns + TingraGeneratorPlugIns
-                                     + TingraOutputPlugIns (+ swift-argument-parser)
+                                     + TingraOutputPlugIns + TingraMCP (+ swift-argument-parser)
 apps/      tingra (phase 3)       →  TingraHost + feature plug-ins + UI packages
 apps/      ingest-simulator       →  none of the above (wraps MediaMTX; see SIMULATOR.md)
 ```
@@ -175,7 +182,7 @@ The engine is organized as services, each exposing its capabilities through plug
 4. **Compression** – VideoToolbox compression sessions, rate control, local recording
 5. **Output** – the `StreamingService` seam, with HaishinKit-backed RTMP/SRT implementations
 6. **Plug-in** – discovery, lifecycle, isolation
-7. **MCP/Control** – tool registry, session/state, authorization bridge
+7. **MCP/Control** – tool registry, session/state, authorization bridge (implemented in `TingraMCP`: the `serve` daemon, the hand-rolled MCP JSON-RPC layer, the `mcp` proxy, and the first-party control tools)
 8. **Platform/Infrastructure** – event bus, logging, secure storage, local storage, system info
 
 ### Data Flow Rules

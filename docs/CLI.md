@@ -111,6 +111,9 @@ tingra-cli stream --url <destination> [--key <stream key>] [options]
 | `--no-video` | Audio only stream. |
 | `--no-audio` | Video only stream. |
 | `--video-generator bars` | SMPTE color bars generator with burned in timecode instead of a camera. For testing on machines with no camera (CI). |
+| `--video-generator alignment` | Industry-standard-style alignment pattern instead of a camera. The pattern image is generated once at runtime, then reused for subsequent frames. |
+| `--video-generator pluge` | PLUGE (Picture Line-Up Generation Equipment) black-level calibration pattern instead of a camera. Useful for checking shadow detail and crushed blacks. |
+| `--video-generator pluge-strict` | Stricter broadcast-style PLUGE pattern instead of a camera. Uses a sparse reference-black field with the classic below-black / reference-black / above-black trio. |
 | `--audio-generator tone` | 440 Hz tone generator instead of a microphone. |
 
 #### Compression
@@ -196,6 +199,12 @@ Every `error` event the CLI emits carries a stable, machine-readable `identifier
 The MCP server, not raw CLI shell invocation, is the primary AI agent interface (see MCP.md — a first class interface, not an internal tool).
 
 `serve` runs the persistent engine process — the daemon. It owns the session: which inputs are active, what is streaming, connection state. Because the process persists, pipeline state survives across individual tool calls, and TCC authorization attaches to one long running identity. In the product path the daemon is launchd managed and socket activated (a LaunchAgent installed by `serve --install` or the Homebrew formula), starting on the first connection and idle-exiting when quiet; manual `serve` in a terminal remains the development path. See MCP.md for the transport, lifecycle, and the TCC attribution rationale behind the launchd decision.
+
+```
+tingra-cli serve [--socket <path>] [--idle-timeout <sec>] [--json] [--verbose|--quiet] [--log-file <path>]
+```
+
+`--socket` overrides the socket path (default: the standard per-user location); `--idle-timeout` sets the quiet period before the daemon exits (default 300 seconds, `0` disables — it never exits while a stream is active regardless). The daemon logs its own lifecycle to stderr (or NDJSON under `--json`); that output is separate from the MCP traffic, which flows only over the socket. Ctrl-C / SIGTERM stops it cleanly (exit 0). **Roadmap step 4 ships manual mode and the tool set below; the launchd `--install`/`--uninstall` path is a recorded follow-up (MCP.md, "Lifecycle").**
 
 `mcp` is a thin stdio entry point for agents: it speaks [MCP](https://modelcontextprotocol.io) JSON-RPC on stdio and proxies it byte for byte to the daemon's Unix domain socket rather than owning the pipeline itself, reconciling desktop extension process lifecycles with the persistent daemon model (see MCP.md). An agent config points at the binary:
 

@@ -32,6 +32,10 @@ extension InputSelectorError {
     }
 }
 
+/// Selector errors carry their identifiers under `IdentifiedError`, so the
+/// MCP/Control service can map them without a concrete type switch.
+extension InputSelectorError: IdentifiedError {}
+
 extension InputSelectorError: CustomStringConvertible {
     public var description: String {
         switch self {

@@ -61,7 +61,8 @@ struct Devices: AsyncParsableCommand {
             eventBus: eventBus,
             clock: HostClock(),
             inputs: registry,
-            outputs: OutputRegistry()
+            outputs: OutputRegistry(),
+            tools: ToolRegistry()
         )
         await PlugInLoader().activate([AVFoundationCapturePlugIn()], in: context)
 

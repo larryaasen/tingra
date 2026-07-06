@@ -9,8 +9,9 @@
 
 import TingraPlugInKit
 
-/// The first party generator plug-in: contributes the SMPTE color bars
-/// video generator and the 440 Hz tone audio generator as inputs.
+/// The first party generator plug-in: contributes the SMPTE color bars,
+/// alignment, and PLUGE calibration video generators, plus the 440 Hz tone
+/// audio generator as inputs.
 ///
 /// Generators synthesize their content from the injected clock, so they run
 /// anywhere — no camera, no microphone, no TCC authorization. They are the
@@ -27,8 +28,8 @@ public struct GeneratorPlugIn: PlugIn {
     /// Creates the plug-in.
     public init() {}
 
-    /// Registers the bars and tone generators, reporting each registration
-    /// as a `trace` event.
+    /// Registers the built-in generators, reporting each registration as a
+    /// `trace` event.
     ///
     /// Throws if the registry rejects an input (a duplicate identifier);
     /// the host's loader reports that as an `error` event and the engine
@@ -36,6 +37,9 @@ public struct GeneratorPlugIn: PlugIn {
     public func activate(in context: PlugInContext) async throws {
         let generators: [any Input] = [
             BarsGenerator(clock: context.clock),
+            AlignmentGenerator(clock: context.clock),
+            PlugeGenerator(clock: context.clock),
+            PlugeStrictGenerator(clock: context.clock),
             ToneGenerator(clock: context.clock),
         ]
         for generator in generators {

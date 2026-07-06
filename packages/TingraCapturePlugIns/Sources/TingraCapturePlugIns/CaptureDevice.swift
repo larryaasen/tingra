@@ -55,6 +55,10 @@ extension CaptureInputError {
     }
 }
 
+/// The capture errors carry their identifiers so a front end can map them
+/// without importing this package (see `IdentifiedError`).
+extension CaptureInputError: IdentifiedError {}
+
 extension CaptureInputError: CustomStringConvertible {
     public var description: String {
         switch self {

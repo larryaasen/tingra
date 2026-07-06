@@ -41,6 +41,12 @@ private struct UnusedInputRegistry: InputRegistering {
     func unregister(_ id: InputID) async {}
 }
 
+/// A no-op tool registration seam for contexts that never register tools.
+private struct UnusedToolRegistrar: ToolRegistering {
+    /// Never called in these tests.
+    func register(_ tool: any Tool) async throws {}
+}
+
 /// A fixed clock for contexts that never read time.
 private struct FixedClock: EngineClock {
     /// Always zero.
@@ -61,7 +67,8 @@ struct HaishinKitOutputPlugInTests {
             eventBus: EventBus(),
             clock: FixedClock(),
             inputs: UnusedInputRegistry(),
-            outputs: registry
+            outputs: registry,
+            tools: UnusedToolRegistrar()
         )
         try await HaishinKitOutputPlugIn().activate(in: context)
 
