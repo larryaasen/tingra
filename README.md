@@ -35,17 +35,22 @@ The plug-in protocol package: the stability contract first- and third-party plug
 - `InputRegistering` — the registration seam where input plug-ins attach (register on connect, unregister on disconnect); the host's `InputRegistry` conforms.
 - `CapturedFrame` — one GPU-resident video frame plus its presentation time on the master clock; `@unchecked Sendable` under the frame ownership rule (ARCHITECTURE.md, "Frame ownership across the `Input` seam").
 - `CapturedAudio` — one captured audio buffer whose PTS is the actual host time of capture; the audio half of the frame ownership rule.
-- `ErrorIdentifier` — the stable, machine-readable failure identifiers error events carry (`inputNotFound`, `authorizationDenied`, …); the registry lives in CLI.md, and identifiers are append-only, never renamed.
+- `ErrorIdentifier` — the stable, machine-readable failure identifiers error events carry (`inputNotFound`, `authorizationDenied`, `recordingFailed`, …); the registry lives in CLI.md, and identifiers are append-only, never renamed.
 - `StreamingService` — the output seam: connects, appends program media on the shared session timeline, reports connection events, and stops (HaishinKit lives behind this protocol).
 - `StreamingServiceProvider` — what an output plug-in registers: a factory keyed by destination URL scheme that creates a configured `StreamingService` per stream.
 - `StreamingServiceEvent` — a connection event reported after a successful start (`connectionLost`); the session drives reconnect policy from it.
 - `StreamingServiceError` — the error currency of `StreamingService.start(to:)` (`unsupportedDestination`, `connectionRejected`), each mapped to its stable error identifier.
 - `StreamingStatistics` — a point-in-time snapshot of a service's delivery counters, feeding the periodic `stream.stats` events.
-- `StreamConfiguration` — the compression and program settings a stream session runs with (resolution, frame rate, codecs, bitrates); contains no secrets.
-- `OutputID` — the stable identifier for a registered output.
-- `OutputRegistering` — the registration seam where output plug-ins attach; the host's `OutputRegistry` conforms.
+- `StreamConfiguration` — the compression and program settings a stream session runs with (resolution, frame rate, codecs, bitrates, and the `includesVideo`/`includesAudio` track topology the recording sink needs up front); contains no secrets. Shared by the streaming and recording sinks.
+- `OutputID` — the stable identifier for a registered output (streaming or recording).
+- `OutputRegistering` — the registration seam where output plug-ins attach — both streaming (by URL scheme) and recording (by file extension) providers; the host's `OutputRegistry` conforms.
 - `Destination` — a configured streaming target: URL plus optional stream key (deliberately not `Codable` — the key is a secret).
-- `IdentifiedError` — the protocol the engine's error enums (`StreamingServiceError`, `CaptureInputError`, `InputSelectorError`) conform to, so a front end maps any of them to its stable `ErrorIdentifier` without knowing the concrete type.
+- `RecordingService` — the recording seam: opens a local file, appends the same program media the stream gets, reports a terminal write failure, and finalizes (`AVAssetWriter` lives behind this protocol). A narrower sibling of `StreamingService` — no destination, no reconnect.
+- `RecordingServiceProvider` — what a recording plug-in registers: a factory keyed by file extension (`mov`/`mp4`) that creates a configured `RecordingService` per recording.
+- `RecordingServiceEvent` — a recording event reported after a successful start (`failed`); a file has no reconnect, so a write failure is terminal.
+- `RecordingServiceError` — the error currency of `RecordingService.start(to:)` (`unwritableDestination`, `writerNotReady`), each mapped to the `recordingFailed` identifier.
+- `RecordingFile` — where a recording is written: a local file URL plus its container format (`mov`/`mp4`); the recording counterpart to `Destination`, carrying no secret.
+- `IdentifiedError` — the protocol the engine's error enums (`StreamingServiceError`, `RecordingServiceError`, `CaptureInputError`, `InputSelectorError`) conform to, so a front end maps any of them to its stable `ErrorIdentifier` without knowing the concrete type.
 - `Tool` — the MCP tool seam: a control the engine exposes to agents, with a machine name, a JSON-Schema input, and a `call(_:)` returning structured JSON; plug-in contributed like inputs and outputs.
 - `ToolError` — a structured, actionable tool failure keyed off the append-only `ErrorIdentifier` registry (never message wording).
 - `ToolRegistering` — the registration seam where tool plug-ins attach; the host's `ToolRegistry` conforms.
@@ -65,10 +70,10 @@ The host/core package: plug-in loading, registries, frame transport, session/sta
 - `InputSelectorError` — selector resolution failures (`notFound`, `ambiguous`), each mapped to its stable error identifier.
 - `PlugInLoader` — the host's plug-in lifecycle: activates plug-ins against a `PlugInContext`, reporting each outcome on the event bus; a throwing plug-in is skipped, never fatal.
 - `OSLogSink` — the system-of-record sink: routes every event to OSLog (`subsystem` `com.moonwink.tingra`, `category` = domain), params `.private`. `tingra-cli` skips attaching it when standard error is a terminal — the OS's own terminal mirror already echoes the process's events there (see EVENTS.md, "OSLog sink").
-- `OutputRegistry` — the actor where output plug-ins register their streaming service providers and the engine resolves a destination's URL scheme to a provider; the host's concrete `OutputRegistering`.
-- `OutputRegistryError` — errors thrown by the output registry (a scheme already served by another provider).
+- `OutputRegistry` — the actor where output plug-ins register their providers — streaming (resolved by destination URL scheme) and recording (resolved by file extension) — in one registry; the host's concrete `OutputRegistering`.
+- `OutputRegistryError` — errors thrown by the output registry (a scheme, or a recording file extension, already served by another provider).
 - `ProgramPacer` — the tick-paced latest-wins video pacing for the CLI era: one frame per program tick, restamped with the tick's time, re-sending the held frame across an input stall (see CLOCK.md, "The tick before composition exists").
-- `StreamSession` — one live stream: owns the shared timeline (`T0`), pumps paced video and pass-through audio into the streaming service, emits the `stream.*` status events, and drives the reconnect policy (attempts, delay, and the stability window that keeps a flapping connection from reconnecting forever).
+- `StreamSession` — one live stream: owns the shared timeline (`T0`), pumps paced video and pass-through audio into the streaming service — and, when `--record` is set, the same media into a parallel recording sink — emits the `stream.*` (and `recording.*`) status events, drives the reconnect policy (attempts, delay, and the stability window that keeps a flapping connection from reconnecting forever), and finalizes the recording on every teardown path.
 - `ToolRegistry` — the actor where tool plug-ins register the MCP tools they contribute and the MCP/Control service lists and resolves them from; the host's concrete `ToolRegistering`.
 - `ToolRegistryError` — errors thrown by the tool registry (a tool name already registered).
 - `StatusSink` — the status sink: retains the latest control-plane status events for point reads (`stream_status`) and re-broadcasts them to subscribers (the MCP notifications), so status is reported without polling (see EVENTS.md, "Sinks").
@@ -99,6 +104,14 @@ The first party streaming output plug-in: the HaishinKit-backed `StreamingServic
 - `RTMPStreamingServiceProvider` — the provider serving `rtmp://` and `rtmps://` destinations; creates a fresh service per stream.
 - `HaishinKitStreamingService` — the concrete service: connects and publishes, compresses internally (VideoToolbox via HaishinKit), appends program video as uncompressed sample buffers and audio as PCM buffers carrying the session-timeline PTS, watches for connection loss, and reports delivery counters.
 
+### `packages/TingraRecordingPlugIns`
+
+The first party local recording plug-in: the `AVAssetWriter`-backed `RecordingService` writing the program to a local `.mov`/`.mp4`, independent of streaming. AVFoundation is imported only inside this package (behind the `RecordingService` seam), and it pulls in neither HaishinKit nor Logboard, so `TingraOutputPlugIns` stays the sole HaishinKit importer.
+
+- `RecordingPlugIn` — contributes the `.mov`/`.mp4` recording provider through the same output registration seam as streaming.
+- `AVAssetWriterRecordingServiceProvider` — the provider serving `.mov` and `.mp4` targets; creates a fresh recording service per recording.
+- `AVAssetWriterRecordingService` — the concrete service: orchestrates open, append, finalize, and terminal-failure reporting over a writer backend, so its lifecycle is unit-testable without touching disk.
+
 ### `packages/TingraMCP`
 
 The MCP/Control service (see [MCP.md](docs/MCP.md)): the hand-rolled MCP JSON-RPC layer, the engine daemon, the transparent stdio↔socket proxy, and the first-party control tools that mirror the CLI surface. Speaks MCP verbatim on the wire but takes no third-party dependency — the JSON-RPC framing is a few hundred lines behind this seam rather than the official swift-sdk's SwiftNIO/swift-log/eventsource stack.
@@ -116,7 +129,7 @@ The MCP/Control service (see [MCP.md](docs/MCP.md)): the hand-rolled MCP JSON-RP
 
 ### `apps/tingra-cli`
 
-The headless front end over the engine (see [CLI.md](docs/CLI.md)): one invocation selects inputs, configures compression, and streams. An executable, so it exposes no public types; its surface is its subcommands — `devices` (input discovery: human table and stable `--json`; `--watch` streams live device connect/disconnect events), `stream` (live streaming with `--reconnect`, `--duration`, clean Ctrl-C/SIGTERM stop, the `stream.*` status events, and `--dry-run` plan reporting), `probe` (validate a destination URL/key without going live), `serve` (the persistent engine daemon behind a Unix domain socket, manual mode), `mcp` (the transparent stdio↔socket proxy agents point at), and `version`.
+The headless front end over the engine (see [CLI.md](docs/CLI.md)): one invocation selects inputs, configures compression, and streams. An executable, so it exposes no public types; its surface is its subcommands — `devices` (input discovery: human table and stable `--json`; `--watch` streams live device connect/disconnect events), `stream` (live streaming with `--reconnect`, `--duration`, optional `--record` to a local `.mov`/`.mp4`, clean Ctrl-C/SIGTERM stop, the `stream.*`/`recording.*` status events, and `--dry-run` plan reporting), `probe` (validate a destination URL/key without going live), `serve` (the persistent engine daemon behind a Unix domain socket, manual mode), `mcp` (the transparent stdio↔socket proxy agents point at), and `version`.
 
 ### `apps/ingest-simulator`
 

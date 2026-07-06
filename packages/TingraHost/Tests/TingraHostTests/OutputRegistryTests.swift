@@ -29,6 +29,23 @@ private struct StubProvider: StreamingServiceProvider {
     }
 }
 
+/// A minimal recording provider for registry tests.
+private struct StubRecordingProvider: RecordingServiceProvider {
+    /// The provider's identifier.
+    let id: OutputID
+
+    /// The provider's name.
+    let name: String
+
+    /// The file extensions the provider serves.
+    let fileExtensions: [String]
+
+    /// Creates a mock service; registry tests never start it.
+    func makeRecordingService(configuration: StreamConfiguration) -> any RecordingService {
+        MockRecordingService()
+    }
+}
+
 @Suite("OutputRegistry")
 struct OutputRegistryTests {
     @Test("A registered provider resolves by each of its schemes, case-insensitively")
@@ -87,5 +104,45 @@ struct OutputRegistryTests {
         #expect(String(describing: error).contains("rtmp"))
         #expect(error == OutputRegistryError.duplicateScheme("rtmp", existing: OutputID(rawValue: "rtmp")))
         #expect(error != OutputRegistryError.duplicateScheme("rtmps", existing: OutputID(rawValue: "rtmp")))
+    }
+
+    @Test("A registered recording provider resolves by each of its extensions, case-insensitively")
+    func recordingProviderResolvesByExtension() async throws {
+        let registry = OutputRegistry()
+        let provider = StubRecordingProvider(
+            id: OutputID(rawValue: "file"), name: "File", fileExtensions: ["mov", "mp4"])
+        try await registry.register(provider)
+
+        #expect(await registry.recordingProvider(forFileExtension: "mov")?.id == provider.id)
+        #expect(await registry.recordingProvider(forFileExtension: "MP4")?.id == provider.id)
+        #expect(await registry.recordingProvider(forFileExtension: "mkv") == nil)
+    }
+
+    @Test("Streaming and recording providers share one registry without colliding")
+    func streamingAndRecordingCoexist() async throws {
+        let registry = OutputRegistry()
+        try await registry.register(
+            StubProvider(id: OutputID(rawValue: "rtmp"), name: "RTMP", schemes: ["rtmp"])
+        )
+        try await registry.register(
+            StubRecordingProvider(id: OutputID(rawValue: "file"), name: "File", fileExtensions: ["mov"])
+        )
+        #expect(await registry.provider(forScheme: "rtmp")?.id == OutputID(rawValue: "rtmp"))
+        #expect(await registry.recordingProvider(forFileExtension: "mov")?.id == OutputID(rawValue: "file"))
+    }
+
+    @Test("Registering a second recording provider for a served extension throws duplicateFileExtension")
+    func duplicateFileExtensionThrows() async throws {
+        let registry = OutputRegistry()
+        try await registry.register(
+            StubRecordingProvider(id: OutputID(rawValue: "file"), name: "File", fileExtensions: ["mov", "mp4"])
+        )
+        await #expect(
+            throws: OutputRegistryError.duplicateFileExtension("mp4", existing: OutputID(rawValue: "file"))
+        ) {
+            try await registry.register(
+                StubRecordingProvider(id: OutputID(rawValue: "other"), name: "Other", fileExtensions: ["mp4"])
+            )
+        }
     }
 }

@@ -100,6 +100,20 @@ public actor StreamSession {
     /// The streaming service delivering the program to the destination.
     private let service: any StreamingService
 
+    /// The recording service writing the program to a local file, or nil
+    /// when `--record` was not given. A parallel compression sink: fed the
+    /// same program media as the stream, but independent of it — it keeps
+    /// writing across a reconnect gap and is always finalized on teardown,
+    /// however the session ends (CLI.md, "Recording and control").
+    private let recording: (any RecordingService)?
+
+    /// Where the recording is written, when ``recording`` is present.
+    private let recordingFile: RecordingFile?
+
+    /// Whether recording has started, so the file is finalized exactly once
+    /// on teardown and only after it actually opened.
+    private var recordingStarted = false
+
     /// Where the program streams to. Held for reconnects; its stream key
     /// never reaches the bus.
     private let destination: Destination
@@ -148,6 +162,10 @@ public actor StreamSession {
     ///   - policy: The reconnect/stats/duration policy.
     ///   - clock: The master clock (synthetic in tests).
     ///   - eventBus: The host's event bus.
+    ///   - recording: The recording service for `--record`, or nil for a
+    ///     stream-only session.
+    ///   - recordingFile: Where the recording is written; required when
+    ///     `recording` is present, ignored otherwise.
     public init(
         videoInput: (any Input)?,
         audioInput: (any Input)?,
@@ -156,7 +174,9 @@ public actor StreamSession {
         configuration: StreamConfiguration,
         policy: Policy,
         clock: any EngineClock,
-        eventBus: EventBus
+        eventBus: EventBus,
+        recording: (any RecordingService)? = nil,
+        recordingFile: RecordingFile? = nil
     ) {
         self.videoInput = videoInput
         self.audioInput = audioInput
@@ -166,6 +186,8 @@ public actor StreamSession {
         self.policy = policy
         self.clock = clock
         self.eventBus = eventBus
+        self.recording = recording
+        self.recordingFile = recordingFile
         (self.outcome, self.outcomeContinuation) = AsyncStream.makeStream(of: Outcome.self)
     }
 
@@ -192,7 +214,36 @@ public actor StreamSession {
         if let audioInput {
             try await audioInput.start()
         }
-        try await service.start(to: destination)
+
+        // Recording opens before the network connection: a setup failure
+        // fails the run before anything streams (the caller asked to record
+        // and could not), while a later connection failure still finalizes
+        // the file that was opened.
+        if let recording, let recordingFile {
+            do {
+                try await recording.start(to: recordingFile)
+            } catch {
+                await stopInputs()
+                throw error
+            }
+            recordingStarted = true
+            eventBus.event(
+                "recording.started",
+                domain: .output,
+                params: [
+                    "path": .string(recordingFile.url.path),
+                    "container": .string(recordingFile.container.rawValue),
+                ]
+            )
+        }
+
+        do {
+            try await service.start(to: destination)
+        } catch {
+            await finalizeRecording()
+            await stopInputs()
+            throw error
+        }
 
         // The shared session start on the master clock: every sink sees
         // PTS = hostTime − T0 from here on (CLOCK.md, Timestamp rules).
@@ -200,7 +251,7 @@ public actor StreamSession {
         eventBus.event("stream.started", domain: .output, params: startedParams)
 
         let pumpTasks = startPumps(t0: t0)
-        let watchTasks = [watchConnection(), watchStats(t0: t0), watchDuration()]
+        let watchTasks = [watchConnection(), watchStats(t0: t0), watchDuration(), watchRecording()]
 
         var result: Outcome = .stopRequested
         for await first in outcome {
@@ -214,19 +265,41 @@ public actor StreamSession {
         for task in pumpTasks {
             task.cancel()
         }
-        if let videoInput {
-            await videoInput.stop()
-        }
-        if let audioInput {
-            await audioInput.stop()
-        }
+        await stopInputs()
         await service.stop()
+        // Finalize the recording last so it captures everything the pumps
+        // delivered, however the session ended (stop, duration, or a lost
+        // connection).
+        await finalizeRecording()
         eventBus.event(
             "stream.stopped",
             domain: .output,
             params: ["reason": .string(result.rawValue)]
         )
         return result
+    }
+
+    /// Stops both inputs, if present.
+    private func stopInputs() async {
+        if let videoInput {
+            await videoInput.stop()
+        }
+        if let audioInput {
+            await audioInput.stop()
+        }
+    }
+
+    /// Finalizes the recording exactly once, flushing and closing the file
+    /// and reporting `recording.stopped`. A no-op when nothing was recorded.
+    private func finalizeRecording() async {
+        guard recordingStarted, let recording, let recordingFile else { return }
+        recordingStarted = false
+        await recording.stop()
+        eventBus.event(
+            "recording.stopped",
+            domain: .output,
+            params: ["path": .string(recordingFile.url.path)]
+        )
     }
 
     /// Resolves the session with an outcome exactly once.
@@ -245,6 +318,7 @@ public actor StreamSession {
         if let videoInput {
             let pacer = ProgramPacer(clock: clock, frameRate: configuration.frameRate)
             let service = self.service
+            let recording = self.recording
             tasks.append(
                 Task {
                     for await frame in pacer.frames(from: videoInput.frames()) {
@@ -252,18 +326,25 @@ public actor StreamSession {
                             pixelBuffer: frame.pixelBuffer,
                             presentationTime: CMTimeSubtract(frame.presentationTime, t0)
                         )
+                        // The program frame is immutable after the pacer's
+                        // yield, so both compression sinks read the same
+                        // buffer within the tick — neither mutates it, per
+                        // the frame ownership rule (ARCHITECTURE.md).
                         await service.send(video: rebased)
+                        await recording?.send(video: rebased)
                     }
                 }
             )
         }
         if let audioInput {
             let service = self.service
+            let recording = self.recording
             tasks.append(
                 Task {
                     for await audio in audioInput.audio() {
                         guard let rebased = audio.rebased(by: t0) else { continue }
                         await service.send(audio: rebased)
+                        await recording?.send(audio: rebased)
                     }
                 }
             )
@@ -283,6 +364,38 @@ public actor StreamSession {
                 }
             }
         }
+    }
+
+    /// Watches the recording service's events and reports a write failure.
+    ///
+    /// A recording failure is auxiliary and terminal: it is reported as an
+    /// `error` event (identifier `recordingFailed`) so scripts and the
+    /// operator see it, but it never ends the stream — recording is
+    /// independent of streaming (CLI.md), so a live stream keeps running
+    /// while the recording sink stops. The file is still finalized on
+    /// teardown, capturing whatever was written before the failure.
+    private func watchRecording() -> Task<Void, Never>? {
+        guard let recording else { return nil }
+        return Task {
+            for await event in recording.events {
+                switch event {
+                case .failed(let reason):
+                    reportRecordingFailure(reason)
+                }
+            }
+        }
+    }
+
+    /// Emits the `recordingFailed` error event for a recording write failure.
+    private func reportRecordingFailure(_ reason: String) {
+        eventBus.error(
+            "recording.write",
+            domain: .output,
+            params: [
+                "identifier": .string(ErrorIdentifier.recordingFailed.rawValue),
+                "message": .string("The recording stopped and could not continue: \(reason)"),
+            ]
+        )
     }
 
     /// Runs the reconnect attempts for one connection loss.

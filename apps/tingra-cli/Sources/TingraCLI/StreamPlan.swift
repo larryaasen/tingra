@@ -86,6 +86,9 @@ struct StreamRequest: Sendable {
     /// Delay between reconnection attempts, in seconds.
     var reconnectDelay = 2
 
+    /// The `--record` file path, if given.
+    var record: String?
+
     /// Automatic stop after this many seconds, if given.
     var duration: Int?
 
@@ -230,6 +233,9 @@ struct StreamPlan: Sendable {
         if let duration = request.duration {
             params["duration"] = .int(duration)
         }
+        if let record = request.record {
+            params["record"] = .string(record)
+        }
         if let logFile = request.logFile {
             params["logFile"] = .string(logFile)
         }
@@ -282,6 +288,7 @@ struct StreamPlan: Sendable {
         }
         lines.append("CONTROL")
         lines.append(row("duration", request.duration.map { "\($0)s" } ?? "until stopped"))
+        lines.append(row("record", request.record ?? "(disabled)"))
         lines.append(
             row("stats interval", request.statsInterval == 0 ? "disabled" : "\(request.statsInterval)s")
         )

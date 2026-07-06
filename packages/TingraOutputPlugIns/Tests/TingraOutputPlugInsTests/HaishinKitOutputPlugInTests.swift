@@ -26,6 +26,9 @@ private final class RecordingOutputRegistry: OutputRegistering {
         providers.withLock { $0.append(provider) }
     }
 
+    /// The streaming output plug-in never registers a recording provider.
+    func register(_ provider: any RecordingServiceProvider) async throws {}
+
     /// The recorded providers.
     var registered: [any StreamingServiceProvider] {
         providers.withLock { $0 }

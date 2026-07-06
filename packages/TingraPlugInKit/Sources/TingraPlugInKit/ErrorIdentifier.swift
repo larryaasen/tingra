@@ -49,6 +49,12 @@ extension ErrorIdentifier {
     /// caller's input or the network. Exit code 70.
     public static let pipelineError = ErrorIdentifier(rawValue: "pipelineError")
 
+    /// The local recording could not be written — an unwritable path, a
+    /// rejected format, or a write/finalize error (a full disk). Exit code
+    /// 70. Distinct from `pipelineError` so scripts can tell a recording
+    /// failure from a general stage failure.
+    public static let recordingFailed = ErrorIdentifier(rawValue: "recordingFailed")
+
     /// The initial connection or handshake to the destination was rejected
     /// or unreachable. Exit code 75.
     public static let connectionFailed = ErrorIdentifier(rawValue: "connectionFailed")

@@ -33,6 +33,9 @@ private actor MockInputRegistrar: InputRegistering {
 private struct UnusedOutputRegistrar: OutputRegistering {
     /// Never called by this plug-in.
     func register(_ provider: any StreamingServiceProvider) async throws {}
+
+    /// Never called by this plug-in.
+    func register(_ provider: any RecordingServiceProvider) async throws {}
 }
 
 /// A no-op tool registration seam — the generator plug-in never registers

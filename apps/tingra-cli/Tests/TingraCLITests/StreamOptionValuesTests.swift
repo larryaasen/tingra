@@ -188,6 +188,19 @@ struct StreamValidationTests {
         }
     }
 
+    @Test("--record accepts .mov and .mp4 paths and carries them into the request")
+    func recordAcceptsContainers() throws {
+        #expect(try parse(["--record", "/tmp/out.mp4"]).request.record == "/tmp/out.mp4")
+        #expect(try parse(["--record", "~/Movies/backup.MOV"]).request.record == "~/Movies/backup.MOV")
+        #expect(try parse([]).request.record == nil)
+    }
+
+    @Test("--record rejects a path without a .mov/.mp4 extension")
+    func recordRejectsBadExtension() {
+        #expect(throws: (any Error).self) { _ = try parse(["--record", "/tmp/out.txt"]) }
+        #expect(throws: (any Error).self) { _ = try parse(["--record", "/tmp/out"]) }
+    }
+
     @Test("the request mirrors the parsed key source")
     func requestKeySource() throws {
         #expect(try parse([]).request.keySource == .none)

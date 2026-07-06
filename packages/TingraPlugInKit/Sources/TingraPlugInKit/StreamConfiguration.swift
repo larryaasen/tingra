@@ -60,8 +60,20 @@ public struct StreamConfiguration: Sendable, Equatable {
     /// The audio sample rate in Hertz.
     public var audioSampleRate: Int
 
+    /// Whether the program has a video track (false under `--no-video`). A
+    /// program-topology setting a sink that must declare its tracks up front
+    /// reads — the recording sink (`AVAssetWriter`) opens tracks before any
+    /// sample arrives, unlike streaming, where HaishinKit detects tracks
+    /// from the buffers it is appended.
+    public var includesVideo: Bool
+
+    /// Whether the program has an audio track (false under `--no-audio`).
+    /// See ``includesVideo``.
+    public var includesAudio: Bool
+
     /// Creates a configuration. Defaults mirror CLI.md's "Compression"
-    /// defaults (1080p30, H.264 at 4500k, AAC at 160k / 48 kHz).
+    /// defaults (1080p30, H.264 at 4500k, AAC at 160k / 48 kHz); both track
+    /// sides are present by default.
     ///
     /// - Parameters:
     ///   - width: Program width in pixels.
@@ -73,6 +85,8 @@ public struct StreamConfiguration: Sendable, Equatable {
     ///   - audioCodec: Audio codec.
     ///   - audioBitsPerSecond: Audio bitrate in bits per second.
     ///   - audioSampleRate: Audio sample rate in Hertz.
+    ///   - includesVideo: Whether the program has a video track.
+    ///   - includesAudio: Whether the program has an audio track.
     public init(
         width: Int = 1920,
         height: Int = 1080,
@@ -82,7 +96,9 @@ public struct StreamConfiguration: Sendable, Equatable {
         keyframeInterval: Int = 2,
         audioCodec: AudioCodec = .aac,
         audioBitsPerSecond: Int = 160_000,
-        audioSampleRate: Int = 48_000
+        audioSampleRate: Int = 48_000,
+        includesVideo: Bool = true,
+        includesAudio: Bool = true
     ) {
         self.width = width
         self.height = height
@@ -93,5 +109,7 @@ public struct StreamConfiguration: Sendable, Equatable {
         self.audioCodec = audioCodec
         self.audioBitsPerSecond = audioBitsPerSecond
         self.audioSampleRate = audioSampleRate
+        self.includesVideo = includesVideo
+        self.includesAudio = includesAudio
     }
 }

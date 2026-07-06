@@ -28,6 +28,7 @@ let package = Package(
         .package(path: "../../packages/TingraMCP"),
         .package(path: "../../packages/TingraOutputPlugIns"),
         .package(path: "../../packages/TingraPlugInKit"),
+        .package(path: "../../packages/TingraRecordingPlugIns"),
     ],
     targets: [
         .executableTarget(
@@ -41,6 +42,7 @@ let package = Package(
                 .product(name: "TingraMCP", package: "TingraMCP"),
                 .product(name: "TingraOutputPlugIns", package: "TingraOutputPlugIns"),
                 .product(name: "TingraPlugInKit", package: "TingraPlugInKit"),
+                .product(name: "TingraRecordingPlugIns", package: "TingraRecordingPlugIns"),
             ]
         ),
         .testTarget(name: "TingraCLITests", dependencies: ["TingraCLI"]),

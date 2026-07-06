@@ -16,10 +16,29 @@
 /// outputs without depending on the engine; the host's `OutputRegistry`
 /// conforms and arrives through ``PlugInContext/outputs``, mirroring
 /// ``InputRegistering``.
+///
+/// Both streaming and recording outputs register here — multiple provider
+/// kinds, one registry — because recording is an output sink parallel to
+/// streaming (GLOSSARY.md, "Output": to destinations *or* to a recording),
+/// resolved differently (by file extension, not URL scheme) but held by the
+/// same host registry.
 public protocol OutputRegistering: Sendable {
     /// Registers a streaming service provider contributed by a plug-in.
     ///
     /// Throws a descriptive error if the provider cannot be accepted — for
     /// example, when another provider already serves one of its URL schemes.
     func register(_ provider: any StreamingServiceProvider) async throws
+
+    /// Registers a recording service provider contributed by a plug-in.
+    ///
+    /// Throws a descriptive error if the provider cannot be accepted — for
+    /// example, when another provider already serves one of its file
+    /// extensions.
+    ///
+    /// A pre-1.0 protocol addition (the seam gained recording alongside
+    /// streaming at roadmap step 5), mirroring the ``InputRegistering``
+    /// `unregister` addition; permitted during the 0.x CLI era before the
+    /// external bundle loader ships (ARCHITECTURE.md, "Plug-in API stability
+    /// and versioning").
+    func register(_ provider: any RecordingServiceProvider) async throws
 }

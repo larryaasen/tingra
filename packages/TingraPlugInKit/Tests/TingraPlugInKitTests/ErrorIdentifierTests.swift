@@ -24,6 +24,7 @@ struct ErrorIdentifierTests {
         #expect(ErrorIdentifier.inputAmbiguous.rawValue == "inputAmbiguous")
         #expect(ErrorIdentifier.authorizationDenied.rawValue == "authorizationDenied")
         #expect(ErrorIdentifier.pipelineError.rawValue == "pipelineError")
+        #expect(ErrorIdentifier.recordingFailed.rawValue == "recordingFailed")
         #expect(ErrorIdentifier.connectionFailed.rawValue == "connectionFailed")
         #expect(ErrorIdentifier.connectionLost.rawValue == "connectionLost")
     }

@@ -28,6 +28,9 @@ packages/                       # Engine libraries
                                 #   recording) land alongside
   TingraOutputPlugIns/          # First-party streaming output plug-in: the HaishinKit-backed
                                 #   StreamingService (RTMP/RTMPS); the only package importing HaishinKit
+  TingraRecordingPlugIns/       # First-party local recording plug-in: the AVAssetWriter-backed
+                                #   RecordingService (.mov/.mp4), through the same output seam as
+                                #   streaming; imports only AVFoundation, never HaishinKit
   TingraMCP/                    # The MCP/Control service (see MCP.md): the hand-rolled MCP JSON-RPC
                                 #   layer, the engine daemon, the stdio<->socket proxy, and the
                                 #   first-party control tools (no third-party dependency)
@@ -163,12 +166,16 @@ packages/  TingraCapturePlugIns   →  TingraPlugInKit + TingraEventBus (registe
 packages/  TingraGeneratorPlugIns →  TingraPlugInKit + TingraEventBus (same seam-only design)
 packages/  TingraOutputPlugIns    →  TingraPlugInKit + TingraEventBus (same seam-only design;
                                      + HaishinKit and its Logboard façade, imported nowhere else)
+packages/  TingraRecordingPlugIns →  TingraPlugInKit + TingraEventBus (same seam-only design;
+                                     registers through the `OutputRegistering` seam like streaming;
+                                     imports only AVFoundation, no HaishinKit)
 packages/  TingraMCP              →  TingraHost + TingraPlugInKit + TingraEventBus (the MCP/Control
                                      service: the daemon owns the engine, so it depends on the host;
                                      the `ToolRegistering` seam itself lives in TingraPlugInKit. No
                                      third-party dependency — the JSON-RPC layer is hand-rolled)
 apps/      tingra-cli             →  TingraHost + TingraCapturePlugIns + TingraGeneratorPlugIns
-                                     + TingraOutputPlugIns + TingraMCP (+ swift-argument-parser)
+                                     + TingraOutputPlugIns + TingraRecordingPlugIns + TingraMCP
+                                     (+ swift-argument-parser)
 apps/      tingra (phase 3)       →  TingraHost + feature plug-ins + UI packages
 apps/      ingest-simulator       →  none of the above (wraps MediaMTX; see SIMULATOR.md)
 ```

@@ -86,6 +86,50 @@ if grep -q "$GOOD_KEY" "$OUT_DIR/happy.json"; then
 fi
 report "the stream key never appears in output" "$key_ok"
 
+echo "== Scenario: local recording (--record) alongside streaming, verified with ffprobe"
+# Record the same program that streams: bars + tone to a temp .mp4 while
+# publishing to the simulator, then verify the finalized file with ffprobe.
+REC_FILE="$OUT_DIR/recording.mp4"
+"$CLI" stream --url "$RTMP_URL" --key "$GOOD_KEY" "${GENERATOR_FLAGS[@]}" \
+    --record "$REC_FILE" --duration 12 --stats-interval 0 --json > "$OUT_DIR/record.json" 2>&1
+record_exit=$?
+
+record_exit_ok=false
+[[ $record_exit -eq 0 ]] && record_exit_ok=true
+report "recording stream exits 0 after --duration" "$record_exit_ok"
+
+record_events_ok=false
+if grep -q '"name":"recording.started"' "$OUT_DIR/record.json" \
+    && grep -q '"name":"recording.stopped"' "$OUT_DIR/record.json"; then
+    record_events_ok=true
+fi
+report "recording.started/recording.stopped events on the NDJSON stream" "$record_events_ok"
+
+record_file_ok=false
+[[ -s "$REC_FILE" ]] && record_file_ok=true
+report "the recording file exists and is non-empty" "$record_file_ok"
+
+record_codecs="$(ffprobe -v error -show_entries stream=codec_name -of default=noprint_wrappers=1:nokey=1 "$REC_FILE" 2>/dev/null || true)"
+record_codec_ok=false
+if grep -q '^h264$' <<< "$record_codecs" && grep -q '^aac$' <<< "$record_codecs"; then
+    record_codec_ok=true
+fi
+report "the recording contains an H.264 video track and an AAC audio track" "$record_codec_ok"
+
+record_duration="$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$REC_FILE" 2>/dev/null || echo 0)"
+record_duration_ok=false
+# The 12-second recording should land within a couple of seconds either way.
+if awk -v d="$record_duration" 'BEGIN { exit !(d >= 9 && d <= 15) }'; then
+    record_duration_ok=true
+fi
+report "the recording duration is approximately 12 seconds (got ${record_duration}s)" "$record_duration_ok"
+
+record_key_ok=true
+if grep -q "$GOOD_KEY" "$OUT_DIR/record.json"; then
+    record_key_ok=false
+fi
+report "the stream key never appears in the recording run output" "$record_key_ok"
+
 echo "== Scenario: bad stream key is rejected (exit 75)"
 badkey_ok=false
 if "$CLI" stream --url "$RTMP_URL" --key "$BAD_KEY" "${GENERATOR_FLAGS[@]}" \

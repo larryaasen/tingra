@@ -114,6 +114,8 @@ The MCP surface is a shipping feature for end users, so it carries product oblig
 
 Defined in CLI.md ("`tingra-cli serve` and `tingra-cli mcp`"): the initial host and first party tool set (`devices_list`, `probe`, `stream_start`, `stream_status`, `stream_stop`) mirrors the CLI flags, and plug-ins contribute tools to the host's tool registry, aggregated and namespaced by the MCP/Control service — the agent facing API and the plug-in API stay the same shape.
 
+**Recording is intentionally not in the tool surface yet** (decided 2026-07-05, roadmap step 5). `--record` ships on the CLI only; `stream_start` gains no `record` option and there is no `record_start`/`record_stop`. Keeping the agent contract minimal until an agent needs recording avoids committing to the daemon writing files under its own identity before that path is thought through. When it lands it is additive — a `record` field on `stream_start`'s input schema, reusing the same `RecordingService` the CLI drives — and `stream_stop` already promises to "finalize any recording," so the existing table does not change. See CLI.md for the full rationale.
+
 ## Open questions
 
 - Whether one-shot CLI subcommands (`stream`, `devices`, `probe`) should route through a running daemon when present, or stay fully in-process as v1 assumes (current answer: in-process — simple, reliable, no daemon dependency for scripting; revisit when the app arrives and daemon-first becomes the norm).

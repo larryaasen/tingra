@@ -16,7 +16,7 @@ Vocabulary follows GLOSSARY.md: inputs and generators, compression, output, dest
 
 ## Non-goals (v1)
 
-Display/window inputs, shot composition, transitions, and multiple destinations are app roadmap items; the CLI adds them later once the engine exposes them. v1 is: one camera, one microphone, one destination. Local recording (`--record`) is deferred until after streaming is solid.
+Display/window inputs, shot composition, transitions, and multiple destinations are app roadmap items; the CLI adds them later once the engine exposes them. v1 is: one camera, one microphone, one destination. Local recording (`--record`) was deferred until after streaming was solid and landed at roadmap step 5.
 
 ## Repository and package layout
 
@@ -133,7 +133,7 @@ tingra-cli stream --url <destination> [--key <stream key>] [options]
 
 | Option | Description |
 | :----- | :---------- |
-| `--record <path>` | Simultaneously record the program to `.mp4`/`.mov` via AVAssetWriter, independent of streaming output. Post v1: arrives at roadmap step 5, after streaming ships (the flag is not in the option surface until then). |
+| `--record <path>` | Simultaneously record the program to `.mp4`/`.mov` via AVAssetWriter, independent of streaming output. The extension selects the container (`.mov`/`.mp4`); any other extension is a usage error (exit 64). Recording runs alongside streaming — it keeps writing across a reconnect gap and is finalized cleanly on any stop (Ctrl-C, `--duration`, or a lost connection). A recording that cannot be created fails the command (`recordingFailed`, exit 70) before streaming; a write failure once recording (a full disk) is reported as a `recordingFailed` error event and stops the recording, but does not fail the stream (the exit code follows the stream's fate). |
 | `--duration <sec>` | Stop automatically after N seconds. |
 | `--dry-run` | Resolve inputs, build the pipeline, print the resolved configuration, and exit without connecting. See "Dry run" below. |
 
@@ -148,8 +148,10 @@ The `--json` status events are bus events on the standard NDJSON stream (EVENTS.
 | `stream.reconnecting` | A reconnect attempt is starting. | `attempt`, `maxAttempts`, `delay`, `reason`. |
 | `stream.reconnected` | A reconnect attempt succeeded. | `attempt`. |
 | `stream.stopped` | The stream ended, however it ended. | `reason`: `stopRequested` (Ctrl-C/SIGTERM), `durationElapsed`, or `connectionLost`. |
+| `recording.started` | `--record` opened the file and began writing (before `stream.started`). | `path`, `container` (`mov`/`mp4`). |
+| `recording.stopped` | The recording was finalized on teardown. | `path`. |
 
-Failures ride the same stream as `error` events carrying `identifier` + `message` (see "Error identifiers"). The stream key never appears in any event; the bus redacts key-suffixed params as a backstop, but the key is never made a param in the first place.
+Failures ride the same stream as `error` events carrying `identifier` + `message` (see "Error identifiers"). A recording write failure surfaces as an `error` event with `identifier` `recordingFailed`; because recording is independent of streaming, that error stops the recording but not the stream. The stream key never appears in any event (the recording path is not a secret and does appear); the bus redacts key-suffixed params as a backstop, but the key is never made a param in the first place.
 
 #### Dry run
 
@@ -191,6 +193,7 @@ Every `error` event the CLI emits carries a stable, machine-readable `identifier
 | `inputAmbiguous` | 69 | A name-substring selector matches more than one input of that kind; the message lists the matches. |
 | `authorizationDenied` | 69 | Camera or microphone TCC authorization was denied; the message names the permission and the System Settings fix. |
 | `pipelineError` | 70 | An internal pipeline error: a stage failed in a way that is not the caller's input or the network. |
+| `recordingFailed` | 70 | The local recording (`--record`) could not be written — an unwritable path, a rejected format, or a write/finalize error (a full disk). At setup this fails the command; once recording, it is reported but does not change the stream's exit code. |
 | `connectionFailed` | 75 | The initial connection or handshake to the destination was rejected or unreachable. |
 | `connectionLost` | 75 | The connection dropped and was not recovered within the configured reconnect attempts. |
 
@@ -223,6 +226,8 @@ The MCP tool surface is plug-in defined: plug-ins contribute tools to the host's
 | `stream_stop` | Ctrl-C | Clean stop: flush compression, close connection, finalize any recording. |
 
 One active stream session in v1. Stream keys pass through tool input into the host's secure storage and are never logged.
+
+**Recording is not yet in the MCP surface** (decided 2026-07-05, roadmap step 5). `--record` ships on the CLI's `stream` command only; the MCP tools gain no `record_start`/`record_stop`, and `stream_start` gains no `record` option in this step. The agent-facing contract stays as small as it can be until an agent actually needs recording, at which point recording attaches as an optional `record` field on `stream_start`'s input schema (reusing the same `RecordingService` the CLI drives) — a purely additive change. `stream_stop` already documents "finalize any recording," so the tool table is forward-compatible; the daemon writing files under its own identity is the extra consideration that addition carries.
 
 ## Usage examples
 

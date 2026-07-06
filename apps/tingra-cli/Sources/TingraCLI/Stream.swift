@@ -15,6 +15,7 @@ import TingraGeneratorPlugIns
 import TingraHost
 import TingraOutputPlugIns
 import TingraPlugInKit
+import TingraRecordingPlugIns
 
 /// `tingra-cli stream` — start capture and stream until stopped (CLI.md):
 /// Ctrl-C / SIGTERM stops cleanly (flushing compression and closing the
@@ -96,6 +97,9 @@ struct Stream: AsyncParsableCommand {
 
     // MARK: Recording and control
 
+    @Option(help: "Also record the program to a local .mp4/.mov file, independent of streaming.")
+    var record: String?
+
     @Option(help: "Stop automatically after this many seconds.")
     var duration: Int?
 
@@ -170,6 +174,14 @@ struct Stream: AsyncParsableCommand {
         guard reconnect >= 0 else { throw ValidationError("--reconnect cannot be negative.") }
         guard reconnectDelay >= 0 else { throw ValidationError("--reconnect-delay cannot be negative.") }
         guard statsInterval >= 0 else { throw ValidationError("--stats-interval cannot be negative.") }
+        if let record {
+            let ext = URL(filePath: record).pathExtension.lowercased()
+            guard ["mov", "mp4"].contains(ext) else {
+                throw ValidationError(
+                    "--record path must end in .mov or .mp4: '\(record)'."
+                )
+            }
+        }
         if let duration {
             guard duration > 0 else { throw ValidationError("--duration must be positive.") }
         }
@@ -204,6 +216,7 @@ struct Stream: AsyncParsableCommand {
         request.audioSamplerate = audioSamplerate
         request.reconnect = reconnect
         request.reconnectDelay = reconnectDelay
+        request.record = record
         request.duration = duration
         request.statsInterval = statsInterval
         request.logFile = logFile
@@ -256,7 +269,7 @@ struct Stream: AsyncParsableCommand {
             tools: ToolRegistry()
         )
         await PlugInLoader().activate(
-            [AVFoundationCapturePlugIn(), GeneratorPlugIn(), HaishinKitOutputPlugIn()],
+            [AVFoundationCapturePlugIn(), GeneratorPlugIn(), HaishinKitOutputPlugIn(), RecordingPlugIn()],
             in: context
         )
 
@@ -353,6 +366,14 @@ struct Stream: AsyncParsableCommand {
         }
 
         let configuration = streamConfiguration
+        // Recording is an independent second sink: resolved by the --record
+        // path's file extension against the same output registry, created
+        // from the same program compression settings (CLI.md, "Recording and
+        // control").
+        let (recordingService, recordingFile) = try await makeRecording(
+            outputs: outputs,
+            configuration: configuration
+        )
         let session = StreamSession(
             videoInput: videoInput,
             audioInput: audioInput,
@@ -366,7 +387,9 @@ struct Stream: AsyncParsableCommand {
                 durationSeconds: duration
             ),
             clock: clock,
-            eventBus: eventBus
+            eventBus: eventBus,
+            recording: recordingService,
+            recordingFile: recordingFile
         )
 
         // Ctrl-C / SIGTERM is a clean stop: flush compression, close the
@@ -379,7 +402,33 @@ struct Stream: AsyncParsableCommand {
         return try await session.run()
     }
 
-    /// The session's stream configuration from the validated options.
+    /// Resolves the `--record` target to a recording sink, or `(nil, nil)`
+    /// when recording was not requested.
+    ///
+    /// Resolves the file extension against the output registry — the same
+    /// registry the streaming provider came from — so recording is a plug-in
+    /// like everything else. Throws ``RecordingServiceError`` if no recording
+    /// output serves the extension (mapped to `recordingFailed`).
+    private func makeRecording(
+        outputs: OutputRegistry,
+        configuration: StreamConfiguration
+    ) async throws -> (service: (any RecordingService)?, file: RecordingFile?) {
+        guard let record else { return (nil, nil) }
+        let url = URL(filePath: record)
+        let ext = url.pathExtension.lowercased()
+        guard let recordingProvider = await outputs.recordingProvider(forFileExtension: ext) else {
+            throw RecordingServiceError.unwritableDestination(
+                "No recording output serves '.\(ext)' files; record to a .mov or .mp4 path."
+            )
+        }
+        let container: RecordingFile.Container = ext == "mp4" ? .mp4 : .mov
+        let file = RecordingFile(url: url, container: container)
+        return (recordingProvider.makeRecordingService(configuration: configuration), file)
+    }
+
+    /// The session's stream configuration from the validated options. The
+    /// track topology (`--no-video`/`--no-audio`) is carried so the
+    /// recording sink opens only the tracks the program has.
     private var streamConfiguration: StreamConfiguration {
         StreamConfiguration(
             width: resolution.width,
@@ -390,7 +439,9 @@ struct Stream: AsyncParsableCommand {
             keyframeInterval: keyframeInterval,
             audioCodec: .aac,
             audioBitsPerSecond: audioBitrate.bitsPerSecond,
-            audioSampleRate: audioSamplerate
+            audioSampleRate: audioSamplerate,
+            includesVideo: !noVideo,
+            includesAudio: !noAudio
         )
     }
 
@@ -405,6 +456,8 @@ struct Stream: AsyncParsableCommand {
             return captureError.identifier
         case let serviceError as StreamingServiceError:
             return serviceError.identifier
+        case let recordingError as RecordingServiceError:
+            return recordingError.identifier
         case let keyError as StreamKeyError:
             return keyError.identifier
         default:
@@ -421,6 +474,8 @@ struct Stream: AsyncParsableCommand {
             return ("input.resolve", .capture)
         case is CaptureInputError:
             return ("input.start", .capture)
+        case is RecordingServiceError:
+            return ("recording.start", .output)
         default:
             return ("stream.start", .output)
         }
@@ -435,6 +490,7 @@ extension ErrorIdentifier {
         case .invalidArgument: return 64
         case .inputNotFound, .inputAmbiguous, .authorizationDenied: return 69
         case .connectionFailed, .connectionLost: return 75
+        case .recordingFailed, .pipelineError: return 70
         default: return 70
         }
     }

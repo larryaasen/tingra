@@ -157,6 +157,7 @@ struct StreamPlanOutputTests {
         request.audioGenerator = .tone
         request.keySource = .environment
         request.duration = 30
+        request.record = "/tmp/backup.mp4"
         request.logFile = "/tmp/tingra.log"
         return try await StreamPlan.resolve(
             request: request,
@@ -176,6 +177,7 @@ struct StreamPlanOutputTests {
             "reconnectDelay": .int(2),
             "statsInterval": .int(5),
             "duration": .int(30),
+            "record": .string("/tmp/backup.mp4"),
             "logFile": .string("/tmp/tingra.log"),
             "videoInput": .string("bars"),
             "videoInputName": .string("SMPTE Bars"),
@@ -229,6 +231,7 @@ struct StreamPlanOutputTests {
         #expect(text.contains("SMPTE Bars"))
         #expect(text.contains("440 Hz Tone"))
         #expect(text.contains("30s"))
+        #expect(text.contains("/tmp/backup.mp4"))
         #expect(!text.contains("live_"))
     }
 }

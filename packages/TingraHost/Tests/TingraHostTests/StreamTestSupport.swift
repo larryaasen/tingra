@@ -315,6 +315,92 @@ final class MockStreamingService: StreamingService, Sendable {
     var stops: Int { state.withLock { $0.stops } }
 }
 
+/// A recording service that captures every call and lets tests inject a
+/// setup failure or a mid-recording write failure — the mock behind the
+/// `RecordingService` seam.
+final class MockRecordingService: RecordingService, Sendable {
+    /// The recorded protected state.
+    private struct State: Sendable {
+        /// The file recording started to, if any.
+        var startedFile: RecordingFile?
+
+        /// The session-timeline PTS of every video frame sent.
+        var videoTimes: [CMTime] = []
+
+        /// The session-timeline PTS of every audio buffer sent.
+        var audioTimes: [CMTime] = []
+
+        /// How many times ``stop()`` was called.
+        var stops = 0
+
+        /// An error ``start(to:)`` throws, if set (a setup failure).
+        var startError: RecordingServiceError?
+    }
+
+    /// The mock's state.
+    private let state = Mutex(State())
+
+    /// The events stream handed to the session.
+    private let eventStream: AsyncStream<RecordingServiceEvent>
+
+    /// Feeds ``eventStream``; tests emit failures through it.
+    private let eventContinuation: AsyncStream<RecordingServiceEvent>.Continuation
+
+    /// Creates a mock, optionally failing at start.
+    init(startError: RecordingServiceError? = nil) {
+        (self.eventStream, self.eventContinuation) = AsyncStream.makeStream(of: RecordingServiceEvent.self)
+        state.withLock { $0.startError = startError }
+    }
+
+    /// The service's events, fed by ``reportFailure(reason:)``.
+    var events: AsyncStream<RecordingServiceEvent> { eventStream }
+
+    /// Records the file, throwing the queued setup error if any.
+    func start(to file: RecordingFile) async throws {
+        let error = state.withLock { state -> RecordingServiceError? in
+            if let error = state.startError { return error }
+            state.startedFile = file
+            return nil
+        }
+        if let error {
+            throw error
+        }
+    }
+
+    /// Records the frame's PTS.
+    func send(video frame: CapturedFrame) async {
+        state.withLock { $0.videoTimes.append(frame.presentationTime) }
+    }
+
+    /// Records the buffer's PTS.
+    func send(audio buffer: CapturedAudio) async {
+        state.withLock { $0.audioTimes.append(buffer.presentationTime) }
+    }
+
+    /// Records the stop and finishes the events stream.
+    func stop() async {
+        state.withLock { $0.stops += 1 }
+        eventContinuation.finish()
+    }
+
+    /// Emits a recording failure to the session.
+    func reportFailure(reason: String) {
+        eventContinuation.yield(.failed(reason: reason))
+    }
+
+    /// The file recording started to, if it started.
+    var startedFile: RecordingFile? { state.withLock { $0.startedFile } }
+
+    /// The PTS of every video frame sent.
+    var videoTimes: [CMTime] { state.withLock { $0.videoTimes } }
+
+    /// The PTS of every audio buffer sent.
+    var audioTimes: [CMTime] { state.withLock { $0.audioTimes } }
+
+    /// How many times the service was stopped.
+    var stops: Int { state.withLock { $0.stops } }
+}
+
 /// Polls a condition until it holds or the deadline passes — the bounded
 /// wait tests use where task scheduling order is not deterministic.
 /// Returns whether the condition held.

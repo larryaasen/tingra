@@ -45,6 +45,7 @@ jobs:
           - packages/TingraCapturePlugIns
           - packages/TingraGeneratorPlugIns
           - packages/TingraOutputPlugIns
+          - packages/TingraRecordingPlugIns
           - packages/TingraMCP
           - apps/tingra-cli
     steps:
