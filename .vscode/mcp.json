@@ -1,0 +1,11 @@
+{
+    "servers": {
+        "tingra": {
+            "type": "stdio",
+            "command": "${workspaceFolder}/apps/tingra-cli/.build/debug/tingra-cli",
+            "args": [
+                "mcp"
+            ]
+        }
+    }
+}

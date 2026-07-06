@@ -46,6 +46,8 @@ Until the Metal compositor arrives (roadmap step 6), v1 streams one video input 
 
 This is the CLOCK.md model applied to a single input rather than a departure from it: the design-principle-2 guarantees (output pacing independent of any input; constant-rate monotonic PTS into compression; `--fps` meaning what it says regardless of a camera's native cadence) hold from v1 on, and when the compositor lands it replaces the pacer's "take the latest frame" with "render the layer tree" — the tick, the slot semantics, and the timestamps do not change.
 
+**The compositor landed at roadmap step 6** (`TingraComposition`), and this is exactly what happened: it holds a latest-wins slot per input and, on each tick, renders the current shot's layer tree over every slot's latest frame, stamped with the tick time. One refinement over the single-input pacer, decided 2026-07-06: the pacer sent nothing before the first frame arrived (a one-layer composition has nothing to show), but the compositor **renders from the first tick**, drawing the shot's background before any input delivers — a broadcast program is always a live canvas at the tick rate. This is the layer-tree generalization of the pacer's rule, not a departure: design principle 2 still holds, and the constant-rate monotonic PTS sequence is unaffected.
+
 ### Scheduler implementation
 
 GCD is banned project wide, so the scheduler is one of:
@@ -101,5 +103,5 @@ protocol EngineClock: Sendable {
 ## Open questions
 
 - Measured jitter of the `Task.sleep(until:)` loop vs. a dedicated thread on Apple Silicon under load — decide by benchmark during roadmap step 2–3.
-- Whether preview sampling (display rate) needs its own decoupled path from day one or arrives with the app UI in phase 2–3.
+- ~~Whether preview sampling (display rate) needs its own decoupled path from day one or arrives with the app UI in phase 2–3.~~ Settled at step 6: the app's `MTKView` program preview samples the latest program frame at display rate (a shared relay the compositor writes and the view's draw loop reads), decoupled from the program tick — the preview never drives output, per "What does not drive the tick" above.
 - Frame rate conversion policy for inputs faster than the program rate (currently: latest wins, extras dropped silently — revisit if judder is observed).

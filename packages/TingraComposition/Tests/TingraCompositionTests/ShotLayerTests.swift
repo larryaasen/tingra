@@ -1,0 +1,91 @@
+//
+//  ShotLayerTests.swift
+//  TingraComposition
+//
+//  Created by Larry Aasen on 2026-07-06.
+//  Copyright © 2026 Larry Aasen.
+//  SPDX-License-Identifier: MIT
+//
+
+import CoreGraphics
+import Testing
+import TingraPlugInKit
+
+@testable import TingraComposition
+
+@Suite("Layer")
+struct LayerTests {
+    @Test("a layer defaults to filling the whole program at full opacity")
+    func layerDefaults() {
+        let layer = Layer(input: InputID(rawValue: "camera"))
+        #expect(layer.frame == CGRect(x: 0, y: 0, width: 1, height: 1))
+        #expect(layer.opacity == 1)
+    }
+
+    @Test("layers are equal only when input, frame, and opacity all match")
+    func layerEquality() {
+        let base = Layer(
+            input: InputID(rawValue: "a"), frame: CGRect(x: 0, y: 0, width: 0.5, height: 0.5), opacity: 0.8)
+        let same = Layer(
+            input: InputID(rawValue: "a"), frame: CGRect(x: 0, y: 0, width: 0.5, height: 0.5), opacity: 0.8)
+        let otherInput = Layer(
+            input: InputID(rawValue: "b"),
+            frame: CGRect(x: 0, y: 0, width: 0.5, height: 0.5),
+            opacity: 0.8
+        )
+        let otherOpacity = Layer(
+            input: InputID(rawValue: "a"),
+            frame: CGRect(x: 0, y: 0, width: 0.5, height: 0.5),
+            opacity: 1
+        )
+        #expect(base == same)
+        #expect(base != otherInput)
+        #expect(base != otherOpacity)
+    }
+}
+
+@Suite("Shot")
+struct ShotTests {
+    @Test("a shot defaults to no layers over opaque black")
+    func shotDefaults() {
+        let shot = Shot()
+        #expect(shot.layers.isEmpty)
+        #expect(shot.background == .black)
+    }
+
+    @Test("shots are equal only when their layers and background match")
+    func shotEquality() {
+        let layer = Layer(input: InputID(rawValue: "a"))
+        let base = Shot(layers: [layer], background: .black)
+        let same = Shot(layers: [layer], background: .black)
+        let otherLayers = Shot(layers: [], background: .black)
+        let otherBackground = Shot(layers: [layer], background: BackgroundColor(red: 1, green: 1, blue: 1))
+        #expect(base == same)
+        #expect(base != otherLayers)
+        #expect(base != otherBackground)
+    }
+}
+
+@Suite("ProgramFormat")
+struct ProgramFormatTests {
+    @Test("the program format defaults to 1920x1080 at 30 fps")
+    func formatDefaults() {
+        let format = ProgramFormat()
+        #expect(format.width == 1920)
+        #expect(format.height == 1080)
+        #expect(format.frameRate == 30)
+    }
+
+    @Test("program formats are equal only when every dimension matches")
+    func formatEquality() {
+        #expect(
+            ProgramFormat(width: 1280, height: 720, frameRate: 30)
+                == ProgramFormat(width: 1280, height: 720, frameRate: 30))
+        #expect(
+            ProgramFormat(width: 1280, height: 720, frameRate: 30)
+                != ProgramFormat(width: 1920, height: 1080, frameRate: 30))
+        #expect(
+            ProgramFormat(width: 1280, height: 720, frameRate: 30)
+                != ProgramFormat(width: 1280, height: 720, frameRate: 60))
+    }
+}

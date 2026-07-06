@@ -31,7 +31,7 @@ The plug-in protocol package: the stability contract first- and third-party plug
 
 - `Input` — the protocol for anything producing video or audio frames: cameras, displays, microphones, media, generators; carries the stable identifier, user-facing name, and kind that discovery lists, with `frames()` and `audio()` streams (each defaulting to an already-finished stream for the media the input does not produce).
 - `InputID` — the stable identifier for an input, as surfaced by input discovery.
-- `InputKind` — the kind of input (camera, microphone, generator), driving discovery grouping and selector resolution.
+- `InputKind` — the kind of input (camera, microphone, display, generator), driving discovery grouping and selector resolution.
 - `InputRegistering` — the registration seam where input plug-ins attach (register on connect, unregister on disconnect); the host's `InputRegistry` conforms.
 - `CapturedFrame` — one GPU-resident video frame plus its presentation time on the master clock; `@unchecked Sendable` under the frame ownership rule (ARCHITECTURE.md, "Frame ownership across the `Input` seam").
 - `CapturedAudio` — one captured audio buffer whose PTS is the actual host time of capture; the audio half of the frame ownership rule.
@@ -80,9 +80,10 @@ The host/core package: plug-in loading, registries, frame transport, session/sta
 
 ### `packages/TingraCapturePlugIns`
 
-The first party capture plug-ins: camera and microphone discovery and capture, and the device connection/disconnection events on the bus. AVFoundation and Core Audio are imported only inside this package, behind the `Input` seam.
+The first party capture plug-ins: camera, microphone, and display discovery and capture, and the device connection/disconnection events on the bus. AVFoundation, Core Audio, and ScreenCaptureKit are imported only inside this package, behind the `Input` seam.
 
 - `AVFoundationCapturePlugIn` — contributes the Mac's cameras and microphones as inputs with stable identifiers (`AVCaptureDevice.uniqueID`), backed by `AVCaptureSession` (camera; IOSurface 32BGRA, BT.709 tagged at the seam) and an `AVAudioEngine` input tap (microphone; PTS from `AVAudioTime` host time), and keeps the registry current from the framework's device notifications, reporting each change as a `device.connected`/`device.disconnected` event — never polling.
+- `ScreenCaptureKitCapturePlugIn` — contributes the Mac's displays as inputs (`InputKind.display`), discovered through CoreGraphics (no Screen Recording prompt; stable `CGDisplayCreateUUIDFromDisplayID` identifiers that survive reconnection) and captured via an `SCStream` (IOSurface 32BGRA, BT.709 tagged at the seam, host-time PTS, idle frames skipped). A separate plug-in from the AVFoundation one — a different framework and a different TCC permission (Screen Recording, not Camera).
 - `SystemDefaultInputs` — the system default camera and microphone as input identifiers, for resolving the `stream` defaults without importing AVFoundation elsewhere.
 
 ### `packages/TingraGeneratorPlugIns`
@@ -95,6 +96,18 @@ The first party generator plug-ins — inputs that synthesize their content from
 - `PlugeGenerator` — PLUGE black-level calibration pattern (`--video-generator pluge`): reference-black background with below-black, near-black, and shadow-detail patches for monitor setup.
 - `PlugeStrictGenerator` — stricter broadcast-style PLUGE pattern (`--video-generator pluge-strict`): a sparse reference-black field with the classic below-black / reference-black / above-black trio.
 - `ToneGenerator` — the 440 Hz test tone (`--audio-generator tone`): mono float32 buffers with phase continuity, one per clock tick.
+
+### `packages/TingraComposition`
+
+The composition engine library (roadmap step 6): the tick-paced Metal/Core Image compositor and the layer tree it renders. A host-side library — not a plug-in, and not folded into the minimal `TingraHost` — depending only on the protocol package and the event bus, so it stays testable with a synthetic clock and a mock renderer (see [ARCHITECTURE.md](docs/ARCHITECTURE.md), "Composition").
+
+- `Compositor` — the tick-paced engine: holds a latest-wins slot per input and, on each program tick, renders the current shot's layer tree over every slot's latest frame, yielding one program frame stamped with the tick's master clock time. The step-6 realization of the model `ProgramPacer` stood in for — same tick, slots, and timestamps, "take the latest frame" replaced by "render the layer tree"; renders a live background canvas from the first tick.
+- `Shot` — a short-term composition: an ordered layer tree (bottom to top) over a `BackgroundColor`.
+- `Layer` — one positioned element: an input referenced by `InputID`, placed in a normalized top-left-origin destination `frame` with an `opacity`.
+- `BackgroundColor` — a straight RGBA background the layers composite over (defaults to opaque black).
+- `ProgramFormat` — the program's output geometry and rate (width, height, frame rate) every frame is rendered at.
+- `ShotRenderer` — the internal seam between the compositor's tick-paced control flow and the pixel work; task-confined, so it needs no `Sendable`, and swappable for a mock in tests.
+- `CoreImageShotRenderer` — the default renderer: composites the layer tree with a Metal-backed `CIContext`, GPU-resident, into an IOSurface-backed 32BGRA program buffer tagged BT.709 (a software `CIContext` makes the compositing math unit-testable with no GPU).
 
 ### `packages/TingraOutputPlugIns`
 
@@ -134,6 +147,10 @@ The headless front end over the engine (see [CLI.md](docs/CLI.md)): one invocati
 ### `apps/ingest-simulator`
 
 The local RTMP/SRT ingest server used for integration testing (see [SIMULATOR.md](docs/SIMULATOR.md)): a pinned MediaMTX binary wrapped in `sim.sh` (`start | stop | status | verify`) with key-validating paths (`mediamtx.yml`, `keys.env`). Test-only — never linked into the product. The streaming integration scenarios run against it via `scripts/integration-test.sh`.
+
+### `apps/tingra`
+
+The assembled SwiftUI/AppKit app (phase 3), scaffolded at roadmap step 6: it takes shape around the proven engine — a camera input and a display input composited by `TingraComposition` and shown live in an on-screen `MTKView`. An executable, so it exposes no public API beyond its `@main` entry; its internal surface is `EngineModel` (the `@Observable @MainActor` model that boots the host, activates the capture and generator plug-ins through the same `PlugInContext` the CLI uses, and drives the compositor), `ContentView` (camera/display pickers over the preview), `ProgramPreviewView` (the Core Image `MTKView` that samples the program at display rate), and `ProgramLayout` (the pure, unit-tested display-plus-camera picture-in-picture arrangement). User-facing strings are localized (`Localizable.xcstrings`, en/de/es). Bundling into a signed, notarized `.app` is deferred packaging, tracked alongside the CLI's distribution recipe.
 
 ## License
 

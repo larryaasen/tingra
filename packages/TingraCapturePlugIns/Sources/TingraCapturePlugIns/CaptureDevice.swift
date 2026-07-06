@@ -31,7 +31,8 @@ struct CaptureDevice: Sendable, Equatable {
 /// stable error identifiers. Device disconnection after a successful start
 /// is a normal event, never an error (CLAUDE.md, Data Flow Rules).
 public enum CaptureInputError: Error, Equatable {
-    /// TCC denied access to the device's kind (camera or microphone).
+    /// TCC denied access to the device's kind (camera, microphone, or
+    /// display — Screen Recording).
     case authorizationDenied(InputKind, InputID)
 
     /// The device has disconnected since discovery, so capture cannot
@@ -63,7 +64,15 @@ extension CaptureInputError: CustomStringConvertible {
     public var description: String {
         switch self {
         case .authorizationDenied(let kind, let id):
-            let permission = kind == .camera ? "Camera" : "Microphone"
+            let permission: String
+            switch kind {
+            case .camera: permission = "Camera"
+            case .microphone: permission = "Microphone"
+            case .display: permission = "Screen Recording"
+            // A generator has no device and is never denied; named for
+            // exhaustiveness only.
+            case .generator: permission = "Capture"
+            }
             return """
                 \(permission) access for the input '\(id.rawValue)' was denied. Grant it in \
                 System Settings > Privacy & Security > \(permission), or use a generator \

@@ -14,15 +14,20 @@ apps/                           # Runnable products
   tingra-cli/                   # Headless front end over the engine; ships first, v1 (see CLI.md)
   ingest-simulator/             # Local RTMP/SRT ingest server for tests (see SIMULATOR.md):
                                 #   pinned MediaMTX + sim.sh; test-only, never linked into the product
-  tingra/                       # Phase 3 — the assembled SwiftUI/AppKit app; not yet scaffolded
+  tingra/                       # Phase 3 — the assembled SwiftUI/AppKit app; scaffolded at
+                                #   roadmap step 6 (camera + display composited to an MTKView)
 packages/                       # Engine libraries
   TingraHost/                   # Host/core: plug-in loader/lifecycle, registries, frame transport,
                                 #   session/state, event bus sinks, logging, secure storage, authorization
   TingraPlugInKit/              # Plug-in protocol package: shared protocols (Input, StreamingService,
                                 #   PlugIn, ...), importable by third parties without pulling in the engine
   TingraEventBus/               # The event bus: the structured event spine (see EVENTS.md)
-  TingraCapturePlugIns/         # First-party capture plug-ins: camera/microphone discovery and
-                                #   capture, device connect/disconnect events
+  TingraCapturePlugIns/         # First-party capture plug-ins: camera/microphone (AVFoundation)
+                                #   and display (ScreenCaptureKit) discovery and capture, device
+                                #   connect/disconnect events
+  TingraComposition/            # Composition engine library (roadmap step 6): the tick-paced
+                                #   Metal/Core Image compositor, layer tree (shots/layers), program
+                                #   format; a host-side library, not a plug-in, not in TingraHost
   TingraGeneratorPlugIns/       # First-party generator plug-ins (bars, tone): the permanent CI
                                 #   test surface; further feature plug-in packages (effects,
                                 #   recording) land alongside
@@ -60,7 +65,7 @@ The package names are **finalized** (reviewed 2026-07-03; also recorded in "Repo
 - Prioritize readability and maintainability over clever code.
 - Never use periodic polling — the engine and its session state are event-driven (device connect/disconnect, stream status, etc.); model changes as events, not poll loops.
 - Don't ever use hacks to solve a problem.
-- **No UI code yet.** Current work is the engine (`packages/`) and `tingra-cli`; the SwiftUI/AppKit app is phase 3. Don't write UI code until that phase begins — the UI-facing rules below (SwiftUI, Localization) are forward-looking.
+- **UI work has begun (phase 3, from roadmap step 6).** `apps/tingra` is scaffolded — a SwiftUI app with an `MTKView` program preview — so the UI-facing rules below (SwiftUI, Localization) are now in force for that target. The engine (`packages/`) and `tingra-cli` remain the bulk of the work; keep UI confined to `apps/tingra` and keep engine packages UI-free (they must stay importable by the CLI and the daemon). Build the app with `swift build` in `apps/tingra` while it is an SPM executable; switch to `xcodebuild` once an Xcode app target/bundle exists.
 - **Prefer native Apple frameworks; add third-party dependencies only behind a seam and with justification.** The only sanctioned third-party dependencies are **HaishinKit** (RTMP/SRT output, isolated behind `StreamingService` in `TingraOutputPlugIns` — the only package that imports it; its **Logboard** logging façade rides along there solely to reroute HaishinKit's internal console logging into OSLog, keeping stdout clean for the `--json` contract), **MediaMTX** (the `ingest-simulator`, a test-only binary, not linked into the product), and **swift-argument-parser** (Apple-authored, effectively first party; command/option parsing in `tingra-cli` per [CLI.md](docs/CLI.md) — confined to the CLI target, no seam required). Don't introduce a new third-party dependency without a clear reason and a protocol seam that keeps the rest of the code from importing it directly. **The MCP server takes no third-party dependency:** the JSON-RPC/MCP layer is hand-rolled in `TingraMCP` behind the MCP/Control seam rather than using the official `modelcontextprotocol/swift-sdk`, whose transitive SwiftNIO/swift-log/`eventsource` stack is server-side weight for a Mac-only app and would reintroduce the swift-log dependency EVENTS.md rejected (decided 2026-07-05; rationale in [MCP.md](docs/MCP.md), "Implementation: a hand-rolled JSON-RPC layer").
 
 ## Code Quality
@@ -164,6 +169,10 @@ packages/  TingraHost             →  TingraPlugInKit + TingraEventBus
 packages/  TingraCapturePlugIns   →  TingraPlugInKit + TingraEventBus (registers through the
                                      `InputRegistering` seam, so no TingraHost dependency)
 packages/  TingraGeneratorPlugIns →  TingraPlugInKit + TingraEventBus (same seam-only design)
+packages/  TingraComposition      →  TingraPlugInKit + TingraEventBus (the compositor: a host-side
+                                     engine library, not a plug-in and not folded into TingraHost;
+                                     protocol-package-only, so testable with a synthetic clock and a
+                                     mock ShotRenderer)
 packages/  TingraOutputPlugIns    →  TingraPlugInKit + TingraEventBus (same seam-only design;
                                      + HaishinKit and its Logboard façade, imported nowhere else)
 packages/  TingraRecordingPlugIns →  TingraPlugInKit + TingraEventBus (same seam-only design;
@@ -176,7 +185,9 @@ packages/  TingraMCP              →  TingraHost + TingraPlugInKit + TingraEven
 apps/      tingra-cli             →  TingraHost + TingraCapturePlugIns + TingraGeneratorPlugIns
                                      + TingraOutputPlugIns + TingraRecordingPlugIns + TingraMCP
                                      (+ swift-argument-parser)
-apps/      tingra (phase 3)       →  TingraHost + feature plug-ins + UI packages
+apps/      tingra (phase 3)       →  TingraHost + TingraComposition + TingraCapturePlugIns
+                                     + TingraGeneratorPlugIns + TingraPlugInKit + TingraEventBus
+                                     (scaffolded at step 6; more feature plug-ins + UI packages later)
 apps/      ingest-simulator       →  none of the above (wraps MediaMTX; see SIMULATOR.md)
 ```
 
@@ -184,7 +195,7 @@ apps/      ingest-simulator       →  none of the above (wraps MediaMTX; see SI
 The engine is organized as services, each exposing its capabilities through plug-in registries (see [ARCHITECTURE.md](docs/ARCHITECTURE.md) "Engine services"):
 
 1. **Capture** – inputs, generators, input discovery, device connection/disconnection
-2. **Composition** – presets, shots, layer tree, transitions, Metal renderer, effects, program/preview buses
+2. **Composition** – presets, shots, layer tree, transitions, Metal renderer, effects, program/preview buses (in `TingraComposition`: the tick-paced compositor, shots/layers, and the Core Image `ShotRenderer` landed at step 6; transitions, effects, and presets follow at step 7)
 3. **Audio** – mixer, channel strips, routing, audio effects
 4. **Compression** – VideoToolbox compression sessions, rate control, local recording
 5. **Output** – the `StreamingService` seam, with HaishinKit-backed RTMP/SRT implementations

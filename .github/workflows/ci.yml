@@ -44,10 +44,12 @@ jobs:
           - packages/TingraHost
           - packages/TingraCapturePlugIns
           - packages/TingraGeneratorPlugIns
+          - packages/TingraComposition
           - packages/TingraOutputPlugIns
           - packages/TingraRecordingPlugIns
           - packages/TingraMCP
           - apps/tingra-cli
+          - apps/tingra
     steps:
       - uses: actions/checkout@v4
       - name: Build (warning-clean, including tests)

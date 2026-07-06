@@ -11,16 +11,22 @@
 /// devices` sections, the `devices --json` keys) and selector resolution
 /// (`--camera` only matches cameras).
 ///
-/// GLOSSARY.md's remaining input kinds (display, window, application, media
-/// file, network feed) join as their plug-ins land — a pre-1.0 addition
-/// permitted by the stability contract (see ARCHITECTURE.md, "Plug-in API
-/// stability and versioning").
+/// GLOSSARY.md's remaining input kinds (window, application, media file,
+/// network feed) join as their plug-ins land — a pre-1.0 addition permitted
+/// by the stability contract (see ARCHITECTURE.md, "Plug-in API stability
+/// and versioning"), as `display` did at roadmap step 6.
 public enum InputKind: String, Sendable, Codable, CaseIterable {
     /// A camera device (built-in, external, or Continuity Camera).
     case camera
 
     /// A microphone device.
     case microphone
+
+    /// A connected display, captured whole (window and application inputs
+    /// are separate kinds, arriving later). Not yet in the CLI's `devices`
+    /// listing — display inputs are an app-era surface (CLI.md, "Non-goals
+    /// (v1)").
+    case display
 
     /// A generator: an input that synthesizes its content rather than
     /// capturing it (see GLOSSARY.md). Generators are selected by their
