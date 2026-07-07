@@ -1,6 +1,6 @@
 //
 //  LogLineTests.swift
-//  tingra-cli
+//  TingraHost
 //
 //  Created by Larry Aasen on 2026-07-04.
 //  Copyright © 2026 Larry Aasen.
@@ -11,7 +11,7 @@ import Foundation
 import Testing
 import TingraEventBus
 
-@testable import TingraCLI
+@testable import TingraHost
 
 @Suite("LogLevel")
 struct LogLevelTests {
@@ -25,9 +25,9 @@ struct LogLevelTests {
         #expect(LogLevel(group: .error) == .error)
     }
 
-    @Test("every level pads to the same fixed width")
+    @Test("every level pads to the same fixed width, right-justified with leading spaces")
     func fixedWidth() {
-        #expect(LogLevel.info.padded == "INFO ")
+        #expect(LogLevel.info.padded == " INFO")
         #expect(LogLevel.debug.padded == "DEBUG")
         #expect(LogLevel.error.padded == "ERROR")
         #expect(Set([LogLevel.info, .debug, .error].map(\.padded.count)) == [5])
@@ -39,10 +39,16 @@ struct LogLineFormatterTests {
     /// Decodes an event with a fully controlled date — the bus stamps
     /// `Date()` on send, so deterministic timestamp tests go through the
     /// Codable path instead.
-    private func makeEvent(date: Date, group: String, params: String) throws -> EventBusEvent {
+    private func makeEvent(
+        date: Date,
+        group: String,
+        domain: String = "output",
+        name: String = "stream.connect.timeout",
+        params: String
+    ) throws -> EventBusEvent {
         let json = """
-            {"date": \(date.timeIntervalSince1970), "group": "\(group)", "domain": "output", \
-            "name": "stream.connect.timeout", "params": \(params), "from": "test"}
+            {"date": \(date.timeIntervalSince1970), "group": "\(group)", "domain": "\(domain)", \
+            "name": "\(name)", "params": \(params), "from": "test"}
             """
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .secondsSince1970
@@ -83,6 +89,50 @@ struct LogLineFormatterTests {
         let line = LogLineFormatter(sessionID: 1, timeZone: utc).line(for: event)
 
         #expect(line == "DEBUG 01-01-1970 00:00:00.000 GMT [0001] @ output stream.connect.timeout")
+    }
+
+    @Test("a tap event renders tap=>name - {key: value, …}, mirroring the Dart EventBusBasics style")
+    func tapLineFormat() throws {
+        let event = try makeEvent(
+            date: Date(timeIntervalSince1970: 0),
+            group: "tap",
+            domain: "composition",
+            name: "tab_vehicle",
+            params: #"{"screen": "TabManager"}"#
+        )
+        let utc = try #require(TimeZone(identifier: "UTC"))
+
+        let line = LogLineFormatter(sessionID: 1, timeZone: utc).line(for: event)
+
+        #expect(line == " INFO 01-01-1970 00:00:00.000 GMT [0001] @ tap=>tab_vehicle - {screen: TabManager}")
+    }
+
+    @Test("a tap event's params render sorted by key, comma-separated, and the domain never appears")
+    func tapLineSortedParamsOmitDomain() throws {
+        let event = try makeEvent(
+            date: Date(timeIntervalSince1970: 0),
+            group: "tap",
+            domain: "composition",
+            name: "shot.switcher",
+            params: #"{"shot": "pip", "name": "Picture in Picture"}"#
+        )
+        let utc = try #require(TimeZone(identifier: "UTC"))
+
+        let line = LogLineFormatter(sessionID: 1, timeZone: utc).line(for: event)
+
+        #expect(line.hasSuffix("tap=>shot.switcher - {name: Picture in Picture, shot: pip}"))
+        #expect(!line.contains("composition"))
+    }
+
+    @Test("a tap event without params ends at the name — no trailing dash or braces")
+    func tapLineWithoutParams() throws {
+        let event = try makeEvent(
+            date: Date(timeIntervalSince1970: 0), group: "tap", name: "shot.switcher", params: "null")
+        let utc = try #require(TimeZone(identifier: "UTC"))
+
+        let line = LogLineFormatter(sessionID: 1, timeZone: utc).line(for: event)
+
+        #expect(line == " INFO 01-01-1970 00:00:00.000 GMT [0001] @ tap=>shot.switcher")
     }
 }
 

@@ -9,6 +9,7 @@
 
 import Foundation
 import TingraEventBus
+import TingraHost
 
 /// The file sink, attached by `--log-file`: the same formatted lines as
 /// the console's human mode (one `LogLineFormatter` format for both),

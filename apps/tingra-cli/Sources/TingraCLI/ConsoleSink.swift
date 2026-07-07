@@ -9,6 +9,7 @@
 
 import Foundation
 import TingraEventBus
+import TingraHost
 
 /// The console sink, owned by `tingra-cli` (see EVENTS.md, "Sinks").
 ///

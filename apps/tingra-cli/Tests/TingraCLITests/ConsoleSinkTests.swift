@@ -11,6 +11,7 @@ import Foundation
 import Synchronization
 import Testing
 import TingraEventBus
+import TingraHost
 
 @testable import TingraCLI
 
@@ -91,7 +92,7 @@ struct ConsoleSinkTests {
             }
         )
         #expect(lines.count == 1)
-        #expect(lines[0].hasPrefix("INFO  "))
+        #expect(lines[0].hasPrefix(" INFO "))
         #expect(lines[0].contains("[0042] @ "))
         #expect(lines[0].hasSuffix("@ output stream.started bitrate=4500k fps=30"))
     }

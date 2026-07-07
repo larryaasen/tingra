@@ -186,7 +186,31 @@ final class CameraInput: Input, Sendable {
         }
         session.addOutput(output)
         session.commitConfiguration()
+
+        // `startRunning()` neither throws nor returns a status — a failure
+        // (e.g. the device already in use by another application) only
+        // shows up as `isRunning` staying false, optionally alongside a
+        // runtime error notification carrying the real reason. Capture that
+        // reason for the startup window only, so a failed start throws a
+        // genuinely diagnostic error instead of silently reporting success
+        // (CLAUDE.md: never silently succeed; provide a detailed, developer
+        // facing message).
+        let failureReason = Mutex<String?>(nil)
+        let observer = NotificationCenter.default.addObserver(
+            forName: AVCaptureSession.runtimeErrorNotification,
+            object: session,
+            queue: nil
+        ) { notification in
+            let error = notification.userInfo?[AVCaptureSessionErrorKey] as? NSError
+            failureReason.withLock { $0 = error?.localizedDescription }
+        }
+        defer { NotificationCenter.default.removeObserver(observer) }
+
         session.startRunning()
+        guard session.isRunning else {
+            let reason = failureReason.withLock { $0 } ?? "the device may already be in use by another application"
+            throw CaptureInputError.configurationRejected(id, "the session did not start running: \(reason)")
+        }
         return (session, delegate)
     }
 

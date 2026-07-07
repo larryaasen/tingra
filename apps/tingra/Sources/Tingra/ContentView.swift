@@ -8,15 +8,22 @@
 //
 
 import SwiftUI
+import TingraComposition
+import TingraEventBus
 import TingraPlugInKit
 
-/// The main window: the program preview above its input pickers.
+/// The main window: the program preview above the shot switcher and input
+/// pickers.
 ///
-/// The pickers pick one camera and one display; the compositor composites
-/// the display full-frame with the camera as a corner picture-in-picture,
-/// and the preview shows the live program. This is the step-6 shape — the
-/// production surface (presets, shots, the mixer, streaming controls) grows
-/// from here.
+/// The pickers pick one camera and one display; the switcher cuts among the
+/// shots those inputs support (picture-in-picture, display, camera), taking
+/// the chosen one to program. This is the early step-7 shape — the production
+/// surface (multiple presets, the mixer, streaming controls) grows from here.
+///
+/// Every user action here reports its own `tap` event right where it's
+/// executed — a picker's `onChange`, a button's action closure — rather than
+/// the model doing it on the view's behalf (EVENTS.md, "The `tap`
+/// convention"); `model.eventBus` is exposed for exactly this.
 struct ContentView: View {
     /// The engine model, bindable so the pickers drive its selection.
     @Bindable var model: EngineModel
@@ -38,14 +45,51 @@ struct ContentView: View {
                         .padding(8)
                 }
 
+            shotSwitcher
+
             controls
         }
         .padding()
-        .onChange(of: model.selectedCameraID) {
+        .onChange(of: model.selectedCameraID) { _, newValue in
+            let name = model.cameras.first { $0.id == newValue }?.name ?? "None"
+            model.eventBus.tap(
+                "camera.picker",
+                domain: .capture,
+                params: ["id": .string(newValue?.rawValue ?? "none"), "name": .string(name)]
+            )
             Task { await model.reconfigure() }
         }
-        .onChange(of: model.selectedDisplayID) {
+        .onChange(of: model.selectedDisplayID) { _, newValue in
+            let name = model.displays.first { $0.id == newValue }?.name ?? "None"
+            model.eventBus.tap(
+                "display.picker",
+                domain: .capture,
+                params: ["id": .string(newValue?.rawValue ?? "none"), "name": .string(name)]
+            )
             Task { await model.reconfigure() }
+        }
+    }
+
+    /// The shot switcher: one button per available shot, cutting it to program
+    /// on tap. The button for the shot currently on program is highlighted.
+    /// Hidden when no input is selected (there are no shots to switch among).
+    @ViewBuilder private var shotSwitcher: some View {
+        if !model.shots.isEmpty {
+            HStack(spacing: 8) {
+                ForEach(model.shots) { shot in
+                    let isOnProgram = shot.id == model.activeShotID
+                    Button(shot.name) {
+                        model.eventBus.tap(
+                            ProgramLayout.tapName(forShotID: shot.id),
+                            domain: .composition,
+                            params: ["shot": .string(shot.id.rawValue), "name": .string(shot.name)]
+                        )
+                        model.take(shot.id)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(isOnProgram ? .accentColor : .gray)
+                }
+            }
         }
     }
 

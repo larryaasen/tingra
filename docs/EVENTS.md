@@ -35,10 +35,14 @@ The six groups come from `EventBusBasics` unchanged; they are deliberately appli
 | `error` | Any error. | error |
 | `event` | A notable occurrence: stream started, recording finalized. | info |
 | `network` | Network requests, connections, reconnects. | debug |
-| `tap` | User tapped/clicked something (dormant until the app UI, phase 3). | info |
+| `tap` | User tapped/clicked something. | info |
 | `trace` | Engine activity tracing for debugging. | debug |
 
 The group enum is closed: sinks must handle every case, so new groups are a deliberate, rare design change.
+
+**The `tap` convention (decided 2026-07-06, once the app had its first button):** every direct user action in `apps/tingra` — a `Button`'s action closure, a `Picker`'s `onChange` — calls `eventBus.tap(_:domain:params:)` before doing anything else, recording the user's action as its own event. **No control is exempt**: close/back/cancel/OK buttons and any future alert, sheet, or toolbar dismissal get the same call as a content-producing button like the shot switcher — "just navigation" or "just dismissal" is not a reason to skip it. This call is made **in the view code itself, at the exact point the action executes** (`ContentView`, not `EngineModel`) — `EngineModel.eventBus` is deliberately not `private` so the view can reach it directly, keeping the tap a record of what the *view* did rather than something the model infers on the view's behalf. It is distinct from whatever `event`-group record the resulting action produces (e.g. the shot switcher's `composition/camera.button` tap precedes the compositor's own `composition/program.take`; the camera/display pickers' `capture/camera.picker` and `capture/display.picker` taps precede the resulting `capture/input.started`/`input.stopped`). **Tap names are per-control, not per-screen or per-app** (Larry, 2026-07-06): the shot switcher's three buttons each get their own name (`camera.button`, `display.button`, `pip.button` — see `ProgramLayout.tapName(forShotID:)`) rather than one generic `shot.switcher` name told apart only by params; a name only needs to be clear and unique on the screen it's on, not across the whole app. Two events for one action is deliberate: the tap is the input, the `event` is the effect, and keeping them separate is what makes the bus a faithful record for later macro capture/replay (GLOSSARY.md, "Macro") rather than a single blended log line.
+
+The CLI's console sink filters `tap` out by default (surfaced only under `--verbose`), since it has no UI to tap. The app's own dev console (`ConsoleEventSink`) does **not** copy that filter — it has no `--verbose` equivalent, and `tap` is exactly what a developer watching it wants to see now that there's a button to click — so its default groups are `app`/`error`/`event`/`tap`, one wider than the CLI's.
 
 ### Domains (the attribution axis — Tingra specific, open)
 
@@ -69,16 +73,24 @@ engine services & plug-ins
 
 ### The human log line format
 
-The console's human mode and the file sink share one line format:
+One line format is shared by every text sink — the CLI's console (human mode) and file sinks and the app's console sink:
 
 ```
 LEVEL MM-DD-YYYY HH:MM:SS.mmm TZ [SSSS] @ domain name key=value …
 ```
 
-— a fixed-width level (`INFO`, `DEBUG`, `ERROR`: the group's default sink level from the table above), a local-time timestamp with milliseconds and time zone, the four-digit **log session ID** in square brackets, `@`, then the event's domain, name, and sorted `key=value` params. Example:
+It is produced by a single `LogLineFormatter` that lives in the host package (`TingraHost`), not any one front end, so every app renders events identically; `LogLineFormatter` and its `LogSession` cold-start anchor moved there (from `tingra-cli`) the moment a second front end — `apps/tingra` — needed the same format.
+
+— a fixed-width, **right-justified** level (`" INFO"`, `"DEBUG"`, `"ERROR"`: the group's default sink level from the table above, leading-space padded so every level ends in the same column), a local-time timestamp with milliseconds and time zone, the four-digit **log session ID** in square brackets, `@`, then the body. For every group but `tap`, the body is the event's domain, name, and sorted `key=value` params. Example:
 
 ```
-INFO  07-04-2026 15:50:02.250 EDT [0042] @ capture device.connected id=BuiltInMicrophoneDevice kind=microphone name=MacBook Pro Microphone
+ INFO 07-04-2026 15:50:02.250 EDT [0042] @ capture device.connected id=BuiltInMicrophoneDevice kind=microphone name=MacBook Pro Microphone
+```
+
+**A `tap` event's body renders differently** (decided 2026-07-06, matching the style of Larry's Dart `EventBusBasics` tap line): `tap=>name - {key: value, key2: value2}` — the domain is dropped from view entirely (a tap's params already carry whatever attribution matters), params use a colon-space, comma-separated map literal rather than `key=value`, sorted by key like every other group. Example, for the app's shot switcher:
+
+```
+ INFO 07-06-2026 15:50:02.250 EDT [0086] @ tap=>pip.button - {name: Picture in Picture, shot: pip}
 ```
 
 The log session ID increments exactly once per cold start (persisted in Application Support; for `tingra-cli` today every launch is a cold start, and the `serve` daemon's warm starts will keep the same ID). That makes it a reliable cold-start anchor: a change from `[0042]` to `[0043]` marks a new process, and grouping lines by session ID separates the sessions interleaved in one file. It is a log anchor only — distinct from the engine **session** in GLOSSARY.md.

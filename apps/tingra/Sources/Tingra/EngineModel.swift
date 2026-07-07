@@ -55,13 +55,29 @@ final class EngineModel {
     /// The chosen display, or nil for none.
     var selectedDisplayID: InputID?
 
+    /// The shots the current selection makes available, in switcher order —
+    /// what the shot switcher lists (roadmap step 7).
+    private(set) var shots: [Shot] = []
+
+    /// The id of the shot currently on program, so the switcher can highlight
+    /// it. `nil` when there are no shots (no input selected).
+    private(set) var activeShotID: ShotID?
+
     /// The latest program frame, handed to the preview view to draw. Held
     /// in a plain relay (not observed) so the ~30 fps program does not churn
     /// SwiftUI — the `MTKView` samples it at display rate (CLOCK.md).
     @ObservationIgnored let programRelay = ProgramFrameRelay()
 
-    /// The host event bus; the OSLog sink is the app's system of record.
-    @ObservationIgnored private let eventBus = EventBus()
+    /// The host event bus. In this dev scaffold its events are printed to
+    /// stdout (the Xcode console) via ``ConsoleEventSink`` rather than routed
+    /// to OSLog, which does not surface in Xcode's debug console.
+    ///
+    /// Not `private`: every `tap` event is reported by the UI code that
+    /// executes the action (a `Button`'s action closure, a picker's
+    /// `onChange`), not by the model on the view's behalf — so `ContentView`
+    /// calls `model.eventBus.tap(...)` directly (EVENTS.md, "The `tap`
+    /// convention").
+    @ObservationIgnored let eventBus = EventBus()
 
     /// The master clock (see CLOCK.md).
     @ObservationIgnored private let clock = HostClock()
@@ -72,6 +88,11 @@ final class EngineModel {
     /// The program geometry and rate.
     @ObservationIgnored private let format = ProgramFormat(width: 1920, height: 1080, frameRate: 30)
 
+    /// The stable id of the app's single built-in preset. A preset switcher
+    /// and multiple presets arrive in a later iteration; the internal name is
+    /// not yet surfaced, so it stays unlocalized for now.
+    @ObservationIgnored private let presetID = PresetID(rawValue: "default")
+
     /// The compositor producing the program frames.
     @ObservationIgnored private lazy var compositor = Compositor(
         clock: clock,
@@ -79,7 +100,7 @@ final class EngineModel {
         eventBus: eventBus
     )
 
-    /// The OSLog sink's drain task, retained so the sink keeps consuming
+    /// The console sink's drain task, retained so the sink keeps consuming
     /// the bus for the app's lifetime.
     @ObservationIgnored private var logSinkTask: Task<Void, Never>?
 
@@ -93,6 +114,17 @@ final class EngineModel {
     /// Whether ``start()`` has run, so it boots the engine once.
     @ObservationIgnored private var started = false
 
+    /// Whether a ``reconfigure()`` pass is currently running. `reconfigure()`
+    /// suspends at `input.start()`/`stop()`, so without this guard the
+    /// startup selection changes (two `onChange` handlers) and the explicit
+    /// boot call would interleave and race the input start/stop.
+    @ObservationIgnored private var reconfiguring = false
+
+    /// Set whenever a reconfigure is requested while one is already running,
+    /// so the running pass loops once more and applies the latest selection —
+    /// coalescing a burst of requests into the minimum number of passes.
+    @ObservationIgnored private var reconfigureRequested = false
+
     /// Creates the model. The engine boots in ``start()`` when the window
     /// appears, not here.
     init() {}
@@ -104,7 +136,9 @@ final class EngineModel {
         guard !started else { return }
         started = true
 
-        logSinkTask = eventBus.attach(OSLogSink())
+        // Print events to the Xcode console (stdout) rather than OSLog, which
+        // does not appear in Xcode's debug console (see ``ConsoleEventSink``).
+        logSinkTask = eventBus.attach(ConsoleEventSink())
         let context = PlugInContext(
             eventBus: eventBus,
             clock: clock,
@@ -126,25 +160,49 @@ final class EngineModel {
         let program = compositor.programFrames()
         compositor.start()
         programTask = Task { [weak self] in
+            var sawFrame = false
             for await frame in program {
                 self?.programRelay.latest = frame.pixelBuffer
+                if !sawFrame {
+                    sawFrame = true
+                    // A one-time milestone (not per-frame traffic): confirms the
+                    // compositor is producing program frames into the preview
+                    // relay at all — the background canvas ticks from the first
+                    // frame even before an input delivers.
+                    self?.eventBus.event("preview.firstFrame", domain: .composition)
+                }
             }
         }
 
         await reconfigure()
     }
 
-    /// Applies the current camera and display selection: starts newly chosen
-    /// inputs, stops deselected ones, hands the active set to the compositor,
-    /// and builds the shot (display full-frame, camera as a corner
-    /// picture-in-picture over it; whichever is present alone fills the
-    /// program).
+    /// Applies the current camera and display selection to the engine.
     ///
-    /// Called from the view whenever a picker changes. An input that cannot
-    /// start (authorization denied, device gone) is reported on the bus and
-    /// left out of the shot — the program keeps showing whatever else is
-    /// available, never a failure state.
+    /// Called from the view whenever a picker changes, and once at boot. It
+    /// **coalesces**: only one pass runs at a time (the pass suspends at
+    /// `input.start()`/`stop()`), and a request arriving mid-pass makes the
+    /// running pass loop once more with the latest selection — so a burst of
+    /// requests never overlaps and races the input start/stop.
     func reconfigure() async {
+        reconfigureRequested = true
+        guard !reconfiguring else { return }
+        reconfiguring = true
+        defer { reconfiguring = false }
+        while reconfigureRequested {
+            reconfigureRequested = false
+            await applyConfiguration()
+        }
+    }
+
+    /// One reconfigure pass: starts newly chosen inputs, stops deselected
+    /// ones, hands the active set to the compositor, and rebuilds the preset
+    /// of shots the current inputs support.
+    ///
+    /// An input that cannot start (authorization denied, device gone) is
+    /// reported on the bus and left out of the shots — the program keeps
+    /// showing whatever else is available, never a failure state.
+    private func applyConfiguration() async {
         var desired: [InputID: any Input] = [:]
         if let displayID = selectedDisplayID, let input = await registry.input(withID: displayID) {
             desired[displayID] = input
@@ -156,11 +214,17 @@ final class EngineModel {
         for (id, input) in activeInputs where desired[id] == nil {
             await input.stop()
             activeInputs[id] = nil
+            eventBus.event("input.stopped", domain: .capture, params: ["id": .string(id.rawValue)])
         }
         for (id, input) in desired where activeInputs[id] == nil {
             do {
                 try await input.start()
                 activeInputs[id] = input
+                eventBus.event(
+                    "input.started",
+                    domain: .capture,
+                    params: ["id": .string(id.rawValue), "name": .string(input.name)]
+                )
             } catch {
                 eventBus.error(
                     "input.start",
@@ -174,7 +238,25 @@ final class EngineModel {
         }
 
         compositor.setInputs(Array(activeInputs.values))
-        compositor.setShot(makeShot())
+        eventBus.event(
+            "compositor.inputs",
+            domain: .composition,
+            params: ["ids": .string(activeInputs.keys.map(\.rawValue).sorted().joined(separator: ","))]
+        )
+        rebuildPreset()
+    }
+
+    /// Takes the shot with the given id to program — a cut. Driven by the shot
+    /// switcher button; the compositor renders it from the next tick.
+    ///
+    /// Reports no `tap` event itself — the switcher button's action closure
+    /// in `ContentView` reports the tap before calling this, right where the
+    /// user action is executed (EVENTS.md, "The `tap` convention").
+    ///
+    /// - Parameter shotID: The id of the shot to take to program.
+    func take(_ shotID: ShotID) {
+        compositor.take(shotID: shotID)
+        activeShotID = shotID
     }
 
     /// Stops the compositor, the program drain, and every active input.
@@ -189,14 +271,32 @@ final class EngineModel {
         eventBus.shutdown()
     }
 
-    /// Builds the shot from the current selection, using only the inputs
-    /// that actually started (a selection whose input could not start is
-    /// left out). The layer arrangement itself lives in ``ProgramLayout``,
-    /// so it is unit-tested without hardware.
-    private func makeShot() -> Shot {
+    /// Rebuilds the preset of shots from the current selection (using only the
+    /// inputs that actually started) and loads it into the compositor,
+    /// preserving the active shot's role across the rebuild when it still
+    /// exists — switching a camera keeps you on "Picture in Picture" rather
+    /// than snapping back to a default. The shot set itself lives in
+    /// ``ProgramLayout``, so it is unit-tested without hardware.
+    private func rebuildPreset() {
         let displayID = selectedDisplayID.flatMap { activeInputs[$0] != nil ? $0 : nil }
         let cameraID = selectedCameraID.flatMap { activeInputs[$0] != nil ? $0 : nil }
-        return Shot(layers: ProgramLayout.layers(displayID: displayID, cameraID: cameraID))
+        let preset = Preset(
+            id: presetID,
+            name: "Default",
+            shots: ProgramLayout.shots(displayID: displayID, cameraID: cameraID)
+        )
+        compositor.loadPreset(preset)
+        shots = preset.shots
+
+        // Keep the previously active shot on program when it survives the
+        // rebuild; otherwise cut to the first available shot (or none).
+        let preserved = preset.shots.first { $0.id == activeShotID } ?? preset.shots.first
+        if let preserved {
+            compositor.take(shotID: preserved.id)
+            activeShotID = preserved.id
+        } else {
+            activeShotID = nil
+        }
     }
 }
 

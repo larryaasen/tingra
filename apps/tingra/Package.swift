@@ -20,6 +20,16 @@ import PackageDescription
 // (Camera/Microphone usage descriptions, Screen Recording) is a later
 // packaging step, tracked alongside the CLI's distribution recipe — the
 // scaffold here is an SPM executable that builds warning-clean.
+//
+// Because that unbundled executable is ad-hoc signed, macOS TCC pins its
+// Screen Recording / Camera / Microphone grants to the build's cdhash and
+// re-prompts on every rebuild. `scripts/sign-app.sh` re-signs with a stable
+// code-signing identity so a single grant persists across rebuilds — the
+// `tingra` Xcode scheme runs it as a build post-action, and
+// `scripts/run-app.sh` builds, bundles (a minimal `tingra.app` with the
+// Camera/Microphone Info.plist usage descriptions), signs, and launches the
+// app for command-line runs. Both are dev conveniences, distinct from the
+// release signing/notarization pipeline.
 let package = Package(
     name: "tingra",
     defaultLocalization: "en",

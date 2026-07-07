@@ -36,10 +36,17 @@ import TingraPlugInKit
 /// only reads the held, immutable frames and composites them into a fresh
 /// program buffer.
 ///
-/// The mutating controls (``setInputs(_:)``, ``setShot(_:)``, ``start()``,
-/// ``stop()``) are meant to be driven from one context (the app's main
-/// actor); they are internally locked but not designed for concurrent
-/// callers racing each other.
+/// It can hold a whole ``Preset`` worth of shots (``loadPreset(_:)``) and
+/// switch which one is on program with ``take(shotID:)`` — a **cut**, the
+/// instant transition (GLOSSARY.md, "Transition"); dissolves and wipes are a
+/// later iteration. ``setShot(_:)`` remains the low-level "render exactly this
+/// shot" path used by the pre-preset callers and tests; the preset path
+/// (``loadPreset(_:)`` + ``take(shotID:)``) is what the app drives.
+///
+/// The mutating controls (``setInputs(_:)``, ``setShot(_:)``,
+/// ``loadPreset(_:)``, ``take(shotID:)``, ``start()``, ``stop()``) are meant
+/// to be driven from one context (the app's main actor); they are internally
+/// locked but not designed for concurrent callers racing each other.
 public final class Compositor: Sendable {
     /// The clock whose tick paces the program (the master clock in
     /// production, a synthetic clock in tests).
@@ -74,6 +81,16 @@ public final class Compositor: Sendable {
 
         /// The current shot the tick renders.
         var shot = Shot()
+
+        /// The shots of the loaded preset, the pool ``take(shotID:)`` cuts
+        /// among. Empty until a preset is loaded (the pre-preset ``setShot``
+        /// path does not populate it).
+        var shots: [Shot] = []
+
+        /// The id of the shot currently on program, when it came from the
+        /// loaded preset. `nil` before a preset is loaded or after a direct
+        /// ``setShot`` that bypassed the preset.
+        var activeShotID: ShotID?
 
         /// The single active program-frame consumer, while attached.
         var programContinuation: AsyncStream<CapturedFrame>.Continuation?
@@ -150,12 +167,91 @@ public final class Compositor: Sendable {
         }
     }
 
-    /// Switches the shot the tick renders. Takes effect on the next tick —
-    /// switching shots does not interrupt pacing (GLOSSARY.md, "Shot").
+    /// Switches the shot the tick renders directly, bypassing the loaded
+    /// preset. Takes effect on the next tick — switching shots does not
+    /// interrupt pacing (GLOSSARY.md, "Shot"). Because it does not come from
+    /// the preset, it clears ``activeShotID``; drive the preset with
+    /// ``loadPreset(_:)`` and ``take(shotID:)`` instead when you want the
+    /// active-shot tracking.
     ///
     /// - Parameter shot: The new layer tree and background.
     public func setShot(_ shot: Shot) {
-        state.withLock { $0.shot = shot }
+        state.withLock {
+            $0.shot = shot
+            $0.activeShotID = nil
+        }
+    }
+
+    /// Loads a preset's shots as the pool ``take(shotID:)`` cuts among, and
+    /// cuts to its first shot (or the empty background-only program when the
+    /// preset has no shots). Takes effect on the next tick; loading does not
+    /// interrupt pacing (GLOSSARY.md, "Preset").
+    ///
+    /// - Parameter preset: The preset whose shots become available on program.
+    public func loadPreset(_ preset: Preset) {
+        let first = preset.shots.first
+        state.withLock { state in
+            state.shots = preset.shots
+            state.activeShotID = first?.id
+            state.shot = first ?? Shot()
+        }
+        eventBus.event(
+            "preset.loaded",
+            domain: .composition,
+            params: [
+                "preset": .string(preset.id.rawValue),
+                "name": .string(preset.name),
+                "shots": .int(preset.shots.count),
+            ]
+        )
+    }
+
+    /// Takes the loaded preset's shot with the given id to program — a cut,
+    /// effective on the next tick. Taking an id that is not in the loaded
+    /// preset leaves the program unchanged and reports a `program.take` error
+    /// event (a stale switcher selection is recoverable, never a crash);
+    /// otherwise it reports the take on the bus.
+    ///
+    /// - Parameter shotID: The id of the shot to take to program.
+    public func take(shotID: ShotID) {
+        let taken: Shot? = state.withLock { state in
+            guard let shot = state.shots.first(where: { $0.id == shotID }) else { return nil }
+            state.activeShotID = shotID
+            state.shot = shot
+            return shot
+        }
+        guard let taken else {
+            eventBus.error(
+                "program.take",
+                domain: .composition,
+                params: [
+                    "shot": .string(shotID.rawValue),
+                    "reason": .string("unknownShot"),
+                ]
+            )
+            return
+        }
+        eventBus.event(
+            "program.take",
+            domain: .composition,
+            params: [
+                "shot": .string(taken.id.rawValue),
+                "name": .string(taken.name),
+            ]
+        )
+    }
+
+    /// The shots of the loaded preset, in switcher order (empty before a
+    /// preset is loaded).
+    public var shots: [Shot] {
+        state.withLock { $0.shots }
+    }
+
+    /// The id of the shot currently on program when it came from the loaded
+    /// preset, or `nil` before a preset is loaded or after a direct
+    /// ``setShot(_:)``.
+    public var activeShotID: ShotID? {
+        state.withLock { $0.activeShotID }
     }
 
     /// Starts the program tick: the compositor renders and yields one frame

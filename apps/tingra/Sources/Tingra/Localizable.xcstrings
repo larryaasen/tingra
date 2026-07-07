@@ -35,6 +35,23 @@
         }
       }
     },
+    "Picture in Picture" : {
+      "comment" : "Shot: display with camera inset",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bild im Bild"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Imagen en imagen"
+          }
+        }
+      }
+    },
     "None" : {
       "comment" : "Picker option for no input selected",
       "localizations" : {

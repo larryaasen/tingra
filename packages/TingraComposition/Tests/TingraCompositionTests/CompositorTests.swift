@@ -222,6 +222,59 @@ struct CompositorTests {
         #expect(recorder.recorded.first?.presentedInputs == [input.id])
     }
 
+    @Test("loading a preset cuts to its first shot")
+    func loadPresetCutsToFirstShot() async {
+        let ticks = (0..<2).map { CMTime(value: CMTimeValue($0), timescale: 30) }
+        let recorder = RenderRecorder()
+        let compositor = makeCompositor(recorder: recorder, tickTimes: ticks)
+        let display = Shot(id: ShotID(rawValue: "display"), name: "Display")
+        let camera = Shot(id: ShotID(rawValue: "camera"), name: "Camera")
+        compositor.loadPreset(Preset(name: "Live", shots: [display, camera]))
+
+        #expect(compositor.activeShotID == display.id)
+        let program = compositor.programFrames()
+        compositor.start()
+        _ = await collect(program, limit: 2)
+        #expect(recorder.recorded.allSatisfy { $0.shot == display })
+    }
+
+    @Test("taking a shot by id cuts to it on the next tick")
+    func takeSwitchesActiveShot() async {
+        let ticks = (0..<4).map { CMTime(value: CMTimeValue($0), timescale: 30) }
+        let recorder = RenderRecorder()
+        let compositor = makeCompositor(recorder: recorder, tickTimes: ticks)
+        let display = Shot(id: ShotID(rawValue: "display"), name: "Display")
+        let camera = Shot(id: ShotID(rawValue: "camera"), name: "Camera")
+        compositor.loadPreset(Preset(name: "Live", shots: [display, camera]))
+
+        let program = compositor.programFrames()
+        compositor.start()
+        compositor.take(shotID: camera.id)
+        _ = await collect(program, limit: 4)
+
+        #expect(compositor.activeShotID == camera.id)
+        let shots = recorder.recorded.map(\.shot)
+        #expect(shots.contains(camera))
+        #expect(shots.last == camera)
+    }
+
+    @Test("taking an unknown shot id leaves the program on the current shot")
+    func takeUnknownShotIsIgnored() async {
+        let ticks = (0..<2).map { CMTime(value: CMTimeValue($0), timescale: 30) }
+        let recorder = RenderRecorder()
+        let compositor = makeCompositor(recorder: recorder, tickTimes: ticks)
+        let display = Shot(id: ShotID(rawValue: "display"), name: "Display")
+        compositor.loadPreset(Preset(name: "Live", shots: [display]))
+
+        compositor.take(shotID: ShotID(rawValue: "does-not-exist"))
+        #expect(compositor.activeShotID == display.id)
+
+        let program = compositor.programFrames()
+        compositor.start()
+        _ = await collect(program, limit: 2)
+        #expect(recorder.recorded.allSatisfy { $0.shot == display })
+    }
+
     @Test("stop() finishes the program stream")
     func stopFinishesProgramStream() async {
         // A clock that would tick forever is not needed: stop() finishes the

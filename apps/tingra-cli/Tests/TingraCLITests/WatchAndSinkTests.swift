@@ -11,6 +11,7 @@ import Foundation
 import Synchronization
 import Testing
 import TingraEventBus
+import TingraHost
 
 @testable import TingraCLI
 

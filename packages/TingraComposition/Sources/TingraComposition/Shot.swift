@@ -7,16 +7,54 @@
 //  SPDX-License-Identifier: MIT
 //
 
+import Foundation
+
+/// A stable identifier for a ``Shot`` (GLOSSARY.md, "Shot"). String-backed
+/// like ``InputID`` so it survives round-tripping through the persisted
+/// project document, and defaults to a fresh UUID for shots created at
+/// runtime; app-built default shots use fixed ids (e.g. `"pip"`) so a shot's
+/// identity is stable across rebuilds.
+public struct ShotID: RawRepresentable, Hashable, Sendable, Codable {
+    /// The identifier string — a UUID by default, or a caller-chosen stable
+    /// token.
+    public let rawValue: String
+
+    /// Creates an identifier from its string form.
+    public init(rawValue: String) {
+        self.rawValue = rawValue
+    }
+
+    /// Creates a fresh, unique identifier (a new UUID string).
+    public init() {
+        self.rawValue = UUID().uuidString
+    }
+}
+
 /// A short-term composition: an ordered arrangement of layers plus the
 /// background they sit over (GLOSSARY.md, "Shot"). The compositor renders a
-/// shot's layer tree to a single program frame each tick.
+/// shot's layer tree to a single program frame each tick, and a shot is taken
+/// to program by ``Compositor/take(shotID:)`` (a cut).
+///
+/// A shot carries a stable ``id`` and a user-facing ``name`` so it can live in
+/// a ``Preset``, be listed in a switcher, and be taken to program by id. It is
+/// a plain `Codable` value type — the persistence format is a project /
+/// scripting contract (CLAUDE.md, "Data Models"), so its JSON keys are stable
+/// camelCase and it round-trips exactly.
 ///
 /// Layers are ordered **bottom to top**: `layers[0]` is drawn first (nearest
 /// the background) and later layers composite over it. A shot with no layers
 /// (or whose layers' inputs have no frames yet) renders as the background
 /// alone — the program is always a live canvas at the tick rate, even before
 /// any input delivers (CLOCK.md, "The program tick").
-public struct Shot: Sendable, Equatable {
+public struct Shot: Sendable, Equatable, Codable, Identifiable {
+    /// The shot's stable identity, unique within its preset — what
+    /// ``Compositor/take(shotID:)`` selects and what a switcher keys off.
+    public let id: ShotID
+
+    /// The user-facing name shown in a shot switcher (e.g. "Picture in
+    /// Picture"). Empty for an unnamed ad-hoc shot.
+    public let name: String
+
     /// The layer tree, bottom to top.
     public let layers: [Layer]
 
@@ -28,18 +66,57 @@ public struct Shot: Sendable, Equatable {
     /// Creates a shot.
     ///
     /// - Parameters:
-    ///   - layers: The layer tree, bottom to top.
+    ///   - id: The shot's stable identity (default: a fresh UUID).
+    ///   - name: The user-facing name (default: empty).
+    ///   - layers: The layer tree, bottom to top (default: none).
     ///   - background: The background color (default: opaque black).
-    public init(layers: [Layer] = [], background: BackgroundColor = .black) {
+    public init(
+        id: ShotID = ShotID(),
+        name: String = "",
+        layers: [Layer] = [],
+        background: BackgroundColor = .black
+    ) {
+        self.id = id
+        self.name = name
         self.layers = layers
         self.background = background
+    }
+
+    /// The coding keys — stable camelCase names for the project document.
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case layers
+        case background
+    }
+
+    /// Decodes a shot. `id` and `name` are required (a persisted shot has an
+    /// identity and a name); `layers` and `background` are optional and
+    /// default to an empty tree over opaque black, so a minimal hand-written
+    /// shot is valid.
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(ShotID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        layers = try container.decodeIfPresent([Layer].self, forKey: .layers) ?? []
+        background = try container.decodeIfPresent(BackgroundColor.self, forKey: .background) ?? .black
+    }
+
+    /// Encodes a shot, always writing every field so the document round-trips
+    /// exactly.
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encode(layers, forKey: .layers)
+        try container.encode(background, forKey: .background)
     }
 }
 
 /// A straight (non-premultiplied) RGBA background color in `0`...`1`
 /// components — the fill the compositor clears the program frame to before
 /// drawing the layer tree.
-public struct BackgroundColor: Sendable, Equatable {
+public struct BackgroundColor: Sendable, Equatable, Codable {
     /// The red component, `0`...`1`.
     public let red: Double
 
