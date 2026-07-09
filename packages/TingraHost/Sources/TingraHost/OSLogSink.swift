@@ -18,8 +18,8 @@ import os
 /// `subsystem` is `com.moonwink.tingra`; `category` is the event's domain
 /// (a 1:1 mapping). Group maps to level per the EVENTS.md table. The group
 /// and name interpolate as public; params interpolate as `privacy:
-/// .private` — redaction layer 3, keeping anything the bus-level redaction
-/// missed out of retrievable logs on release builds.
+/// .private`, keeping anything that shouldn't have become a param out of
+/// retrievable logs on release builds.
 public final class OSLogSink: EventSink {
     /// The OSLog subsystem every Tingra event lands under.
     static let subsystem = "com.moonwink.tingra"

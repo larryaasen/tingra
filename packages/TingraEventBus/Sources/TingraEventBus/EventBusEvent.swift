@@ -29,8 +29,8 @@ public struct EventBusEvent: Sendable, Codable, Equatable {
     /// `device.disconnected` (letters, digits, `_`, `.`).
     public let name: String
 
-    /// Structured payload. Values matching the sensitive key list are
-    /// redacted by the bus before any sink sees them.
+    /// Structured payload. Secrets must never become params (see EVENTS.md,
+    /// Redaction) — the bus passes params through unaltered.
     public let params: [String: EventValue]?
 
     /// The emitting call site, captured via `#fileID`/`#function` default

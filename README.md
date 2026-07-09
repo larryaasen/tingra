@@ -18,7 +18,7 @@ The monorepo splits into `packages/` (the engine libraries) and `apps/` (the run
 
 The zero-dependency event bus: the structured event spine every part of the engine and every plug-in reports through (see [EVENTS.md](docs/EVENTS.md)).
 
-- `EventBus` — publishes structured events to subscribing sinks, redacting sensitive param values before any sink sees them; includes per-group conveniences (`app`, `error`, `event`, `network`, `tap`, `trace`).
+- `EventBus` — publishes structured events to subscribing sinks; includes per-group conveniences (`app`, `error`, `event`, `network`, `tap`, `trace`).
 - `EventBusEvent` — one structured event: date, group, domain, name, params, and the emitting call site.
 - `EventGroup` — the closed routing axis: what kind of event it is (`app`, `error`, `event`, `network`, `tap`, `trace`).
 - `EventDomain` — the open attribution axis: which engine service or plug-in emitted the event.

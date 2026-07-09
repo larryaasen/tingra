@@ -151,7 +151,7 @@ The `--json` status events are bus events on the standard NDJSON stream (EVENTS.
 | `recording.started` | `--record` opened the file and began writing (before `stream.started`). | `path`, `container` (`mov`/`mp4`). |
 | `recording.stopped` | The recording was finalized on teardown. | `path`. |
 
-Failures ride the same stream as `error` events carrying `identifier` + `message` (see "Error identifiers"). A recording write failure surfaces as an `error` event with `identifier` `recordingFailed`; because recording is independent of streaming, that error stops the recording but not the stream. The stream key never appears in any event (the recording path is not a secret and does appear); the bus redacts key-suffixed params as a backstop, but the key is never made a param in the first place.
+Failures ride the same stream as `error` events carrying `identifier` + `message` (see "Error identifiers"). A recording write failure surfaces as an `error` event with `identifier` `recordingFailed`; because recording is independent of streaming, that error stops the recording but not the stream. The stream key never appears in any event (the recording path is not a secret and does appear); the key is never made a param in the first place (EVENTS.md, Redaction).
 
 #### Dry run
 

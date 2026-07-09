@@ -136,17 +136,4 @@ struct ConsoleSinkTests {
         let reencoded = String(decoding: try encoder.encode(record), as: UTF8.self)
         #expect(reencoded == lines[0])
     }
-
-    @Test("bus-level redaction reaches the sink: a sensitive param prints as redacted")
-    func sensitiveParamsArriveRedacted() async {
-        let lines = await emittedLines(
-            makeSink: { ConsoleSink(mode: .human, emit: $0) },
-            send: { bus in
-                bus.event("stream.started", domain: .output, params: ["streamKey": .string("live_secret")])
-            }
-        )
-        #expect(lines.count == 1)
-        #expect(!lines[0].contains("live_secret"))
-        #expect(lines[0].contains(EventBus.redactedValue))
-    }
 }

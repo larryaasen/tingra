@@ -43,8 +43,8 @@ struct EventBusTests {
         #expect(await secondIterator.next()?.name == "app.launched")
     }
 
-    @Test("sensitive param values are redacted before any sink sees them")
-    func sensitiveParamsAreRedacted() async {
+    @Test("params pass through unaltered — the bus never inspects or alters them")
+    func paramsPassThroughUnaltered() async {
         let bus = EventBus()
         let events = bus.events()
 
@@ -53,17 +53,15 @@ struct EventBusTests {
             domain: .output,
             name: "stream.starting",
             params: [
-                "streamKey": .string("live_verysecretvalue"),
-                "password": .string("hunter2"),
                 "url": .string("rtmp://localhost:1935/live"),
+                "attempt": .int(2),
             ]
         )
 
         var iterator = events.makeAsyncIterator()
         let received = await iterator.next()
-        #expect(received?.params?["streamKey"] == .string(EventBus.redactedValue))
-        #expect(received?.params?["password"] == .string(EventBus.redactedValue))
         #expect(received?.params?["url"] == .string("rtmp://localhost:1935/live"))
+        #expect(received?.params?["attempt"] == .int(2))
     }
 
     @Test("each per group convenience sends an event with the matching group")

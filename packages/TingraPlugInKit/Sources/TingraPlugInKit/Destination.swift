@@ -14,8 +14,9 @@ import Foundation
 ///
 /// Deliberately not `Codable`: the stream key is a secret, and making this
 /// type serializable invites writing it to disk by accident. Keys live in
-/// the host's Keychain-backed secure storage and are redacted (`live_xx…`)
-/// everywhere else (see EVENTS.md, Redaction).
+/// the host's Keychain-backed secure storage and are referenced by a
+/// redacted fingerprint (`live_xx…`) everywhere else (see EVENTS.md,
+/// Redaction) — the key itself is never made an event param.
 public struct Destination: Sendable {
     /// The RTMP(S) or SRT destination URL, e.g.
     /// `rtmp://live.twitch.tv/app` or `srt://host:8890?streamid=...`.
