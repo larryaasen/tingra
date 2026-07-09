@@ -29,8 +29,8 @@ import TingraHost
 /// such flag, and `tap` is exactly what a developer watching this console
 /// wants to see now that the app has buttons to click (EVENTS.md, "The `tap`
 /// convention"). Params are printed in the clear, which is safe here because
-/// the app emits no secrets and secrets are redacted at the bus boundary
-/// before they reach any sink (EVENTS.md); this sink must not be shipped
+/// the app emits no secrets — secrets must never become event params in the
+/// first place (EVENTS.md, Redaction); this sink must not be shipped
 /// as-is for a build that carries stream keys.
 struct ConsoleEventSink: EventSink {
     /// This sink's default filter: every group but `network`/`trace` (the two

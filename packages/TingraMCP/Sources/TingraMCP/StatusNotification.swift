@@ -27,8 +27,8 @@ extension JSONValue {
 /// `notifications/message` (the standard logging notification): `level` from
 /// the event group, a fixed `logger`, and `data` carrying the event's name,
 /// domain, and params. This is how status changes reach connected sessions
-/// without polling (MCP.md, "Sessions and concurrency"); the bus has already
-/// redacted any sensitive param before the sink ever saw it (EVENTS.md).
+/// without polling (MCP.md, "Sessions and concurrency"); secrets must never
+/// have become a param in the first place (EVENTS.md, Redaction).
 enum StatusNotification {
     /// The `notifications/message` params for a status event.
     static func params(for event: EventBusEvent) -> JSONValue {

@@ -17,15 +17,6 @@ import Synchronization
 /// formats a log message, opens a log file, or imports a logging framework;
 /// it calls the bus (see EVENTS.md).
 public final class EventBus: Sendable {
-    /// The replacement value the bus substitutes for sensitive params.
-    public static let redactedValue = "<redacted>"
-
-    /// The suffixes that mark a param key as sensitive: a key that equals or
-    /// ends with one of these (case insensitively) has its value redacted by
-    /// ``redacting(_:)``. Suffix matching is deliberate so `streamKey`,
-    /// `apiToken`, and the like are caught without enumerating every spelling.
-    private static let sensitiveKeySuffixes = ["key", "token", "password", "secret", "credential"]
-
     /// The live sink subscriptions, keyed by a per subscription identifier so
     /// a terminated sink can remove exactly its own continuation. Mutex
     /// protected — `send` may be called from any isolation domain.
@@ -40,8 +31,9 @@ public final class EventBus: Sendable {
     ///   - group: The routing axis — what kind of event this is.
     ///   - domain: The attribution axis — which part of the system emitted it.
     ///   - name: Dotted lowercase identifier, e.g. `stream.started`.
-    ///   - params: Structured payload; sensitive keys are redacted here,
-    ///     before any sink sees the event.
+    ///   - params: Structured payload. Secrets must never become params in
+    ///     the first place (EVENTS.md, Redaction) — the bus does not
+    ///     inspect or alter them.
     ///   - fileID: Captured automatically; do not pass.
     ///   - function: Captured automatically; do not pass.
     public func send(
@@ -57,7 +49,7 @@ public final class EventBus: Sendable {
             group: group,
             domain: domain,
             name: name,
-            params: Self.redacting(params),
+            params: params,
             from: "\(fileID):\(function)"
         )
         let continuations = subscriptions.withLock { Array($0.values) }
@@ -171,24 +163,5 @@ public final class EventBus: Sendable {
         function: String = #function
     ) {
         send(.trace, domain: domain, name: name, params: params, fileID: fileID, function: function)
-    }
-
-    // MARK: - Redaction
-
-    /// Returns a copy of `params` with every sensitive value replaced by
-    /// ``redactedValue``, so no sink ever sees a secret.
-    ///
-    /// This is redaction layer 2 of EVENTS.md — bus level defense in depth,
-    /// protection against a careless plug-in. Layer 1 is policy (secrets
-    /// never become event params at all); layer 3 is the OSLog sink's
-    /// `.private` interpolation. A param is sensitive when its key matches
-    /// ``sensitiveKeySuffixes``.
-    private static func redacting(_ params: [String: EventValue]?) -> [String: EventValue]? {
-        guard let params else { return nil }
-        return params.reduce(into: [:]) { result, pair in
-            let key = pair.key.lowercased()
-            let isSensitive = sensitiveKeySuffixes.contains { key == $0 || key.hasSuffix($0) }
-            result[pair.key] = isSensitive ? .string(redactedValue) : pair.value
-        }
     }
 }
