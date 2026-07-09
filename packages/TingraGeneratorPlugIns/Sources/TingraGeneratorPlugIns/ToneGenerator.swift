@@ -9,7 +9,6 @@
 
 import CoreMedia
 import Foundation
-import Synchronization
 import TingraPlugInKit
 
 /// The 440 Hz test tone audio generator (`--audio-generator tone`, see
@@ -54,8 +53,9 @@ public final class ToneGenerator: Input, Sendable {
     /// Peak amplitude of the tone, comfortably below full scale.
     private let amplitude: Float
 
-    /// The live audio streams, so `stop()` can finish every consumer.
-    private let continuations = Mutex<[UUID: AsyncStream<CapturedAudio>.Continuation]>([:])
+    /// The shared continuation/task plumbing every consumer's audio stream
+    /// runs through.
+    private let stream = GeneratorStreamCoordinator<CapturedAudio>()
 
     /// Creates a tone generator. Defaults match the CLI's audio defaults
     /// (440 Hz at 48 kHz, see CLI.md "Compression").
@@ -86,50 +86,29 @@ public final class ToneGenerator: Input, Sendable {
     /// The stream finishes when the tick stream ends, the consumer stops
     /// consuming, or ``stop()`` is called.
     public func audio() -> AsyncStream<CapturedAudio> {
-        AsyncStream { continuation in
-            let id = UUID()
-            continuations.withLock { $0[id] = continuation }
-            let clock = self.clock
-            let frequency = self.frequency
-            let sampleRate = self.sampleRate
-            let samplesPerBuffer = self.samplesPerBuffer
-            let amplitude = self.amplitude
-            let task = Task {
-                // The synthesizer (and its format description) lives
-                // entirely inside this task; buffers leave it only through
-                // the yield, per the frame ownership rule (ARCHITECTURE.md).
-                let synthesizer = ToneSynthesizer(
+        let frequency = self.frequency
+        let sampleRate = self.sampleRate
+        let samplesPerBuffer = self.samplesPerBuffer
+        let amplitude = self.amplitude
+        let tickDuration = CMTime(value: CMTimeValue(samplesPerBuffer), timescale: CMTimeScale(sampleRate))
+        return stream.makeStream(
+            clock: clock,
+            tickInterval: tickDuration,
+            makeRenderer: {
+                ToneSynthesizer(
                     frequency: frequency,
                     sampleRate: sampleRate,
                     samplesPerBuffer: samplesPerBuffer,
                     amplitude: amplitude
                 )
-                let tickDuration = CMTime(value: CMTimeValue(samplesPerBuffer), timescale: CMTimeScale(sampleRate))
-                for await tickTime in clock.tick(every: tickDuration) {
-                    guard !Task.isCancelled else { break }
-                    if let audio = synthesizer.nextBuffer(at: tickTime) {
-                        continuation.yield(audio)
-                    }
-                }
-                continuation.finish()
-            }
-            continuation.onTermination = { [weak self] _ in
-                task.cancel()
-                self?.continuations.withLock { $0[id] = nil }
-            }
-        }
+            },
+            render: { synthesizer, tickTime in synthesizer.nextBuffer(at: tickTime) }
+        )
     }
 
     /// Finishes every live audio stream. Safe to call more than once.
     public func stop() async {
-        let active = continuations.withLock { store in
-            let values = Array(store.values)
-            store.removeAll()
-            return values
-        }
-        for continuation in active {
-            continuation.finish()
-        }
+        await stream.stopAll()
     }
 }
 
