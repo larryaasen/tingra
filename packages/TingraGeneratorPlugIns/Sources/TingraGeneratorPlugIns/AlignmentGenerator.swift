@@ -11,7 +11,6 @@ import CoreGraphics
 import CoreMedia
 import CoreVideo
 import Foundation
-import Synchronization
 import TingraPlugInKit
 
 /// An industry-standard-style alignment pattern video generator
@@ -56,8 +55,9 @@ public final class AlignmentGenerator: Input, Sendable {
     /// Frames synthesized per second.
     private let frameRate: Int
 
-    /// The live frame streams, so `stop()` can finish every consumer.
-    private let continuations = Mutex<[UUID: AsyncStream<CapturedFrame>.Continuation]>([:])
+    /// The shared continuation/task plumbing every consumer's frame stream
+    /// runs through.
+    private let stream = GeneratorStreamCoordinator<CapturedFrame>()
 
     /// Creates an alignment-pattern generator. Defaults match the CLI's
     /// program defaults (1920x1080 at 30 fps, see CLI.md "Compression").
@@ -82,43 +82,20 @@ public final class AlignmentGenerator: Input, Sendable {
     /// The stream finishes when the tick stream ends, the consumer stops
     /// consuming, or ``stop()`` is called.
     public func frames() -> AsyncStream<CapturedFrame> {
-        AsyncStream { continuation in
-            let id = UUID()
-            continuations.withLock { $0[id] = continuation }
-            let clock = self.clock
-            let width = self.width
-            let height = self.height
-            let frameRate = self.frameRate
-            let task = Task {
-                // The renderer (and its cached pattern image) lives entirely
-                // inside this task; frames leave it only through the yield,
-                // per the frame ownership rule (ARCHITECTURE.md).
-                let renderer = AlignmentRenderer(width: width, height: height)
-                for await tickTime in clock.tick(every: CMTime(value: 1, timescale: CMTimeScale(frameRate))) {
-                    guard !Task.isCancelled else { break }
-                    if let frame = renderer.render(at: tickTime) {
-                        continuation.yield(frame)
-                    }
-                }
-                continuation.finish()
-            }
-            continuation.onTermination = { [weak self] _ in
-                task.cancel()
-                self?.continuations.withLock { $0[id] = nil }
-            }
-        }
+        let width = self.width
+        let height = self.height
+        let frameRate = self.frameRate
+        return stream.makeStream(
+            clock: clock,
+            tickInterval: CMTime(value: 1, timescale: CMTimeScale(frameRate)),
+            makeRenderer: { AlignmentRenderer(width: width, height: height) },
+            render: { renderer, tickTime in renderer.render(at: tickTime) }
+        )
     }
 
     /// Finishes every live frame stream. Safe to call more than once.
     public func stop() async {
-        let active = continuations.withLock { store in
-            let values = Array(store.values)
-            store.removeAll()
-            return values
-        }
-        for continuation in active {
-            continuation.finish()
-        }
+        await stream.stopAll()
     }
 }
 
@@ -159,16 +136,7 @@ private final class AlignmentRenderer {
     init(width: Int, height: Int) {
         self.width = width
         self.height = height
-        let attributes: [CFString: Any] = [
-            kCVPixelBufferPixelFormatTypeKey: kCVPixelFormatType_32BGRA,
-            kCVPixelBufferWidthKey: width,
-            kCVPixelBufferHeightKey: height,
-            kCVPixelBufferIOSurfacePropertiesKey: [CFString: Any](),
-            kCVPixelBufferCGBitmapContextCompatibilityKey: true,
-        ]
-        var pool: CVPixelBufferPool?
-        CVPixelBufferPoolCreate(kCFAllocatorDefault, nil, attributes as CFDictionary, &pool)
-        self.pool = pool
+        self.pool = GeneratorPixelBuffer.makePool(width: width, height: height)
         self.cachedPattern = Self.makePatternImage(width: width, height: height)
     }
 
@@ -184,20 +152,11 @@ private final class AlignmentRenderer {
 
         CVPixelBufferLockBaseAddress(buffer, [])
         defer { CVPixelBufferUnlockBaseAddress(buffer, []) }
-        guard
-            let context = CGContext(
-                data: CVPixelBufferGetBaseAddress(buffer),
-                width: width,
-                height: height,
-                bitsPerComponent: 8,
-                bytesPerRow: CVPixelBufferGetBytesPerRow(buffer),
-                space: CGColorSpaceCreateDeviceRGB(),
-                bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
-            )
+        guard let context = GeneratorPixelBuffer.makeDrawingContext(width: width, height: height, buffer: buffer)
         else { return nil }
 
         context.draw(cachedPattern, in: CGRect(x: 0, y: 0, width: CGFloat(width), height: CGFloat(height)))
-        tagBT709(buffer)
+        buffer.tagBT709()
         return CapturedFrame(pixelBuffer: buffer, presentationTime: time)
     }
 
@@ -317,29 +276,5 @@ private final class AlignmentRenderer {
         context.fill(CGRect(x: rect.minX, y: rect.minY, width: CGFloat(thickness), height: rect.height))
         context.fill(
             CGRect(x: rect.maxX - CGFloat(thickness), y: rect.minY, width: CGFloat(thickness), height: rect.height))
-    }
-
-    /// Tags the buffer BT.709 — every `CVPixelBuffer` in the pipeline
-    /// carries color attachments; an untagged buffer is a defect
-    /// (ARCHITECTURE.md, "Color and pixel format conventions").
-    private func tagBT709(_ buffer: CVPixelBuffer) {
-        CVBufferSetAttachment(
-            buffer,
-            kCVImageBufferColorPrimariesKey,
-            kCVImageBufferColorPrimaries_ITU_R_709_2,
-            .shouldPropagate
-        )
-        CVBufferSetAttachment(
-            buffer,
-            kCVImageBufferTransferFunctionKey,
-            kCVImageBufferTransferFunction_ITU_R_709_2,
-            .shouldPropagate
-        )
-        CVBufferSetAttachment(
-            buffer,
-            kCVImageBufferYCbCrMatrixKey,
-            kCVImageBufferYCbCrMatrix_ITU_R_709_2,
-            .shouldPropagate
-        )
     }
 }

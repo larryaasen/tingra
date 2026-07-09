@@ -11,7 +11,6 @@ import CoreGraphics
 import CoreMedia
 import CoreVideo
 import Foundation
-import Synchronization
 import TingraPlugInKit
 
 /// The PLUGE (Picture Line-Up Generation Equipment) video generator
@@ -55,8 +54,9 @@ public final class PlugeGenerator: Input, Sendable {
     /// Frames synthesized per second.
     private let frameRate: Int
 
-    /// The live frame streams, so `stop()` can finish every consumer.
-    private let continuations = Mutex<[UUID: AsyncStream<CapturedFrame>.Continuation]>([:])
+    /// The shared continuation/task plumbing every consumer's frame stream
+    /// runs through.
+    private let stream = GeneratorStreamCoordinator<CapturedFrame>()
 
     /// Creates a PLUGE generator. Defaults match the CLI's program defaults
     /// (1920x1080 at 30 fps, see CLI.md "Compression").
@@ -81,43 +81,20 @@ public final class PlugeGenerator: Input, Sendable {
     /// The stream finishes when the tick stream ends, the consumer stops
     /// consuming, or ``stop()`` is called.
     public func frames() -> AsyncStream<CapturedFrame> {
-        AsyncStream { continuation in
-            let id = UUID()
-            continuations.withLock { $0[id] = continuation }
-            let clock = self.clock
-            let width = self.width
-            let height = self.height
-            let frameRate = self.frameRate
-            let task = Task {
-                // The renderer (and its pixel buffer pool) lives entirely
-                // inside this task; frames leave it only through the yield,
-                // per the frame ownership rule (ARCHITECTURE.md).
-                let renderer = PlugeRenderer(width: width, height: height, style: .practical)
-                for await tickTime in clock.tick(every: CMTime(value: 1, timescale: CMTimeScale(frameRate))) {
-                    guard !Task.isCancelled else { break }
-                    if let frame = renderer.render(at: tickTime) {
-                        continuation.yield(frame)
-                    }
-                }
-                continuation.finish()
-            }
-            continuation.onTermination = { [weak self] _ in
-                task.cancel()
-                self?.continuations.withLock { $0[id] = nil }
-            }
-        }
+        let width = self.width
+        let height = self.height
+        let frameRate = self.frameRate
+        return stream.makeStream(
+            clock: clock,
+            tickInterval: CMTime(value: 1, timescale: CMTimeScale(frameRate)),
+            makeRenderer: { PlugeRenderer(width: width, height: height, style: .practical) },
+            render: { renderer, tickTime in renderer.render(at: tickTime) }
+        )
     }
 
     /// Finishes every live frame stream. Safe to call more than once.
     public func stop() async {
-        let active = continuations.withLock { store in
-            let values = Array(store.values)
-            store.removeAll()
-            return values
-        }
-        for continuation in active {
-            continuation.finish()
-        }
+        await stream.stopAll()
     }
 }
 
@@ -162,8 +139,9 @@ public final class PlugeStrictGenerator: Input, Sendable {
     /// Frames synthesized per second.
     private let frameRate: Int
 
-    /// The live frame streams, so `stop()` can finish every consumer.
-    private let continuations = Mutex<[UUID: AsyncStream<CapturedFrame>.Continuation]>([:])
+    /// The shared continuation/task plumbing every consumer's frame stream
+    /// runs through.
+    private let stream = GeneratorStreamCoordinator<CapturedFrame>()
 
     /// Creates a strict PLUGE generator. Defaults match the CLI's program
     /// defaults (1920x1080 at 30 fps, see CLI.md "Compression").
@@ -188,43 +166,20 @@ public final class PlugeStrictGenerator: Input, Sendable {
     /// The stream finishes when the tick stream ends, the consumer stops
     /// consuming, or ``stop()`` is called.
     public func frames() -> AsyncStream<CapturedFrame> {
-        AsyncStream { continuation in
-            let id = UUID()
-            continuations.withLock { $0[id] = continuation }
-            let clock = self.clock
-            let width = self.width
-            let height = self.height
-            let frameRate = self.frameRate
-            let task = Task {
-                // The renderer (and its pixel buffer pool) lives entirely
-                // inside this task; frames leave it only through the yield,
-                // per the frame ownership rule (ARCHITECTURE.md).
-                let renderer = PlugeRenderer(width: width, height: height, style: .strict)
-                for await tickTime in clock.tick(every: CMTime(value: 1, timescale: CMTimeScale(frameRate))) {
-                    guard !Task.isCancelled else { break }
-                    if let frame = renderer.render(at: tickTime) {
-                        continuation.yield(frame)
-                    }
-                }
-                continuation.finish()
-            }
-            continuation.onTermination = { [weak self] _ in
-                task.cancel()
-                self?.continuations.withLock { $0[id] = nil }
-            }
-        }
+        let width = self.width
+        let height = self.height
+        let frameRate = self.frameRate
+        return stream.makeStream(
+            clock: clock,
+            tickInterval: CMTime(value: 1, timescale: CMTimeScale(frameRate)),
+            makeRenderer: { PlugeRenderer(width: width, height: height, style: .strict) },
+            render: { renderer, tickTime in renderer.render(at: tickTime) }
+        )
     }
 
     /// Finishes every live frame stream. Safe to call more than once.
     public func stop() async {
-        let active = continuations.withLock { store in
-            let values = Array(store.values)
-            store.removeAll()
-            return values
-        }
-        for continuation in active {
-            continuation.finish()
-        }
+        await stream.stopAll()
     }
 }
 
@@ -273,16 +228,7 @@ private final class PlugeRenderer {
         self.width = width
         self.height = height
         self.style = style
-        let attributes: [CFString: Any] = [
-            kCVPixelBufferPixelFormatTypeKey: kCVPixelFormatType_32BGRA,
-            kCVPixelBufferWidthKey: width,
-            kCVPixelBufferHeightKey: height,
-            kCVPixelBufferIOSurfacePropertiesKey: [CFString: Any](),
-            kCVPixelBufferCGBitmapContextCompatibilityKey: true,
-        ]
-        var pool: CVPixelBufferPool?
-        CVPixelBufferPoolCreate(kCFAllocatorDefault, nil, attributes as CFDictionary, &pool)
-        self.pool = pool
+        self.pool = GeneratorPixelBuffer.makePool(width: width, height: height)
     }
 
     /// Renders one frame for the given master clock time, or nil if a
@@ -297,16 +243,7 @@ private final class PlugeRenderer {
 
         CVPixelBufferLockBaseAddress(buffer, [])
         defer { CVPixelBufferUnlockBaseAddress(buffer, []) }
-        guard
-            let context = CGContext(
-                data: CVPixelBufferGetBaseAddress(buffer),
-                width: width,
-                height: height,
-                bitsPerComponent: 8,
-                bytesPerRow: CVPixelBufferGetBytesPerRow(buffer),
-                space: CGColorSpaceCreateDeviceRGB(),
-                bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
-            )
+        guard let context = GeneratorPixelBuffer.makeDrawingContext(width: width, height: height, buffer: buffer)
         else { return nil }
 
         drawBackground(in: context)
@@ -317,7 +254,7 @@ private final class PlugeRenderer {
         case .strict:
             drawStrictPlugeBars(in: context)
         }
-        tagBT709(buffer)
+        buffer.tagBT709()
         return CapturedFrame(pixelBuffer: buffer, presentationTime: time)
     }
 
@@ -389,29 +326,5 @@ private final class PlugeRenderer {
             let x = barsRect.minX + CGFloat(index) * (barWidth + gap)
             context.fill(CGRect(x: x, y: barsRect.minY, width: barWidth, height: barsRect.height))
         }
-    }
-
-    /// Tags the buffer BT.709 — every `CVPixelBuffer` in the pipeline
-    /// carries color attachments; an untagged buffer is a defect
-    /// (ARCHITECTURE.md, "Color and pixel format conventions").
-    private func tagBT709(_ buffer: CVPixelBuffer) {
-        CVBufferSetAttachment(
-            buffer,
-            kCVImageBufferColorPrimariesKey,
-            kCVImageBufferColorPrimaries_ITU_R_709_2,
-            .shouldPropagate
-        )
-        CVBufferSetAttachment(
-            buffer,
-            kCVImageBufferTransferFunctionKey,
-            kCVImageBufferTransferFunction_ITU_R_709_2,
-            .shouldPropagate
-        )
-        CVBufferSetAttachment(
-            buffer,
-            kCVImageBufferYCbCrMatrixKey,
-            kCVImageBufferYCbCrMatrix_ITU_R_709_2,
-            .shouldPropagate
-        )
     }
 }

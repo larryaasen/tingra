@@ -102,6 +102,14 @@ Jobs promised in CLAUDE.md "Toolchain & CI" that were deliberately left out of t
 - [ ] **Ship the launchd LaunchAgent for the daemon** (`serve --install`/`--uninstall`, label `com.moonwink.tingra.serve`; also invoked by the Homebrew formula). Manual `serve` shipped with step 4; the socket-activated install path is a follow-up. The design (plist, `launch_activate_socket` adoption, the TCC-attribution rationale) is recorded in MCP.md, "Lifecycle"; the `Daemon.init(listeningDescriptor:)` seam already accepts a launchd-supplied socket.
 - [x] **Verify GitHub Actions macOS runners offer Xcode 26.6** before CI lands — runner images lag Xcode releases. Verified 2026-07-04: the `macos-26` arm64 image (version 20260630.0213.1) ships Xcode 26.6 (17F113) alongside 26.0.1–26.5, but defaults to 26.5 — so `.github/workflows/ci.yml` runs on `macos-26` and pins `DEVELOPER_DIR` to `/Applications/Xcode_26.6.app` rather than relying on the image default.
 
+## Generator plug-ins
+
+Issues found in a 2026-07-07 review of `packages/TingraGeneratorPlugIns` (see GeneratorPlugIn.swift and the Bars/Alignment/Pluge/Tone generators).
+
+- [ ] **Synthesis failures are silently dropped, never reported.** `CVPixelBufferPoolCreate`, `CVPixelBufferPoolCreatePixelBuffer`, `CMAudioFormatDescriptionCreate`, and the `CMBlockBuffer`/`CMSampleBuffer` calls in `BarsRenderer`, `AlignmentRenderer`, `PlugeRenderer`, and `ToneSynthesizer` all discard their `OSStatus`/failure and just return nil, skipping the frame or buffer (correctly, per ARCHITECTURE.md — a generator problem must never take down the pipeline). But nothing reports it as an `error` event on the bus (EVENTS.md), so a persistently failing generator (e.g., pool exhaustion) would silently produce zero output with no diagnosable signal — it would look like a hang rather than a reported failure.
+- [ ] **`GeneratorPlugIn.activate` has no rollback on partial registration.** If any generator in its array throws from `context.inputs.register(_:)` partway through the loop (e.g., a duplicate identifier), the generators registered earlier in the same call stay registered while the rest are never attempted. The host's loader reports the throw as an `error` event and keeps running, but the partially-registered state persists silently.
+- [ ] **Confirm `BarsRenderer.timecode(at:)`'s hours modulus.** It uses `% 100` for the hours component rather than the conventional `% 24` for burned-in `HH:MM:SS:FF` timecode. Confirm whether supporting runs beyond 24 hours is intentional, or whether it should match standard SMPTE timecode wraparound.
+
 ## Housekeeping
 
 - [ ] **Commit the doc baseline** (the full doc set plus the LICENSE change is staged but uncommitted) so scaffolding diffs cleanly.
