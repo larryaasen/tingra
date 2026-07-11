@@ -63,7 +63,11 @@ To confirm the MCP daemon itself answers, you can run it in the foreground in on
 
 The agent-facing entry point is `tingra-cli mcp` — a thin stdio proxy that forwards to the daemon. Point your Claude client at it.
 
-**Claude Desktop** — add Tingra to `~/Library/Application Support/Claude/claude_desktop_config.json` (use the absolute path, since the app may not have Homebrew's `bin` on its `PATH`):
+**Claude Desktop** — Claude Desktop doesn't yet have a form for adding a local MCP server by command, so this still means editing a config file, but Claude opens it for you:
+
+1. Open **Claude → Settings → Developer**.
+2. Click **Edit Config** — this opens `claude_desktop_config.json` in your default editor (creating it if it doesn't exist yet).
+3. Add the `tingra` entry below (merge it into the existing `mcpServers` object if there is one; use the absolute path, since the app may not have Homebrew's `bin` on its `PATH`), save, and quit and reopen Claude Desktop:
 
 ```json
 {
@@ -76,7 +80,7 @@ The agent-facing entry point is `tingra-cli mcp` — a thin stdio proxy that for
 }
 ```
 
-Restart Claude Desktop, and Tingra's tools appear.
+Tingra's tools appear once Claude Desktop reopens.
 
 **Claude Code** — register the server from the terminal:
 
