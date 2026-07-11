@@ -105,6 +105,10 @@ stream-no-audio: ## Video-only stream (bars generator)
 stream-camera: ## Stream the system default camera + microphone (needs TCC authorization)
 	swift run tingra-cli stream --url $(RTMP_URL) --key $(GOOD_KEY) --duration 15
 
+stream-camera-twitch: ## Stream the system default camera + microphone (needs TCC authorization) to Twitch (set TWITCH_KEY in env)
+	@test -n "$(TWITCH_KEY)" || (echo "Set TWITCH_KEY to your Twitch stream key."; exit 2)
+	swift run tingra-cli stream --url $(TWITCH_URL) --key $(TWITCH_KEY) --duration 15 --verbose
+
 stream-bad-key: ## Wrong stream key: reconnects on the policy, then exits 75
 	swift run tingra-cli stream --url $(RTMP_URL) --key $(BAD_KEY) $(GENERATORS) --duration 30 --reconnect 2 --reconnect-delay 1
 

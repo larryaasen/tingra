@@ -43,6 +43,20 @@ let package = Package(
                 .product(name: "TingraOutputPlugIns", package: "TingraOutputPlugIns"),
                 .product(name: "TingraPlugInKit", package: "TingraPlugInKit"),
                 .product(name: "TingraRecordingPlugIns", package: "TingraRecordingPlugIns"),
+            ],
+            // A bare executable has no bundle, so the Info.plist (bundle id,
+            // version, TCC usage descriptions) is embedded in the binary's
+            // __TEXT,__info_plist section (see CLI.md, "Distribution"). The
+            // path is resolved relative to the package root, where the linker
+            // runs. unsafeFlags is sanctioned here: tingra-cli is a leaf
+            // product nothing depends on.
+            linkerSettings: [
+                .unsafeFlags([
+                    "-Xlinker", "-sectcreate",
+                    "-Xlinker", "__TEXT",
+                    "-Xlinker", "__info_plist",
+                    "-Xlinker", "Info.plist",
+                ])
             ]
         ),
         .testTarget(name: "TingraCLITests", dependencies: ["TingraCLI"]),

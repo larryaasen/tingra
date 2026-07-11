@@ -40,6 +40,10 @@ Signed and notarized binary for Apple Silicon (arm64) only, distributed through 
 
 **CI verification.** The packaging job asserts identity, entitlements, and the embedded plist on every release — `codesign --verify --strict`, `codesign -d --entitlements -`, and an `otool -s __TEXT __info_plist` presence check — so a regression fails the pipeline, not a user's Mac.
 
+**Versioning.** Product releases tag `v<MAJOR>.<MINOR>.<PATCH>`; `tingra-cli version` prints the number without the `v`, kept in sync with the embedded Info.plist's `CFBundleShortVersionString` (`scripts/package-cli.sh` asserts they match). The plug-in protocol package (`TingraPlugInKit`) and the event bus (`TingraEventBus`) SemVer independently under prefixed tags (`plugin-kit-<x.y.z>`, `event-bus-<x.y.z>`) so the API-stability diff pins the right baseline in a monorepo that ships several products from one commit. Between releases `main` carries the next version with a `-dev` suffix.
+
+**The recipe is implemented.** `scripts/package-cli.sh` runs the whole pipeline (release build → sign → verify → notarized zip + stapled `.pkg` → sha256), gated on signing/notarization credentials passed as environment variables (absent creds fall back to an unsigned dev artifact). `.github/workflows/packaging.yml` runs it on a `v*` tag; the formula template lives at `packaging/homebrew/tingra-cli.rb`, copied per release into the external `larryaasen/homebrew-tingra` tap (see `packaging/README.md`).
+
 Open question tracked in TODO.md: how bundled plug-ins ship next to a bare binary (app bundle style layout, compiled in, or a plug-ins directory installed by the formula). For the CLI era they are compiled in (see ARCHITECTURE.md); the question is what changes when the external bundle loader ships.
 
 ## Command structure
@@ -204,10 +208,11 @@ The MCP server, not raw CLI shell invocation, is the primary AI agent interface 
 `serve` runs the persistent engine process — the daemon. It owns the session: which inputs are active, what is streaming, connection state. Because the process persists, pipeline state survives across individual tool calls, and TCC authorization attaches to one long running identity. In the product path the daemon is launchd managed and socket activated (a LaunchAgent installed by `serve --install` or the Homebrew formula), starting on the first connection and idle-exiting when quiet; manual `serve` in a terminal remains the development path. See MCP.md for the transport, lifecycle, and the TCC attribution rationale behind the launchd decision.
 
 ```
-tingra-cli serve [--socket <path>] [--idle-timeout <sec>] [--json] [--verbose|--quiet] [--log-file <path>]
+tingra-cli serve [--install | --uninstall] [--program <path>] [--socket <path>]
+                 [--idle-timeout <sec>] [--json] [--verbose|--quiet] [--log-file <path>]
 ```
 
-`--socket` overrides the socket path (default: the standard per-user location); `--idle-timeout` sets the quiet period before the daemon exits (default 300 seconds, `0` disables — it never exits while a stream is active regardless). The daemon logs its own lifecycle to stderr (or NDJSON under `--json`); that output is separate from the MCP traffic, which flows only over the socket. Ctrl-C / SIGTERM stops it cleanly (exit 0). **Roadmap step 4 ships manual mode and the tool set below; the launchd `--install`/`--uninstall` path is a recorded follow-up (MCP.md, "Lifecycle").**
+`--install` writes and loads the launchd LaunchAgent (`~/Library/LaunchAgents/com.moonwink.tingra.serve.plist`) so the daemon becomes socket-activated, then exits; `--uninstall` unloads and removes it. `--program` overrides the absolute `tingra-cli` path written into the plist (default: this executable; pass the Homebrew `bin` path for upgrade stability). Run `serve --install` once after installing (the Homebrew formula's caveats point users here). `--socket` overrides the socket path (default: the standard per-user location); `--idle-timeout` sets the quiet period before the daemon exits (default 300 seconds, `0` disables — it never exits while a stream is active regardless). When launched by launchd the daemon adopts the launchd-owned socket automatically; run by hand it creates its own (manual mode). The daemon logs its own lifecycle to stderr (or NDJSON under `--json`); that output is separate from the MCP traffic, which flows only over the socket. Ctrl-C / SIGTERM stops it cleanly (exit 0).
 
 `mcp` is a thin stdio entry point for agents: it speaks [MCP](https://modelcontextprotocol.io) JSON-RPC on stdio and proxies it byte for byte to the daemon's Unix domain socket rather than owning the pipeline itself, reconciling desktop extension process lifecycles with the persistent daemon model (see MCP.md). An agent config points at the binary:
 

@@ -10,6 +10,98 @@ The project targets a narrow but real gap. Native-feeling streaming apps for the
 
 Tingra is for streamers, educators, podcasters, and developers who want a fast, focused, native tool — and who believe the best Mac software is built with the platform, not around it.
 
+## Getting started: the CLI and MCP server
+
+Tingra ships first as `tingra-cli`, a headless front end over the engine. It can stream on its own, and it exposes the engine to AI agents (Claude and others) as an [MCP](https://modelcontextprotocol.io) server. This section takes a first-time user from install to controlling a stream from Claude.
+
+> **Requirements:** an Apple Silicon Mac (arm64) running macOS 15 (Sequoia) or later. Intel Macs are not supported.
+
+### 1. Install
+
+Tingra is distributed as a signed, notarized binary through a Homebrew tap:
+
+```sh
+brew install larryaasen/tingra/tingra-cli
+```
+
+The tap downloads the prebuilt binary — it never builds from source, so the signing identity stays stable and macOS keeps your Camera and Microphone permissions across updates.
+
+### 2. Set up the MCP server
+
+The MCP server runs as a launchd **LaunchAgent** so the daemon is its own process. This matters for permissions: camera and microphone prompts are attributed to **Tingra**, not to whichever agent app connected, and a single grant sticks across updates. Register it once:
+
+```sh
+tingra-cli serve --install
+```
+
+That installs `~/Library/LaunchAgents/com.moonwink.tingra.serve.plist` and loads it. The daemon starts automatically the first time an agent connects and idle-exits when quiet — you never start or stop it by hand. To remove it later:
+
+```sh
+tingra-cli serve --uninstall
+```
+
+Re-run `tingra-cli serve --install` after a `brew upgrade` so the LaunchAgent points at the new version.
+
+### 3. Verify
+
+Confirm the CLI works — these run in-process and need no daemon:
+
+```sh
+tingra-cli version           # prints: tingra-cli 0.1.0
+tingra-cli devices           # lists your cameras and microphones
+```
+
+The first time you list or stream a camera or microphone, macOS prompts for Camera/Microphone access — grant it in **System Settings › Privacy & Security**. To verify a streaming destination without going live (no media is sent), use `probe`:
+
+```sh
+tingra-cli probe --url rtmp://live.twitch.tv/app --key <your-stream-key>
+```
+
+To confirm the MCP daemon itself answers, you can run it in the foreground in one terminal (`tingra-cli serve`) and connect the proxy in another (`tingra-cli mcp`), but with the LaunchAgent installed the usual path is simply to point Claude at it (next step).
+
+### 4. Use it from Claude
+
+The agent-facing entry point is `tingra-cli mcp` — a thin stdio proxy that forwards to the daemon. Point your Claude client at it.
+
+**Claude Desktop** — add Tingra to `~/Library/Application Support/Claude/claude_desktop_config.json` (use the absolute path, since the app may not have Homebrew's `bin` on its `PATH`):
+
+```json
+{
+  "mcpServers": {
+    "tingra": {
+      "command": "/opt/homebrew/bin/tingra-cli",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+Restart Claude Desktop, and Tingra's tools appear.
+
+**Claude Code** — register the server from the terminal:
+
+```sh
+claude mcp add tingra -- /opt/homebrew/bin/tingra-cli mcp
+```
+
+Once connected, ask Claude in plain language — it calls the matching tool:
+
+| Ask Claude… | Tool it calls |
+|-------------|---------------|
+| "List my cameras and microphones." | `devices_list` |
+| "Check whether `rtmp://live.twitch.tv/app` with this key is reachable." | `probe` |
+| "Start streaming color bars and a test tone to `rtmp://live.twitch.tv/app` with key `live_…`." | `stream_start` |
+| "What's the current stream status?" | `stream_status` |
+| "Stop the stream." | `stream_stop` |
+
+For example:
+
+> **You:** Start streaming SMPTE bars and a 440 Hz tone to my Twitch ingest at rtmp://live.twitch.tv/app — the key is `live_1234567890`.
+>
+> **Claude:** *(calls `stream_start`)* Streaming is live — generators (bars + tone) to `rtmp://live.twitch.tv/app`. I'll leave it running; say "stop the stream" when you're done.
+
+Stream keys are secrets: they go straight into Tingra's Keychain-backed secure storage and are never echoed back — any status or log that references one shows it redacted (`live_12…`). One stream runs at a time in v1; asking to start another while one is live returns a clear error naming the active session.
+
 ## Packages and apps
 
 The monorepo splits into `packages/` (the engine libraries) and `apps/` (the runnable products). Every package and app is listed here with its public types; this listing is kept current as code lands (see [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the design behind each piece).
@@ -142,12 +234,15 @@ The MCP/Control service (see [MCP.md](docs/MCP.md)): the hand-rolled MCP JSON-RP
 - `DaemonInfo` — the daemon identity (name, version) reported in the `initialize` result so a client can detect version skew.
 - `StdioSocketProxy` — the transparent byte pipe behind `tingra-cli mcp`: copies bytes between stdin/stdout and the daemon socket with no protocol logic (stdin EOF closes the connection; the connection closing exits).
 - `SocketLocation` — the per-user socket path (`~/Library/Application Support/Tingra/tingra.sock`) and its `0700` directory setup.
+- `LaunchAgent` — the daemon's launchd LaunchAgent: renders the socket-activation plist and installs/uninstalls it (`serve --install`/`--uninstall`), so the daemon is launchd-parented and TCC prompts name Tingra (MCP.md, "Lifecycle").
+- `LaunchAgentError` — a developer-facing failure from installing or removing the LaunchAgent (directory/plist not writable, `launchctl` reported nonzero), each stating what to fix.
+- `LaunchdSocket` — adopts the launchd-owned listening socket under socket activation (wrapping the `CTingraLaunchd` C shim over `launch_activate_socket`); returns nil when not launchd-parented, so the daemon falls back to manual mode.
 - `JSONRPCID`, `JSONRPCError`, `JSONRPCErrorCode`, `JSONRPCResponse`, `JSONRPCNotification`, `JSONRPCIncoming` — the documented JSON-RPC 2.0 wire types, so direct socket clients can script the engine without the proxy.
 - `MCPProtocol` — the MCP method names, notification names, and the protocol version the daemon speaks.
 
 ### `apps/tingra-cli`
 
-The headless front end over the engine (see [CLI.md](docs/CLI.md)): one invocation selects inputs, configures compression, and streams. An executable, so it exposes no public types; its surface is its subcommands — `devices` (input discovery: human table and stable `--json`; `--watch` streams live device connect/disconnect events), `stream` (live streaming with `--reconnect`, `--duration`, optional `--record` to a local `.mov`/`.mp4`, clean Ctrl-C/SIGTERM stop, the `stream.*`/`recording.*` status events, and `--dry-run` plan reporting), `probe` (validate a destination URL/key without going live), `serve` (the persistent engine daemon behind a Unix domain socket, manual mode), `mcp` (the transparent stdio↔socket proxy agents point at), and `version`.
+The headless front end over the engine (see [CLI.md](docs/CLI.md)): one invocation selects inputs, configures compression, and streams. An executable, so it exposes no public types; its surface is its subcommands — `devices` (input discovery: human table and stable `--json`; `--watch` streams live device connect/disconnect events), `stream` (live streaming with `--reconnect`, `--duration`, optional `--record` to a local `.mov`/`.mp4`, clean Ctrl-C/SIGTERM stop, the `stream.*`/`recording.*` status events, and `--dry-run` plan reporting), `probe` (validate a destination URL/key without going live), `serve` (the persistent engine daemon behind a Unix domain socket — manual foreground mode, or launchd socket-activated in the product path; `--install`/`--uninstall` register and remove the LaunchAgent), `mcp` (the transparent stdio↔socket proxy agents point at), and `version`.
 
 ### `apps/ingest-simulator`
 

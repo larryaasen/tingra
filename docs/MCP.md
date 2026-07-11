@@ -65,10 +65,10 @@ The daemon is a **LaunchAgent, socket activated**: the LaunchAgent plist declare
 
 - **Registration:** the LaunchAgent (label `com.moonwink.tingra.serve`) is installed and bootstrapped on first use (`tingra-cli serve --install`, also run by the Homebrew formula). `serve --uninstall` removes it.
 - **Idle exit:** the daemon exits after a quiet period with no connections **and** nothing streaming or recording. It never idle-exits mid-stream. launchd revives it on the next connection, so clients simply connect and the engine is there — no client ever manages daemon lifetime.
-- **Manual mode:** running `tingra-cli serve` in a terminal (foreground, creating the socket itself) remains supported for development and debugging. **This is what ships with roadmap step 4;** the launchd install path below (the `--install`/`--uninstall` flags and the plist) is a recorded follow-up, landing once manual mode is proven.
+- **Manual mode:** running `tingra-cli serve` in a terminal (foreground, creating the socket itself) remains supported for development and debugging. Roadmap step 4 shipped manual mode; the launchd install path below (the `--install`/`--uninstall` flags and the plist) landed 2026-07-09 (`LaunchAgent`/`LaunchdSocket` in `TingraMCP`, over the `CTingraLaunchd` shim for `launch_activate_socket`). `serve` auto-detects its mode — it adopts a launchd-supplied socket when present and otherwise binds its own.
 - **Crash recovery:** if the daemon dies, launchd restarts it on the next connection. Honest semantics: an active stream dies with the daemon, and v1 session state is rebuilt fresh — clients discover this through the `initialize` handshake and status tools, never by guessing.
 
-**The LaunchAgent plist (recorded design for the follow-up).** `serve --install` writes `~/Library/LaunchAgents/com.moonwink.tingra.serve.plist` and bootstraps it (`launchctl bootstrap gui/$UID …`); `--uninstall` reverses it (`launchctl bootout` then remove the file). launchd owns the listening socket declared under `Sockets` and hands it to the daemon on first connection, which adopts it with `launch_activate_socket("Socket")` in place of `manual` mode's own `bind`/`listen`. The plist:
+**The LaunchAgent plist (as implemented).** `serve --install` writes `~/Library/LaunchAgents/com.moonwink.tingra.serve.plist` and bootstraps it (`launchctl bootstrap gui/$UID …`); `--uninstall` reverses it (`launchctl bootout` then remove the file). launchd owns the listening socket declared under `Sockets` and hands it to the daemon on first connection, which adopts it with `launch_activate_socket("Socket")` in place of `manual` mode's own `bind`/`listen`. The plist:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -90,7 +90,7 @@ The daemon is a **LaunchAgent, socket activated**: the LaunchAgent plist declare
 </plist>
 ```
 
-The key seam already exists: `Daemon.init(listeningDescriptor:…)` takes a ready descriptor, so the launchd path constructs the daemon with the adopted socket while `Daemon.manual(socketPath:…)` (what step 4 uses) creates its own — the accept loop, sessions, and idle-exit are identical either way. The `TCC attribution` reason above is why this follow-up matters for the product path even though manual mode is functionally complete.
+The key seam: `Daemon.init(listeningDescriptor:…)` takes a ready descriptor, so the launchd path constructs the daemon with the socket `LaunchdSocket.activate()` adopted while `Daemon.manual(socketPath:…)` creates its own — the accept loop, sessions, and idle-exit are identical either way. The `TCC attribution` reason above is why the launchd path matters for the product path even though manual mode is functionally complete.
 
 ## Sessions and concurrency
 

@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Info.plist
+  tingra-cli
+
+  Created by Larry Aasen on 2026-07-09.
+  Copyright © 2026 Larry Aasen.
+  SPDX-License-Identifier: MIT
+
+  Embedded into the bare executable via the `-sectcreate __TEXT __info_plist`
+  linker flags in Package.swift (see CLI.md, "Distribution"). A command-line
+  tool has no bundle, so this section is where CFBundleIdentifier, the version
+  keys, and the TCC usage descriptions live. Without the usage-description
+  strings, TCC does not deny the request — it kills the process outright.
+
+  The version keys track TingraCLIVersion.current; scripts/package-cli.sh
+  asserts they match so a release cannot ship a mislabelled binary.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key>
+    <string>com.moonwink.tingra.cli</string>
+    <key>CFBundleName</key>
+    <string>tingra-cli</string>
+    <key>CFBundleExecutable</key>
+    <string>tingra-cli</string>
+    <key>CFBundleShortVersionString</key>
+    <string>0.1.0</string>
+    <key>CFBundleVersion</key>
+    <string>0.1.0</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>15.0</string>
+    <key>NSCameraUsageDescription</key>
+    <string>Tingra captures your camera so you can include it in your live stream and recordings.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Tingra captures your microphone so you can include its audio in your live stream and recordings.</string>
+</dict>
+</plist>

@@ -31,9 +31,13 @@ let package = Package(
         .package(path: "../TingraHost"),
     ],
     targets: [
+        // A tiny C shim exposing launchd's `launch_activate_socket`, which the
+        // Swift Darwin overlay does not surface (see MCP.md, "Lifecycle").
+        .target(name: "CTingraLaunchd"),
         .target(
             name: "TingraMCP",
             dependencies: [
+                "CTingraLaunchd",
                 .product(name: "TingraEventBus", package: "TingraEventBus"),
                 .product(name: "TingraPlugInKit", package: "TingraPlugInKit"),
                 .product(name: "TingraHost", package: "TingraHost"),
