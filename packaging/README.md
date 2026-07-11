@@ -33,22 +33,46 @@ and prints the zip's sha256):
 
 In CI these come from GitHub Actions secrets, never the repo.
 
-## The Homebrew tap
+## Cutting a release
+
+`scripts/release.sh [version]` does the whole thing in one command — build, sign,
+notarize, tag, publish the GitHub release, and update the tap — so a release is:
+
+```sh
+# 1. Bump TingraCLIVersion.current in Version.swift + Info.plist, then commit.
+# 2. Export the signing env (see the table above), then:
+scripts/release.sh          # version defaults to Version.swift's constant
+```
+
+It requires a **clean working tree** (the tag must name a committed state) and the
+GitHub CLI (`gh`) authenticated with push access to both repos. Under the hood it
+runs `scripts/package-cli.sh`, pushes tag `v<version>`, creates the release with
+`dist/*.zip` (and `*.pkg` if produced), and renders
+[`homebrew/tingra-cli.rb`](homebrew/tingra-cli.rb) into the tap with the release's
+`version` + `sha256`. Configurable via `TINGRA_REPO`, `TINGRA_TAP_REPO`,
+`TINGRA_TAP_FORMULA`. Idempotent — safe to re-run if a step fails.
+
+Testers then install with:
+
+```sh
+brew install larryaasen/tingra/tingra-cli
+tingra-cli serve --install
+```
+
+The tap never builds from source — it downloads the prebuilt, notarized zip.
+
+### The pieces `release.sh` orchestrates
 
 The formula source of truth is [`homebrew/tingra-cli.rb`](homebrew/tingra-cli.rb).
 The **tap itself is a separate repo**, `larryaasen/homebrew-tingra`, that lives
-outside this monorepo. Per release:
+outside this monorepo and must exist (empty is fine) before the first release.
+To run any step by hand instead of `release.sh`:
 
-1. Run `scripts/package-cli.sh` and upload `dist/*.zip` and `dist/*.pkg` to the
-   GitHub release for the tag (`v<version>`).
-2. Copy `homebrew/tingra-cli.rb` into the tap, updating `version` and `sha256`
-   from the script's output.
-3. Commit the tap. Testers then:
+1. `scripts/package-cli.sh` → `dist/*.zip`, `dist/*.pkg`, and the zip's sha256.
+2. `gh release create v<version> dist/* --repo larryaasen/tingra`.
+3. Copy `homebrew/tingra-cli.rb` into the tap, setting `version` and `sha256`,
+   then commit and push the tap.
 
-   ```sh
-   brew tap larryaasen/tingra
-   brew install tingra-cli
-   tingra-cli serve --install
-   ```
-
-The tap never builds from source — it downloads the prebuilt, notarized zip.
+The tag-triggered `.github/workflows/packaging.yml` automates steps 1–2 in CI
+when the signing secrets are configured; the tap update (step 3) stays with
+`release.sh` (or is done by hand) since it pushes to a second repo.

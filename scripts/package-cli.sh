@@ -98,34 +98,53 @@ else
     warn "TINGRA_NOTARY_PROFILE unset — skipping notarization of the zip."
 fi
 
-# 7. Build the offline .pkg: install to /usr/local/bin (Homebrew's own path is
-#    managed by the formula; the pkg is the manual-install fallback).
-PKG_ROOT="${DIST}/pkgroot"
-mkdir -p "${PKG_ROOT}/usr/local/bin"
-cp "$STAGE_BIN" "${PKG_ROOT}/usr/local/bin/tingra-cli"
-PKG="${DIST}/tingra-cli-${VERSION}.pkg"
-COMPONENT="${DIST}/tingra-cli-component.pkg"
-pkgbuild --root "$PKG_ROOT" --identifier "$BUNDLE_ID" --version "$VERSION" --install-location "/" "$COMPONENT"
-if [[ -n "${TINGRA_INSTALLER_SIGN_ID:-}" ]]; then
-    productbuild --package "$COMPONENT" --sign "$TINGRA_INSTALLER_SIGN_ID" "$PKG"
-    if [[ -n "${TINGRA_NOTARY_PROFILE:-}" ]]; then
-        log "notarizing and stapling the pkg…"
-        xcrun notarytool submit "$PKG" --keychain-profile "$TINGRA_NOTARY_PROFILE" --wait
-        xcrun stapler staple "$PKG"
-    else
-        warn "TINGRA_NOTARY_PROFILE unset — pkg signed but not notarized/stapled."
-    fi
-else
-    productbuild --package "$COMPONENT" "$PKG"
-    warn "TINGRA_INSTALLER_SIGN_ID unset — pkg is unsigned (dev use only)."
-fi
-rm -f "$COMPONENT"
-log "wrote $PKG"
-
-# 8. Emit the sha256 the Homebrew formula pins.
+# 7. Emit the sha256 the Homebrew formula pins. The zip is the tap's only
+#    input, so surface it now — before the optional .pkg — so a pkg or keychain
+#    hiccup below can never swallow the one value the release actually needs.
 SHA="$(shasum -a 256 "$ZIP" | awk '{print $1}')"
+log "zip sha256: $SHA   (paste into packaging/homebrew/tingra-cli.rb)"
+
+# 8. Build the offline .pkg: install to /usr/local/bin (Homebrew's own path is
+#    managed by the formula; the pkg is the manual-install fallback). Best
+#    effort — the notarized zip above is what the tap uses, so a pkg
+#    signing/keychain failure warns rather than aborting the release.
+PKG="${DIST}/tingra-cli-${VERSION}.pkg"
+build_pkg() {
+    local pkg_root="${DIST}/pkgroot"
+    local component="${DIST}/tingra-cli-component.pkg"
+    mkdir -p "${pkg_root}/usr/local/bin" || return 1
+    cp "$STAGE_BIN" "${pkg_root}/usr/local/bin/tingra-cli" || return 1
+    pkgbuild --root "$pkg_root" --identifier "$BUNDLE_ID" --version "$VERSION" \
+        --install-location "/" "$component" || return 1
+    if [[ -n "${TINGRA_INSTALLER_SIGN_ID:-}" ]]; then
+        productbuild --package "$component" --sign "$TINGRA_INSTALLER_SIGN_ID" "$PKG" || return 1
+        if [[ -n "${TINGRA_NOTARY_PROFILE:-}" ]]; then
+            log "notarizing and stapling the pkg…"
+            xcrun notarytool submit "$PKG" --keychain-profile "$TINGRA_NOTARY_PROFILE" --wait || return 1
+            xcrun stapler staple "$PKG" || return 1
+        else
+            warn "TINGRA_NOTARY_PROFILE unset — pkg signed but not notarized/stapled."
+        fi
+    else
+        productbuild --package "$component" "$PKG" || return 1
+        warn "TINGRA_INSTALLER_SIGN_ID unset — pkg is unsigned (dev use only)."
+    fi
+    rm -f "$component"
+}
+if build_pkg; then
+    log "wrote $PKG"
+else
+    warn "the .pkg step did not complete (see the error above). The notarized zip is the"
+    warn "Homebrew artifact, so the release is NOT blocked. A -60008 authorization error is"
+    warn "usually the keychain: unlock it and run 'security set-key-partition-list -S"
+    warn "apple-tool:,apple: -k <login-password> ~/Library/Keychains/login.keychain-db', then"
+    warn "re-run productbuild on dist/tingra-cli-component.pkg."
+    PKG=""
+fi
+
+# 9. Final summary.
 echo
 log "artifacts in ${DIST}:"
 echo "  zip:    $ZIP"
-echo "  pkg:    $PKG"
-echo "  sha256: $SHA   (paste into packaging/homebrew/tingra-cli.rb)"
+[[ -n "$PKG" ]] && echo "  pkg:    $PKG"
+echo "  sha256: $SHA"
