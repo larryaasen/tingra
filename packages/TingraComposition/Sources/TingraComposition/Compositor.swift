@@ -37,11 +37,14 @@ import TingraPlugInKit
 /// program buffer.
 ///
 /// It can hold a whole ``Preset`` worth of shots (``loadPreset(_:)``) and
-/// switch which one is on program with ``take(shotID:)`` — a **cut**, the
-/// instant transition (GLOSSARY.md, "Transition"); dissolves and wipes are a
-/// later iteration. ``setShot(_:)`` remains the low-level "render exactly this
-/// shot" path used by the pre-preset callers and tests; the preset path
-/// (``loadPreset(_:)`` + ``take(shotID:)``) is what the app drives.
+/// switch which one is on program with ``take(shotID:transition:)`` — the
+/// default is a **cut**, the instant transition (GLOSSARY.md, "Transition");
+/// passing ``Transition/dissolve`` crossfades between the outgoing and
+/// incoming shot over its duration instead. A **wipe** and custom
+/// shader-based transitions are a later iteration. ``setShot(_:)`` remains
+/// the low-level "render exactly this shot" path used by the pre-preset
+/// callers and tests (always a hard cut, no blending); the preset path
+/// (``loadPreset(_:)`` + ``take(shotID:transition:)``) is what the app drives.
 ///
 /// The mutating controls (``setInputs(_:)``, ``setShot(_:)``,
 /// ``loadPreset(_:)``, ``take(shotID:)``, ``start()``, ``stop()``) are meant
@@ -92,11 +95,34 @@ public final class Compositor: Sendable {
         /// ``setShot`` that bypassed the preset.
         var activeShotID: ShotID?
 
+        /// A dissolve in progress, or `nil` when idle (a cut has already
+        /// replaced `shot` outright and needs no tick-by-tick blending).
+        /// While set, the tick renders a crossfade from `outgoing` toward
+        /// `shot` (the incoming shot) instead of `shot` alone.
+        var pendingTransition: PendingTransition?
+
         /// The single active program-frame consumer, while attached.
         var programContinuation: AsyncStream<CapturedFrame>.Continuation?
 
         /// The running tick task, while started.
         var tickTask: Task<Void, Never>?
+    }
+
+    /// A dissolve counted in ticks rather than wall-clock time, so its
+    /// progress is exact and deterministic under both the master clock and a
+    /// synthetic test clock (CLOCK.md, "The program tick" — nothing outside
+    /// the tick stream decides how much time has passed).
+    private struct PendingTransition {
+        /// The shot being transitioned away from.
+        let outgoing: Shot
+
+        /// The number of ticks the whole dissolve spans, at least one so a
+        /// zero or negative duration still completes on its first tick
+        /// rather than never finishing.
+        let totalTicks: Int
+
+        /// How many of those ticks have rendered so far.
+        var elapsedTicks: Int = 0
     }
 
     /// Creates a compositor.
@@ -179,6 +205,7 @@ public final class Compositor: Sendable {
         state.withLock {
             $0.shot = shot
             $0.activeShotID = nil
+            $0.pendingTransition = nil
         }
     }
 
@@ -194,6 +221,7 @@ public final class Compositor: Sendable {
             state.shots = preset.shots
             state.activeShotID = first?.id
             state.shot = first ?? Shot()
+            state.pendingTransition = nil
         }
         eventBus.event(
             "preset.loaded",
@@ -206,18 +234,36 @@ public final class Compositor: Sendable {
         )
     }
 
-    /// Takes the loaded preset's shot with the given id to program — a cut,
-    /// effective on the next tick. Taking an id that is not in the loaded
-    /// preset leaves the program unchanged and reports a `program.take` error
-    /// event (a stale switcher selection is recoverable, never a crash);
-    /// otherwise it reports the take on the bus.
+    /// Takes the loaded preset's shot with the given id to program, effective
+    /// on the next tick. `transition` defaults to a **cut** (the instant
+    /// switch, unchanged from before this shot ever accepted a transition);
+    /// passing ``Transition/dissolve`` crossfades from the outgoing shot to
+    /// the incoming one over its duration instead — the tick renders the
+    /// blend every tick until the dissolve completes, then settles on the
+    /// incoming shot alone. Taking an id that is not in the loaded preset
+    /// leaves the program unchanged and reports a `program.take` error event
+    /// (a stale switcher selection is recoverable, never a crash); otherwise
+    /// it reports the take, including the transition, on the bus.
     ///
-    /// - Parameter shotID: The id of the shot to take to program.
-    public func take(shotID: ShotID) {
+    /// - Parameters:
+    ///   - shotID: The id of the shot to take to program.
+    ///   - transition: The transition to take it with (default: a cut).
+    public func take(shotID: ShotID, transition: Transition = .cut) {
+        let frameRate = format.frameRate
         let taken: Shot? = state.withLock { state in
             guard let shot = state.shots.first(where: { $0.id == shotID }) else { return nil }
+            let outgoing = state.shot
             state.activeShotID = shotID
             state.shot = shot
+            switch transition {
+            case .cut:
+                state.pendingTransition = nil
+            case .dissolve(let duration):
+                // At least one tick, so a zero or negative duration still
+                // completes on its first tick rather than never finishing.
+                let totalTicks = max(1, Int((duration * Double(frameRate)).rounded()))
+                state.pendingTransition = PendingTransition(outgoing: outgoing, totalTicks: totalTicks)
+            }
             return shot
         }
         guard let taken else {
@@ -237,6 +283,7 @@ public final class Compositor: Sendable {
             params: [
                 "shot": .string(taken.id.rawValue),
                 "name": .string(taken.name),
+                "transition": .string(transition.eventName),
             ]
         )
     }
@@ -271,11 +318,37 @@ public final class Compositor: Sendable {
                 let renderer = makeRenderer()
                 for await tickTime in clock.tick(every: frameDuration) {
                     guard !Task.isCancelled, let self else { break }
-                    let (shot, frames, continuation) = self.state.withLock {
-                        ($0.shot, $0.slots, $0.programContinuation)
+                    let snapshot = self.state.withLock { state -> TickSnapshot in
+                        var dissolve: TickSnapshot.Dissolve?
+                        if var pending = state.pendingTransition {
+                            pending.elapsedTicks += 1
+                            let progress = min(1, Double(pending.elapsedTicks) / Double(pending.totalTicks))
+                            dissolve = TickSnapshot.Dissolve(outgoing: pending.outgoing, progress: progress)
+                            state.pendingTransition = pending.elapsedTicks >= pending.totalTicks ? nil : pending
+                        }
+                        return TickSnapshot(
+                            shot: state.shot,
+                            frames: state.slots,
+                            continuation: state.programContinuation,
+                            dissolve: dissolve
+                        )
                     }
-                    guard let continuation else { continue }
-                    if let program = renderer.render(shot: shot, frames: frames, format: format, time: tickTime) {
+                    guard let continuation = snapshot.continuation else { continue }
+                    let program: CapturedFrame? =
+                        if let dissolve = snapshot.dissolve {
+                            renderer.renderDissolve(
+                                from: dissolve.outgoing,
+                                to: snapshot.shot,
+                                progress: dissolve.progress,
+                                frames: snapshot.frames,
+                                format: format,
+                                time: tickTime
+                            )
+                        } else {
+                            renderer.render(
+                                shot: snapshot.shot, frames: snapshot.frames, format: format, time: tickTime)
+                        }
+                    if let program {
                         continuation.yield(program)
                     }
                 }
@@ -300,6 +373,7 @@ public final class Compositor: Sendable {
             state.fillTasks.removeAll()
             state.slots.removeAll()
             state.programContinuation = nil
+            state.pendingTransition = nil
             return taken
         }
         tickTask?.cancel()
@@ -313,5 +387,45 @@ public final class Compositor: Sendable {
     /// Stores one input's newest frame into its latest-wins slot.
     private func store(_ frame: CapturedFrame, for id: InputID) {
         state.withLock { $0.slots[id] = frame }
+    }
+}
+
+/// What one tick needs to render, snapshotted out of ``Compositor/State``
+/// under its lock in a single pass — including advancing (and, on
+/// completion, clearing) any in-progress dissolve, so the tick task never
+/// re-enters the lock mid-render.
+private struct TickSnapshot {
+    /// A dissolve in progress this tick, or `nil` for a plain render.
+    struct Dissolve {
+        /// The shot being transitioned away from.
+        let outgoing: Shot
+
+        /// How far through the dissolve this tick falls, `0`...`1`.
+        let progress: Double
+    }
+
+    /// The shot to render — the incoming shot while a dissolve is in
+    /// progress, otherwise the shot currently on program.
+    let shot: Shot
+
+    /// The latest frame each input has produced, keyed by id.
+    let frames: [InputID: CapturedFrame]
+
+    /// The active program-frame consumer, or `nil` if none is attached.
+    let continuation: AsyncStream<CapturedFrame>.Continuation?
+
+    /// The dissolve to render this tick, or `nil` for a plain render of
+    /// `shot`.
+    let dissolve: Dissolve?
+}
+
+extension Transition {
+    /// The event-bus name for this transition's kind — `"cut"` or
+    /// `"dissolve"` — reported on ``Compositor``'s `program.take` event.
+    fileprivate var eventName: String {
+        switch self {
+        case .cut: "cut"
+        case .dissolve: "dissolve"
+        }
     }
 }

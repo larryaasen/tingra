@@ -49,4 +49,31 @@ public protocol ShotRenderer {
         format: ProgramFormat,
         time: CMTime
     ) -> CapturedFrame?
+
+    /// Renders one program frame of a **dissolve** in progress (GLOSSARY.md,
+    /// "Transition"): a crossfade between the outgoing and incoming shot's
+    /// layer trees at `progress` — `0` is fully `outgoing`, `1` is fully
+    /// `incoming`. The compositor calls this once per tick for the
+    /// transition's duration instead of ``render(shot:frames:format:time:)``,
+    /// then switches back to the plain render once `progress` reaches `1`.
+    ///
+    /// - Parameters:
+    ///   - outgoing: The shot being transitioned away from.
+    ///   - incoming: The shot being transitioned to.
+    ///   - progress: How far through the dissolve this tick falls, `0`...`1`.
+    ///   - frames: The latest frame each input has produced, keyed by
+    ///     ``InputID`` — shared by both shots' layers.
+    ///   - format: The program geometry to render into.
+    ///   - time: The program tick's master clock time, stamped onto the
+    ///     returned frame.
+    /// - Returns: The composited program frame, or `nil` if a buffer could
+    ///   not be produced; the compositor skips that tick rather than crash.
+    func renderDissolve(
+        from outgoing: Shot,
+        to incoming: Shot,
+        progress: Double,
+        frames: [InputID: CapturedFrame],
+        format: ProgramFormat,
+        time: CMTime
+    ) -> CapturedFrame?
 }

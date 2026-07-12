@@ -35,6 +35,23 @@
         }
       }
     },
+    "Dissolve" : {
+      "comment" : "Toggle: use a dissolve transition for the next shot take, instead of a cut",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Überblendung"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Disolución"
+          }
+        }
+      }
+    },
     "Picture in Picture" : {
       "comment" : "Shot: display with camera inset",
       "localizations" : {

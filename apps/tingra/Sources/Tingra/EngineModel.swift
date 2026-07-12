@@ -63,6 +63,12 @@ final class EngineModel {
     /// it. `nil` when there are no shots (no input selected).
     private(set) var activeShotID: ShotID?
 
+    /// Whether the next shot switcher tap dissolves rather than cuts
+    /// (GLOSSARY.md, "Transition"). A plain toggle bound from `ContentView`;
+    /// the switcher itself still always reports the cut/dissolve choice it
+    /// used, never guesses at intent.
+    var useDissolveTransition = false
+
     /// The latest program frame, handed to the preview view to draw. Held
     /// in a plain relay (not observed) so the ~30 fps program does not churn
     /// SwiftUI — the `MTKView` samples it at display rate (CLOCK.md).
@@ -246,8 +252,10 @@ final class EngineModel {
         rebuildPreset()
     }
 
-    /// Takes the shot with the given id to program — a cut. Driven by the shot
-    /// switcher button; the compositor renders it from the next tick.
+    /// Takes the shot with the given id to program, using ``useDissolveTransition``
+    /// to choose a cut or a dissolve (GLOSSARY.md, "Transition"). Driven by
+    /// the shot switcher button; the compositor renders it starting the next
+    /// tick.
     ///
     /// Reports no `tap` event itself — the switcher button's action closure
     /// in `ContentView` reports the tap before calling this, right where the
@@ -255,7 +263,7 @@ final class EngineModel {
     ///
     /// - Parameter shotID: The id of the shot to take to program.
     func take(_ shotID: ShotID) {
-        compositor.take(shotID: shotID)
+        compositor.take(shotID: shotID, transition: useDissolveTransition ? .dissolve : .cut)
         activeShotID = shotID
     }
 

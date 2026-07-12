@@ -182,4 +182,100 @@ struct CoreImageShotRendererTests {
         let primaries = CVBufferCopyAttachment(program.pixelBuffer, kCVImageBufferColorPrimariesKey, nil)
         #expect(primaries as? String == kCVImageBufferColorPrimaries_ITU_R_709_2 as String)
     }
+
+    @Test("a dissolve at progress 0 renders the outgoing shot alone")
+    func dissolveAtZeroProgressRendersOutgoingAlone() throws {
+        let renderer = makeRenderer()
+        let format = ProgramFormat(width: 4, height: 4, frameRate: 30)
+        let camera = InputID(rawValue: "camera")
+        let red = Shot(layers: [Layer(input: camera)], background: .black)
+        let blue = Shot(background: .black)
+
+        let program = try #require(
+            renderer.renderDissolve(
+                from: red,
+                to: blue,
+                progress: 0,
+                frames: [camera: solidFrame(red: 255, green: 0, blue: 0)],
+                format: format,
+                time: .zero
+            )
+        )
+
+        let pixel = readPixel(program.pixelBuffer, x: 2, y: 2)
+        #expect(pixel.red > 250)
+        #expect(pixel.blue < 5)
+    }
+
+    @Test("a dissolve at progress 1 renders the incoming shot alone")
+    func dissolveAtFullProgressRendersIncomingAlone() throws {
+        let renderer = makeRenderer()
+        let format = ProgramFormat(width: 4, height: 4, frameRate: 30)
+        let camera = InputID(rawValue: "camera")
+        let outgoing = Shot(background: .black)
+        let incoming = Shot(layers: [Layer(input: camera)], background: .black)
+
+        let program = try #require(
+            renderer.renderDissolve(
+                from: outgoing,
+                to: incoming,
+                progress: 1,
+                frames: [camera: solidFrame(red: 0, green: 0, blue: 255)],
+                format: format,
+                time: .zero
+            )
+        )
+
+        let pixel = readPixel(program.pixelBuffer, x: 2, y: 2)
+        #expect(pixel.blue > 250)
+        #expect(pixel.red < 5)
+    }
+
+    @Test("a dissolve midway blends between the outgoing and incoming shot")
+    func dissolveMidwayBlendsBothShots() throws {
+        let renderer = makeRenderer()
+        let format = ProgramFormat(width: 4, height: 4, frameRate: 30)
+        let camera = InputID(rawValue: "camera")
+        let outgoing = Shot(layers: [Layer(input: camera)], background: .black)
+        let incoming = Shot(background: .black)
+        let white = solidFrame(red: 255, green: 255, blue: 255)
+
+        let program = try #require(
+            renderer.renderDissolve(
+                from: outgoing,
+                to: incoming,
+                progress: 0.5,
+                frames: [camera: white],
+                format: format,
+                time: .zero
+            )
+        )
+
+        // Halfway between an opaque white outgoing layer and a black
+        // incoming background: dimmer than fully outgoing, brighter than
+        // fully incoming (the same "toward the background" fade as layer
+        // opacity, applied to the whole incoming image).
+        let pixel = readPixel(program.pixelBuffer, x: 2, y: 2)
+        #expect(pixel.red < 250)
+        #expect(pixel.red > 0)
+    }
+
+    @Test("the program frame stamped by a dissolve carries the tick's time")
+    func dissolveStampsTickTime() throws {
+        let renderer = makeRenderer()
+        let format = ProgramFormat(width: 4, height: 4, frameRate: 30)
+
+        let program = try #require(
+            renderer.renderDissolve(
+                from: Shot(),
+                to: Shot(),
+                progress: 0.5,
+                frames: [:],
+                format: format,
+                time: CMTime(value: 7, timescale: 30)
+            )
+        )
+
+        #expect(program.presentationTime == CMTime(value: 7, timescale: 30))
+    }
 }

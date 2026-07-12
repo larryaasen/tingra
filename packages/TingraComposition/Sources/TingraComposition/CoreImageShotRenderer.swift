@@ -17,14 +17,17 @@ import TingraPlugInKit
 /// Image, GPU-resident through a Metal-backed `CIContext`
 /// (ARCHITECTURE.md, "Composition" — Core Image supplies compositing
 /// without hand-writing every shader; raw Metal shaders arrive only where
-/// custom work or performance demands them, at the effects/transitions
-/// step).
+/// custom work or performance demands them, at a later effects step).
 ///
 /// The pipeline stays on the GPU: each layer's `IOSurface`-backed
 /// `CVPixelBuffer` becomes a `CIImage`, is scaled and placed into its
 /// destination rect, and is composited over the background; the result
 /// renders into an `IOSurface`-backed 32BGRA program buffer, tagged BT.709
-/// (the delivery convention every buffer in the pipeline carries).
+/// (the delivery convention every buffer in the pipeline carries). A
+/// **dissolve** (``renderDissolve(from:to:progress:frames:format:time:)``)
+/// renders both shots' layer trees this same way and alpha-blends them —
+/// no separate shader, just the layer-opacity math applied to the whole
+/// incoming image.
 ///
 /// Not `Sendable` by design (see ``ShotRenderer``): an instance and its
 /// `CIContext` and buffer pool live entirely inside the compositor's tick
@@ -74,8 +77,39 @@ public final class CoreImageShotRenderer: ShotRenderer {
         format: ProgramFormat,
         time: CMTime
     ) -> CapturedFrame? {
-        guard let buffer = makeOutputBuffer(width: format.width, height: format.height) else { return nil }
+        let image = layerTreeImage(shot: shot, frames: frames, format: format)
+        return renderToBuffer(image, format: format, time: time)
+    }
 
+    /// Composites a dissolve: both shots' layer trees are rendered
+    /// independently, then the incoming image is faded in over the outgoing
+    /// one by `progress` — `0` shows `outgoing` alone, `1` shows `incoming`
+    /// alone, and values between blend the two (a plain alpha crossfade,
+    /// the same "fade toward the background" math ``placedImage(for:layer:format:)``
+    /// already uses for layer opacity).
+    public func renderDissolve(
+        from outgoing: Shot,
+        to incoming: Shot,
+        progress: Double,
+        frames: [InputID: CapturedFrame],
+        format: ProgramFormat,
+        time: CMTime
+    ) -> CapturedFrame? {
+        let clampedProgress = min(max(progress, 0), 1)
+        let outgoingImage = layerTreeImage(shot: outgoing, frames: frames, format: format)
+        let incomingImage = layerTreeImage(shot: incoming, frames: frames, format: format)
+        let fadedIncoming = incomingImage.applyingFilter(
+            "CIColorMatrix",
+            parameters: ["inputAVector": CIVector(x: 0, y: 0, z: 0, w: clampedProgress)]
+        )
+        let blended = fadedIncoming.composited(over: outgoingImage)
+        return renderToBuffer(blended, format: format, time: time)
+    }
+
+    /// Composites one shot's layer tree, bottom to top, over its background —
+    /// the shared pixel work behind both ``render(shot:frames:format:time:)``
+    /// and ``renderDissolve(from:to:progress:frames:format:time:)``.
+    private func layerTreeImage(shot: Shot, frames: [InputID: CapturedFrame], format: ProgramFormat) -> CIImage {
         let programRect = CGRect(x: 0, y: 0, width: format.width, height: format.height)
         var image = backgroundImage(shot.background, in: programRect)
         for layer in shot.layers {
@@ -84,7 +118,15 @@ public final class CoreImageShotRenderer: ShotRenderer {
                 image = placed.composited(over: image)
             }
         }
+        return image
+    }
 
+    /// Renders a composited image into a fresh output buffer, tags it
+    /// BT.709, and stamps it with the tick time — the shared tail of both
+    /// render paths.
+    private func renderToBuffer(_ image: CIImage, format: ProgramFormat, time: CMTime) -> CapturedFrame? {
+        guard let buffer = makeOutputBuffer(width: format.width, height: format.height) else { return nil }
+        let programRect = CGRect(x: 0, y: 0, width: format.width, height: format.height)
         context.render(image, to: buffer, bounds: programRect, colorSpace: outputColorSpace)
         tagBT709(buffer)
         return CapturedFrame(pixelBuffer: buffer, presentationTime: time)

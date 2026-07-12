@@ -15,10 +15,12 @@ import TingraPlugInKit
 /// The main window: the program preview above the shot switcher and input
 /// pickers.
 ///
-/// The pickers pick one camera and one display; the switcher cuts among the
-/// shots those inputs support (picture-in-picture, display, camera), taking
-/// the chosen one to program. This is the early step-7 shape — the production
-/// surface (multiple presets, the mixer, streaming controls) grows from here.
+/// The pickers pick one camera and one display; the switcher takes the
+/// chosen shot (picture-in-picture, display, camera) to program — a cut, or
+/// a dissolve when the switcher's transition toggle is on (GLOSSARY.md,
+/// "Transition"). This is the early step-7 shape — the production surface
+/// (multiple presets, the layer-tree editor, the mixer, streaming controls)
+/// grows from here.
 ///
 /// Every user action here reports its own `tap` event right where it's
 /// executed — a picker's `onChange`, a button's action closure — rather than
@@ -70,24 +72,42 @@ struct ContentView: View {
         }
     }
 
-    /// The shot switcher: one button per available shot, cutting it to program
-    /// on tap. The button for the shot currently on program is highlighted.
-    /// Hidden when no input is selected (there are no shots to switch among).
+    /// The shot switcher: one button per available shot, taking it to program
+    /// on tap (a dissolve when ``EngineModel/useDissolveTransition`` is on,
+    /// otherwise a cut). The button for the shot currently on program is
+    /// highlighted. Hidden when no input is selected (there are no shots to
+    /// switch among).
     @ViewBuilder private var shotSwitcher: some View {
         if !model.shots.isEmpty {
-            HStack(spacing: 8) {
-                ForEach(model.shots) { shot in
-                    let isOnProgram = shot.id == model.activeShotID
-                    Button(shot.name) {
-                        model.eventBus.tap(
-                            ProgramLayout.tapName(forShotID: shot.id),
-                            domain: .composition,
-                            params: ["shot": .string(shot.id.rawValue), "name": .string(shot.name)]
-                        )
-                        model.take(shot.id)
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 8) {
+                    ForEach(model.shots) { shot in
+                        let isOnProgram = shot.id == model.activeShotID
+                        Button(shot.name) {
+                            model.eventBus.tap(
+                                ProgramLayout.tapName(forShotID: shot.id),
+                                domain: .composition,
+                                params: ["shot": .string(shot.id.rawValue), "name": .string(shot.name)]
+                            )
+                            model.take(shot.id)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(isOnProgram ? .accentColor : .gray)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(isOnProgram ? .accentColor : .gray)
+                }
+
+                Toggle(isOn: $model.useDissolveTransition) {
+                    Text(
+                        "Dissolve",
+                        comment: "Toggle: use a dissolve transition for the next shot take, instead of a cut")
+                }
+                .toggleStyle(.checkbox)
+                .onChange(of: model.useDissolveTransition) { _, newValue in
+                    model.eventBus.tap(
+                        "transition.toggle",
+                        domain: .composition,
+                        params: ["dissolve": .bool(newValue)]
+                    )
                 }
             }
         }
