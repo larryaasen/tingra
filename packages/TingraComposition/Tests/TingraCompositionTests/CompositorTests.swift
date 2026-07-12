@@ -363,6 +363,114 @@ struct CompositorTests {
         #expect(recorder.recorded.allSatisfy { $0.shot == display })
     }
 
+    @Test("updating the active shot renders the edited layer tree on the next tick — no separate apply step")
+    func updateActiveShotRendersEditedTree() async {
+        let ticks = (0..<3).map { CMTime(value: CMTimeValue($0), timescale: 30) }
+        let recorder = RenderRecorder()
+        let compositor = makeCompositor(recorder: recorder, tickTimes: ticks)
+        let display = Shot(id: ShotID(rawValue: "display"), name: "Display")
+        compositor.loadPreset(Preset(name: "Live", shots: [display]))
+
+        let edited = Shot(
+            id: display.id,
+            name: display.name,
+            layers: [Layer(input: InputID(rawValue: "camera"), opacity: 0.5)]
+        )
+        compositor.updateShot(edited)
+
+        let program = compositor.programFrames()
+        compositor.start()
+        _ = await collect(program, limit: 3)
+
+        // The edit is live: every tick after the update renders the edited
+        // layer tree, and editing never changes which shot is on program.
+        #expect(recorder.recorded.allSatisfy { $0.shot == edited })
+        #expect(compositor.activeShotID == display.id)
+    }
+
+    @Test("an edited shot keeps its edits across shot switches within the session")
+    func updatedShotSurvivesShotSwitches() async {
+        let ticks = (0..<4).map { CMTime(value: CMTimeValue($0), timescale: 30) }
+        let recorder = RenderRecorder()
+        let compositor = makeCompositor(recorder: recorder, tickTimes: ticks)
+        let display = Shot(id: ShotID(rawValue: "display"), name: "Display")
+        let camera = Shot(id: ShotID(rawValue: "camera"), name: "Camera")
+        compositor.loadPreset(Preset(name: "Live", shots: [display, camera]))
+
+        let edited = Shot(id: display.id, name: display.name, layers: [Layer(input: InputID(rawValue: "extra"))])
+        compositor.updateShot(edited)
+        // Switch away and back: the loaded preset holds the edited shot.
+        compositor.take(shotID: camera.id)
+        compositor.take(shotID: display.id)
+
+        #expect(compositor.shots.first { $0.id == display.id } == edited)
+        let program = compositor.programFrames()
+        compositor.start()
+        _ = await collect(program, limit: 4)
+        #expect(recorder.recorded.last?.shot == edited)
+    }
+
+    @Test("updating a shot that is not on program changes the pool but not the live render")
+    func updateInactiveShotLeavesProgramUnchanged() async {
+        let ticks = (0..<2).map { CMTime(value: CMTimeValue($0), timescale: 30) }
+        let recorder = RenderRecorder()
+        let compositor = makeCompositor(recorder: recorder, tickTimes: ticks)
+        let display = Shot(id: ShotID(rawValue: "display"), name: "Display")
+        let camera = Shot(id: ShotID(rawValue: "camera"), name: "Camera")
+        compositor.loadPreset(Preset(name: "Live", shots: [display, camera]))
+
+        let edited = Shot(id: camera.id, name: camera.name, layers: [Layer(input: InputID(rawValue: "extra"))])
+        compositor.updateShot(edited)
+
+        #expect(compositor.shots.first { $0.id == camera.id } == edited)
+        #expect(compositor.activeShotID == display.id)
+        let program = compositor.programFrames()
+        compositor.start()
+        _ = await collect(program, limit: 2)
+        // The program keeps rendering the untouched active shot.
+        #expect(recorder.recorded.allSatisfy { $0.shot == display })
+    }
+
+    @Test("updating an unknown shot id leaves the loaded preset unchanged")
+    func updateUnknownShotIsIgnored() async {
+        let recorder = RenderRecorder()
+        let compositor = makeCompositor(recorder: recorder, tickTimes: [])
+        let display = Shot(id: ShotID(rawValue: "display"), name: "Display")
+        compositor.loadPreset(Preset(name: "Live", shots: [display]))
+
+        compositor.updateShot(Shot(id: ShotID(rawValue: "does-not-exist"), name: "Ghost"))
+
+        #expect(compositor.shots == [display])
+        #expect(compositor.activeShotID == display.id)
+    }
+
+    @Test("updating the incoming shot mid-dissolve makes the dissolve continue toward the edited tree")
+    func updateIncomingShotMidDissolve() async {
+        // 30 fps, a 0.1s dissolve — exactly 3 ticks. The edit lands before
+        // any tick runs, so every blended tick already targets the edit.
+        let ticks = (0..<4).map { CMTime(value: CMTimeValue($0), timescale: 30) }
+        let recorder = RenderRecorder()
+        let compositor = makeCompositor(recorder: recorder, tickTimes: ticks)
+        let display = Shot(id: ShotID(rawValue: "display"), name: "Display")
+        let camera = Shot(id: ShotID(rawValue: "camera"), name: "Camera")
+        compositor.loadPreset(Preset(name: "Live", shots: [display, camera]))
+        compositor.take(shotID: camera.id, transition: .dissolve(duration: 0.1))
+
+        let edited = Shot(id: camera.id, name: camera.name, layers: [Layer(input: InputID(rawValue: "extra"))])
+        compositor.updateShot(edited)
+
+        let program = compositor.programFrames()
+        compositor.start()
+        _ = await collect(program, limit: 4)
+
+        let calls = recorder.recorded
+        // The blended ticks dissolve from the outgoing shot toward the
+        // edited incoming tree, then settle on it.
+        #expect(calls.prefix(3).allSatisfy { $0.dissolveOutgoing == display && $0.shot == edited })
+        #expect(calls.last?.dissolveProgress == nil)
+        #expect(calls.last?.shot == edited)
+    }
+
     @Test("stop() finishes the program stream")
     func stopFinishesProgramStream() async {
         // A clock that would tick forever is not needed: stop() finishes the

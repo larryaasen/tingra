@@ -46,10 +46,18 @@ import TingraPlugInKit
 /// callers and tests (always a hard cut, no blending); the preset path
 /// (``loadPreset(_:)`` + ``take(shotID:transition:)``) is what the app drives.
 ///
+/// A loaded shot's layer tree can be edited live with ``updateShot(_:)``:
+/// it replaces the preset's shot with the matching id in place, and when
+/// that shot is on program the very next tick renders the edited tree — the
+/// program is a live canvas (CLOCK.md), so there is no separate "apply"
+/// step. The edit persists in the loaded preset, so it survives later
+/// ``take(shotID:transition:)`` switches within the session.
+///
 /// The mutating controls (``setInputs(_:)``, ``setShot(_:)``,
-/// ``loadPreset(_:)``, ``take(shotID:)``, ``start()``, ``stop()``) are meant
-/// to be driven from one context (the app's main actor); they are internally
-/// locked but not designed for concurrent callers racing each other.
+/// ``loadPreset(_:)``, ``take(shotID:)``, ``updateShot(_:)``, ``start()``,
+/// ``stop()``) are meant to be driven from one context (the app's main
+/// actor); they are internally locked but not designed for concurrent
+/// callers racing each other.
 public final class Compositor: Sendable {
     /// The clock whose tick paces the program (the master clock in
     /// production, a synthetic clock in tests).
@@ -286,6 +294,47 @@ public final class Compositor: Sendable {
                 "transition": .string(transition.eventName),
             ]
         )
+    }
+
+    /// Replaces the loaded preset's shot with the same id, in place — the
+    /// live edit path a layer-tree editor drives. When the edited shot is
+    /// the one on program, the very next tick renders the edited layer tree
+    /// (no separate "apply" step — the program is a live canvas, CLOCK.md);
+    /// while a dissolve is in progress toward it, the dissolve continues
+    /// toward the edited tree. The edit persists in the loaded preset, so
+    /// the shot keeps it across later ``take(shotID:transition:)`` switches
+    /// within the session. ``activeShotID`` is untouched — editing a shot is
+    /// not taking it.
+    ///
+    /// Updating an id that is not in the loaded preset leaves everything
+    /// unchanged and reports a `shot.update` error event (recoverable, never
+    /// a crash). A successful update deliberately reports **no** event: a
+    /// live editor drives this at gesture rate (a slider drag calls it many
+    /// times a second), which would flood the control-plane bus (EVENTS.md);
+    /// user-action observability comes from the app's `tap` events instead.
+    ///
+    /// - Parameter shot: The edited shot, matched to the loaded preset's
+    ///   shot by ``Shot/id``.
+    public func updateShot(_ shot: Shot) {
+        let updated = state.withLock { state -> Bool in
+            guard let index = state.shots.firstIndex(where: { $0.id == shot.id }) else { return false }
+            state.shots[index] = shot
+            if state.activeShotID == shot.id {
+                state.shot = shot
+            }
+            return true
+        }
+        guard updated else {
+            eventBus.error(
+                "shot.update",
+                domain: .composition,
+                params: [
+                    "shot": .string(shot.id.rawValue),
+                    "reason": .string("unknownShot"),
+                ]
+            )
+            return
+        }
     }
 
     /// The shots of the loaded preset, in switcher order (empty before a

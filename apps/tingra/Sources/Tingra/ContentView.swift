@@ -12,14 +12,15 @@ import TingraComposition
 import TingraEventBus
 import TingraPlugInKit
 
-/// The main window: the program preview above the shot switcher and input
-/// pickers.
+/// The main window: the program preview above the shot switcher, the
+/// layer-tree editor, and the input pickers.
 ///
 /// The pickers pick one camera and one display; the switcher takes the
 /// chosen shot (picture-in-picture, display, camera) to program — a cut, or
 /// a dissolve when the switcher's transition toggle is on (GLOSSARY.md,
-/// "Transition"). This is the early step-7 shape — the production surface
-/// (multiple presets, the layer-tree editor, the mixer, streaming controls)
+/// "Transition"); the editor (``LayerTreeEditorView``) edits the selected
+/// shot's layer tree live. This is the step-7 shape — the remaining
+/// production surface (multiple presets, the mixer, streaming controls)
 /// grows from here.
 ///
 /// Every user action here reports its own `tap` event right where it's
@@ -48,6 +49,8 @@ struct ContentView: View {
                 }
 
             shotSwitcher
+
+            LayerTreeEditorView(model: model)
 
             controls
         }
