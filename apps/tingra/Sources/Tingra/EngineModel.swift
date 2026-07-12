@@ -107,10 +107,42 @@ final class EngineModel {
     /// The program geometry and rate.
     @ObservationIgnored private let format = ProgramFormat(width: 1920, height: 1080, frameRate: 30)
 
-    /// The stable id of the app's single built-in preset. A preset switcher
-    /// and multiple presets arrive in a later iteration; the internal name is
-    /// not yet surfaced, so it stays unlocalized for now.
-    @ObservationIgnored private let presetID = PresetID(rawValue: "default")
+    /// The id of the session preset — the project's first preset once loaded,
+    /// or the stable `"default"` token when this launch seeds a fresh project.
+    /// A preset switcher and multiple presets arrive in a later iteration.
+    @ObservationIgnored private var presetID = PresetID(rawValue: "default")
+
+    /// The user-facing name of the session preset, carried through saves. Not
+    /// yet surfaced in the UI, so the seeded name stays unlocalized for now.
+    @ObservationIgnored private var presetName = "Default"
+
+    /// The loaded project's presets after the first, preserved verbatim on
+    /// save — the document format holds an array even though the UI surfaces
+    /// only the first preset (see ARCHITECTURE.md, "Project save/load").
+    @ObservationIgnored private var otherPresets: [Preset] = []
+
+    /// Whether the session preset exists yet — loaded from the project file
+    /// in ``start()``, or seeded from ``ProgramLayout`` on the first
+    /// configuration pass. Nothing saves before it does.
+    @ObservationIgnored private var hasSessionPreset = false
+
+    /// The store the project document loads from and autosaves to.
+    @ObservationIgnored private let store = ProjectStore()
+
+    /// The pending debounced autosave, if any — each edit restarts the delay
+    /// so a slider drag coalesces into one write (see ``scheduleAutosave()``).
+    @ObservationIgnored private var autosaveTask: Task<Void, Never>?
+
+    /// The camera currently cast in the built-in camera role — the device the
+    /// preset's camera-bound layers were last bound to. A camera picker
+    /// change rebinds this device's layers to the new choice; picking "None"
+    /// parks it (the input stops, the layers keep their binding). Nil when no
+    /// camera has ever been cast (its layers are edited manually instead).
+    @ObservationIgnored private var boundCameraID: InputID?
+
+    /// The display currently cast in the built-in display role (see
+    /// ``boundCameraID``).
+    @ObservationIgnored private var boundDisplayID: InputID?
 
     /// The compositor producing the program frames.
     @ObservationIgnored private lazy var compositor = Compositor(
@@ -134,8 +166,8 @@ final class EngineModel {
     @ObservationIgnored private var started = false
 
     /// The display selection the last ``applyConfiguration()`` pass applied,
-    /// so a pass can tell a selection change (rebuild the built-in shots)
-    /// from a layer-tree edit (keep the edited shots, only sync inputs).
+    /// so a pass can tell a selection change (rebind the built-in role's
+    /// layers) from a layer-tree edit (only sync inputs).
     @ObservationIgnored private var appliedDisplayID: InputID?
 
     /// The camera selection the last ``applyConfiguration()`` pass applied
@@ -143,7 +175,7 @@ final class EngineModel {
     @ObservationIgnored private var appliedCameraID: InputID?
 
     /// Whether any ``applyConfiguration()`` pass has completed, so the first
-    /// pass always counts as a selection change and builds the initial
+    /// pass always counts as a selection change and establishes the session
     /// preset even when nothing is selected (a background-only program).
     @ObservationIgnored private var hasAppliedConfiguration = false
 
@@ -187,8 +219,7 @@ final class EngineModel {
         let inputs = await registry.allInputs
         cameras = inputs.filter { $0.kind == .camera }.map { InputChoice(id: $0.id, name: $0.name) }
         displays = inputs.filter { $0.kind == .display }.map { InputChoice(id: $0.id, name: $0.name) }
-        selectedDisplayID = displays.first?.id
-        selectedCameraID = cameras.first?.id
+        loadProject()
 
         let program = compositor.programFrames()
         compositor.start()
@@ -228,15 +259,15 @@ final class EngineModel {
         }
     }
 
-    /// One reconfigure pass: starts newly needed inputs, stops no-longer
-    /// needed ones, and hands the active set to the compositor. When the
-    /// camera/display **selection** changed since the last pass, it also
-    /// rebuilds the preset of built-in shots the selection supports
-    /// (discarding any layer-tree edits — the built-in shots are a function
-    /// of the selection; see ARCHITECTURE.md, "The layer-tree editor"). When
-    /// the selection is unchanged (a layer-tree edit triggered the pass),
-    /// the edited shots stand, and any input a layer newly references is
-    /// started — an input referenced by no shot and not selected is stopped.
+    /// One reconfigure pass: rebinds the built-in roles when the
+    /// camera/display **selection** changed since the last pass, then starts
+    /// newly needed inputs, stops no-longer-needed ones, and hands the active
+    /// set to the compositor. A selection change never rebuilds the shots —
+    /// layers bound to the previously cast device rebind to the new choice,
+    /// so layer-tree edits survive (see ARCHITECTURE.md, "Project
+    /// save/load"); on the first pass it instead establishes the session
+    /// preset (loading it into the compositor, seeding a fresh project when
+    /// no file supplied one).
     ///
     /// An input that cannot start (authorization denied, device gone) is
     /// reported on the bus and left out — the program keeps showing whatever
@@ -245,6 +276,23 @@ final class EngineModel {
         let selectionChanged =
             !hasAppliedConfiguration || selectedDisplayID != appliedDisplayID || selectedCameraID != appliedCameraID
 
+        // A picker change recasts which device plays the built-in role,
+        // before the desired-input computation below so the new device starts
+        // and the old one stops in this same pass. Picking "None" parks the
+        // role's device: no rebind, the layers keep their binding.
+        if selectionChanged, hasAppliedConfiguration {
+            var edited = false
+            if let camera = selectedCameraID, camera != boundCameraID {
+                edited = rebindLayers(from: boundCameraID, to: camera) || edited
+                boundCameraID = camera
+            }
+            if let display = selectedDisplayID, display != boundDisplayID {
+                edited = rebindLayers(from: boundDisplayID, to: display) || edited
+                boundDisplayID = display
+            }
+            if edited { scheduleAutosave() }
+        }
+
         var desired: [InputID: any Input] = [:]
         if let displayID = selectedDisplayID, let input = await registry.input(withID: displayID) {
             desired[displayID] = input
@@ -252,14 +300,16 @@ final class EngineModel {
         if let cameraID = selectedCameraID, let input = await registry.input(withID: cameraID) {
             desired[cameraID] = input
         }
-        if !selectionChanged {
-            // Keep every input the session preset's layer trees reference
-            // running — the built-in shots reference only the selection, but
-            // an edited layer tree can bind any discovered camera or display.
-            for id in Set(shots.flatMap { $0.layers.map(\.input) }) where desired[id] == nil {
-                if let input = await registry.input(withID: id) {
-                    desired[id] = input
-                }
+        // Keep every input the session preset's layer trees reference
+        // running, except a role's device parked by its picker's "None" — a
+        // stopped input's layers keep their binding and simply contribute
+        // nothing (the same semantic as a disconnected device).
+        var referenced = Set(shots.flatMap { $0.layers.map(\.input) })
+        if selectedCameraID == nil, let boundCameraID { referenced.remove(boundCameraID) }
+        if selectedDisplayID == nil, let boundDisplayID { referenced.remove(boundDisplayID) }
+        for id in referenced where desired[id] == nil {
+            if let input = await registry.input(withID: id) {
+                desired[id] = input
             }
         }
 
@@ -298,8 +348,10 @@ final class EngineModel {
         if selectionChanged {
             appliedDisplayID = selectedDisplayID
             appliedCameraID = selectedCameraID
-            hasAppliedConfiguration = true
-            rebuildPreset()
+            if !hasAppliedConfiguration {
+                hasAppliedConfiguration = true
+                establishSessionPreset()
+            }
         }
     }
 
@@ -382,20 +434,24 @@ final class EngineModel {
 
     /// Applies one layer-tree edit to the shot currently selected in the
     /// switcher: transforms it, stores the edited shot back into the session
-    /// preset (so it survives shot switches — GLOSSARY.md, "Preset"), and
-    /// pushes it through the compositor so the change is on program at the
-    /// next tick. A no-op edit (out-of-range index, no shot selected, no
-    /// actual change) touches nothing.
+    /// preset (so it survives shot switches — GLOSSARY.md, "Preset"), pushes
+    /// it through the compositor so the change is on program at the next
+    /// tick, and schedules the debounced autosave so it reaches the project
+    /// file. A no-op edit (out-of-range index, no shot selected, no actual
+    /// change) touches nothing.
     private func applyShotEdit(_ edit: (Shot) -> Shot) {
         guard let activeShotID, let index = shots.firstIndex(where: { $0.id == activeShotID }) else { return }
         let edited = edit(shots[index])
         guard edited != shots[index] else { return }
         shots[index] = edited
         compositor.updateShot(edited)
+        scheduleAutosave()
     }
 
-    /// Stops the compositor, the program drain, and every active input.
+    /// Stops the compositor, the program drain, and every active input,
+    /// flushing any pending autosave first so the last edits reach disk.
     func stop() async {
+        if autosaveTask != nil { saveProject() }
         programTask?.cancel()
         programTask = nil
         compositor.stop()
@@ -406,33 +462,176 @@ final class EngineModel {
         eventBus.shutdown()
     }
 
-    /// Rebuilds the preset of shots from the current selection (using only the
-    /// inputs that actually started) and loads it into the compositor,
-    /// preserving the active shot's role across the rebuild when it still
-    /// exists — switching a camera keeps you on "Picture in Picture" rather
-    /// than snapping back to a default. Layer-tree edits do not survive this
-    /// rebuild: the built-in shots are a pure function of the selection (see
-    /// ARCHITECTURE.md, "The layer-tree editor"). The shot set itself lives
-    /// in ``ProgramLayout``, so it is unit-tested without hardware.
-    private func rebuildPreset() {
-        let displayID = selectedDisplayID.flatMap { activeInputs[$0] != nil ? $0 : nil }
-        let cameraID = selectedCameraID.flatMap { activeInputs[$0] != nil ? $0 : nil }
-        let preset = Preset(
-            id: presetID,
-            name: "Default",
-            shots: ProgramLayout.shots(displayID: displayID, cameraID: cameraID)
-        )
-        compositor.loadPreset(preset)
-        shots = preset.shots
+    /// Loads the project document at boot, adopting its first preset as the
+    /// session preset and pointing the pickers at the devices its layers
+    /// reference; with no file (or a file holding no presets), it leaves the
+    /// session preset unseeded — ``establishSessionPreset()`` seeds it from
+    /// the built-in arrangement on the first configuration pass — and
+    /// defaults the pickers to the first discovered devices. An unreadable
+    /// file is reported and set aside, never silently overwritten (see
+    /// ARCHITECTURE.md, "Project save/load").
+    private func loadProject() {
+        let path = store.fileURL.path(percentEncoded: false)
+        var loadedPreset: Preset?
+        do {
+            if let project = try store.load() {
+                loadedPreset = project.presets.first
+                otherPresets = Array(project.presets.dropFirst())
+            }
+        } catch {
+            eventBus.error(
+                "project.load",
+                domain: .composition,
+                params: ["path": .string(path), "error": .string(String(describing: error))]
+            )
+            do {
+                let setAside = try store.setAsideUnreadableFile()
+                eventBus.event(
+                    "project.setAside",
+                    domain: .composition,
+                    params: ["path": .string(setAside.path(percentEncoded: false))]
+                )
+            } catch {
+                eventBus.error(
+                    "project.setAside",
+                    domain: .composition,
+                    params: ["path": .string(path), "error": .string(String(describing: error))]
+                )
+            }
+        }
 
-        // Keep the previously active shot on program when it survives the
-        // rebuild; otherwise cut to the first available shot (or none).
-        let preserved = preset.shots.first { $0.id == activeShotID } ?? preset.shots.first
-        if let preserved {
-            compositor.take(shotID: preserved.id)
-            activeShotID = preserved.id
-        } else {
-            activeShotID = nil
+        guard let loadedPreset else {
+            // A fresh project: default to the first discovered devices; the
+            // first configuration pass seeds the built-in arrangement from
+            // whatever actually starts.
+            selectedDisplayID = displays.first?.id
+            selectedCameraID = cameras.first?.id
+            return
+        }
+
+        presetID = loadedPreset.id
+        presetName = loadedPreset.name
+        shots = loadedPreset.shots
+        hasSessionPreset = true
+
+        // The pickers reflect the loaded document: the first referenced input
+        // of each kind that is currently discovered plays that built-in role.
+        // A referenced input that is not discovered stays bound — its layers
+        // contribute nothing until it returns (or the operator removes and
+        // re-adds the layer in the layer-tree editor).
+        let referenced = shots.flatMap { $0.layers.map(\.input) }
+        boundCameraID = referenced.first { id in cameras.contains { $0.id == id } }
+        boundDisplayID = referenced.first { id in displays.contains { $0.id == id } }
+        selectedCameraID = boundCameraID
+        selectedDisplayID = boundDisplayID
+        eventBus.event(
+            "project.loaded",
+            domain: .composition,
+            params: [
+                "path": .string(path),
+                "presets": .int(1 + otherPresets.count),
+                "shots": .int(shots.count),
+            ]
+        )
+    }
+
+    /// Completes the first configuration pass: when no project file supplied
+    /// a preset, seeds one from the built-in ``ProgramLayout`` arrangement
+    /// (using only the inputs that actually started) and saves the fresh
+    /// project immediately so the file exists from first launch; then loads
+    /// the session preset into the compositor, which cuts to its first shot
+    /// (the active shot is session state, never part of the document).
+    private func establishSessionPreset() {
+        if !hasSessionPreset {
+            let displayID = selectedDisplayID.flatMap { activeInputs[$0] != nil ? $0 : nil }
+            let cameraID = selectedCameraID.flatMap { activeInputs[$0] != nil ? $0 : nil }
+            shots = ProgramLayout.shots(displayID: displayID, cameraID: cameraID)
+            boundDisplayID = displayID
+            boundCameraID = cameraID
+            hasSessionPreset = true
+            eventBus.event(
+                "project.seeded",
+                domain: .composition,
+                params: ["path": .string(store.fileURL.path(percentEncoded: false))]
+            )
+            saveProject()
+        }
+        compositor.loadPreset(Preset(id: presetID, name: presetName, shots: shots))
+        activeShotID = shots.first?.id
+    }
+
+    /// Rebinds every layer bound to one device to another across all the
+    /// session preset's shots — how a picker change recasts which device
+    /// plays the built-in role — pushing each changed shot through the
+    /// compositor so the recast is on program at the next tick.
+    ///
+    /// - Parameters:
+    ///   - previous: The device the role's layers are currently bound to, or
+    ///     nil when the role was never cast (nothing to rebind).
+    ///   - input: The newly chosen device.
+    /// - Returns: Whether any shot changed.
+    private func rebindLayers(from previous: InputID?, to input: InputID) -> Bool {
+        guard let previous, previous != input else { return false }
+        var changed = false
+        for index in shots.indices {
+            let rebound = LayerTreeEdit.rebindingLayers(boundTo: previous, to: input, in: shots[index])
+            guard rebound != shots[index] else { continue }
+            shots[index] = rebound
+            compositor.updateShot(rebound)
+            changed = true
+        }
+        if changed {
+            eventBus.event(
+                "preset.rebound",
+                domain: .composition,
+                params: ["from": .string(previous.rawValue), "to": .string(input.rawValue)]
+            )
+        }
+        return changed
+    }
+
+    /// Saves the project document now — the session preset (with its live
+    /// layer-tree edits) first, the loaded document's other presets preserved
+    /// after it — cancelling any pending autosave. A save that cannot write
+    /// is reported on the bus and the session continues: the edits are still
+    /// live on program, only unsaved.
+    private func saveProject() {
+        guard hasSessionPreset else { return }
+        autosaveTask?.cancel()
+        autosaveTask = nil
+        let project = Project(presets: [Preset(id: presetID, name: presetName, shots: shots)] + otherPresets)
+        do {
+            try store.save(project)
+            eventBus.event(
+                "project.saved",
+                domain: .composition,
+                params: ["path": .string(store.fileURL.path(percentEncoded: false))]
+            )
+        } catch {
+            eventBus.error(
+                "project.save",
+                domain: .composition,
+                params: [
+                    "path": .string(store.fileURL.path(percentEncoded: false)),
+                    "error": .string(String(describing: error)),
+                ]
+            )
+        }
+    }
+
+    /// Schedules the debounced autosave: the write lands one second after the
+    /// last edit, so a slider drag's many per-gesture edits coalesce into a
+    /// single save (the same reasoning that keeps successful `updateShot`
+    /// calls off the event bus; see ARCHITECTURE.md, "Project save/load").
+    private func scheduleAutosave() {
+        autosaveTask?.cancel()
+        autosaveTask = Task { [weak self] in
+            do {
+                try await Task.sleep(for: .seconds(1))
+            } catch {
+                return  // Cancelled: a newer edit rescheduled, or a save flushed it.
+            }
+            self?.saveProject()
         }
     }
 }

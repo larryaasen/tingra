@@ -92,6 +92,27 @@ struct LayerTreeEditTests {
         #expect(LayerTreeEdit.settingOpacity(0, ofLayerAt: 9, in: shot) == shot)
     }
 
+    @Test("rebinding layers moves every matching layer to the new input, keeping frame and opacity")
+    func rebindingLayers() {
+        let edited = LayerTreeEdit.rebindingLayers(boundTo: camera, to: extra, in: shot)
+        #expect(edited.layers[0] == shot.layers[0])
+        #expect(edited.layers[1].input == extra)
+        #expect(edited.layers[1].frame == shot.layers[1].frame)
+        #expect(edited.layers[1].opacity == shot.layers[1].opacity)
+    }
+
+    @Test("rebinding rebinds every layer bound to the input, not just the first")
+    func rebindingAllMatchingLayers() {
+        let doubled = LayerTreeEdit.addingLayer(boundTo: camera, to: shot)
+        let edited = LayerTreeEdit.rebindingLayers(boundTo: camera, to: extra, in: doubled)
+        #expect(edited.layers.map(\.input) == [display, extra, extra])
+    }
+
+    @Test("rebinding an input no layer is bound to returns the shot unchanged")
+    func rebindingUnboundInput() {
+        #expect(LayerTreeEdit.rebindingLayers(boundTo: extra, to: camera, in: shot) == shot)
+    }
+
     @Test("every edit preserves the shot's identity — id, name, and background never change")
     func editsPreserveShotIdentity() {
         let edits: [Shot] = [
@@ -100,6 +121,7 @@ struct LayerTreeEditTests {
             LayerTreeEdit.movingLayer(at: 0, .up, in: shot),
             LayerTreeEdit.settingFrame(.zero, ofLayerAt: 0, in: shot),
             LayerTreeEdit.settingOpacity(0.5, ofLayerAt: 0, in: shot),
+            LayerTreeEdit.rebindingLayers(boundTo: camera, to: extra, in: shot),
         ]
         for edited in edits {
             #expect(edited.id == shot.id)

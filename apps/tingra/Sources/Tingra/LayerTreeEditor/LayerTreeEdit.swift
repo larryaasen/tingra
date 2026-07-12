@@ -109,6 +109,24 @@ enum LayerTreeEdit {
         return replacingLayers(of: shot, with: layers)
     }
 
+    /// Rebinds every layer bound to one input to another, keeping each
+    /// layer's frame and opacity — how a picker's selection change recasts
+    /// which device plays a role across the persisted shots without
+    /// discarding layer edits (see ARCHITECTURE.md, "Project save/load").
+    ///
+    /// - Parameters:
+    ///   - previous: The input the layers are currently bound to.
+    ///   - input: The input they rebind to.
+    ///   - shot: The shot to edit.
+    /// - Returns: The shot with every matching layer rebound, or unchanged
+    ///   when no layer is bound to `previous`.
+    static func rebindingLayers(boundTo previous: InputID, to input: InputID, in shot: Shot) -> Shot {
+        let layers = shot.layers.map { layer in
+            layer.input == previous ? Layer(input: input, frame: layer.frame, opacity: layer.opacity) : layer
+        }
+        return replacingLayers(of: shot, with: layers)
+    }
+
     /// Rebuilds the shot with an edited layer tree, preserving its identity —
     /// the id, name, and background never change under a layer-tree edit.
     private static func replacingLayers(of shot: Shot, with layers: [Layer]) -> Shot {

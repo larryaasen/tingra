@@ -22,7 +22,7 @@ A project is the saved file for an entire show. A project contains presets. A pr
 
 **Preset** — a long term, persisted collection of settings you switch between during a live session and keep across sessions: its shots, layer arrangements, audio configuration, and connected inputs. Switching presets is seamless and does not interrupt what is already playing out.
 
-**Project** — the saved document for a whole show: every preset, destination configuration, and setting needed to reopen the show exactly as it was.
+**Project** — the saved document for a whole show: every preset, destination configuration, and setting needed to reopen the show exactly as it was. Tingra saves a project as a `.tingraproject` file (JSON inside).
 
 **Effect** — a video processing step applied to a layer, a shot, or the program: color adjustment, blur, keying, stylization. **Filter** is the interchangeable term for a single video processing unit; an effect may chain several filters.
 
