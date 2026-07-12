@@ -51,13 +51,19 @@ import TingraPlugInKit
 /// that shot is on program the very next tick renders the edited tree — the
 /// program is a live canvas (CLOCK.md), so there is no separate "apply"
 /// step. The edit persists in the loaded preset, so it survives later
-/// ``take(shotID:transition:)`` switches within the session.
+/// ``take(shotID:transition:)`` switches within the session. The pool
+/// itself is managed the same granular way: ``addShot(_:at:)`` inserts a
+/// shot (adding is not taking — the program is untouched) and
+/// ``removeShot(shotID:)`` removes one, cutting to the adjacent shot when
+/// the removed shot was on program — never a dead program (ARCHITECTURE.md,
+/// "Shot management").
 ///
 /// The mutating controls (``setInputs(_:)``, ``setShot(_:)``,
-/// ``loadPreset(_:)``, ``take(shotID:)``, ``updateShot(_:)``, ``start()``,
-/// ``stop()``) are meant to be driven from one context (the app's main
-/// actor); they are internally locked but not designed for concurrent
-/// callers racing each other.
+/// ``loadPreset(_:)``, ``take(shotID:)``, ``updateShot(_:)``,
+/// ``addShot(_:at:)``, ``removeShot(shotID:)``, ``start()``, ``stop()``)
+/// are meant to be driven from one context (the app's main actor); they are
+/// internally locked but not designed for concurrent callers racing each
+/// other.
 public final class Compositor: Sendable {
     /// The clock whose tick paces the program (the master clock in
     /// production, a synthetic clock in tests).
@@ -335,6 +341,111 @@ public final class Compositor: Sendable {
             )
             return
         }
+    }
+
+    /// Inserts a shot into the loaded preset's pool, making it available to
+    /// ``take(shotID:transition:)`` — the shot-management add/duplicate path
+    /// (ARCHITECTURE.md, "Shot management"). Adding a shot is **not** taking
+    /// it: the program, ``activeShotID``, and any in-progress dissolve are
+    /// untouched, matching ``updateShot(_:)``'s contract that editing the
+    /// pool never changes what is on air.
+    ///
+    /// Adding an id already in the loaded preset is recoverable — it reports
+    /// a `shot.add` error event and leaves the pool unchanged, never a
+    /// crash. A successful add reports a `shot.added` control-plane event:
+    /// unlike a gesture-rate ``updateShot(_:)``, adding is a discrete user
+    /// action, so the event cannot flood the bus (EVENTS.md).
+    ///
+    /// - Parameters:
+    ///   - shot: The shot to add; its ``Shot/id`` must not already be in the
+    ///     loaded preset.
+    ///   - index: The switcher position to insert at, clamped to the pool's
+    ///     bounds; `nil` (the default) appends at the end.
+    public func addShot(_ shot: Shot, at index: Int? = nil) {
+        let insertedAt: Int? = state.withLock { state in
+            guard !state.shots.contains(where: { $0.id == shot.id }) else { return nil }
+            let position = min(max(index ?? state.shots.count, 0), state.shots.count)
+            state.shots.insert(shot, at: position)
+            return position
+        }
+        guard let insertedAt else {
+            eventBus.error(
+                "shot.add",
+                domain: .composition,
+                params: [
+                    "shot": .string(shot.id.rawValue),
+                    "reason": .string("duplicateShot"),
+                ]
+            )
+            return
+        }
+        eventBus.event(
+            "shot.added",
+            domain: .composition,
+            params: [
+                "shot": .string(shot.id.rawValue),
+                "name": .string(shot.name),
+                "index": .int(insertedAt),
+            ]
+        )
+    }
+
+    /// Removes a shot from the loaded preset's pool. When the removed shot
+    /// is on program, the compositor **cuts to the adjacent shot** — the
+    /// shot now occupying the removed shot's switcher position, or the new
+    /// last shot when the removed one was last — clearing any in-progress
+    /// dissolve; removing the last remaining shot leaves the pool empty and
+    /// the program on the background-only canvas with no active shot (still
+    /// a live canvas, never a dead program — ARCHITECTURE.md, "Shot
+    /// management"). Removing a shot that is only the *outgoing* side of an
+    /// in-progress dissolve lets the dissolve finish from its snapshot — the
+    /// outgoing shot is on its way off program, the same rule
+    /// ``updateShot(_:)`` follows.
+    ///
+    /// Removing an id that is not in the loaded preset is recoverable — a
+    /// `shot.remove` error event, the pool untouched, never a crash. A
+    /// successful removal reports a `shot.removed` control-plane event whose
+    /// `cutTo` param, present only when the removed shot was on program,
+    /// names the shot the program cut to (or `"none"` when the pool
+    /// emptied).
+    ///
+    /// - Parameter shotID: The id of the shot to remove.
+    public func removeShot(shotID: ShotID) {
+        let outcome: (removed: Shot, wasOnProgram: Bool, cutTo: Shot?)? = state.withLock { state in
+            guard let index = state.shots.firstIndex(where: { $0.id == shotID }) else { return nil }
+            let removed = state.shots.remove(at: index)
+            guard state.activeShotID == shotID else { return (removed, false, nil) }
+            state.pendingTransition = nil
+            let adjacentIndex = min(index, state.shots.count - 1)
+            guard adjacentIndex >= 0 else {
+                state.activeShotID = nil
+                state.shot = Shot()
+                return (removed, true, nil)
+            }
+            let adjacent = state.shots[adjacentIndex]
+            state.activeShotID = adjacent.id
+            state.shot = adjacent
+            return (removed, true, adjacent)
+        }
+        guard let outcome else {
+            eventBus.error(
+                "shot.remove",
+                domain: .composition,
+                params: [
+                    "shot": .string(shotID.rawValue),
+                    "reason": .string("unknownShot"),
+                ]
+            )
+            return
+        }
+        var params: [String: EventValue] = [
+            "shot": .string(outcome.removed.id.rawValue),
+            "name": .string(outcome.removed.name),
+        ]
+        if outcome.wasOnProgram {
+            params["cutTo"] = .string(outcome.cutTo?.id.rawValue ?? "none")
+        }
+        eventBus.event("shot.removed", domain: .composition, params: params)
     }
 
     /// The shots of the loaded preset, in switcher order (empty before a

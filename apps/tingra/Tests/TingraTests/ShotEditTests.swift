@@ -1,0 +1,101 @@
+//
+//  ShotEditTests.swift
+//  tingra
+//
+//  Created by Larry Aasen on 2026-07-12.
+//  Copyright © 2026 Larry Aasen.
+//  SPDX-License-Identifier: MIT
+//
+
+import CoreGraphics
+import Testing
+import TingraComposition
+import TingraPlugInKit
+
+@testable import Tingra
+
+/// The pure shot-management operations behind the switcher's add, duplicate,
+/// and rename commands (see ARCHITECTURE.md, "Shot management").
+@Suite("ShotEdit")
+struct ShotEditTests {
+    /// A shot with a distinctive layer tree and background, standing in for
+    /// an operator-edited shot.
+    private func makeShot(id: String = "interview", name: String = "Interview") -> Shot {
+        Shot(
+            id: ShotID(rawValue: id),
+            name: name,
+            layers: [
+                Layer(input: InputID(rawValue: "display-1")),
+                Layer(input: InputID(rawValue: "camera-1"), frame: CGRect(x: 0.6, y: 0.6, width: 0.3, height: 0.3)),
+            ],
+            background: BackgroundColor(red: 0.1, green: 0.2, blue: 0.3)
+        )
+    }
+
+    @Test("a new shot is empty over black with a fresh id and a non-empty name")
+    func newShotIsEmptyOverBlack() {
+        let shot = ShotEdit.newShot()
+
+        #expect(shot.layers.isEmpty)
+        #expect(shot.background == .black)
+        #expect(!shot.name.isEmpty)
+    }
+
+    @Test("every new shot gets its own fresh id")
+    func newShotsHaveDistinctIDs() {
+        #expect(ShotEdit.newShot().id != ShotEdit.newShot().id)
+    }
+
+    @Test("a duplicate copies the source's layer tree and background under a fresh id")
+    func duplicateCopiesLayersUnderFreshID() {
+        let source = makeShot()
+
+        let copy = ShotEdit.duplicate(of: source)
+
+        #expect(copy.id != source.id)
+        #expect(copy.layers == source.layers)
+        #expect(copy.background == source.background)
+        // The copy is named after its source, and never collides with it.
+        #expect(copy.name.contains(source.name))
+        #expect(copy != source)
+    }
+
+    @Test("every duplicate gets its own fresh id")
+    func duplicatesHaveDistinctIDs() {
+        let source = makeShot()
+        #expect(ShotEdit.duplicate(of: source).id != ShotEdit.duplicate(of: source).id)
+    }
+
+    @Test("renaming replaces the name and preserves the shot's identity, layers, and background")
+    func renamingPreservesIdentity() {
+        let shot = makeShot()
+
+        let renamed = ShotEdit.renaming(shot, to: "Two Shot")
+
+        #expect(renamed.name == "Two Shot")
+        #expect(renamed.id == shot.id)
+        #expect(renamed.layers == shot.layers)
+        #expect(renamed.background == shot.background)
+        #expect(renamed != shot)
+    }
+
+    @Test("a rename trims surrounding whitespace")
+    func renamingTrimsWhitespace() {
+        let renamed = ShotEdit.renaming(makeShot(), to: "  Two Shot \n")
+        #expect(renamed.name == "Two Shot")
+    }
+
+    @Test("a rename to an empty or whitespace-only name returns the shot unchanged")
+    func renamingToEmptyNameIsIgnored() {
+        let shot = makeShot()
+
+        #expect(ShotEdit.renaming(shot, to: "") == shot)
+        #expect(ShotEdit.renaming(shot, to: "   \n") == shot)
+    }
+
+    @Test("a rename to the same name returns an equal shot")
+    func renamingToSameNameIsEqual() {
+        let shot = makeShot()
+        #expect(ShotEdit.renaming(shot, to: shot.name) == shot)
+    }
+}

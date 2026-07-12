@@ -1,6 +1,57 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "%@ copy" : {
+      "comment" : "Name of a duplicated shot; the placeholder is the source shot's name",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Kopie"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ copia"
+          }
+        }
+      }
+    },
+    "Add Layer" : {
+      "comment" : "Menu adding a layer bound to an input",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ebene hinzufügen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Añadir capa"
+          }
+        }
+      }
+    },
+    "Add Shot" : {
+      "comment" : "Button adding a new empty shot to the preset",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einstellung hinzufügen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Añadir toma"
+          }
+        }
+      }
+    },
     "Camera" : {
       "comment" : "Camera input picker label",
       "localizations" : {
@@ -14,6 +65,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Cámara"
+          }
+        }
+      }
+    },
+    "Cancel" : {
+      "comment" : "Rename shot dialog cancel button",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abbrechen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cancelar"
           }
         }
       }
@@ -52,70 +120,19 @@
         }
       }
     },
-    "Picture in Picture" : {
-      "comment" : "Shot: display with camera inset",
+    "Duplicate" : {
+      "comment" : "Shot context menu: duplicate this shot",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Bild im Bild"
+            "value" : "Duplizieren"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Imagen en imagen"
-          }
-        }
-      }
-    },
-    "None" : {
-      "comment" : "Picker option for no input selected",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Keine"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ninguno"
-          }
-        }
-      }
-    },
-    "Program" : {
-      "comment" : "Label over the live program preview",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Programm"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Programa"
-          }
-        }
-      }
-    },
-    "Add Layer" : {
-      "comment" : "Menu adding a layer bound to an input",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ebene hinzufügen"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Añadir capa"
+            "value" : "Duplicar"
           }
         }
       }
@@ -188,6 +205,57 @@
         }
       }
     },
+    "Name" : {
+      "comment" : "Rename shot dialog text field label",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Name"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nombre"
+          }
+        }
+      }
+    },
+    "New Shot" : {
+      "comment" : "Default name of a newly added shot",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neue Einstellung"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nueva toma"
+          }
+        }
+      }
+    },
+    "None" : {
+      "comment" : "Picker option for no input selected",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ninguno"
+          }
+        }
+      }
+    },
     "Opacity" : {
       "comment" : "Layer opacity slider label",
       "localizations" : {
@@ -205,6 +273,40 @@
         }
       }
     },
+    "Picture in Picture" : {
+      "comment" : "Shot: display with camera inset",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bild im Bild"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Imagen en imagen"
+          }
+        }
+      }
+    },
+    "Program" : {
+      "comment" : "Label over the live program preview",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Programm"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Programa"
+          }
+        }
+      }
+    },
     "Remove Layer" : {
       "comment" : "Button removing the selected layer",
       "localizations" : {
@@ -218,6 +320,74 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Quitar capa"
+          }
+        }
+      }
+    },
+    "Remove Shot" : {
+      "comment" : "Shot context menu: remove this shot from the preset",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einstellung entfernen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quitar toma"
+          }
+        }
+      }
+    },
+    "Rename" : {
+      "comment" : "Rename shot dialog confirm button",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Umbenennen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Renombrar"
+          }
+        }
+      }
+    },
+    "Rename Shot" : {
+      "comment" : "Rename shot dialog title",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einstellung umbenennen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Renombrar toma"
+          }
+        }
+      }
+    },
+    "Rename…" : {
+      "comment" : "Shot context menu: rename this shot",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Umbenennen…"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Renombrar…"
           }
         }
       }

@@ -25,10 +25,13 @@ import TingraPlugInKit
 /// From those, ``shots(displayID:cameraID:)`` builds the switchable shots the
 /// operator cuts among (step 7): a picture-in-picture shot plus a full-frame
 /// shot per input when both are present, or a single full-frame shot when only
-/// one is. The shot ids are **fixed tokens** (not fresh UUIDs) so a shot keeps
-/// its identity across rebuilds when the selection changes — the active shot
-/// role survives switching cameras. User-defined shots and free layer
-/// transforms replace this built-in arrangement in later iterations.
+/// one is. The shot ids are **fixed tokens** (not fresh UUIDs) — originally so
+/// identity survived a selection-change rebuild; with the project file, a
+/// selection change rebinds instead of rebuilding, so the tokens now serve as
+/// the seed's identity and key the switcher's per-shot tap names. This
+/// arrangement seeds a **fresh project only** (ARCHITECTURE.md, "Project
+/// save/load"), and once seeded these are just shots — renameable and
+/// removable like any user-authored shot ("Shot management").
 enum ProgramLayout {
     /// The camera's picture-in-picture rect over a display, in normalized,
     /// top-left-origin coordinates (bottom-right corner, with a small margin).
@@ -105,8 +108,8 @@ enum ProgramLayout {
     ///
     /// - Parameter shotID: The id of the tapped shot.
     /// - Returns: `camera.button`, `display.button`, or `pip.button` for the
-    ///   three built-in shots; `shot.button` for any other id (a future
-    ///   user-defined shot, once those exist).
+    ///   three seeded shots; `shot.button` for any other id (a user-authored
+    ///   shot added or duplicated in the switcher).
     static func tapName(forShotID shotID: ShotID) -> String {
         switch shotID {
         case cameraShotID: return "camera.button"

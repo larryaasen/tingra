@@ -370,6 +370,68 @@ final class EngineModel {
         activeShotID = shotID
     }
 
+    /// Adds a new, empty user-authored shot (fresh UUID, localized default
+    /// name, no layers over black — see ``ShotEdit/newShot()``) at the end of
+    /// the switcher order. Adding is not taking: the program is untouched
+    /// until the operator takes the new shot (ARCHITECTURE.md, "Shot
+    /// management"). The edit autosaves through the project-document path.
+    func addShot() {
+        guard hasSessionPreset else { return }
+        let shot = ShotEdit.newShot()
+        shots.append(shot)
+        compositor.addShot(shot)
+        scheduleAutosave()
+    }
+
+    /// Duplicates a shot — the source's layer tree and background under a
+    /// fresh UUID and a "<name> copy" name — inserting the copy right after
+    /// its source in the switcher order. The duplicate references the same
+    /// inputs the source already keeps running, so no reconfigure is needed.
+    ///
+    /// - Parameter shotID: The id of the shot to duplicate.
+    func duplicateShot(_ shotID: ShotID) {
+        guard let index = shots.firstIndex(where: { $0.id == shotID }) else { return }
+        let copy = ShotEdit.duplicate(of: shots[index])
+        shots.insert(copy, at: index + 1)
+        compositor.addShot(copy, at: index + 1)
+        scheduleAutosave()
+    }
+
+    /// Renames a shot, preserving its identity and layer tree. A rename to an
+    /// empty (or whitespace-only) name is ignored — a switcher button needs a
+    /// label (see ``ShotEdit/renaming(_:to:)``). The rename flows through the
+    /// compositor's existing `updateShot` path, so the switcher and any
+    /// on-program shot reflect it at the next tick.
+    ///
+    /// - Parameters:
+    ///   - shotID: The id of the shot to rename.
+    ///   - name: The new user-facing name.
+    func renameShot(_ shotID: ShotID, to name: String) {
+        guard let index = shots.firstIndex(where: { $0.id == shotID }) else { return }
+        let renamed = ShotEdit.renaming(shots[index], to: name)
+        guard renamed != shots[index] else { return }
+        shots[index] = renamed
+        compositor.updateShot(renamed)
+        scheduleAutosave()
+    }
+
+    /// Removes a shot from the session preset. When the removed shot is on
+    /// program, the compositor cuts to the adjacent shot — never a dead
+    /// program (ARCHITECTURE.md, "Shot management") — so the model re-reads
+    /// ``Compositor/activeShotID`` rather than second-guessing which shot
+    /// that is. Then reconfigures, so an input referenced only by the removed
+    /// shot (and not by the pickers) is stopped.
+    ///
+    /// - Parameter shotID: The id of the shot to remove.
+    func removeShot(_ shotID: ShotID) async {
+        guard let index = shots.firstIndex(where: { $0.id == shotID }) else { return }
+        shots.remove(at: index)
+        compositor.removeShot(shotID: shotID)
+        activeShotID = compositor.activeShotID
+        scheduleAutosave()
+        await reconfigure()
+    }
+
     /// Adds a layer bound to the given input on top of the active shot's
     /// layer tree, then reconfigures so the input is running — a layer bound
     /// to a not-yet-started input contributes nothing until its first frame

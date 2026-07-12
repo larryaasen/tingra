@@ -16,12 +16,14 @@ import TingraPlugInKit
 /// layer-tree editor, and the input pickers.
 ///
 /// The pickers pick one camera and one display; the switcher takes the
-/// chosen shot (picture-in-picture, display, camera) to program — a cut, or
-/// a dissolve when the switcher's transition toggle is on (GLOSSARY.md,
-/// "Transition"); the editor (``LayerTreeEditorView``) edits the selected
-/// shot's layer tree live. This is the step-7 shape — the remaining
-/// production surface (multiple presets, the mixer, streaming controls)
-/// grows from here.
+/// chosen shot to program — a cut, or a dissolve when the switcher's
+/// transition toggle is on (GLOSSARY.md, "Transition") — and manages the
+/// preset's shots: an Add Shot button appends a new empty shot, and each
+/// shot button's context menu duplicates, renames, or removes that shot
+/// (ARCHITECTURE.md, "Shot management"); the editor
+/// (``LayerTreeEditorView``) edits the selected shot's layer tree live.
+/// This is the step-7 shape — the remaining production surface (multiple
+/// presets, the mixer, streaming controls) grows from here.
 ///
 /// Every user action here reports its own `tap` event right where it's
 /// executed — a picker's `onChange`, a button's action closure — rather than
@@ -30,6 +32,15 @@ import TingraPlugInKit
 struct ContentView: View {
     /// The engine model, bindable so the pickers drive its selection.
     @Bindable var model: EngineModel
+
+    /// The shot the rename dialog is editing, or `nil` while it is closed.
+    /// View-local, like the layer editor's selection: which shot is being
+    /// renamed is transient session state.
+    @State private var shotBeingRenamed: Shot?
+
+    /// The rename dialog's working text, prefilled with the shot's current
+    /// name when the dialog opens.
+    @State private var renameText = ""
 
     /// The window body: preview on top, controls beneath.
     var body: some View {
@@ -78,27 +89,43 @@ struct ContentView: View {
     /// The shot switcher: one button per available shot, taking it to program
     /// on tap (a dissolve when ``EngineModel/useDissolveTransition`` is on,
     /// otherwise a cut). The button for the shot currently on program is
-    /// highlighted. Hidden when no input is selected (there are no shots to
-    /// switch among).
-    @ViewBuilder private var shotSwitcher: some View {
-        if !model.shots.isEmpty {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 8) {
-                    ForEach(model.shots) { shot in
-                        let isOnProgram = shot.id == model.activeShotID
-                        Button(shot.name) {
-                            model.eventBus.tap(
-                                ProgramLayout.tapName(forShotID: shot.id),
-                                domain: .composition,
-                                params: ["shot": .string(shot.id.rawValue), "name": .string(shot.name)]
-                            )
-                            model.take(shot.id)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .tint(isOnProgram ? .accentColor : .gray)
+    /// highlighted; its context menu duplicates, renames, or removes the
+    /// shot, and the trailing Add Shot button appends a new empty one — the
+    /// button stays available even when the preset has no shots, so the
+    /// operator is never stranded on an empty switcher.
+    private var shotSwitcher: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                ForEach(model.shots) { shot in
+                    let isOnProgram = shot.id == model.activeShotID
+                    Button(shot.name) {
+                        model.eventBus.tap(
+                            ProgramLayout.tapName(forShotID: shot.id),
+                            domain: .composition,
+                            params: ["shot": .string(shot.id.rawValue), "name": .string(shot.name)]
+                        )
+                        model.take(shot.id)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(isOnProgram ? .accentColor : .gray)
+                    .contextMenu {
+                        shotCommands(for: shot)
                     }
                 }
 
+                Button {
+                    model.eventBus.tap("shotAdd.button", domain: .composition)
+                    model.addShot()
+                } label: {
+                    Label {
+                        Text("Add Shot", comment: "Button adding a new empty shot to the preset")
+                    } icon: {
+                        Image(systemName: "plus")
+                    }
+                }
+            }
+
+            if !model.shots.isEmpty {
                 Toggle(isOn: $model.useDissolveTransition) {
                     Text(
                         "Dissolve",
@@ -113,6 +140,84 @@ struct ContentView: View {
                     )
                 }
             }
+        }
+        .alert(
+            Text("Rename Shot", comment: "Rename shot dialog title"),
+            isPresented: isRenamePresented,
+            presenting: shotBeingRenamed
+        ) { shot in
+            TextField(text: $renameText) {
+                Text("Name", comment: "Rename shot dialog text field label")
+            }
+            Button {
+                model.eventBus.tap(
+                    "shotRenameConfirm.button",
+                    domain: .composition,
+                    params: ["shot": .string(shot.id.rawValue), "name": .string(renameText)]
+                )
+                model.renameShot(shot.id, to: renameText)
+            } label: {
+                Text("Rename", comment: "Rename shot dialog confirm button")
+            }
+            Button(role: .cancel) {
+                model.eventBus.tap(
+                    "shotRenameCancel.button",
+                    domain: .composition,
+                    params: ["shot": .string(shot.id.rawValue)]
+                )
+            } label: {
+                Text("Cancel", comment: "Rename shot dialog cancel button")
+            }
+        }
+    }
+
+    /// Whether the rename dialog is up — presented while a shot is being
+    /// renamed, and clearing that shot when the dialog dismisses.
+    private var isRenamePresented: Binding<Bool> {
+        Binding {
+            shotBeingRenamed != nil
+        } set: { presented in
+            if !presented { shotBeingRenamed = nil }
+        }
+    }
+
+    /// One shot button's context menu: duplicate, rename, and remove that
+    /// shot (ARCHITECTURE.md, "Shot management"). Remove is immediate — a
+    /// destructive-role item, no confirmation: shots are quick to create,
+    /// switch, and discard (GLOSSARY.md, "Shot").
+    @ViewBuilder private func shotCommands(for shot: Shot) -> some View {
+        Button {
+            model.eventBus.tap(
+                "shotDuplicate.menu",
+                domain: .composition,
+                params: ["shot": .string(shot.id.rawValue), "name": .string(shot.name)]
+            )
+            model.duplicateShot(shot.id)
+        } label: {
+            Text("Duplicate", comment: "Shot context menu: duplicate this shot")
+        }
+
+        Button {
+            model.eventBus.tap(
+                "shotRename.menu",
+                domain: .composition,
+                params: ["shot": .string(shot.id.rawValue), "name": .string(shot.name)]
+            )
+            renameText = shot.name
+            shotBeingRenamed = shot
+        } label: {
+            Text("Rename…", comment: "Shot context menu: rename this shot")
+        }
+
+        Button(role: .destructive) {
+            model.eventBus.tap(
+                "shotRemove.menu",
+                domain: .composition,
+                params: ["shot": .string(shot.id.rawValue), "name": .string(shot.name)]
+            )
+            Task { await model.removeShot(shot.id) }
+        } label: {
+            Text("Remove Shot", comment: "Shot context menu: remove this shot from the preset")
         }
     }
 

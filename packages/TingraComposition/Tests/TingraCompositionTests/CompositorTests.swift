@@ -471,6 +471,214 @@ struct CompositorTests {
         #expect(calls.last?.shot == edited)
     }
 
+    @Test("adding a shot appends it to the pool without changing the program — adding is not taking")
+    func addShotAppendsWithoutTaking() async {
+        let ticks = (0..<2).map { CMTime(value: CMTimeValue($0), timescale: 30) }
+        let recorder = RenderRecorder()
+        let compositor = makeCompositor(recorder: recorder, tickTimes: ticks)
+        let display = Shot(id: ShotID(rawValue: "display"), name: "Display")
+        compositor.loadPreset(Preset(name: "Live", shots: [display]))
+
+        let added = Shot(id: ShotID(rawValue: "interview"), name: "Interview")
+        compositor.addShot(added)
+
+        #expect(compositor.shots == [display, added])
+        #expect(compositor.activeShotID == display.id)
+        let program = compositor.programFrames()
+        compositor.start()
+        _ = await collect(program, limit: 2)
+        // The program keeps rendering the shot that was already on air.
+        #expect(recorder.recorded.allSatisfy { $0.shot == display })
+    }
+
+    @Test("adding a shot at an index inserts it at that switcher position")
+    func addShotInsertsAtIndex() {
+        let recorder = RenderRecorder()
+        let compositor = makeCompositor(recorder: recorder, tickTimes: [])
+        let display = Shot(id: ShotID(rawValue: "display"), name: "Display")
+        let camera = Shot(id: ShotID(rawValue: "camera"), name: "Camera")
+        compositor.loadPreset(Preset(name: "Live", shots: [display, camera]))
+
+        // The duplicate-insertion pattern: the copy lands right after its
+        // source. An out-of-range index clamps rather than traps.
+        let copy = Shot(id: ShotID(rawValue: "display-copy"), name: "Display copy")
+        compositor.addShot(copy, at: 1)
+        let clamped = Shot(id: ShotID(rawValue: "clamped"), name: "Clamped")
+        compositor.addShot(clamped, at: 99)
+
+        #expect(compositor.shots == [display, copy, camera, clamped])
+    }
+
+    @Test("adding a shot whose id is already loaded leaves the pool unchanged")
+    func addShotWithDuplicateIDIsIgnored() {
+        let recorder = RenderRecorder()
+        let compositor = makeCompositor(recorder: recorder, tickTimes: [])
+        let display = Shot(id: ShotID(rawValue: "display"), name: "Display")
+        compositor.loadPreset(Preset(name: "Live", shots: [display]))
+
+        compositor.addShot(Shot(id: display.id, name: "Impostor"))
+
+        #expect(compositor.shots == [display])
+    }
+
+    @Test("adding a shot to an empty pool makes it available but does not take it")
+    func addShotToEmptyPoolDoesNotTake() {
+        let recorder = RenderRecorder()
+        let compositor = makeCompositor(recorder: recorder, tickTimes: [])
+        compositor.loadPreset(Preset(name: "Live", shots: []))
+
+        let added = Shot(id: ShotID(rawValue: "opening"), name: "Opening")
+        compositor.addShot(added)
+
+        #expect(compositor.shots == [added])
+        #expect(compositor.activeShotID == nil)
+
+        // Taking it is the caller's explicit move.
+        compositor.take(shotID: added.id)
+        #expect(compositor.activeShotID == added.id)
+    }
+
+    @Test("removing a shot that is not on program shrinks the pool and leaves the live render unchanged")
+    func removeInactiveShotLeavesProgramUnchanged() async {
+        let ticks = (0..<2).map { CMTime(value: CMTimeValue($0), timescale: 30) }
+        let recorder = RenderRecorder()
+        let compositor = makeCompositor(recorder: recorder, tickTimes: ticks)
+        let display = Shot(id: ShotID(rawValue: "display"), name: "Display")
+        let camera = Shot(id: ShotID(rawValue: "camera"), name: "Camera")
+        compositor.loadPreset(Preset(name: "Live", shots: [display, camera]))
+
+        compositor.removeShot(shotID: camera.id)
+
+        #expect(compositor.shots == [display])
+        #expect(compositor.activeShotID == display.id)
+        let program = compositor.programFrames()
+        compositor.start()
+        _ = await collect(program, limit: 2)
+        #expect(recorder.recorded.allSatisfy { $0.shot == display })
+    }
+
+    @Test("removing the shot on program cuts to the shot now occupying its switcher position")
+    func removeActiveShotCutsToFollower() async {
+        let ticks = (0..<2).map { CMTime(value: CMTimeValue($0), timescale: 30) }
+        let recorder = RenderRecorder()
+        let compositor = makeCompositor(recorder: recorder, tickTimes: ticks)
+        let display = Shot(id: ShotID(rawValue: "display"), name: "Display")
+        let camera = Shot(id: ShotID(rawValue: "camera"), name: "Camera")
+        let wide = Shot(id: ShotID(rawValue: "wide"), name: "Wide")
+        compositor.loadPreset(Preset(name: "Live", shots: [display, camera, wide]))
+        compositor.take(shotID: camera.id)
+
+        compositor.removeShot(shotID: camera.id)
+
+        // The follower (wide) now occupies the removed shot's position.
+        #expect(compositor.shots == [display, wide])
+        #expect(compositor.activeShotID == wide.id)
+        let program = compositor.programFrames()
+        compositor.start()
+        _ = await collect(program, limit: 2)
+        #expect(recorder.recorded.allSatisfy { $0.shot == wide })
+    }
+
+    @Test("removing the last-position shot on program cuts to the previous shot")
+    func removeActiveLastShotCutsToPrevious() {
+        let recorder = RenderRecorder()
+        let compositor = makeCompositor(recorder: recorder, tickTimes: [])
+        let display = Shot(id: ShotID(rawValue: "display"), name: "Display")
+        let camera = Shot(id: ShotID(rawValue: "camera"), name: "Camera")
+        compositor.loadPreset(Preset(name: "Live", shots: [display, camera]))
+        compositor.take(shotID: camera.id)
+
+        compositor.removeShot(shotID: camera.id)
+
+        #expect(compositor.shots == [display])
+        #expect(compositor.activeShotID == display.id)
+    }
+
+    @Test("removing the only shot leaves the background-only canvas on program — never a dead program")
+    func removeOnlyShotLeavesBackgroundCanvas() async {
+        let ticks = (0..<2).map { CMTime(value: CMTimeValue($0), timescale: 30) }
+        let recorder = RenderRecorder()
+        let compositor = makeCompositor(recorder: recorder, tickTimes: ticks)
+        let display = Shot(id: ShotID(rawValue: "display"), name: "Display")
+        compositor.loadPreset(Preset(name: "Live", shots: [display]))
+
+        compositor.removeShot(shotID: display.id)
+
+        #expect(compositor.shots.isEmpty)
+        #expect(compositor.activeShotID == nil)
+        // The tick keeps rendering: an empty shot over the default background
+        // is still a live canvas.
+        let program = compositor.programFrames()
+        compositor.start()
+        let times = await collect(program, limit: 2)
+        #expect(times.count == 2)
+        // `Shot()` mints a fresh id, so compare the canvas by content: no
+        // layers over the default background.
+        #expect(recorder.recorded.allSatisfy { $0.shot.layers.isEmpty && $0.shot.background == .black })
+    }
+
+    @Test("removing an unknown shot id leaves the loaded preset unchanged")
+    func removeUnknownShotIsIgnored() {
+        let recorder = RenderRecorder()
+        let compositor = makeCompositor(recorder: recorder, tickTimes: [])
+        let display = Shot(id: ShotID(rawValue: "display"), name: "Display")
+        compositor.loadPreset(Preset(name: "Live", shots: [display]))
+
+        compositor.removeShot(shotID: ShotID(rawValue: "does-not-exist"))
+
+        #expect(compositor.shots == [display])
+        #expect(compositor.activeShotID == display.id)
+    }
+
+    @Test("removing the incoming shot mid-dissolve clears the dissolve and cuts to the adjacent shot")
+    func removeIncomingShotMidDissolveCuts() async {
+        let ticks = (0..<2).map { CMTime(value: CMTimeValue($0), timescale: 30) }
+        let recorder = RenderRecorder()
+        let compositor = makeCompositor(recorder: recorder, tickTimes: ticks)
+        let display = Shot(id: ShotID(rawValue: "display"), name: "Display")
+        let camera = Shot(id: ShotID(rawValue: "camera"), name: "Camera")
+        compositor.loadPreset(Preset(name: "Live", shots: [display, camera]))
+        // A dissolve long enough that it would still be blending on every
+        // scripted tick if the removal did not clear it.
+        compositor.take(shotID: camera.id, transition: .dissolve(duration: 10))
+
+        compositor.removeShot(shotID: camera.id)
+
+        #expect(compositor.activeShotID == display.id)
+        let program = compositor.programFrames()
+        compositor.start()
+        _ = await collect(program, limit: 2)
+        // A hard cut: no tick blends, every tick renders the adjacent shot.
+        #expect(recorder.recorded.allSatisfy { $0.dissolveProgress == nil })
+        #expect(recorder.recorded.allSatisfy { $0.shot == display })
+    }
+
+    @Test("removing the outgoing shot mid-dissolve lets the dissolve finish from its snapshot")
+    func removeOutgoingShotMidDissolveContinues() async {
+        // 30 fps, a 0.1s dissolve — exactly 3 ticks, plus one settled tick.
+        let ticks = (0..<4).map { CMTime(value: CMTimeValue($0), timescale: 30) }
+        let recorder = RenderRecorder()
+        let compositor = makeCompositor(recorder: recorder, tickTimes: ticks)
+        let display = Shot(id: ShotID(rawValue: "display"), name: "Display")
+        let camera = Shot(id: ShotID(rawValue: "camera"), name: "Camera")
+        compositor.loadPreset(Preset(name: "Live", shots: [display, camera]))
+        compositor.take(shotID: camera.id, transition: .dissolve(duration: 0.1))
+
+        // The outgoing shot leaves the pool, but it is on its way off
+        // program — the dissolve keeps rendering from its snapshot.
+        compositor.removeShot(shotID: display.id)
+
+        #expect(compositor.shots == [camera])
+        #expect(compositor.activeShotID == camera.id)
+        let program = compositor.programFrames()
+        compositor.start()
+        _ = await collect(program, limit: 4)
+        let calls = recorder.recorded
+        #expect(calls.prefix(3).allSatisfy { $0.dissolveOutgoing == display && $0.shot == camera })
+        #expect(calls.last?.dissolveProgress == nil)
+        #expect(calls.last?.shot == camera)
+    }
+
     @Test("stop() finishes the program stream")
     func stopFinishesProgramStream() async {
         // A clock that would tick forever is not needed: stop() finishes the
