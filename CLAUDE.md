@@ -186,8 +186,11 @@ apps/      tingra-cli             →  TingraHost + TingraCapturePlugIns + Tingr
                                      + TingraOutputPlugIns + TingraRecordingPlugIns + TingraMCP
                                      (+ swift-argument-parser)
 apps/      tingra (phase 3)       →  TingraHost + TingraComposition + TingraCapturePlugIns
-                                     + TingraGeneratorPlugIns + TingraPlugInKit + TingraEventBus
-                                     (scaffolded at step 6; more feature plug-ins + UI packages later)
+                                     + TingraGeneratorPlugIns + TingraOutputPlugIns
+                                     + TingraPlugInKit + TingraEventBus
+                                     (scaffolded at step 6; gained TingraOutputPlugIns at the
+                                     step-7 streaming iteration; more feature plug-ins + UI
+                                     packages later)
 apps/      ingest-simulator       →  none of the above (wraps MediaMTX; see SIMULATOR.md)
 ```
 

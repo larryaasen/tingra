@@ -86,6 +86,40 @@
         }
       }
     },
+    "Connecting…" : {
+      "comment" : "Stream status: connecting to the destination",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verbinden…"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conectando…"
+          }
+        }
+      }
+    },
+    "Destination" : {
+      "comment" : "Destination URL field label",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ziel"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Destino"
+          }
+        }
+      }
+    },
     "Display" : {
       "comment" : "Display input picker label",
       "localizations" : {
@@ -137,6 +171,23 @@
         }
       }
     },
+    "Error" : {
+      "comment" : "Stream status: the stream ended on a failure",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fehler"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Error"
+          }
+        }
+      }
+    },
     "Height" : {
       "comment" : "Layer frame slider label",
       "localizations" : {
@@ -154,6 +205,23 @@
         }
       }
     },
+    "Idle" : {
+      "comment" : "Stream status: not streaming",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inaktiv"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inactivo"
+          }
+        }
+      }
+    },
     "Layers" : {
       "comment" : "Layer editor section title",
       "localizations" : {
@@ -167,6 +235,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Capas"
+          }
+        }
+      }
+    },
+    "Microphone" : {
+      "comment" : "Microphone input picker label",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mikrofon"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Micrófono"
           }
         }
       }
@@ -239,6 +324,23 @@
         }
       }
     },
+    "No audio" : {
+      "comment" : "Microphone picker option: stream video only",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kein Audio"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sin audio"
+          }
+        }
+      }
+    },
     "None" : {
       "comment" : "Picker option for no input selected",
       "localizations" : {
@@ -303,6 +405,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Programa"
+          }
+        }
+      }
+    },
+    "Reconnecting…" : {
+      "comment" : "Stream status: a reconnect attempt is in flight",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erneut verbinden…"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reconectando…"
           }
         }
       }
@@ -409,6 +528,91 @@
         }
       }
     },
+    "Start Streaming" : {
+      "comment" : "Button that puts the program on air",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Streaming starten"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Iniciar transmisión"
+          }
+        }
+      }
+    },
+    "Stop Streaming" : {
+      "comment" : "Button that takes the program off air",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Streaming stoppen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Detener transmisión"
+          }
+        }
+      }
+    },
+    "Stopped" : {
+      "comment" : "Stream status: the stream ended cleanly",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gestoppt"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Detenido"
+          }
+        }
+      }
+    },
+    "Stream key" : {
+      "comment" : "Stream key field label and placeholder",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Streamschlüssel"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clave de transmisión"
+          }
+        }
+      }
+    },
+    "Streaming" : {
+      "comment" : "Section heading over the destination and Start/Stop controls",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Streaming"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transmisión"
+          }
+        }
+      }
+    },
     "Width" : {
       "comment" : "Layer frame slider label",
       "localizations" : {
@@ -456,6 +660,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Y"
+          }
+        }
+      }
+    },
+    "rtmp://server/app" : {
+      "comment" : "Placeholder for the destination URL field",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "rtmp://server/app"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "rtmp://server/app"
+          }
+        }
+      }
+    },
+    "● Live" : {
+      "comment" : "Stream status: the program is on air",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "● Live"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "● En vivo"
           }
         }
       }

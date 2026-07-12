@@ -163,6 +163,58 @@ struct StreamSessionTests {
         }
     }
 
+    @Test("A program-source session delivers the compositor's frames on the session timeline and names them 'program'")
+    func programSourceFlows() async throws {
+        let clock = ManualClock()
+        clock.advance(to: CMTime(value: 10, timescale: 1))
+        let eventBus = EventBus()
+        let events = CollectedEvents()
+        let eventsTask = events.consume(eventBus.events())
+        defer { eventsTask.cancel() }
+
+        let service = MockStreamingService()
+        let pixelBuffer = try #require(makeTestPixelBuffer())
+        // The compositor's program frames arrive already tick-paced and
+        // stamped on the master clock — the session consumes them as-is (no
+        // ProgramPacer) and rebases each onto T0, exactly like the input path.
+        let (programStream, continuation) = AsyncStream.makeStream(of: CapturedFrame.self)
+        continuation.yield(
+            CapturedFrame(pixelBuffer: pixelBuffer, presentationTime: CMTime(value: 105, timescale: 10)))
+        continuation.finish()
+
+        let session = StreamSession(
+            programVideo: programStream,
+            audioInput: nil,
+            service: service,
+            destination: try Self.makeDestination(),
+            configuration: StreamConfiguration(),
+            policy: StreamSession.Policy(statsIntervalSeconds: 0),
+            clock: clock,
+            eventBus: eventBus
+        )
+        let runTask = Task { try await session.run() }
+
+        let started = await eventually { !events.named("stream.started").isEmpty }
+        #expect(started)
+
+        // The program frame is delivered without advancing the clock — it is
+        // pre-paced — and carries the T0 rebase: 10.5s − 10s = 0.5s.
+        let videoArrived = await eventually { !service.videoTimes.isEmpty }
+        #expect(videoArrived)
+        #expect(service.videoTimes.first == CMTime(value: 5, timescale: 10))
+
+        await session.stop()
+        let outcome = try await runTask.value
+        #expect(outcome == .stopRequested)
+
+        // A program source has no single device to name, so it reports the
+        // stable "program" identity in the started params.
+        let startedParams = try #require(events.named("stream.started").first?.params)
+        #expect(startedParams["videoInput"] == .string("program"))
+        #expect(startedParams["videoInputName"] == .string("Program"))
+        #expect(startedParams["audioInput"] == nil)
+    }
+
     @Test("The configured duration ends the session with durationElapsed")
     func durationElapses() async throws {
         let clock = ManualClock()

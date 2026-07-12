@@ -15,6 +15,7 @@ import TingraComposition
 import TingraEventBus
 import TingraGeneratorPlugIns
 import TingraHost
+import TingraOutputPlugIns
 import TingraPlugInKit
 
 /// The app's engine model: the one `@Observable` that boots the host,
@@ -42,6 +43,42 @@ final class EngineModel {
         let name: String
     }
 
+    /// The live state of the app's one stream (v1's one-active-session rule),
+    /// derived from the `StreamSession` status events on the bus.
+    enum StreamStatus: Equatable {
+        /// Not streaming.
+        case idle
+
+        /// Connecting and starting to publish — after Start, before the
+        /// service reports `stream.started`.
+        case starting
+
+        /// Live: the program is publishing to the destination.
+        case live
+
+        /// The connection dropped and a reconnect attempt is in flight
+        /// (`attempt` of `maxAttempts`).
+        case reconnecting(attempt: Int, maxAttempts: Int)
+
+        /// The stream stopped cleanly (Stop, or an elapsed duration).
+        case stopped
+
+        /// The stream ended on a failure — a start-time rejection (bad key,
+        /// unreachable host) or a connection lost past the reconnect budget.
+        /// Carries a developer-facing message (never a secret).
+        case error(String)
+    }
+
+    /// A snapshot of the live stream's delivery counters, from a `stream.stats`
+    /// event — what the panel shows beside the Live label.
+    struct StreamStats: Equatable {
+        /// The current send bitrate in kilobits per second.
+        let bitrateKbps: Int
+
+        /// The current delivered frame rate.
+        let fps: Int
+    }
+
     /// The discovered cameras, for the camera picker.
     private(set) var cameras: [InputChoice] = []
 
@@ -54,6 +91,37 @@ final class EngineModel {
 
     /// The chosen display, or nil for none.
     var selectedDisplayID: InputID?
+
+    /// The discovered microphones, for the streaming panel's audio picker.
+    private(set) var microphones: [InputChoice] = []
+
+    /// The microphone whose audio is streamed (pass-through on the shared
+    /// timeline — the audio mixer is a later iteration), or nil to stream
+    /// video only. Session state, not yet part of the project document.
+    var selectedMicrophoneID: InputID?
+
+    /// The RTMP(S) destination URL the streaming panel edits, persisted in the
+    /// project document (the stream key is not — it lives in secure storage;
+    /// see ARCHITECTURE.md, "Streaming the program"). Empty until configured.
+    var destinationURL: String = ""
+
+    /// The live streaming status, driven entirely by the `stream.*` events on
+    /// the bus (never a poll) — what the Start/Stop control reflects.
+    private(set) var streamStatus: StreamStatus = .idle
+
+    /// The latest delivery stats from the last `stream.stats` event while
+    /// live, or nil when not streaming — the panel shows them beside the Live
+    /// label. Event-driven, like ``streamStatus``.
+    private(set) var streamStats: StreamStats?
+
+    /// Whether a stream is currently starting, live, or reconnecting — so the
+    /// control shows Stop and the destination fields lock.
+    var isStreaming: Bool {
+        switch streamStatus {
+        case .starting, .live, .reconnecting: return true
+        case .idle, .stopped, .error: return false
+        }
+    }
 
     /// The shots the current selection makes available, in switcher order —
     /// what the shot switcher lists (roadmap step 7).
@@ -103,6 +171,34 @@ final class EngineModel {
 
     /// The input registry the plug-ins register into.
     @ObservationIgnored private let registry = InputRegistry()
+
+    /// The output registry the streaming plug-in registers into — the same
+    /// seam the CLI resolves a destination scheme against
+    /// (`OutputRegistry.provider(forScheme:)`).
+    @ObservationIgnored private let outputs = OutputRegistry()
+
+    /// The host's Keychain-backed secret store: the stream key lives only
+    /// here, keyed by the destination URL — never the project document, never
+    /// an event, never a log (CLAUDE.md, "Error Handling").
+    @ObservationIgnored private let secureStorage: any SecureStorage = KeychainSecureStorage()
+
+    /// The active stream session, or nil when not streaming (v1's one active
+    /// session — GLOSSARY.md, "Session").
+    @ObservationIgnored private var streamSession: StreamSession?
+
+    /// The task running the active session's `run()`, retained so its outcome
+    /// resolves the status and cleans up.
+    @ObservationIgnored private var streamTask: Task<Void, Never>?
+
+    /// The continuation feeding the active session its program video: the one
+    /// program drain (``programTask``) tees each composited frame here while a
+    /// stream is live, so streaming reuses the same program the preview shows
+    /// without opening a second `Compositor.programFrames()` consumer.
+    @ObservationIgnored private var streamContinuation: AsyncStream<CapturedFrame>.Continuation?
+
+    /// The task observing the bus for `stream.*` status events — the stream
+    /// status is event-driven, never polled.
+    @ObservationIgnored private var streamStatusTask: Task<Void, Never>?
 
     /// The program geometry and rate.
     @ObservationIgnored private let format = ProgramFormat(width: 1920, height: 1080, frameRate: 30)
@@ -204,21 +300,34 @@ final class EngineModel {
         // Print events to the Xcode console (stdout) rather than OSLog, which
         // does not appear in Xcode's debug console (see ``ConsoleEventSink``).
         logSinkTask = eventBus.attach(ConsoleEventSink())
+        // Observe the bus for `stream.*` status changes before anything can
+        // stream, so no status event is missed (event-driven, never polled).
+        let streamEvents = eventBus.events()
+        streamStatusTask = Task { [weak self] in
+            for await event in streamEvents {
+                self?.handleStreamStatusEvent(event)
+            }
+        }
         let context = PlugInContext(
             eventBus: eventBus,
             clock: clock,
             inputs: registry,
-            outputs: UnusedOutputRegistering(),
+            outputs: outputs,
             tools: UnusedToolRegistering()
         )
         await PlugInLoader().activate(
-            [AVFoundationCapturePlugIn(), ScreenCaptureKitCapturePlugIn(), GeneratorPlugIn()],
+            [
+                AVFoundationCapturePlugIn(), ScreenCaptureKitCapturePlugIn(), GeneratorPlugIn(),
+                HaishinKitOutputPlugIn(),
+            ],
             in: context
         )
 
         let inputs = await registry.allInputs
         cameras = inputs.filter { $0.kind == .camera }.map { InputChoice(id: $0.id, name: $0.name) }
         displays = inputs.filter { $0.kind == .display }.map { InputChoice(id: $0.id, name: $0.name) }
+        microphones = inputs.filter { $0.kind == .microphone }.map { InputChoice(id: $0.id, name: $0.name) }
+        selectedMicrophoneID = microphones.first?.id
         loadProject()
 
         let program = compositor.programFrames()
@@ -227,6 +336,10 @@ final class EngineModel {
             var sawFrame = false
             for await frame in program {
                 self?.programRelay.latest = frame.pixelBuffer
+                // While a stream is live, tee the same program frame into the
+                // session — one program drain feeds both the preview and the
+                // stream, so the compositor's single-consumer contract holds.
+                self?.streamContinuation?.yield(frame)
                 if !sawFrame {
                     sawFrame = true
                     // A one-time milestone (not per-frame traffic): confirms the
@@ -510,9 +623,226 @@ final class EngineModel {
         scheduleAutosave()
     }
 
+    // MARK: Streaming
+
+    /// The stream key stored for the current destination URL, or nil when none
+    /// is stored (or the URL is empty). Read from secure storage so the
+    /// streaming panel can prefill its key field on launch without the key
+    /// ever passing through the project document. A read failure is reported
+    /// and treated as "no stored key" — never a crash.
+    ///
+    /// - Returns: The stored stream key, or nil.
+    func storedStreamKey() -> String? {
+        guard let account = destinationAccount else { return nil }
+        do {
+            return try secureStorage.secret(forAccount: account)
+        } catch {
+            eventBus.error(
+                "securestore.read",
+                domain: .output,
+                params: ["error": .string(String(describing: error))]
+            )
+            return nil
+        }
+    }
+
+    /// Puts the program on air: resolves the destination URL to the streaming
+    /// provider, stores the key in secure storage, and drives a
+    /// ``StreamSession`` fed the compositor's program frames and the selected
+    /// microphone — reusing the CLI's proven reconnect/stability/stats
+    /// machinery (ARCHITECTURE.md, "Streaming the program"). One active
+    /// session (the v1 rule): a second call while streaming is ignored.
+    ///
+    /// The stream key is used to build the ``Destination`` and to seed secure
+    /// storage; it never becomes an event param, a log line, or part of the
+    /// project document. An empty key streams keyless (some servers embed the
+    /// key in the URL path) and clears any stored key for the URL.
+    ///
+    /// - Parameter streamKey: The RTMP(S) stream key the operator entered.
+    func startStreaming(streamKey: String) async {
+        guard streamSession == nil else { return }
+        guard let url = URL(string: destinationURL), let scheme = url.scheme?.lowercased(), !destinationURL.isEmpty
+        else {
+            streamStatus = .error("Enter a valid rtmp:// or rtmps:// destination URL.")
+            return
+        }
+        guard let provider = await outputs.provider(forScheme: scheme) else {
+            streamStatus = .error("No streaming output serves '\(scheme)://' destinations (use rtmp:// or rtmps://).")
+            return
+        }
+
+        // The key goes only into secure storage (or is cleared when blank),
+        // keyed by the destination URL — a best-effort write: a Keychain error
+        // is reported but does not block the stream, which still holds the key
+        // in memory for this session.
+        persistStreamKey(streamKey, forAccount: url.absoluteString)
+
+        var microphone: (any Input)?
+        if let micID = selectedMicrophoneID {
+            microphone = await registry.input(withID: micID)
+        }
+
+        let configuration = StreamConfiguration(
+            width: format.width,
+            height: format.height,
+            frameRate: format.frameRate,
+            includesVideo: true,
+            includesAudio: microphone != nil
+        )
+        let destination = Destination(url: url, streamKey: streamKey.isEmpty ? nil : streamKey)
+
+        // Tee the program into a fresh stream: the drain in `start()` forwards
+        // each composited frame here while `streamContinuation` is set.
+        let (programStream, continuation) = AsyncStream.makeStream(of: CapturedFrame.self)
+        streamContinuation = continuation
+
+        let session = StreamSession(
+            programVideo: programStream,
+            audioInput: microphone,
+            service: provider.makeStreamingService(configuration: configuration),
+            destination: destination,
+            configuration: configuration,
+            policy: StreamSession.Policy(),
+            clock: clock,
+            eventBus: eventBus
+        )
+        streamSession = session
+        streamStatus = .starting
+        streamStats = nil
+
+        streamTask = Task { [weak self] in
+            do {
+                _ = try await session.run()
+                // Terminal status is set by the `stream.stopped` observer; the
+                // task only tears the plumbing down.
+            } catch {
+                // A start-time failure (bad key, unreachable host) throws
+                // before `stream.started`, so the observer never saw it.
+                self?.eventBus.error(
+                    "stream.start",
+                    domain: .output,
+                    params: [
+                        "identifier": .string(ErrorIdentifier.connectionFailed.rawValue),
+                        "message": .string(String(describing: error)),
+                    ]
+                )
+                self?.streamStatus = .error(String(describing: error))
+            }
+            self?.teardownStream()
+        }
+    }
+
+    /// Takes the program off air: requests a clean stop of the active session
+    /// (flush compression, close the connection). The `stream.stopped` event
+    /// settles the status; ``teardownStream()`` releases the plumbing when
+    /// `run()` returns. A no-op when not streaming.
+    func stopStreaming() async {
+        await streamSession?.stop()
+    }
+
+    /// Stores the stream key for an account, or clears it when the key is
+    /// empty — best effort. A secure-storage error is reported on the bus (no
+    /// secret in the message) and swallowed: the in-memory key still drives
+    /// this session's stream.
+    ///
+    /// - Parameters:
+    ///   - streamKey: The key to store, or empty to clear the stored key.
+    ///   - account: The secure-storage account (the destination URL).
+    private func persistStreamKey(_ streamKey: String, forAccount account: String) {
+        do {
+            if streamKey.isEmpty {
+                try secureStorage.removeSecret(forAccount: account)
+            } else {
+                try secureStorage.setSecret(streamKey, forAccount: account)
+            }
+        } catch {
+            eventBus.error(
+                "securestore.write",
+                domain: .output,
+                params: ["error": .string(String(describing: error))]
+            )
+        }
+    }
+
+    /// Releases the finished session's plumbing: finishes the program tee and
+    /// drops the session references so a new stream can start.
+    private func teardownStream() {
+        streamContinuation?.finish()
+        streamContinuation = nil
+        streamSession = nil
+        streamTask = nil
+    }
+
+    /// Updates ``streamStatus`` from a `stream.*` bus event — the event-driven
+    /// status the CLI's `StreamSession` already emits (`stream.started`,
+    /// `stream.reconnecting`, `stream.reconnected`, `stream.stopped`); no
+    /// polling. Non-stream events are ignored.
+    ///
+    /// - Parameter event: An event drained from the bus.
+    private func handleStreamStatusEvent(_ event: EventBusEvent) {
+        switch event.name {
+        case "stream.started", "stream.reconnected":
+            streamStatus = .live
+        case "stream.stats":
+            // Bitrate arrives in bits per second; the panel shows kbps.
+            let bitrate = event.params?["bitrate"].flatMap(Self.intValue) ?? 0
+            let fps = event.params?["fps"].flatMap(Self.intValue) ?? 0
+            streamStats = StreamStats(bitrateKbps: bitrate / 1000, fps: fps)
+        case "stream.reconnecting":
+            let attempt = event.params?["attempt"].flatMap(Self.intValue) ?? 0
+            let maxAttempts = event.params?["maxAttempts"].flatMap(Self.intValue) ?? 0
+            streamStatus = .reconnecting(attempt: attempt, maxAttempts: maxAttempts)
+            streamStats = nil
+        case "stream.stopped":
+            // The session reports its outcome as the stop reason; a lost
+            // connection past the reconnect budget is the failure case.
+            let reason = event.params?["reason"].flatMap(Self.stringValue)
+            streamStatus =
+                reason == StreamSession.Outcome.connectionLost.rawValue
+                ? .error("The connection was lost and not recovered.")
+                : .stopped
+            streamStats = nil
+        default:
+            break
+        }
+    }
+
+    /// The secure-storage account for the current destination — the URL string
+    /// when it parses, else nil (an empty or malformed URL has no stored key).
+    private var destinationAccount: String? {
+        guard !destinationURL.isEmpty, let url = URL(string: destinationURL) else { return nil }
+        return url.absoluteString
+    }
+
+    /// The `Int` inside an event value, when it is one.
+    private static func intValue(_ value: EventValue) -> Int? {
+        if case .int(let int) = value { return int }
+        return nil
+    }
+
+    /// The `String` inside an event value, when it is one.
+    private static func stringValue(_ value: EventValue) -> String? {
+        if case .string(let string) = value { return string }
+        return nil
+    }
+
+    /// Records that the destination URL changed (the panel's text field):
+    /// schedules the debounced autosave so the new URL reaches the project
+    /// document, and reflects the URL's stored key by resetting a stale
+    /// error/stopped status back to idle.
+    func destinationURLChanged() {
+        if !isStreaming { streamStatus = .idle }
+        scheduleAutosave()
+    }
+
+    // MARK: Lifecycle
+
     /// Stops the compositor, the program drain, and every active input,
     /// flushing any pending autosave first so the last edits reach disk.
     func stop() async {
+        await stopStreaming()
+        streamStatusTask?.cancel()
+        streamStatusTask = nil
         if autosaveTask != nil { saveProject() }
         programTask?.cancel()
         programTask = nil
@@ -539,6 +869,9 @@ final class EngineModel {
             if let project = try store.load() {
                 loadedPreset = project.presets.first
                 otherPresets = Array(project.presets.dropFirst())
+                // Restore the destination URL (the key stays in secure
+                // storage, read lazily when the panel prefills its field).
+                if let url = project.destination?.url { destinationURL = url.absoluteString }
             }
         } catch {
             eventBus.error(
@@ -661,7 +994,15 @@ final class EngineModel {
         guard hasSessionPreset else { return }
         autosaveTask?.cancel()
         autosaveTask = nil
-        let project = Project(presets: [Preset(id: presetID, name: presetName, shots: shots)] + otherPresets)
+        // The destination URL joins the document (project format v2); its
+        // stream key is excluded — it lives only in secure storage.
+        let destination = URL(string: destinationURL).flatMap {
+            destinationURL.isEmpty ? nil : ProjectDestination(url: $0)
+        }
+        let project = Project(
+            presets: [Preset(id: presetID, name: presetName, shots: shots)] + otherPresets,
+            destination: destination
+        )
         do {
             try store.save(project)
             eventBus.event(
@@ -712,13 +1053,6 @@ final class ProgramFrameRelay {
 
     /// Creates an empty relay.
     init() {}
-}
-
-/// A no-op `OutputRegistering`: the app's capture/generator plug-ins never
-/// register outputs, but the shared `PlugInContext` still requires the seam.
-private struct UnusedOutputRegistering: OutputRegistering {
-    func register(_ provider: any StreamingServiceProvider) async throws {}
-    func register(_ provider: any RecordingServiceProvider) async throws {}
 }
 
 /// A no-op `ToolRegistering`: the app does not host the MCP tool surface

@@ -42,6 +42,13 @@ struct ContentView: View {
     /// name when the dialog opens.
     @State private var renameText = ""
 
+    /// The stream-key field's working text. View-local and never handed to
+    /// the model as observable state: the key flows straight into
+    /// ``EngineModel/startStreaming(streamKey:)`` (which stores it in secure
+    /// storage) and is prefilled from there — it never touches the project
+    /// document or the event bus (ARCHITECTURE.md, "Streaming the program").
+    @State private var streamKey = ""
+
     /// The window body: preview on top, controls beneath.
     var body: some View {
         VStack(spacing: 12) {
@@ -64,8 +71,16 @@ struct ContentView: View {
             LayerTreeEditorView(model: model)
 
             controls
+
+            streamingPanel
         }
         .padding()
+        .task(id: model.destinationURL) {
+            // Prefill the key field from secure storage for the current
+            // destination — on launch (once the loaded URL arrives) and
+            // whenever the URL changes.
+            streamKey = model.storedStreamKey() ?? ""
+        }
         .onChange(of: model.selectedCameraID) { _, newValue in
             let name = model.cameras.first { $0.id == newValue }?.name ?? "None"
             model.eventBus.tap(
@@ -243,5 +258,123 @@ struct ContentView: View {
             }
         }
         .pickerStyle(.menu)
+    }
+
+    /// The streaming panel: the RTMP(S) destination URL and stream key, the
+    /// microphone whose audio goes to air, the live status, and the Start/Stop
+    /// control. Puts the program the operator already has on air (ARCHITECTURE.md,
+    /// "Streaming the program"); the destination fields lock while streaming.
+    ///
+    /// The stream key is a `SecureField` bound to view-local state, handed to
+    /// the model only at Start — it is stored in the Keychain, never in the
+    /// project document, an event, or a log.
+    private var streamingPanel: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Streaming", comment: "Section heading over the destination and Start/Stop controls")
+                .font(.headline)
+
+            HStack(spacing: 8) {
+                TextField(
+                    text: $model.destinationURL,
+                    prompt: Text("rtmp://server/app", comment: "Placeholder for the destination URL field")
+                ) {
+                    Text("Destination", comment: "Destination URL field label")
+                }
+                .textFieldStyle(.roundedBorder)
+                .disabled(model.isStreaming)
+                .onChange(of: model.destinationURL) { _, _ in model.destinationURLChanged() }
+
+                SecureField(
+                    text: $streamKey,
+                    prompt: Text("Stream key", comment: "Placeholder for the stream key field")
+                ) {
+                    Text("Stream key", comment: "Stream key field label")
+                }
+                .textFieldStyle(.roundedBorder)
+                .disabled(model.isStreaming)
+            }
+
+            HStack(spacing: 12) {
+                Picker(selection: $model.selectedMicrophoneID) {
+                    Text("No audio", comment: "Microphone picker option: stream video only").tag(InputID?.none)
+                    ForEach(model.microphones) { microphone in
+                        Text(microphone.name).tag(InputID?.some(microphone.id))
+                    }
+                } label: {
+                    Text("Microphone", comment: "Microphone input picker label")
+                }
+                .pickerStyle(.menu)
+                .fixedSize()
+                .disabled(model.isStreaming)
+                .onChange(of: model.selectedMicrophoneID) { _, newValue in
+                    let name = model.microphones.first { $0.id == newValue }?.name ?? "None"
+                    model.eventBus.tap(
+                        "microphone.picker",
+                        domain: .capture,
+                        params: ["id": .string(newValue?.rawValue ?? "none"), "name": .string(name)]
+                    )
+                }
+
+                Spacer()
+
+                streamStatusLabel
+
+                Button {
+                    if model.isStreaming {
+                        model.eventBus.tap("streamStop.button", domain: .output)
+                        Task { await model.stopStreaming() }
+                    } else {
+                        model.eventBus.tap("streamStart.button", domain: .output)
+                        let key = streamKey
+                        Task { await model.startStreaming(streamKey: key) }
+                    }
+                } label: {
+                    if model.isStreaming {
+                        Text("Stop Streaming", comment: "Button that takes the program off air")
+                    } else {
+                        Text("Start Streaming", comment: "Button that puts the program on air")
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(model.isStreaming ? .red : .accentColor)
+                .disabled(!model.isStreaming && model.destinationURL.isEmpty)
+            }
+        }
+    }
+
+    /// The live stream status, rendered from ``EngineModel/StreamStatus`` — the
+    /// event-driven state the session reports on the bus.
+    @ViewBuilder private var streamStatusLabel: some View {
+        switch model.streamStatus {
+        case .idle:
+            Text("Idle", comment: "Stream status: not streaming")
+                .foregroundStyle(.secondary)
+        case .starting:
+            Text("Connecting…", comment: "Stream status: connecting to the destination")
+                .foregroundStyle(.orange)
+        case .live:
+            HStack(spacing: 6) {
+                Text("● Live", comment: "Stream status: the program is on air")
+                    .foregroundStyle(.red)
+                    .fontWeight(.semibold)
+                if let stats = model.streamStats {
+                    Text(verbatim: "\(stats.bitrateKbps) kbps · \(stats.fps) fps")
+                        .foregroundStyle(.secondary)
+                        .font(.callout)
+                        .monospacedDigit()
+                }
+            }
+        case .reconnecting(let attempt, let maxAttempts):
+            (Text("Reconnecting…", comment: "Stream status: a reconnect attempt is in flight")
+                + Text(verbatim: " \(attempt)/\(maxAttempts)"))
+                .foregroundStyle(.orange)
+        case .stopped:
+            Text("Stopped", comment: "Stream status: the stream ended cleanly")
+                .foregroundStyle(.secondary)
+        case .error(let message):
+            Text("Error", comment: "Stream status: the stream ended on a failure")
+                .foregroundStyle(.red)
+                .help(message)
+        }
     }
 }

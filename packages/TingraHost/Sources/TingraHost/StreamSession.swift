@@ -12,21 +12,49 @@ import TingraEventBus
 import TingraPlugInKit
 
 /// One live stream: the host's session orchestration for the v1 pipeline —
-/// one video input and one audio input feeding one streaming service (see
+/// one video source and one audio input feeding one streaming service (see
 /// CLI.md, "Non-goals (v1)": one camera, one microphone, one destination).
 ///
 /// The session owns the shared timeline (`T0` at start; every buffer is
 /// rebased onto it before reaching the service, per CLOCK.md "Timestamp
-/// rules"), paces video through ``ProgramPacer``, passes audio through at
-/// capture cadence, reports the CLI.md status events (`stream.started`,
-/// `stream.stats`, `stream.reconnecting`, `stream.reconnected`,
-/// `stream.stopped`) on the event bus as `event`-group events in the
-/// `output` domain, and drives the reconnect policy when the service
-/// reports a connection loss.
+/// rules"), passes audio through at capture cadence, reports the CLI.md
+/// status events (`stream.started`, `stream.stats`, `stream.reconnecting`,
+/// `stream.reconnected`, `stream.stopped`) on the event bus as `event`-group
+/// events in the `output` domain, and drives the reconnect policy when the
+/// service reports a connection loss.
 ///
-/// `tingra-cli stream` drives one directly today; the `serve` daemon
-/// (roadmap step 4) will own one per `stream_start` tool call.
+/// The program video reaches the session through a ``VideoSource``:
+/// - ``VideoSource/input(_:)`` is the CLI's single-input path — the session
+///   paces that one input through ``ProgramPacer`` (tick-paced, latest-wins)
+///   and owns its device lifecycle (`start()`/`stop()`).
+/// - ``VideoSource/program(_:)`` is the app's compositor path — an
+///   already tick-paced program-frame stream (`Compositor.programFrames()`),
+///   consumed as-is with no second pacing. The compositor and its inputs are
+///   owned by the caller, so the session starts and stops nothing on that
+///   side; it only rebases each frame onto `T0` and delivers it.
+///
+/// Either way the reconnect machinery, the stability window, the periodic
+/// stats, the duration timer, and the pass-through audio path are identical —
+/// the app reuses the proven CLI streaming lifecycle rather than rebuilding
+/// it (ARCHITECTURE.md, "Streaming the program").
+///
+/// `tingra-cli stream` drives an ``VideoSource/input(_:)`` session directly;
+/// the `serve` daemon owns one per `stream_start` tool call; the phase-3 app
+/// drives a ``VideoSource/program(_:)`` session from the compositor.
 public actor StreamSession {
+    /// How the session's program video is produced.
+    public enum VideoSource: Sendable {
+        /// A single capture input the session paces itself with
+        /// ``ProgramPacer`` and whose device lifecycle it owns — the CLI's
+        /// one-camera pipeline.
+        case input(any Input)
+
+        /// An already tick-paced program-frame stream, consumed as-is — the
+        /// compositor's program output. The caller owns the compositor and
+        /// its inputs; the session paces and starts nothing on this side.
+        case program(AsyncStream<CapturedFrame>)
+    }
+
     /// The session control knobs from the CLI option surface (CLI.md:
     /// `--reconnect`, `--reconnect-delay`, `--stats-interval`,
     /// `--duration`).
@@ -91,8 +119,8 @@ public actor StreamSession {
         case connectionLost
     }
 
-    /// The video input feeding the program, or nil under `--no-video`.
-    private let videoInput: (any Input)?
+    /// How the program video is produced, or nil under `--no-video`.
+    private let videoSource: VideoSource?
 
     /// The audio input feeding the program, or nil under `--no-audio`.
     private let audioInput: (any Input)?
@@ -149,11 +177,13 @@ public actor StreamSession {
     /// The reconnect attempts left for the current outage.
     private var remainingReconnectAttempts = 0
 
-    /// Creates a session. At least one input side should be present; the
-    /// caller has already resolved inputs and read the stream key.
+    /// Creates a session from a single capture input (the CLI's one-camera
+    /// pipeline). At least one media side should be present; the caller has
+    /// already resolved inputs and read the stream key.
     ///
     /// - Parameters:
-    ///   - videoInput: The video input, or nil for an audio-only stream.
+    ///   - videoInput: The video input the session paces itself, or nil for
+    ///     an audio-only stream.
     ///   - audioInput: The audio input, or nil for a video-only stream.
     ///   - service: The streaming service (from the provider the
     ///     destination's URL scheme resolved to).
@@ -178,7 +208,93 @@ public actor StreamSession {
         recording: (any RecordingService)? = nil,
         recordingFile: RecordingFile? = nil
     ) {
-        self.videoInput = videoInput
+        self.init(
+            videoSource: videoInput.map(VideoSource.input),
+            audioInput: audioInput,
+            service: service,
+            destination: destination,
+            configuration: configuration,
+            policy: policy,
+            clock: clock,
+            eventBus: eventBus,
+            recording: recording,
+            recordingFile: recordingFile
+        )
+    }
+
+    /// Creates a session from an already tick-paced program-frame stream (the
+    /// app's compositor path). The caller owns the compositor and its inputs;
+    /// the session paces nothing on the video side and starts/stops no video
+    /// device — it rebases each program frame onto `T0` and delivers it, while
+    /// still owning the audio input's lifecycle.
+    ///
+    /// - Parameters:
+    ///   - programVideo: The compositor's program-frame stream, or nil for an
+    ///     audio-only stream.
+    ///   - audioInput: The audio input, or nil for a video-only stream.
+    ///   - service: The streaming service.
+    ///   - destination: Where the program streams to.
+    ///   - configuration: The compression and program settings.
+    ///   - policy: The reconnect/stats/duration policy.
+    ///   - clock: The master clock (the same one pacing the compositor).
+    ///   - eventBus: The host's event bus.
+    ///   - recording: The recording service, or nil for a stream-only session.
+    ///   - recordingFile: Where the recording is written; required when
+    ///     `recording` is present, ignored otherwise.
+    public init(
+        programVideo: AsyncStream<CapturedFrame>?,
+        audioInput: (any Input)?,
+        service: any StreamingService,
+        destination: Destination,
+        configuration: StreamConfiguration,
+        policy: Policy,
+        clock: any EngineClock,
+        eventBus: EventBus,
+        recording: (any RecordingService)? = nil,
+        recordingFile: RecordingFile? = nil
+    ) {
+        self.init(
+            videoSource: programVideo.map(VideoSource.program),
+            audioInput: audioInput,
+            service: service,
+            destination: destination,
+            configuration: configuration,
+            policy: policy,
+            clock: clock,
+            eventBus: eventBus,
+            recording: recording,
+            recordingFile: recordingFile
+        )
+    }
+
+    /// The designated initializer both public inits funnel through.
+    ///
+    /// - Parameters:
+    ///   - videoSource: How the program video is produced, or nil under
+    ///     `--no-video`.
+    ///   - audioInput: The audio input, or nil for a video-only stream.
+    ///   - service: The streaming service.
+    ///   - destination: Where the program streams to.
+    ///   - configuration: The compression and program settings.
+    ///   - policy: The reconnect/stats/duration policy.
+    ///   - clock: The master clock (synthetic in tests).
+    ///   - eventBus: The host's event bus.
+    ///   - recording: The recording service, or nil for a stream-only session.
+    ///   - recordingFile: Where the recording is written; required when
+    ///     `recording` is present, ignored otherwise.
+    private init(
+        videoSource: VideoSource?,
+        audioInput: (any Input)?,
+        service: any StreamingService,
+        destination: Destination,
+        configuration: StreamConfiguration,
+        policy: Policy,
+        clock: any EngineClock,
+        eventBus: EventBus,
+        recording: (any RecordingService)?,
+        recordingFile: RecordingFile?
+    ) {
+        self.videoSource = videoSource
         self.audioInput = audioInput
         self.service = service
         self.destination = destination
@@ -208,7 +324,9 @@ public actor StreamSession {
     /// live, problems surface as events and an eventual outcome, never a
     /// throw.
     public func run() async throws -> Outcome {
-        if let videoInput {
+        // Only a session-owned capture input is started here; a program-frame
+        // source is driven by the caller's compositor, already running.
+        if case .input(let videoInput) = videoSource {
             try await videoInput.start()
         }
         if let audioInput {
@@ -279,9 +397,10 @@ public actor StreamSession {
         return result
     }
 
-    /// Stops both inputs, if present.
+    /// Stops the session-owned inputs, if present. A program-frame video
+    /// source is left alone — its compositor and inputs belong to the caller.
     private func stopInputs() async {
-        if let videoInput {
+        if case .input(let videoInput) = videoSource {
             await videoInput.stop()
         }
         if let audioInput {
@@ -310,26 +429,40 @@ public actor StreamSession {
         outcomeContinuation.finish()
     }
 
-    /// Starts the media pumps: tick-paced latest-wins video (see
-    /// ``ProgramPacer``), capture-cadence audio, both rebased onto the
-    /// session timeline before reaching the service.
+    /// Starts the media pumps: program video (tick-paced), capture-cadence
+    /// audio, both rebased onto the session timeline before reaching the
+    /// service.
+    ///
+    /// The video side is already at the program tick rate before this pump
+    /// sees it — an ``VideoSource/input(_:)`` source is paced through
+    /// ``ProgramPacer`` here (latest-wins, re-sending across a stall), while a
+    /// ``VideoSource/program(_:)`` source arrives already paced by the
+    /// compositor and is consumed as-is. Both stamp frames on the master
+    /// clock, so the identical `T0` rebase applies.
     private func startPumps(t0: CMTime) -> [Task<Void, Never>] {
         var tasks: [Task<Void, Never>] = []
-        if let videoInput {
-            let pacer = ProgramPacer(clock: clock, frameRate: configuration.frameRate)
+        if let videoSource {
+            let frames: AsyncStream<CapturedFrame>
+            switch videoSource {
+            case .input(let videoInput):
+                frames = ProgramPacer(clock: clock, frameRate: configuration.frameRate)
+                    .frames(from: videoInput.frames())
+            case .program(let programVideo):
+                frames = programVideo
+            }
             let service = self.service
             let recording = self.recording
             tasks.append(
                 Task {
-                    for await frame in pacer.frames(from: videoInput.frames()) {
+                    for await frame in frames {
                         let rebased = CapturedFrame(
                             pixelBuffer: frame.pixelBuffer,
                             presentationTime: CMTimeSubtract(frame.presentationTime, t0)
                         )
-                        // The program frame is immutable after the pacer's
-                        // yield, so both compression sinks read the same
-                        // buffer within the tick — neither mutates it, per
-                        // the frame ownership rule (ARCHITECTURE.md).
+                        // The program frame is immutable after it is yielded,
+                        // so both compression sinks read the same buffer
+                        // within the tick — neither mutates it, per the frame
+                        // ownership rule (ARCHITECTURE.md).
                         await service.send(video: rebased)
                         await recording?.send(video: rebased)
                     }
@@ -501,9 +634,17 @@ public actor StreamSession {
         var params: [String: EventValue] = [
             "url": .string(destination.url.absoluteString)
         ]
-        if let videoInput {
-            params["videoInput"] = .string(videoInput.id.rawValue)
-            params["videoInputName"] = .string(videoInput.name)
+        if let videoSource {
+            // A single input names itself; the compositor's program has no one
+            // device to name, so it reports the stable "program" identity.
+            switch videoSource {
+            case .input(let videoInput):
+                params["videoInput"] = .string(videoInput.id.rawValue)
+                params["videoInputName"] = .string(videoInput.name)
+            case .program:
+                params["videoInput"] = .string("program")
+                params["videoInputName"] = .string("Program")
+            }
             params["resolution"] = .string("\(configuration.width)x\(configuration.height)")
             params["fps"] = .int(configuration.frameRate)
             params["videoCodec"] = .string(configuration.videoCodec.rawValue)
