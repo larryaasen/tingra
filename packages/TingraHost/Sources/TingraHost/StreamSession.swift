@@ -17,8 +17,8 @@ import TingraPlugInKit
 ///
 /// The session owns the shared timeline (`T0` at start; every buffer is
 /// rebased onto it before reaching the service, per CLOCK.md "Timestamp
-/// rules"), passes audio through at capture cadence, reports the CLI.md
-/// status events (`stream.started`, `stream.stats`, `stream.reconnecting`,
+/// rules"), delivers the program audio at its source's cadence, reports the
+/// CLI.md status events (`stream.started`, `stream.stats`, `stream.reconnecting`,
 /// `stream.reconnected`, `stream.stopped`) on the event bus as `event`-group
 /// events in the `output` domain, and drives the reconnect policy when the
 /// service reports a connection loss.
@@ -33,14 +33,23 @@ import TingraPlugInKit
 ///   owned by the caller, so the session starts and stops nothing on that
 ///   side; it only rebases each frame onto `T0` and delivers it.
 ///
+/// The program audio mirrors it through an ``AudioSource``:
+/// - ``AudioSource/input(_:)`` is the CLI's pass-through microphone — the
+///   session owns its device lifecycle and passes its buffers through at
+///   capture cadence.
+/// - ``AudioSource/program(_:)`` is the app's mixer path — the already
+///   mix-tick-paced program audio (`AudioMixer.programAudio()`), consumed
+///   as-is; the mixer and its inputs are owned by the caller.
+///
 /// Either way the reconnect machinery, the stability window, the periodic
-/// stats, the duration timer, and the pass-through audio path are identical —
-/// the app reuses the proven CLI streaming lifecycle rather than rebuilding
-/// it (ARCHITECTURE.md, "Streaming the program").
+/// stats, the duration timer, and the media pumps are identical — the app
+/// reuses the proven CLI streaming lifecycle rather than rebuilding it
+/// (ARCHITECTURE.md, "Streaming the program", "The audio mixer").
 ///
 /// `tingra-cli stream` drives an ``VideoSource/input(_:)`` session directly;
 /// the `serve` daemon owns one per `stream_start` tool call; the phase-3 app
-/// drives a ``VideoSource/program(_:)`` session from the compositor.
+/// drives a ``VideoSource/program(_:)`` session from the compositor and the
+/// mixer.
 public actor StreamSession {
     /// How the session's program video is produced.
     public enum VideoSource: Sendable {
@@ -53,6 +62,20 @@ public actor StreamSession {
         /// compositor's program output. The caller owns the compositor and
         /// its inputs; the session paces and starts nothing on this side.
         case program(AsyncStream<CapturedFrame>)
+    }
+
+    /// How the session's program audio is produced — the audio mirror of
+    /// ``VideoSource``.
+    public enum AudioSource: Sendable {
+        /// A single capture input whose device lifecycle the session owns,
+        /// passed through at capture cadence — the CLI's one-microphone
+        /// pipeline.
+        case input(any Input)
+
+        /// The mixer's already-paced program audio, consumed as-is — one
+        /// mixed block per mix tick. The caller owns the mixer and its
+        /// inputs; the session starts and stops nothing on this side.
+        case program(AsyncStream<CapturedAudio>)
     }
 
     /// The session control knobs from the CLI option surface (CLI.md:
@@ -122,8 +145,8 @@ public actor StreamSession {
     /// How the program video is produced, or nil under `--no-video`.
     private let videoSource: VideoSource?
 
-    /// The audio input feeding the program, or nil under `--no-audio`.
-    private let audioInput: (any Input)?
+    /// How the program audio is produced, or nil under `--no-audio`.
+    private let audioSource: AudioSource?
 
     /// The streaming service delivering the program to the destination.
     private let service: any StreamingService
@@ -210,7 +233,7 @@ public actor StreamSession {
     ) {
         self.init(
             videoSource: videoInput.map(VideoSource.input),
-            audioInput: audioInput,
+            audioSource: audioInput.map(AudioSource.input),
             service: service,
             destination: destination,
             configuration: configuration,
@@ -222,28 +245,30 @@ public actor StreamSession {
         )
     }
 
-    /// Creates a session from an already tick-paced program-frame stream (the
-    /// app's compositor path). The caller owns the compositor and its inputs;
-    /// the session paces nothing on the video side and starts/stops no video
-    /// device — it rebases each program frame onto `T0` and delivers it, while
-    /// still owning the audio input's lifecycle.
+    /// Creates a session from already-paced program streams (the app's
+    /// compositor and mixer path). The caller owns the compositor, the
+    /// mixer, and their inputs; the session paces nothing and starts/stops
+    /// no device — it rebases each program frame and mixed block onto `T0`
+    /// and delivers them.
     ///
     /// - Parameters:
     ///   - programVideo: The compositor's program-frame stream, or nil for an
     ///     audio-only stream.
-    ///   - audioInput: The audio input, or nil for a video-only stream.
+    ///   - programAudio: The mixer's program-audio stream, or nil for a
+    ///     video-only stream.
     ///   - service: The streaming service.
     ///   - destination: Where the program streams to.
     ///   - configuration: The compression and program settings.
     ///   - policy: The reconnect/stats/duration policy.
-    ///   - clock: The master clock (the same one pacing the compositor).
+    ///   - clock: The master clock (the same one pacing the compositor and
+    ///     the mixer).
     ///   - eventBus: The host's event bus.
     ///   - recording: The recording service, or nil for a stream-only session.
     ///   - recordingFile: Where the recording is written; required when
     ///     `recording` is present, ignored otherwise.
     public init(
         programVideo: AsyncStream<CapturedFrame>?,
-        audioInput: (any Input)?,
+        programAudio: AsyncStream<CapturedAudio>? = nil,
         service: any StreamingService,
         destination: Destination,
         configuration: StreamConfiguration,
@@ -255,7 +280,7 @@ public actor StreamSession {
     ) {
         self.init(
             videoSource: programVideo.map(VideoSource.program),
-            audioInput: audioInput,
+            audioSource: programAudio.map(AudioSource.program),
             service: service,
             destination: destination,
             configuration: configuration,
@@ -272,7 +297,8 @@ public actor StreamSession {
     /// - Parameters:
     ///   - videoSource: How the program video is produced, or nil under
     ///     `--no-video`.
-    ///   - audioInput: The audio input, or nil for a video-only stream.
+    ///   - audioSource: How the program audio is produced, or nil for a
+    ///     video-only stream.
     ///   - service: The streaming service.
     ///   - destination: Where the program streams to.
     ///   - configuration: The compression and program settings.
@@ -284,7 +310,7 @@ public actor StreamSession {
     ///     `recording` is present, ignored otherwise.
     private init(
         videoSource: VideoSource?,
-        audioInput: (any Input)?,
+        audioSource: AudioSource?,
         service: any StreamingService,
         destination: Destination,
         configuration: StreamConfiguration,
@@ -295,7 +321,7 @@ public actor StreamSession {
         recordingFile: RecordingFile?
     ) {
         self.videoSource = videoSource
-        self.audioInput = audioInput
+        self.audioSource = audioSource
         self.service = service
         self.destination = destination
         self.configuration = configuration
@@ -324,12 +350,13 @@ public actor StreamSession {
     /// live, problems surface as events and an eventual outcome, never a
     /// throw.
     public func run() async throws -> Outcome {
-        // Only a session-owned capture input is started here; a program-frame
-        // source is driven by the caller's compositor, already running.
+        // Only a session-owned capture input is started here; a program
+        // source is driven by the caller's compositor or mixer, already
+        // running.
         if case .input(let videoInput) = videoSource {
             try await videoInput.start()
         }
-        if let audioInput {
+        if case .input(let audioInput) = audioSource {
             try await audioInput.start()
         }
 
@@ -397,13 +424,13 @@ public actor StreamSession {
         return result
     }
 
-    /// Stops the session-owned inputs, if present. A program-frame video
-    /// source is left alone — its compositor and inputs belong to the caller.
+    /// Stops the session-owned inputs, if present. A program source is left
+    /// alone — its compositor or mixer and their inputs belong to the caller.
     private func stopInputs() async {
         if case .input(let videoInput) = videoSource {
             await videoInput.stop()
         }
-        if let audioInput {
+        if case .input(let audioInput) = audioSource {
             await audioInput.stop()
         }
     }
@@ -429,16 +456,18 @@ public actor StreamSession {
         outcomeContinuation.finish()
     }
 
-    /// Starts the media pumps: program video (tick-paced), capture-cadence
-    /// audio, both rebased onto the session timeline before reaching the
-    /// service.
+    /// Starts the media pumps: program video (tick-paced) and program audio,
+    /// both rebased onto the session timeline before reaching the service.
     ///
     /// The video side is already at the program tick rate before this pump
     /// sees it — an ``VideoSource/input(_:)`` source is paced through
     /// ``ProgramPacer`` here (latest-wins, re-sending across a stall), while a
     /// ``VideoSource/program(_:)`` source arrives already paced by the
-    /// compositor and is consumed as-is. Both stamp frames on the master
-    /// clock, so the identical `T0` rebase applies.
+    /// compositor and is consumed as-is. The audio side mirrors it: an
+    /// ``AudioSource/input(_:)`` source passes through at capture cadence,
+    /// while an ``AudioSource/program(_:)`` source arrives already paced by
+    /// the mixer's mix tick. All of them stamp media on the master clock, so
+    /// the identical `T0` rebase applies.
     private func startPumps(t0: CMTime) -> [Task<Void, Never>] {
         var tasks: [Task<Void, Never>] = []
         if let videoSource {
@@ -469,13 +498,20 @@ public actor StreamSession {
                 }
             )
         }
-        if let audioInput {
+        if let audioSource {
+            let audio: AsyncStream<CapturedAudio>
+            switch audioSource {
+            case .input(let audioInput):
+                audio = audioInput.audio()
+            case .program(let programAudio):
+                audio = programAudio
+            }
             let service = self.service
             let recording = self.recording
             tasks.append(
                 Task {
-                    for await audio in audioInput.audio() {
-                        guard let rebased = audio.rebased(by: t0) else { continue }
+                    for await buffer in audio {
+                        guard let rebased = buffer.rebased(by: t0) else { continue }
                         await service.send(audio: rebased)
                         await recording?.send(audio: rebased)
                     }
@@ -651,9 +687,19 @@ public actor StreamSession {
             params["videoBitrate"] = .int(configuration.videoBitsPerSecond)
             params["keyframeInterval"] = .int(configuration.keyframeInterval)
         }
-        if let audioInput {
-            params["audioInput"] = .string(audioInput.id.rawValue)
-            params["audioInputName"] = .string(audioInput.name)
+        if let audioSource {
+            // A single input names itself; the mixer's program mix has no one
+            // device to name, so it reports the stable "mix" identity
+            // (GLOSSARY.md, "Mixer" — every audio input combined into the
+            // program mix).
+            switch audioSource {
+            case .input(let audioInput):
+                params["audioInput"] = .string(audioInput.id.rawValue)
+                params["audioInputName"] = .string(audioInput.name)
+            case .program:
+                params["audioInput"] = .string("mix")
+                params["audioInputName"] = .string("Mix")
+            }
             params["audioCodec"] = .string(configuration.audioCodec.rawValue)
             params["audioBitrate"] = .int(configuration.audioBitsPerSecond)
             params["audioSamplerate"] = .int(configuration.audioSampleRate)

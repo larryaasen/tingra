@@ -38,6 +38,7 @@ let package = Package(
         .executable(name: "tingra", targets: ["Tingra"])
     ],
     dependencies: [
+        .package(path: "../../packages/TingraAudio"),
         .package(path: "../../packages/TingraCapturePlugIns"),
         .package(path: "../../packages/TingraComposition"),
         .package(path: "../../packages/TingraEventBus"),
@@ -50,6 +51,7 @@ let package = Package(
         .executableTarget(
             name: "Tingra",
             dependencies: [
+                .product(name: "TingraAudio", package: "TingraAudio"),
                 .product(name: "TingraCapturePlugIns", package: "TingraCapturePlugIns"),
                 .product(name: "TingraComposition", package: "TingraComposition"),
                 .product(name: "TingraEventBus", package: "TingraEventBus"),

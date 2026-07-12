@@ -239,6 +239,23 @@
         }
       }
     },
+    "Level" : {
+      "comment" : "Accessibility label of a channel strip's level slider",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pegel"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nivel"
+          }
+        }
+      }
+    },
     "Microphone" : {
       "comment" : "Microphone input picker label",
       "localizations" : {
@@ -252,6 +269,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Micrófono"
+          }
+        }
+      }
+    },
+    "Mixer" : {
+      "comment" : "Section heading over the audio channel strips",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mischpult"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mezclador"
           }
         }
       }
@@ -286,6 +320,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Subir"
+          }
+        }
+      }
+    },
+    "Mute" : {
+      "comment" : "Help tag on a channel strip's mute toggle",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stummschalten"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Silenciar"
           }
         }
       }
@@ -337,6 +388,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Sin audio"
+          }
+        }
+      }
+    },
+    "No audio inputs found" : {
+      "comment" : "Mixer placeholder when no audio input is discovered",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Audioeingänge gefunden"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se encontraron entradas de audio"
           }
         }
       }

@@ -42,6 +42,7 @@ jobs:
           - packages/TingraEventBus
           - packages/TingraPlugInKit
           - packages/TingraHost
+          - packages/TingraAudio
           - packages/TingraCapturePlugIns
           - packages/TingraGeneratorPlugIns
           - packages/TingraComposition

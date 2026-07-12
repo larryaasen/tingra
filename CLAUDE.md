@@ -22,6 +22,9 @@ packages/                       # Engine libraries
   TingraPlugInKit/              # Plug-in protocol package: shared protocols (Input, StreamingService,
                                 #   PlugIn, ...), importable by third parties without pulling in the engine
   TingraEventBus/               # The event bus: the structured event spine (see EVENTS.md)
+  TingraAudio/                  # Audio engine library (roadmap step 7): the clock-paced AudioMixer
+                                #   combining every audio input into the program mix, one channel
+                                #   strip per input; a host-side library beside TingraComposition
   TingraCapturePlugIns/         # First-party capture plug-ins: camera/microphone (AVFoundation)
                                 #   and display (ScreenCaptureKit) discovery and capture, device
                                 #   connect/disconnect events
@@ -173,6 +176,10 @@ packages/  TingraComposition      →  TingraPlugInKit + TingraEventBus (the com
                                      engine library, not a plug-in and not folded into TingraHost;
                                      protocol-package-only, so testable with a synthetic clock and a
                                      mock ShotRenderer)
+packages/  TingraAudio            →  TingraPlugInKit + TingraEventBus (the mixer: a host-side engine
+                                     library beside TingraComposition, same protocol-package-only
+                                     rule — testable with a synthetic clock and scripted inputs;
+                                     AVFoundation only for AVAudioConverter intake normalization)
 packages/  TingraOutputPlugIns    →  TingraPlugInKit + TingraEventBus (same seam-only design;
                                      + HaishinKit and its Logboard façade, imported nowhere else)
 packages/  TingraRecordingPlugIns →  TingraPlugInKit + TingraEventBus (same seam-only design;
@@ -185,12 +192,12 @@ packages/  TingraMCP              →  TingraHost + TingraPlugInKit + TingraEven
 apps/      tingra-cli             →  TingraHost + TingraCapturePlugIns + TingraGeneratorPlugIns
                                      + TingraOutputPlugIns + TingraRecordingPlugIns + TingraMCP
                                      (+ swift-argument-parser)
-apps/      tingra (phase 3)       →  TingraHost + TingraComposition + TingraCapturePlugIns
-                                     + TingraGeneratorPlugIns + TingraOutputPlugIns
-                                     + TingraPlugInKit + TingraEventBus
+apps/      tingra (phase 3)       →  TingraHost + TingraComposition + TingraAudio
+                                     + TingraCapturePlugIns + TingraGeneratorPlugIns
+                                     + TingraOutputPlugIns + TingraPlugInKit + TingraEventBus
                                      (scaffolded at step 6; gained TingraOutputPlugIns at the
-                                     step-7 streaming iteration; more feature plug-ins + UI
-                                     packages later)
+                                     step-7 streaming iteration and TingraAudio at the mixer
+                                     iteration; more feature plug-ins + UI packages later)
 apps/      ingest-simulator       →  none of the above (wraps MediaMTX; see SIMULATOR.md)
 ```
 
@@ -199,7 +206,7 @@ The engine is organized as services, each exposing its capabilities through plug
 
 1. **Capture** – inputs, generators, input discovery, device connection/disconnection
 2. **Composition** – presets, shots, layer tree, transitions, Metal renderer, effects, program/preview buses (in `TingraComposition`: the tick-paced compositor, shots/layers, and the Core Image `ShotRenderer` landed at step 6; transitions, effects, and presets follow at step 7)
-3. **Audio** – mixer, channel strips, routing, audio effects
+3. **Audio** – mixer, channel strips, routing, audio effects (in `TingraAudio`: the clock-paced `AudioMixer` with per-strip level/mute landed at step 7; pan, routing, and audio effects follow)
 4. **Compression** – VideoToolbox compression sessions, rate control, local recording
 5. **Output** – the `StreamingService` seam, with HaishinKit-backed RTMP/SRT implementations
 6. **Plug-in** – discovery, lifecycle, isolation

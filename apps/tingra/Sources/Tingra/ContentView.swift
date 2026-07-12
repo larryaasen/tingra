@@ -21,9 +21,10 @@ import TingraPlugInKit
 /// preset's shots: an Add Shot button appends a new empty shot, and each
 /// shot button's context menu duplicates, renames, or removes that shot
 /// (ARCHITECTURE.md, "Shot management"); the editor
-/// (``LayerTreeEditorView``) edits the selected shot's layer tree live.
-/// This is the step-7 shape — the remaining production surface (multiple
-/// presets, the mixer, streaming controls) grows from here.
+/// (``LayerTreeEditorView``) edits the selected shot's layer tree live;
+/// the mixer panel (``MixerView``) mixes the audio inputs into the program
+/// mix the streaming panel puts on air. This is the step-7 shape — the
+/// remaining production surface (multiple presets) grows from here.
 ///
 /// Every user action here reports its own `tap` event right where it's
 /// executed — a picker's `onChange`, a button's action closure — rather than
@@ -71,6 +72,8 @@ struct ContentView: View {
             LayerTreeEditorView(model: model)
 
             controls
+
+            MixerView(model: model)
 
             streamingPanel
         }
@@ -261,9 +264,10 @@ struct ContentView: View {
     }
 
     /// The streaming panel: the RTMP(S) destination URL and stream key, the
-    /// microphone whose audio goes to air, the live status, and the Start/Stop
-    /// control. Puts the program the operator already has on air (ARCHITECTURE.md,
-    /// "Streaming the program"); the destination fields lock while streaming.
+    /// live status, and the Start/Stop control. Puts the program the operator
+    /// already has on air (ARCHITECTURE.md, "Streaming the program") — video
+    /// from the compositor, audio from the mixer panel's program mix; the
+    /// destination fields lock while streaming.
     ///
     /// The stream key is a `SecureField` bound to view-local state, handed to
     /// the model only at Start — it is stored in the Keychain, never in the
@@ -295,26 +299,6 @@ struct ContentView: View {
             }
 
             HStack(spacing: 12) {
-                Picker(selection: $model.selectedMicrophoneID) {
-                    Text("No audio", comment: "Microphone picker option: stream video only").tag(InputID?.none)
-                    ForEach(model.microphones) { microphone in
-                        Text(microphone.name).tag(InputID?.some(microphone.id))
-                    }
-                } label: {
-                    Text("Microphone", comment: "Microphone input picker label")
-                }
-                .pickerStyle(.menu)
-                .fixedSize()
-                .disabled(model.isStreaming)
-                .onChange(of: model.selectedMicrophoneID) { _, newValue in
-                    let name = model.microphones.first { $0.id == newValue }?.name ?? "None"
-                    model.eventBus.tap(
-                        "microphone.picker",
-                        domain: .capture,
-                        params: ["id": .string(newValue?.rawValue ?? "none"), "name": .string(name)]
-                    )
-                }
-
                 Spacer()
 
                 streamStatusLabel

@@ -63,7 +63,8 @@ Start with whichever measures acceptably; **validate jitter by measurement** (ti
 | :---- | :------- |
 | Captured video frame | Host time stamped by the capture framework, normalized by the input onto the master clock. |
 | Program video frame | The program tick's host clock time. |
-| Audio buffer | Actual host time of capture from `AVAudioTime.hostTime` — never a synthetic sample count position. |
+| Captured audio buffer | Actual host time of capture from `AVAudioTime.hostTime` — never a synthetic sample count position. |
+| Program audio block | The mix tick's host clock time (the mixer's blocks; see ARCHITECTURE.md, "The audio mixer"). A mixed block spans multiple inputs, so no single capture time exists for it; tick deadlines are absolute (`T0 + n × blockDuration`), so consecutive blocks are contiguous and monotonic by construction. |
 | Into the sinks | `PTS = hostTime − T0`, where `T0` is the session start on the master clock, shared by every sink. |
 
 - **Recording:** `AVAssetWriter` starts with `startSession(atSourceTime:)` at the shared `T0`; video and audio tracks interleave by the PTS rules above.
@@ -97,7 +98,7 @@ protocol EngineClock: Sendable {
 | **Capture (inputs)** | Normalize framework timestamps onto the master clock; apply per input sync offset. Never generate synthetic timestamps for real capture. |
 | **Generators** | Stamp synthesized frames with master clock time at generation (or synthetic clock time under test). |
 | **Composition** | Pure function of the tick: "render the current shot's layer tree for time T." Holds no timing state beyond the latest frame per input. |
-| **Audio** | Derives buffer PTS from `AVAudioTime` against the same clock; applies audio sync offset. |
+| **Audio** | Derives captured-buffer PTS from `AVAudioTime` against the same clock; applies audio sync offset. The mixer consumes those capture-stamped buffers and stamps each mixed program block with its own mix tick's clock time. |
 | **Compression / Output / Recording** | Consume PTS; never modify it. Share `T0`. |
 
 ## Open questions

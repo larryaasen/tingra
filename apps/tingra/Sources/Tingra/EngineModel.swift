@@ -10,6 +10,7 @@
 import CoreGraphics
 import CoreVideo
 import Observation
+import TingraAudio
 import TingraCapturePlugIns
 import TingraComposition
 import TingraEventBus
@@ -92,13 +93,14 @@ final class EngineModel {
     /// The chosen display, or nil for none.
     var selectedDisplayID: InputID?
 
-    /// The discovered microphones, for the streaming panel's audio picker.
+    /// The discovered microphones, seeding the mixer's channel strips.
     private(set) var microphones: [InputChoice] = []
 
-    /// The microphone whose audio is streamed (pass-through on the shared
-    /// timeline — the audio mixer is a later iteration), or nil to stream
-    /// video only. Session state, not yet part of the project document.
-    var selectedMicrophoneID: InputID?
+    /// The mixer's channel strips, one per discovered audio input — the
+    /// level and mute the mixer panel edits (GLOSSARY.md, "Channel strip").
+    /// Session state, like the active shot; they join the persisted preset
+    /// when routing lands (ARCHITECTURE.md, "The audio mixer").
+    private(set) var mixerStrips: [MixerStrip] = []
 
     /// The RTMP(S) destination URL the streaming panel edits, persisted in the
     /// project document (the stream key is not — it lives in secure storage;
@@ -196,6 +198,11 @@ final class EngineModel {
     /// without opening a second `Compositor.programFrames()` consumer.
     @ObservationIgnored private var streamContinuation: AsyncStream<CapturedFrame>.Continuation?
 
+    /// The continuation feeding the active session its program audio: the one
+    /// program-audio drain (``programAudioTask``) tees each mixed block here
+    /// while a stream is live — the audio mirror of ``streamContinuation``.
+    @ObservationIgnored private var streamAudioContinuation: AsyncStream<CapturedAudio>.Continuation?
+
     /// The task observing the bus for `stream.*` status events — the stream
     /// status is event-driven, never polled.
     @ObservationIgnored private var streamStatusTask: Task<Void, Never>?
@@ -247,6 +254,11 @@ final class EngineModel {
         eventBus: eventBus
     )
 
+    /// The mixer producing the program audio — every unmuted strip's device
+    /// combined into the program mix on the same master clock that paces the
+    /// compositor (GLOSSARY.md, "Mixer"; ARCHITECTURE.md, "The audio mixer").
+    @ObservationIgnored private lazy var mixer = AudioMixer(clock: clock, eventBus: eventBus)
+
     /// The console sink's drain task, retained so the sink keeps consuming
     /// the bus for the app's lifetime.
     @ObservationIgnored private var logSinkTask: Task<Void, Never>?
@@ -255,8 +267,18 @@ final class EngineModel {
     /// and stop only what actually changed.
     @ObservationIgnored private var activeInputs: [InputID: any Input] = [:]
 
+    /// The audio inputs currently started for the mixer's unmuted strips,
+    /// keyed by id — muting a strip stops its device (the microphone
+    /// indicator goes dark), unmuting starts it again.
+    @ObservationIgnored private var activeAudioInputs: [InputID: any Input] = [:]
+
     /// The task draining the compositor's program stream into the relay.
     @ObservationIgnored private var programTask: Task<Void, Never>?
+
+    /// The task draining the mixer's program-audio stream, teeing each mixed
+    /// block into the active session while a stream is live (there is no
+    /// audio preview yet — monitoring and meters are later iterations).
+    @ObservationIgnored private var programAudioTask: Task<Void, Never>?
 
     /// Whether ``start()`` has run, so it boots the engine once.
     @ObservationIgnored private var started = false
@@ -285,6 +307,14 @@ final class EngineModel {
     /// so the running pass loops once more and applies the latest selection —
     /// coalescing a burst of requests into the minimum number of passes.
     @ObservationIgnored private var reconfigureRequested = false
+
+    /// Whether a ``reconfigureAudio()`` pass is currently running — the audio
+    /// mirror of ``reconfiguring``, guarding the strip devices' start/stop.
+    @ObservationIgnored private var reconfiguringAudio = false
+
+    /// Set whenever an audio reconfigure is requested while one is already
+    /// running (see ``reconfigureRequested``).
+    @ObservationIgnored private var audioReconfigureRequested = false
 
     /// Creates the model. The engine boots in ``start()`` when the window
     /// appears, not here.
@@ -327,7 +357,7 @@ final class EngineModel {
         cameras = inputs.filter { $0.kind == .camera }.map { InputChoice(id: $0.id, name: $0.name) }
         displays = inputs.filter { $0.kind == .display }.map { InputChoice(id: $0.id, name: $0.name) }
         microphones = inputs.filter { $0.kind == .microphone }.map { InputChoice(id: $0.id, name: $0.name) }
-        selectedMicrophoneID = microphones.first?.id
+        mixerStrips = MixerStrip.seed(from: microphones)
         loadProject()
 
         let program = compositor.programFrames()
@@ -351,7 +381,20 @@ final class EngineModel {
             }
         }
 
+        // The program mix runs from boot like the compositor — a live canvas
+        // of silence until a strip's device delivers. Its one drain tees each
+        // mixed block into the session while a stream is live (the audio
+        // mirror of the program-frame drain above; no audio preview yet).
+        let programAudio = mixer.programAudio()
+        mixer.start()
+        programAudioTask = Task { [weak self] in
+            for await block in programAudio {
+                self?.streamAudioContinuation?.yield(block)
+            }
+        }
+
         await reconfigure()
+        await reconfigureAudio()
     }
 
     /// Applies the current camera and display selection to the engine.
@@ -466,6 +509,109 @@ final class EngineModel {
                 establishSessionPreset()
             }
         }
+    }
+
+    // MARK: Mixer
+
+    /// Sets one channel strip's level, applied to the program mix from the
+    /// next mix tick. Gesture-rate (a slider drag calls it many times a
+    /// second), so it reports nothing itself — the slider's drag-end `tap`
+    /// event carries the observability, the same convention as the layer
+    /// sliders (EVENTS.md).
+    ///
+    /// - Parameters:
+    ///   - level: The strip's linear gain, `0`...`1`.
+    ///   - id: The strip's input id.
+    func setStripLevel(_ level: Double, forStrip id: InputID) {
+        guard let index = mixerStrips.firstIndex(where: { $0.id == id }) else { return }
+        mixerStrips[index].level = level
+        mixer.setLevel(level, forInput: id)
+    }
+
+    /// Mutes or unmutes one channel strip. Beyond silencing the channel in
+    /// the mix, the app ties the strip's device lifecycle to its mute:
+    /// muting stops the device (the microphone indicator goes dark — a muted
+    /// microphone is not captured), unmuting starts it again, with the mix
+    /// carrying silence for that strip either way until frames flow
+    /// (ARCHITECTURE.md, "The audio mixer").
+    ///
+    /// - Parameters:
+    ///   - isMuted: Whether the strip is muted.
+    ///   - id: The strip's input id.
+    func setStripMuted(_ isMuted: Bool, forStrip id: InputID) async {
+        guard let index = mixerStrips.firstIndex(where: { $0.id == id }) else { return }
+        mixerStrips[index].isMuted = isMuted
+        mixer.setMuted(isMuted, forInput: id)
+        await reconfigureAudio()
+    }
+
+    /// Applies the current strips to the audio engine: starts newly unmuted
+    /// strips' devices, stops newly muted ones, and hands the running set to
+    /// the mixer. Coalesced exactly like ``reconfigure()`` — the pass
+    /// suspends at `input.start()`/`stop()`, so a burst of mute toggles
+    /// never overlaps and races the device lifecycle.
+    func reconfigureAudio() async {
+        audioReconfigureRequested = true
+        guard !reconfiguringAudio else { return }
+        reconfiguringAudio = true
+        defer { reconfiguringAudio = false }
+        while audioReconfigureRequested {
+            audioReconfigureRequested = false
+            await applyAudioConfiguration()
+        }
+    }
+
+    /// One audio reconfigure pass: the unmuted strips' devices are the
+    /// desired set; anything else stops. An input that cannot start
+    /// (authorization denied, device gone) is reported on the bus and left
+    /// out — its strip stays on the panel and simply contributes silence,
+    /// never a failure state.
+    private func applyAudioConfiguration() async {
+        var desired: [InputID: any Input] = [:]
+        for strip in mixerStrips where !strip.isMuted {
+            if let input = await registry.input(withID: strip.id) {
+                desired[strip.id] = input
+            }
+        }
+
+        for (id, input) in activeAudioInputs where desired[id] == nil {
+            await input.stop()
+            activeAudioInputs[id] = nil
+            eventBus.event("input.stopped", domain: .capture, params: ["id": .string(id.rawValue)])
+        }
+        for (id, input) in desired where activeAudioInputs[id] == nil {
+            do {
+                try await input.start()
+                activeAudioInputs[id] = input
+                eventBus.event(
+                    "input.started",
+                    domain: .capture,
+                    params: ["id": .string(id.rawValue), "name": .string(input.name)]
+                )
+            } catch {
+                eventBus.error(
+                    "input.start",
+                    domain: .capture,
+                    params: [
+                        "id": .string(id.rawValue),
+                        "error": .string(String(describing: error)),
+                    ]
+                )
+            }
+        }
+
+        // The mixer gets every strip whose device is running, with its
+        // current level and mute — the engine-side strips of the mix.
+        let strips = mixerStrips.compactMap { strip -> ChannelStrip? in
+            guard let input = activeAudioInputs[strip.id] else { return nil }
+            return ChannelStrip(input: input, level: strip.level, isMuted: strip.isMuted)
+        }
+        mixer.setChannelStrips(strips)
+        eventBus.event(
+            "mixer.channels",
+            domain: .audio,
+            params: ["ids": .string(activeAudioInputs.keys.map(\.rawValue).sorted().joined(separator: ","))]
+        )
     }
 
     /// Takes the shot with the given id to program, using ``useDissolveTransition``
@@ -648,8 +794,8 @@ final class EngineModel {
 
     /// Puts the program on air: resolves the destination URL to the streaming
     /// provider, stores the key in secure storage, and drives a
-    /// ``StreamSession`` fed the compositor's program frames and the selected
-    /// microphone — reusing the CLI's proven reconnect/stability/stats
+    /// ``StreamSession`` fed the compositor's program frames and the mixer's
+    /// program audio — reusing the CLI's proven reconnect/stability/stats
     /// machinery (ARCHITECTURE.md, "Streaming the program"). One active
     /// session (the v1 rule): a second call while streaming is ignored.
     ///
@@ -677,28 +823,29 @@ final class EngineModel {
         // in memory for this session.
         persistStreamKey(streamKey, forAccount: url.absoluteString)
 
-        var microphone: (any Input)?
-        if let micID = selectedMicrophoneID {
-            microphone = await registry.input(withID: micID)
-        }
-
+        // The stream always carries the program mix — an all-muted mixer
+        // streams silence, the way an empty shot streams the background
+        // canvas (ARCHITECTURE.md, "The audio mixer").
         let configuration = StreamConfiguration(
             width: format.width,
             height: format.height,
             frameRate: format.frameRate,
             includesVideo: true,
-            includesAudio: microphone != nil
+            includesAudio: true
         )
         let destination = Destination(url: url, streamKey: streamKey.isEmpty ? nil : streamKey)
 
-        // Tee the program into a fresh stream: the drain in `start()` forwards
-        // each composited frame here while `streamContinuation` is set.
+        // Tee the program into a fresh stream: the drains in `start()` forward
+        // each composited frame and each mixed block here while the
+        // continuations are set.
         let (programStream, continuation) = AsyncStream.makeStream(of: CapturedFrame.self)
         streamContinuation = continuation
+        let (programAudioStream, audioContinuation) = AsyncStream.makeStream(of: CapturedAudio.self)
+        streamAudioContinuation = audioContinuation
 
         let session = StreamSession(
             programVideo: programStream,
-            audioInput: microphone,
+            programAudio: programAudioStream,
             service: provider.makeStreamingService(configuration: configuration),
             destination: destination,
             configuration: configuration,
@@ -764,11 +911,13 @@ final class EngineModel {
         }
     }
 
-    /// Releases the finished session's plumbing: finishes the program tee and
-    /// drops the session references so a new stream can start.
+    /// Releases the finished session's plumbing: finishes the program tees
+    /// and drops the session references so a new stream can start.
     private func teardownStream() {
         streamContinuation?.finish()
         streamContinuation = nil
+        streamAudioContinuation?.finish()
+        streamAudioContinuation = nil
         streamSession = nil
         streamTask = nil
     }
@@ -846,11 +995,18 @@ final class EngineModel {
         if autosaveTask != nil { saveProject() }
         programTask?.cancel()
         programTask = nil
+        programAudioTask?.cancel()
+        programAudioTask = nil
         compositor.stop()
+        mixer.stop()
         for input in activeInputs.values {
             await input.stop()
         }
         activeInputs.removeAll()
+        for input in activeAudioInputs.values {
+            await input.stop()
+        }
+        activeAudioInputs.removeAll()
         eventBus.shutdown()
     }
 
