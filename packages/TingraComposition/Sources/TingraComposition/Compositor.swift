@@ -36,7 +36,8 @@ import TingraPlugInKit
 /// only reads the held, immutable frames and composites them into a fresh
 /// program buffer.
 ///
-/// It can hold a whole ``Preset`` worth of shots (``loadPreset(_:)``) and
+/// It can hold a whole ``Preset`` worth of shots (``loadPreset(_:)`` — which
+/// never interrupts what is already playing out; see its contract) and
 /// switch which one is on program with ``take(shotID:transition:)`` — the
 /// default is a **cut**, the instant transition (GLOSSARY.md, "Transition");
 /// passing ``Transition/dissolve`` crossfades between the outgoing and
@@ -223,19 +224,45 @@ public final class Compositor: Sendable {
         }
     }
 
-    /// Loads a preset's shots as the pool ``take(shotID:)`` cuts among, and
-    /// cuts to its first shot (or the empty background-only program when the
-    /// preset has no shots). Takes effect on the next tick; loading does not
-    /// interrupt pacing (GLOSSARY.md, "Preset").
+    /// Loads a preset's shots as the pool ``take(shotID:transition:)`` cuts
+    /// among. Takes effect on the next tick, and — per GLOSSARY.md ("Preset")
+    /// — **switching presets never interrupts what is already playing out**:
+    ///
+    /// - When the shot on program also exists in the incoming preset (matched
+    ///   by ``Shot/id``), it stays on program, adopting the incoming preset's
+    ///   version of it — the ``updateShot(_:)`` rule applied across a preset
+    ///   switch; an in-progress dissolve continues toward the adopted tree.
+    /// - When it does not, the outgoing shot keeps rendering as a **held
+    ///   snapshot** — ``activeShotID`` becomes `nil` (no shot of the loaded
+    ///   preset is on program; ``programShot`` still names what renders) —
+    ///   until the caller takes a shot from the new pool; an in-progress
+    ///   dissolve completes toward the snapshot.
+    /// - When no preset shot is on program at all (the first load after boot,
+    ///   or after a direct ``setShot(_:)``), it cuts to the preset's first
+    ///   shot — or the empty background-only program when the preset has no
+    ///   shots — clearing any pending transition.
+    ///
+    /// The `preset.loaded` event's `activeShot` param reports the outcome:
+    /// the on-program shot's id, `"held"` for a held snapshot, or `"none"`
+    /// when an empty preset loaded onto an empty program.
     ///
     /// - Parameter preset: The preset whose shots become available on program.
     public func loadPreset(_ preset: Preset) {
-        let first = preset.shots.first
-        state.withLock { state in
+        let programOutcome: String = state.withLock { state in
             state.shots = preset.shots
+            if let activeID = state.activeShotID {
+                guard let match = preset.shots.first(where: { $0.id == activeID }) else {
+                    state.activeShotID = nil
+                    return "held"
+                }
+                state.shot = match
+                return match.id.rawValue
+            }
+            let first = preset.shots.first
             state.activeShotID = first?.id
             state.shot = first ?? Shot()
             state.pendingTransition = nil
+            return first?.id.rawValue ?? "none"
         }
         eventBus.event(
             "preset.loaded",
@@ -244,6 +271,7 @@ public final class Compositor: Sendable {
                 "preset": .string(preset.id.rawValue),
                 "name": .string(preset.name),
                 "shots": .int(preset.shots.count),
+                "activeShot": .string(programOutcome),
             ]
         )
     }
@@ -455,10 +483,20 @@ public final class Compositor: Sendable {
     }
 
     /// The id of the shot currently on program when it came from the loaded
-    /// preset, or `nil` before a preset is loaded or after a direct
-    /// ``setShot(_:)``.
+    /// preset, or `nil` before a preset is loaded, after a direct
+    /// ``setShot(_:)``, or while a preset switch holds the outgoing shot as a
+    /// snapshot (see ``loadPreset(_:)``).
     public var activeShotID: ShotID? {
         state.withLock { $0.activeShotID }
+    }
+
+    /// The shot the tick is currently rendering: the active shot, a shot set
+    /// directly with ``setShot(_:)``, or the held snapshot a preset switch
+    /// left on program (see ``loadPreset(_:)``). Callers use it to keep the
+    /// on-program shot's inputs running even when that shot is not in the
+    /// loaded preset's pool.
+    public var programShot: Shot {
+        state.withLock { $0.shot }
     }
 
     /// Starts the program tick: the compositor renders and yields one frame

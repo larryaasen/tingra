@@ -43,7 +43,7 @@ enum ShotEdit {
             name: String(
                 localized: "\(shot.name) copy",
                 bundle: .module,
-                comment: "Name of a duplicated shot; the placeholder is the source shot's name"
+                comment: "Name of a duplicated shot or preset; the placeholder is the source's name"
             ),
             layers: shot.layers,
             background: shot.background

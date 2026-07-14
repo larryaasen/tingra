@@ -37,9 +37,10 @@ public struct PresetID: RawRepresentable, Hashable, Sendable, Codable {
 /// "Data Models") and it round-trips exactly. It deliberately holds no
 /// "active shot": which shot is currently on program is live **session**
 /// state owned by the ``Compositor`` (GLOSSARY.md, "Session"), not part of the
-/// saved document. Loading a preset (``Compositor/loadPreset(_:)``) makes its
-/// first shot active; audio configuration, connected inputs, and destinations
-/// join the preset in later iterations.
+/// saved document. Loading a preset (``Compositor/loadPreset(_:)``) never
+/// interrupts what is already playing out — switching presets is seamless
+/// (GLOSSARY.md, "Preset"); audio configuration, connected inputs, and
+/// destinations join the preset in later iterations.
 public struct Preset: Sendable, Equatable, Codable, Identifiable {
     /// The preset's stable identity, unique within its project.
     public let id: PresetID

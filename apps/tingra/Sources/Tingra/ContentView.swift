@@ -12,19 +12,23 @@ import TingraComposition
 import TingraEventBus
 import TingraPlugInKit
 
-/// The main window: the program preview above the shot switcher, the
-/// layer-tree editor, and the input pickers.
+/// The main window: the program preview above the preset switcher, the shot
+/// switcher, the layer-tree editor, and the input pickers.
 ///
-/// The pickers pick one camera and one display; the switcher takes the
-/// chosen shot to program — a cut, or a dissolve when the switcher's
-/// transition toggle is on (GLOSSARY.md, "Transition") — and manages the
-/// preset's shots: an Add Shot button appends a new empty shot, and each
-/// shot button's context menu duplicates, renames, or removes that shot
+/// The preset switcher switches among — and manages — the project's presets
+/// (ARCHITECTURE.md, "Multiple presets in the UI"): switching never
+/// interrupts what is on program, an Add Preset button appends a new empty
+/// preset, and each preset button's context menu duplicates, renames, or
+/// removes it. The pickers pick one camera and one display; the shot
+/// switcher takes the chosen shot to program — a cut, or a dissolve when the
+/// switcher's transition toggle is on (GLOSSARY.md, "Transition") — and
+/// manages the active preset's shots the same way, one level down
 /// (ARCHITECTURE.md, "Shot management"); the editor
 /// (``LayerTreeEditorView``) edits the selected shot's layer tree live;
 /// the mixer panel (``MixerView``) mixes the audio inputs into the program
 /// mix the streaming panel puts on air. This is the step-7 shape — the
-/// remaining production surface (multiple presets) grows from here.
+/// remaining production surface (shot reordering, wipe transitions) grows
+/// from here.
 ///
 /// Every user action here reports its own `tap` event right where it's
 /// executed — a picker's `onChange`, a button's action closure — rather than
@@ -42,6 +46,15 @@ struct ContentView: View {
     /// The rename dialog's working text, prefilled with the shot's current
     /// name when the dialog opens.
     @State private var renameText = ""
+
+    /// The preset the rename dialog is editing, or `nil` while it is closed
+    /// (see ``shotBeingRenamed`` — the same transient session state, one
+    /// level up).
+    @State private var presetBeingRenamed: Preset?
+
+    /// The preset rename dialog's working text, prefilled with the preset's
+    /// current name when the dialog opens.
+    @State private var presetRenameText = ""
 
     /// The stream-key field's working text. View-local and never handed to
     /// the model as observable state: the key flows straight into
@@ -66,6 +79,8 @@ struct ContentView: View {
                         .foregroundStyle(.white)
                         .padding(8)
                 }
+
+            presetSwitcher
 
             shotSwitcher
 
@@ -102,6 +117,130 @@ struct ContentView: View {
             )
             Task { await model.reconfigure() }
         }
+    }
+
+    /// The preset switcher: one button per preset in the project, switching
+    /// the switcher (never the program — a preset switch is seamless,
+    /// GLOSSARY.md, "Preset") to it on tap. The active preset's button is
+    /// highlighted — or none is, while a preset switch holds the outgoing
+    /// shot on program from outside the pool; its context menu duplicates,
+    /// renames, or removes the preset (Remove is disabled on the last
+    /// remaining preset — a project always holds at least one), and the
+    /// trailing Add Preset button appends a new empty one, mirroring the shot
+    /// switcher one level up (ARCHITECTURE.md, "Multiple presets in the UI").
+    private var presetSwitcher: some View {
+        HStack(spacing: 8) {
+            Text("Presets", comment: "Label leading the preset switcher row")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            ForEach(model.presets) { preset in
+                let isActive = preset.id == model.activePresetID
+                Button(preset.name) {
+                    model.eventBus.tap(
+                        "preset.button",
+                        domain: .composition,
+                        params: ["preset": .string(preset.id.rawValue), "name": .string(preset.name)]
+                    )
+                    Task { await model.switchPreset(to: preset.id) }
+                }
+                .buttonStyle(.bordered)
+                .tint(isActive ? .accentColor : nil)
+                .contextMenu {
+                    presetCommands(for: preset)
+                }
+            }
+
+            Button {
+                model.eventBus.tap("presetAdd.button", domain: .composition)
+                model.addPreset()
+            } label: {
+                Label {
+                    Text("Add Preset", comment: "Button adding a new empty preset to the project")
+                } icon: {
+                    Image(systemName: "plus")
+                }
+            }
+        }
+        .alert(
+            Text("Rename Preset", comment: "Rename preset dialog title"),
+            isPresented: isPresetRenamePresented,
+            presenting: presetBeingRenamed
+        ) { preset in
+            TextField(text: $presetRenameText) {
+                Text("Name", comment: "Rename dialog text field label, for a shot or a preset")
+            }
+            Button {
+                model.eventBus.tap(
+                    "presetRenameConfirm.button",
+                    domain: .composition,
+                    params: ["preset": .string(preset.id.rawValue), "name": .string(presetRenameText)]
+                )
+                model.renamePreset(preset.id, to: presetRenameText)
+            } label: {
+                Text("Rename", comment: "Rename dialog confirm button, for a shot or a preset")
+            }
+            Button(role: .cancel) {
+                model.eventBus.tap(
+                    "presetRenameCancel.button",
+                    domain: .composition,
+                    params: ["preset": .string(preset.id.rawValue)]
+                )
+            } label: {
+                Text("Cancel", comment: "Rename dialog cancel button, for a shot or a preset")
+            }
+        }
+    }
+
+    /// Whether the preset rename dialog is up — presented while a preset is
+    /// being renamed, and clearing that preset when the dialog dismisses.
+    private var isPresetRenamePresented: Binding<Bool> {
+        Binding {
+            presetBeingRenamed != nil
+        } set: { presented in
+            if !presented { presetBeingRenamed = nil }
+        }
+    }
+
+    /// One preset button's context menu: duplicate, rename, and remove that
+    /// preset — the shot commands, one level up (ARCHITECTURE.md, "Multiple
+    /// presets in the UI"). Remove is immediate like a shot's, but disabled
+    /// on the last remaining preset: a project always holds at least one.
+    @ViewBuilder private func presetCommands(for preset: Preset) -> some View {
+        Button {
+            model.eventBus.tap(
+                "presetDuplicate.menu",
+                domain: .composition,
+                params: ["preset": .string(preset.id.rawValue), "name": .string(preset.name)]
+            )
+            model.duplicatePreset(preset.id)
+        } label: {
+            Text("Duplicate", comment: "Context menu: duplicate this shot or preset")
+        }
+
+        Button {
+            model.eventBus.tap(
+                "presetRename.menu",
+                domain: .composition,
+                params: ["preset": .string(preset.id.rawValue), "name": .string(preset.name)]
+            )
+            presetRenameText = preset.name
+            presetBeingRenamed = preset
+        } label: {
+            Text("Rename…", comment: "Context menu: rename this shot or preset")
+        }
+
+        Button(role: .destructive) {
+            model.eventBus.tap(
+                "presetRemove.menu",
+                domain: .composition,
+                params: ["preset": .string(preset.id.rawValue), "name": .string(preset.name)]
+            )
+            Task { await model.removePreset(preset.id) }
+        } label: {
+            Text("Remove Preset", comment: "Preset context menu: remove this preset from the project")
+        }
+        .disabled(model.presets.count == 1)
     }
 
     /// The shot switcher: one button per available shot, taking it to program
@@ -165,7 +304,7 @@ struct ContentView: View {
             presenting: shotBeingRenamed
         ) { shot in
             TextField(text: $renameText) {
-                Text("Name", comment: "Rename shot dialog text field label")
+                Text("Name", comment: "Rename dialog text field label, for a shot or a preset")
             }
             Button {
                 model.eventBus.tap(
@@ -175,7 +314,7 @@ struct ContentView: View {
                 )
                 model.renameShot(shot.id, to: renameText)
             } label: {
-                Text("Rename", comment: "Rename shot dialog confirm button")
+                Text("Rename", comment: "Rename dialog confirm button, for a shot or a preset")
             }
             Button(role: .cancel) {
                 model.eventBus.tap(
@@ -184,7 +323,7 @@ struct ContentView: View {
                     params: ["shot": .string(shot.id.rawValue)]
                 )
             } label: {
-                Text("Cancel", comment: "Rename shot dialog cancel button")
+                Text("Cancel", comment: "Rename dialog cancel button, for a shot or a preset")
             }
         }
     }
@@ -212,7 +351,7 @@ struct ContentView: View {
             )
             model.duplicateShot(shot.id)
         } label: {
-            Text("Duplicate", comment: "Shot context menu: duplicate this shot")
+            Text("Duplicate", comment: "Context menu: duplicate this shot or preset")
         }
 
         Button {
@@ -224,7 +363,7 @@ struct ContentView: View {
             renameText = shot.name
             shotBeingRenamed = shot
         } label: {
-            Text("Rename…", comment: "Shot context menu: rename this shot")
+            Text("Rename…", comment: "Context menu: rename this shot or preset")
         }
 
         Button(role: .destructive) {

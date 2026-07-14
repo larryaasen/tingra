@@ -2,7 +2,7 @@
   "sourceLanguage" : "en",
   "strings" : {
     "%@ copy" : {
-      "comment" : "Name of a duplicated shot; the placeholder is the source shot's name",
+      "comment" : "Name of a duplicated shot or preset; the placeholder is the source's name",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -31,6 +31,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Añadir capa"
+          }
+        }
+      }
+    },
+    "Add Preset" : {
+      "comment" : "Button adding a new empty preset to the project",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Voreinstellung hinzufügen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Añadir preajuste"
           }
         }
       }
@@ -70,7 +87,7 @@
       }
     },
     "Cancel" : {
-      "comment" : "Rename shot dialog cancel button",
+      "comment" : "Rename dialog cancel button, for a shot or a preset",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -99,6 +116,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Conectando…"
+          }
+        }
+      }
+    },
+    "Default" : {
+      "comment" : "Name of a fresh project's seeded preset",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Standard"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Predeterminado"
           }
         }
       }
@@ -155,7 +189,7 @@
       }
     },
     "Duplicate" : {
-      "comment" : "Shot context menu: duplicate this shot",
+      "comment" : "Context menu: duplicate this shot or preset",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -342,7 +376,7 @@
       }
     },
     "Name" : {
-      "comment" : "Rename shot dialog text field label",
+      "comment" : "Rename dialog text field label, for a shot or a preset",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -354,6 +388,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Nombre"
+          }
+        }
+      }
+    },
+    "New Preset" : {
+      "comment" : "Default name of a newly added preset",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neue Voreinstellung"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nuevo preajuste"
           }
         }
       }
@@ -460,6 +511,23 @@
         }
       }
     },
+    "Presets" : {
+      "comment" : "Label leading the preset switcher row",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Voreinstellungen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Preajustes"
+          }
+        }
+      }
+    },
     "Program" : {
       "comment" : "Label over the live program preview",
       "localizations" : {
@@ -511,6 +579,23 @@
         }
       }
     },
+    "Remove Preset" : {
+      "comment" : "Preset context menu: remove this preset from the project",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Voreinstellung entfernen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quitar preajuste"
+          }
+        }
+      }
+    },
     "Remove Shot" : {
       "comment" : "Shot context menu: remove this shot from the preset",
       "localizations" : {
@@ -529,7 +614,7 @@
       }
     },
     "Rename" : {
-      "comment" : "Rename shot dialog confirm button",
+      "comment" : "Rename dialog confirm button, for a shot or a preset",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -541,6 +626,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Renombrar"
+          }
+        }
+      }
+    },
+    "Rename Preset" : {
+      "comment" : "Rename preset dialog title",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Voreinstellung umbenennen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Renombrar preajuste"
           }
         }
       }
@@ -563,7 +665,7 @@
       }
     },
     "Rename…" : {
-      "comment" : "Shot context menu: rename this shot",
+      "comment" : "Context menu: rename this shot or preset",
       "localizations" : {
         "de" : {
           "stringUnit" : {

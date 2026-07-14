@@ -247,7 +247,7 @@ struct CompositorTests {
         #expect(recorder.recorded.first?.presentedInputs == [input.id])
     }
 
-    @Test("loading a preset cuts to its first shot")
+    @Test("loading a preset onto an empty program cuts to its first shot")
     func loadPresetCutsToFirstShot() async {
         let ticks = (0..<2).map { CMTime(value: CMTimeValue($0), timescale: 30) }
         let recorder = RenderRecorder()
@@ -261,6 +261,89 @@ struct CompositorTests {
         compositor.start()
         _ = await collect(program, limit: 2)
         #expect(recorder.recorded.allSatisfy { $0.shot == display })
+    }
+
+    @Test("switching presets holds the on-program shot when its id exists in the incoming preset, adopting its version")
+    func loadPresetHoldsMatchingShotAcrossSwitch() async {
+        let ticks = (0..<2).map { CMTime(value: CMTimeValue($0), timescale: 30) }
+        let recorder = RenderRecorder()
+        let compositor = makeCompositor(recorder: recorder, tickTimes: ticks)
+        let display = Shot(id: ShotID(rawValue: "display"), name: "Display")
+        let camera = Shot(id: ShotID(rawValue: "camera"), name: "Camera")
+        compositor.loadPreset(Preset(name: "Live", shots: [display, camera]))
+        compositor.take(shotID: camera.id)
+
+        // The incoming preset carries an edited version of the on-program
+        // shot: it stays on program and the edited tree renders — the
+        // updateShot rule applied across a preset switch.
+        let editedCamera = Shot(
+            id: camera.id, name: "Camera", layers: [Layer(input: InputID(rawValue: "wide"))]
+        )
+        compositor.loadPreset(Preset(name: "Rehearsal", shots: [editedCamera]))
+
+        #expect(compositor.activeShotID == camera.id)
+        #expect(compositor.programShot == editedCamera)
+        let program = compositor.programFrames()
+        compositor.start()
+        _ = await collect(program, limit: 2)
+        #expect(recorder.recorded.allSatisfy { $0.shot == editedCamera })
+    }
+
+    @Test("switching presets with no matching shot keeps the outgoing shot rendering as a held snapshot until a take")
+    func loadPresetHoldsOutgoingSnapshotUntilTake() async {
+        let ticks = (0..<2).map { CMTime(value: CMTimeValue($0), timescale: 30) }
+        let recorder = RenderRecorder()
+        let compositor = makeCompositor(recorder: recorder, tickTimes: ticks)
+        let display = Shot(id: ShotID(rawValue: "display"), name: "Display")
+        compositor.loadPreset(Preset(name: "Live", shots: [display]))
+
+        // Nothing in the incoming preset matches the on-program shot: the
+        // program keeps rendering the outgoing shot as a held snapshot, with
+        // no active shot in the new pool.
+        let interview = Shot(id: ShotID(rawValue: "interview"), name: "Interview")
+        compositor.loadPreset(Preset(name: "Rehearsal", shots: [interview]))
+
+        #expect(compositor.activeShotID == nil)
+        #expect(compositor.programShot == display)
+
+        let program = compositor.programFrames()
+        compositor.start()
+        _ = await collect(program, limit: 2)
+        #expect(recorder.recorded.allSatisfy { $0.shot == display })
+
+        // Taking a shot from the new pool puts the new preset on program.
+        compositor.take(shotID: interview.id)
+        #expect(compositor.activeShotID == interview.id)
+        #expect(compositor.programShot == interview)
+    }
+
+    @Test("switching presets mid-dissolve lets the dissolve complete toward the held snapshot")
+    func loadPresetMidDissolveCompletesTowardSnapshot() async {
+        // 30 fps, a 0.1s dissolve — 3 ticks. The preset switch lands before
+        // the first tick; the dissolve still completes toward the outgoing
+        // preset's incoming shot, now a held snapshot.
+        let ticks = (0..<4).map { CMTime(value: CMTimeValue($0), timescale: 30) }
+        let recorder = RenderRecorder()
+        let compositor = makeCompositor(recorder: recorder, tickTimes: ticks)
+        let display = Shot(id: ShotID(rawValue: "display"), name: "Display")
+        let camera = Shot(id: ShotID(rawValue: "camera"), name: "Camera")
+        compositor.loadPreset(Preset(name: "Live", shots: [display, camera]))
+        compositor.take(shotID: camera.id, transition: .dissolve(duration: 0.1))
+
+        let interview = Shot(id: ShotID(rawValue: "interview"), name: "Interview")
+        compositor.loadPreset(Preset(name: "Rehearsal", shots: [interview]))
+
+        let program = compositor.programFrames()
+        compositor.start()
+        _ = await collect(program, limit: 4)
+
+        let calls = recorder.recorded
+        // The dissolve's three ticks blend toward the held snapshot…
+        #expect(calls.prefix(3).allSatisfy { $0.dissolveOutgoing == display && $0.shot == camera })
+        // …then the snapshot renders plainly, still what is playing out.
+        #expect(calls.last?.dissolveProgress == nil)
+        #expect(calls.last?.shot == camera)
+        #expect(compositor.activeShotID == nil)
     }
 
     @Test("taking a shot by id cuts to it on the next tick")

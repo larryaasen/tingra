@@ -125,8 +125,21 @@ final class EngineModel {
         }
     }
 
-    /// The shots the current selection makes available, in switcher order —
-    /// what the shot switcher lists (roadmap step 7).
+    /// The project's presets, in switcher order — what the preset switcher
+    /// lists (ARCHITECTURE.md, "Multiple presets in the UI"). The active
+    /// preset's entry is refreshed from the live ``shots`` by
+    /// ``syncActivePreset()`` before every save, switch, and duplicate.
+    private(set) var presets: [Preset] = []
+
+    /// The id of the active preset — the one the shot switcher and the
+    /// layer-tree editor operate within, highlighted in the preset switcher.
+    /// Session state, like the active shot: at launch the app adopts the
+    /// document's first preset, never a persisted "active" field.
+    private(set) var activePresetID: PresetID?
+
+    /// The active preset's shots, in switcher order — what the shot switcher
+    /// lists (roadmap step 7). The live session copy: edits land here (and in
+    /// the compositor) first, and flow back into ``presets`` on save/switch.
     private(set) var shots: [Shot] = []
 
     /// The id of the shot currently on program, so the switcher can highlight
@@ -210,24 +223,10 @@ final class EngineModel {
     /// The program geometry and rate.
     @ObservationIgnored private let format = ProgramFormat(width: 1920, height: 1080, frameRate: 30)
 
-    /// The id of the session preset — the project's first preset once loaded,
-    /// or the stable `"default"` token when this launch seeds a fresh project.
-    /// A preset switcher and multiple presets arrive in a later iteration.
-    @ObservationIgnored private var presetID = PresetID(rawValue: "default")
-
-    /// The user-facing name of the session preset, carried through saves. Not
-    /// yet surfaced in the UI, so the seeded name stays unlocalized for now.
-    @ObservationIgnored private var presetName = "Default"
-
-    /// The loaded project's presets after the first, preserved verbatim on
-    /// save — the document format holds an array even though the UI surfaces
-    /// only the first preset (see ARCHITECTURE.md, "Project save/load").
-    @ObservationIgnored private var otherPresets: [Preset] = []
-
-    /// Whether the session preset exists yet — loaded from the project file
+    /// Whether the project's presets exist yet — loaded from the project file
     /// in ``start()``, or seeded from ``ProgramLayout`` on the first
-    /// configuration pass. Nothing saves before it does.
-    @ObservationIgnored private var hasSessionPreset = false
+    /// configuration pass. Nothing saves before they do.
+    private var hasSessionPreset: Bool { !presets.isEmpty }
 
     /// The store the project document loads from and autosaves to.
     @ObservationIgnored private let store = ProjectStore()
@@ -456,11 +455,15 @@ final class EngineModel {
         if let cameraID = selectedCameraID, let input = await registry.input(withID: cameraID) {
             desired[cameraID] = input
         }
-        // Keep every input the session preset's layer trees reference
-        // running, except a role's device parked by its picker's "None" — a
-        // stopped input's layers keep their binding and simply contribute
-        // nothing (the same semantic as a disconnected device).
+        // Keep every input the active preset's layer trees reference running
+        // — plus whatever the program is actually rendering, which after a
+        // preset switch can be a held snapshot from outside the loaded pool
+        // (see ``switchPreset(to:)``) — except a role's device parked by its
+        // picker's "None": a stopped input's layers keep their binding and
+        // simply contribute nothing (the same semantic as a disconnected
+        // device).
         var referenced = Set(shots.flatMap { $0.layers.map(\.input) })
+        referenced.formUnion(compositor.programShot.layers.map(\.input))
         if selectedCameraID == nil, let boundCameraID { referenced.remove(boundCameraID) }
         if selectedDisplayID == nil, let boundDisplayID { referenced.remove(boundDisplayID) }
         for id in referenced where desired[id] == nil {
@@ -625,8 +628,15 @@ final class EngineModel {
     ///
     /// - Parameter shotID: The id of the shot to take to program.
     func take(_ shotID: ShotID) {
+        // Whether the program was holding a preset switch's snapshot — a shot
+        // outside the loaded pool (see ``switchPreset(to:)``) whose inputs
+        // can stop once this take replaces it.
+        let wasHoldingSnapshot = activeShotID == nil && hasSessionPreset
         compositor.take(shotID: shotID, transition: useDissolveTransition ? .dissolve : .cut)
-        activeShotID = shotID
+        activeShotID = compositor.activeShotID
+        if wasHoldingSnapshot {
+            Task { await reconfigure() }
+        }
     }
 
     /// Adds a new, empty user-authored shot (fresh UUID, localized default
@@ -674,7 +684,7 @@ final class EngineModel {
         scheduleAutosave()
     }
 
-    /// Removes a shot from the session preset. When the removed shot is on
+    /// Removes a shot from the active preset. When the removed shot is on
     /// program, the compositor cuts to the adjacent shot — never a dead
     /// program (ARCHITECTURE.md, "Shot management") — so the model re-reads
     /// ``Compositor/activeShotID`` rather than second-guessing which shot
@@ -689,6 +699,141 @@ final class EngineModel {
         activeShotID = compositor.activeShotID
         scheduleAutosave()
         await reconfigure()
+    }
+
+    // MARK: Presets
+
+    /// Switches to the preset with the given id: the shot switcher and the
+    /// layer-tree editor now operate within it, and its shots become the
+    /// compositor's pool. Switching never interrupts what is already playing
+    /// out (GLOSSARY.md, "Preset"): the on-program shot stays when its id
+    /// exists in the target preset, and otherwise keeps rendering as a held
+    /// snapshot — no highlighted shot — until the operator takes one from the
+    /// new pool (see ``Compositor/loadPreset(_:)``). The mixer's channel
+    /// strips are session state and carry across unchanged (ARCHITECTURE.md,
+    /// "The audio mixer"). The active preset itself is session state, so a
+    /// switch alone saves nothing.
+    ///
+    /// - Parameter presetID: The id of the preset to switch to.
+    func switchPreset(to presetID: PresetID) async {
+        guard presetID != activePresetID, let target = presets.first(where: { $0.id == presetID }) else { return }
+        syncActivePreset()
+        activePresetID = presetID
+        shots = target.shots
+        compositor.loadPreset(target)
+        activeShotID = compositor.activeShotID
+        await reconfigure()
+    }
+
+    /// Adds a new, empty user-authored preset (fresh UUID, localized default
+    /// name, no shots — see ``PresetEdit/newPreset()``) at the end of the
+    /// switcher order. Adding is not switching, mirroring "adding a shot is
+    /// not taking it" one level up: the switcher stays on the active preset
+    /// until the operator switches. The edit autosaves through the
+    /// project-document path.
+    func addPreset() {
+        guard hasSessionPreset else { return }
+        let preset = PresetEdit.newPreset()
+        presets.append(preset)
+        eventBus.event(
+            "preset.added",
+            domain: .composition,
+            params: ["preset": .string(preset.id.rawValue), "name": .string(preset.name)]
+        )
+        scheduleAutosave()
+    }
+
+    /// Duplicates a preset — the source's shots verbatim (shot ids included,
+    /// so switching between the original and the copy holds the on-program
+    /// shot) under a fresh `PresetID` and a "<name> copy" name — inserting
+    /// the copy right after its source in the switcher order. Duplicating is
+    /// not switching, like ``addPreset()``.
+    ///
+    /// - Parameter presetID: The id of the preset to duplicate.
+    func duplicatePreset(_ presetID: PresetID) {
+        guard let index = presets.firstIndex(where: { $0.id == presetID }) else { return }
+        syncActivePreset()
+        let copy = PresetEdit.duplicate(of: presets[index])
+        presets.insert(copy, at: index + 1)
+        eventBus.event(
+            "preset.added",
+            domain: .composition,
+            params: ["preset": .string(copy.id.rawValue), "name": .string(copy.name)]
+        )
+        scheduleAutosave()
+    }
+
+    /// Renames a preset, preserving its identity and shots. A rename to an
+    /// empty (or whitespace-only) name is ignored — a switcher button needs a
+    /// label (see ``PresetEdit/renaming(_:to:)``). The compositor needs no
+    /// reload: it holds the preset's shots, and the name reaches it again on
+    /// the next switch.
+    ///
+    /// - Parameters:
+    ///   - presetID: The id of the preset to rename.
+    ///   - name: The new user-facing name.
+    func renamePreset(_ presetID: PresetID, to name: String) {
+        guard let index = presets.firstIndex(where: { $0.id == presetID }) else { return }
+        syncActivePreset()
+        let renamed = PresetEdit.renaming(presets[index], to: name)
+        guard renamed != presets[index] else { return }
+        presets[index] = renamed
+        eventBus.event(
+            "preset.renamed",
+            domain: .composition,
+            params: ["preset": .string(renamed.id.rawValue), "name": .string(renamed.name)]
+        )
+        scheduleAutosave()
+    }
+
+    /// Removes a preset from the project. The last remaining preset cannot be
+    /// removed — a project always holds at least one (the UI disables the
+    /// command). Removing the **active** preset switches to the adjacent one,
+    /// and — because the removed preset's shot must leave the air, the shot-
+    /// removal rule one level up — cuts to that preset's first shot unless a
+    /// matching shot id holds the program seamlessly; removing an inactive
+    /// preset touches nothing on program.
+    ///
+    /// - Parameter presetID: The id of the preset to remove.
+    func removePreset(_ presetID: PresetID) async {
+        guard presets.count > 1, let index = presets.firstIndex(where: { $0.id == presetID }) else { return }
+        let removed = presets.remove(at: index)
+        if presetID == activePresetID {
+            let adjacent = presets[min(index, presets.count - 1)]
+            activePresetID = adjacent.id
+            shots = adjacent.shots
+            compositor.loadPreset(adjacent)
+            if compositor.activeShotID == nil {
+                // No id match held the program: the removed preset's shot
+                // leaves the air — cut to the adjacent preset's first shot,
+                // or the background-only canvas when it has none (never a
+                // dead program).
+                if let first = adjacent.shots.first {
+                    compositor.take(shotID: first.id)
+                } else {
+                    compositor.setShot(Shot())
+                }
+            }
+            activeShotID = compositor.activeShotID
+        }
+        eventBus.event(
+            "preset.removed",
+            domain: .composition,
+            params: ["preset": .string(removed.id.rawValue), "name": .string(removed.name)]
+        )
+        scheduleAutosave()
+        await reconfigure()
+    }
+
+    /// Writes the live session ``shots`` back into the active preset's slot
+    /// in ``presets``, so a save, switch, or duplicate operates on the edits
+    /// the operator actually has rather than the shots the preset held when
+    /// it was last made active.
+    private func syncActivePreset() {
+        guard let index = presets.firstIndex(where: { $0.id == activePresetID }) else { return }
+        let active = presets[index]
+        guard active.shots != shots else { return }
+        presets[index] = Preset(id: active.id, name: active.name, shots: shots)
     }
 
     /// Adds a layer bound to the given input on top of the active shot's
@@ -1011,20 +1156,19 @@ final class EngineModel {
     }
 
     /// Loads the project document at boot, adopting its first preset as the
-    /// session preset and pointing the pickers at the devices its layers
-    /// reference; with no file (or a file holding no presets), it leaves the
-    /// session preset unseeded — ``establishSessionPreset()`` seeds it from
-    /// the built-in arrangement on the first configuration pass — and
+    /// active preset (the active preset is session state — the document
+    /// records no "active" field) and pointing the pickers at the devices its
+    /// layers reference; with no file (or a file holding no presets), it
+    /// leaves the presets unseeded — ``establishSessionPreset()`` seeds them
+    /// from the built-in arrangement on the first configuration pass — and
     /// defaults the pickers to the first discovered devices. An unreadable
     /// file is reported and set aside, never silently overwritten (see
     /// ARCHITECTURE.md, "Project save/load").
     private func loadProject() {
         let path = store.fileURL.path(percentEncoded: false)
-        var loadedPreset: Preset?
         do {
             if let project = try store.load() {
-                loadedPreset = project.presets.first
-                otherPresets = Array(project.presets.dropFirst())
+                presets = project.presets
                 // Restore the destination URL (the key stays in secure
                 // storage, read lazily when the panel prefills its field).
                 if let url = project.destination?.url { destinationURL = url.absoluteString }
@@ -1051,7 +1195,7 @@ final class EngineModel {
             }
         }
 
-        guard let loadedPreset else {
+        guard let loadedPreset = presets.first else {
             // A fresh project: default to the first discovered devices; the
             // first configuration pass seeds the built-in arrangement from
             // whatever actually starts.
@@ -1060,10 +1204,8 @@ final class EngineModel {
             return
         }
 
-        presetID = loadedPreset.id
-        presetName = loadedPreset.name
+        activePresetID = loadedPreset.id
         shots = loadedPreset.shots
-        hasSessionPreset = true
 
         // The pickers reflect the loaded document: the first referenced input
         // of each kind that is currently discovered plays that built-in role.
@@ -1080,7 +1222,7 @@ final class EngineModel {
             domain: .composition,
             params: [
                 "path": .string(path),
-                "presets": .int(1 + otherPresets.count),
+                "presets": .int(presets.count),
                 "shots": .int(shots.count),
             ]
         )
@@ -1090,8 +1232,10 @@ final class EngineModel {
     /// a preset, seeds one from the built-in ``ProgramLayout`` arrangement
     /// (using only the inputs that actually started) and saves the fresh
     /// project immediately so the file exists from first launch; then loads
-    /// the session preset into the compositor, which cuts to its first shot
-    /// (the active shot is session state, never part of the document).
+    /// the active preset into the compositor, which cuts to its first shot —
+    /// nothing is on program yet, the one case where loading cuts (the active
+    /// shot, like the active preset, is session state, never part of the
+    /// document).
     private func establishSessionPreset() {
         if !hasSessionPreset {
             let displayID = selectedDisplayID.flatMap { activeInputs[$0] != nil ? $0 : nil }
@@ -1099,7 +1243,13 @@ final class EngineModel {
             shots = ProgramLayout.shots(displayID: displayID, cameraID: cameraID)
             boundDisplayID = displayID
             boundCameraID = cameraID
-            hasSessionPreset = true
+            let seeded = Preset(
+                id: PresetID(rawValue: "default"),
+                name: String(localized: "Default", bundle: .module, comment: "Name of a fresh project's seeded preset"),
+                shots: shots
+            )
+            presets = [seeded]
+            activePresetID = seeded.id
             eventBus.event(
                 "project.seeded",
                 domain: .composition,
@@ -1107,12 +1257,14 @@ final class EngineModel {
             )
             saveProject()
         }
-        compositor.loadPreset(Preset(id: presetID, name: presetName, shots: shots))
-        activeShotID = shots.first?.id
+        if let active = presets.first(where: { $0.id == activePresetID }) {
+            compositor.loadPreset(Preset(id: active.id, name: active.name, shots: shots))
+        }
+        activeShotID = compositor.activeShotID
     }
 
     /// Rebinds every layer bound to one device to another across all the
-    /// session preset's shots — how a picker change recasts which device
+    /// active preset's shots — how a picker change recasts which device
     /// plays the built-in role — pushing each changed shot through the
     /// compositor so the recast is on program at the next tick.
     ///
@@ -1141,24 +1293,22 @@ final class EngineModel {
         return changed
     }
 
-    /// Saves the project document now — the session preset (with its live
-    /// layer-tree edits) first, the loaded document's other presets preserved
-    /// after it — cancelling any pending autosave. A save that cannot write
-    /// is reported on the bus and the session continues: the edits are still
-    /// live on program, only unsaved.
+    /// Saves the project document now — every preset in switcher order, the
+    /// active one refreshed with its live layer-tree edits first — cancelling
+    /// any pending autosave. A save that cannot write is reported on the bus
+    /// and the session continues: the edits are still live on program, only
+    /// unsaved.
     private func saveProject() {
         guard hasSessionPreset else { return }
         autosaveTask?.cancel()
         autosaveTask = nil
+        syncActivePreset()
         // The destination URL joins the document (project format v2); its
         // stream key is excluded — it lives only in secure storage.
         let destination = URL(string: destinationURL).flatMap {
             destinationURL.isEmpty ? nil : ProjectDestination(url: $0)
         }
-        let project = Project(
-            presets: [Preset(id: presetID, name: presetName, shots: shots)] + otherPresets,
-            destination: destination
-        )
+        let project = Project(presets: presets, destination: destination)
         do {
             try store.save(project)
             eventBus.event(
