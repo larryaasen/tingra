@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  tingra-cameras.entitlements
+  tingra-cameras
+
+  Created by Larry Aasen on 2026-07-13.
+  Copyright © 2026 Larry Aasen.
+  SPDX-License-Identifier: MIT
+
+  Notarization requires the hardened runtime, which denies camera and
+  microphone access unless the binary opts in — hence the two device
+  entitlements. disable-library-validation lets the host load the camera's
+  CMIOExtension DAL plug-in, signed by a different team than this app
+  (without it, CMIOGraphStart fails and no camera ever starts streaming;
+  see apps/tingra-cli/tingra-cli.entitlements for the same fix). No sandbox
+  entitlement: like the rest of Tingra, this app is deliberately unsandboxed.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>com.apple.security.device.camera</key>
+	<true/>
+	<key>com.apple.security.device.audio-input</key>
+	<true/>
+	<key>com.apple.security.cs.disable-library-validation</key>
+	<true/>
+</dict>
+</plist>

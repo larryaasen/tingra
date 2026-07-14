@@ -1,0 +1,108 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "Camera Unavailable" : {
+      "comment" : "Title shown in the preview when the selected camera cannot be opened.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kamera nicht verfügbar"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cámara no disponible"
+          }
+        }
+      }
+    },
+    "Cameras" : {
+      "comment" : "Sidebar section header for the list of available cameras.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kameras"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cámaras"
+          }
+        }
+      }
+    },
+    "Live Camera Preview" : {
+      "comment" : "Title of the preview placeholder, and the accessibility label when no camera is selected.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Live-Kameravorschau"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vista previa de cámara en vivo"
+          }
+        }
+      }
+    },
+    "Live preview of %@" : {
+      "comment" : "Accessibility label for the preview frame naming the selected camera.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Live-Vorschau von %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vista previa en vivo de %@"
+          }
+        }
+      }
+    },
+    "Microphones" : {
+      "comment" : "Sidebar section header for the list of available microphones.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mikrofone"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Micrófonos"
+          }
+        }
+      }
+    },
+    "The selected camera's live preview appears here." : {
+      "comment" : "Description shown under the preview placeholder title.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Live-Vorschau der ausgewählten Kamera wird hier angezeigt."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La vista previa en vivo de la cámara seleccionada aparece aquí."
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}
