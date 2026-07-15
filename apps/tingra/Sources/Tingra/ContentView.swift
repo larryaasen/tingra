@@ -18,17 +18,17 @@ import TingraPlugInKit
 /// The preset switcher switches among — and manages — the project's presets
 /// (ARCHITECTURE.md, "Multiple presets in the UI"): switching never
 /// interrupts what is on program, an Add Preset button appends a new empty
-/// preset, and each preset button's context menu duplicates, renames, or
-/// removes it. The pickers pick one camera and one display; the shot
-/// switcher takes the chosen shot to program — a cut, or a dissolve when the
-/// switcher's transition toggle is on (GLOSSARY.md, "Transition") — and
-/// manages the active preset's shots the same way, one level down
-/// (ARCHITECTURE.md, "Shot management"); the editor
-/// (``LayerTreeEditorView``) edits the selected shot's layer tree live;
-/// the mixer panel (``MixerView``) mixes the audio inputs into the program
-/// mix the streaming panel puts on air. This is the step-7 shape — the
-/// remaining production surface (shot reordering, wipe transitions) grows
-/// from here.
+/// preset, and each preset button's context menu duplicates, renames,
+/// reorders (Move Left / Move Right), or removes it. The pickers pick one
+/// camera and one display; the shot switcher takes the chosen shot to
+/// program — a cut, or a dissolve when the switcher's transition toggle is
+/// on (GLOSSARY.md, "Transition") — and manages the active preset's shots the
+/// same way, one level down (ARCHITECTURE.md, "Shot management", "Shot and
+/// preset reordering"); the editor (``LayerTreeEditorView``) edits the
+/// selected shot's layer tree live; the mixer panel (``MixerView``) mixes the
+/// audio inputs into the program mix the streaming panel puts on air. This is
+/// the step-7 shape — the remaining production surface (wipe transitions)
+/// grows from here.
 ///
 /// Every user action here reports its own `tap` event right where it's
 /// executed — a picker's `onChange`, a button's action closure — rather than
@@ -202,11 +202,16 @@ struct ContentView: View {
         }
     }
 
-    /// One preset button's context menu: duplicate, rename, and remove that
-    /// preset — the shot commands, one level up (ARCHITECTURE.md, "Multiple
-    /// presets in the UI"). Remove is immediate like a shot's, but disabled
-    /// on the last remaining preset: a project always holds at least one.
+    /// One preset button's context menu: duplicate, rename, reorder (Move Left
+    /// / Move Right), and remove that preset — the shot commands, one level up
+    /// (ARCHITECTURE.md, "Multiple presets in the UI", "Shot and preset
+    /// reordering"). Reorder is meaningful here too: the app adopts the first
+    /// preset at launch, so moving one to the front makes it the next session's
+    /// default. Remove is immediate like a shot's, but disabled on the last
+    /// remaining preset: a project always holds at least one.
     @ViewBuilder private func presetCommands(for preset: Preset) -> some View {
+        let index = model.presets.firstIndex { $0.id == preset.id }
+
         Button {
             model.eventBus.tap(
                 "presetDuplicate.menu",
@@ -229,6 +234,36 @@ struct ContentView: View {
         } label: {
             Text("Rename…", comment: "Context menu: rename this shot or preset")
         }
+
+        Divider()
+
+        Button {
+            guard let index else { return }
+            model.eventBus.tap(
+                "presetMoveLeft.menu",
+                domain: .composition,
+                params: ["preset": .string(preset.id.rawValue), "index": .int(index)]
+            )
+            model.movePreset(preset.id, to: index - 1)
+        } label: {
+            Text("Move Left", comment: "Context menu: move this shot or preset earlier in the switcher order")
+        }
+        .disabled((index ?? 0) <= 0)
+
+        Button {
+            guard let index else { return }
+            model.eventBus.tap(
+                "presetMoveRight.menu",
+                domain: .composition,
+                params: ["preset": .string(preset.id.rawValue), "index": .int(index)]
+            )
+            model.movePreset(preset.id, to: index + 1)
+        } label: {
+            Text("Move Right", comment: "Context menu: move this shot or preset later in the switcher order")
+        }
+        .disabled(index.map { $0 >= model.presets.count - 1 } ?? true)
+
+        Divider()
 
         Button(role: .destructive) {
             model.eventBus.tap(
@@ -338,11 +373,17 @@ struct ContentView: View {
         }
     }
 
-    /// One shot button's context menu: duplicate, rename, and remove that
-    /// shot (ARCHITECTURE.md, "Shot management"). Remove is immediate — a
-    /// destructive-role item, no confirmation: shots are quick to create,
-    /// switch, and discard (GLOSSARY.md, "Shot").
+    /// One shot button's context menu: duplicate, rename, reorder (Move Left /
+    /// Move Right), and remove that shot (ARCHITECTURE.md, "Shot management",
+    /// "Shot and preset reordering"). Reorder rides the context menu — not
+    /// drag-and-drop — so the shot buttons' single click stays reserved for the
+    /// on-air take; the commands mirror the layer editor's Move Up / Move Down
+    /// one level up, on the horizontal switcher axis, and disable at the ends.
+    /// Remove is immediate — a destructive-role item, no confirmation: shots
+    /// are quick to create, switch, and discard (GLOSSARY.md, "Shot").
     @ViewBuilder private func shotCommands(for shot: Shot) -> some View {
+        let index = model.shots.firstIndex { $0.id == shot.id }
+
         Button {
             model.eventBus.tap(
                 "shotDuplicate.menu",
@@ -365,6 +406,36 @@ struct ContentView: View {
         } label: {
             Text("Rename…", comment: "Context menu: rename this shot or preset")
         }
+
+        Divider()
+
+        Button {
+            guard let index else { return }
+            model.eventBus.tap(
+                "shotMoveLeft.menu",
+                domain: .composition,
+                params: ["shot": .string(shot.id.rawValue), "index": .int(index)]
+            )
+            model.moveShot(shot.id, to: index - 1)
+        } label: {
+            Text("Move Left", comment: "Context menu: move this shot or preset earlier in the switcher order")
+        }
+        .disabled((index ?? 0) <= 0)
+
+        Button {
+            guard let index else { return }
+            model.eventBus.tap(
+                "shotMoveRight.menu",
+                domain: .composition,
+                params: ["shot": .string(shot.id.rawValue), "index": .int(index)]
+            )
+            model.moveShot(shot.id, to: index + 1)
+        } label: {
+            Text("Move Right", comment: "Context menu: move this shot or preset later in the switcher order")
+        }
+        .disabled(index.map { $0 >= model.shots.count - 1 } ?? true)
+
+        Divider()
 
         Button(role: .destructive) {
             model.eventBus.tap(

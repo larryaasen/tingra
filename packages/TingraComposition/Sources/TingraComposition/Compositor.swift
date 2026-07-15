@@ -54,14 +54,17 @@ import TingraPlugInKit
 /// step. The edit persists in the loaded preset, so it survives later
 /// ``take(shotID:transition:)`` switches within the session. The pool
 /// itself is managed the same granular way: ``addShot(_:at:)`` inserts a
-/// shot (adding is not taking — the program is untouched) and
+/// shot (adding is not taking — the program is untouched),
 /// ``removeShot(shotID:)`` removes one, cutting to the adjacent shot when
-/// the removed shot was on program — never a dead program (ARCHITECTURE.md,
-/// "Shot management").
+/// the removed shot was on program — never a dead program — and
+/// ``moveShot(shotID:to:)`` reorders one within the switcher order without
+/// ever changing the program (reordering is not taking — ARCHITECTURE.md,
+/// "Shot management", "Shot and preset reordering").
 ///
 /// The mutating controls (``setInputs(_:)``, ``setShot(_:)``,
 /// ``loadPreset(_:)``, ``take(shotID:)``, ``updateShot(_:)``,
-/// ``addShot(_:at:)``, ``removeShot(shotID:)``, ``start()``, ``stop()``)
+/// ``addShot(_:at:)``, ``removeShot(shotID:)``, ``moveShot(shotID:to:)``,
+/// ``start()``, ``stop()``)
 /// are meant to be driven from one context (the app's main actor); they are
 /// internally locked but not designed for concurrent callers racing each
 /// other.
@@ -474,6 +477,62 @@ public final class Compositor: Sendable {
             params["cutTo"] = .string(outcome.cutTo?.id.rawValue ?? "none")
         }
         eventBus.event("shot.removed", domain: .composition, params: params)
+    }
+
+    /// Moves a shot to a new position in the loaded preset's switcher order —
+    /// the shot-management reorder path (ARCHITECTURE.md, "Shot and preset
+    /// reordering"). **Reordering never changes the program:** ``activeShotID``,
+    /// the shot the tick renders, and any in-progress dissolve are all untouched
+    /// — the on-program shot keeps its identity and simply sits at a different
+    /// index, so a reorder survives a live take and a live dissolve by
+    /// construction, the same guarantee ``updateShot(_:)`` and ``addShot(_:at:)``
+    /// give. Reordering *does* change which shot ``removeShot(shotID:)`` would
+    /// cut to (its adjacency rule reads the switcher order), which is the point.
+    ///
+    /// The destination index is clamped to the pool's bounds; moving a shot to
+    /// the position it already holds is a no-op that reports nothing. Moving an
+    /// id that is not in the loaded preset is recoverable — a `shot.move` error
+    /// event, the pool untouched, never a crash. An actual move reports a
+    /// `shot.moved` control-plane event (with the `from` and `to` indices):
+    /// like ``addShot(_:at:)``/``removeShot(shotID:)`` and unlike a gesture-rate
+    /// ``updateShot(_:)``, a reorder is a discrete, menu-command-driven action,
+    /// so the event cannot flood the bus (EVENTS.md).
+    ///
+    /// - Parameters:
+    ///   - shotID: The id of the shot to move.
+    ///   - index: The destination position in the switcher order, clamped to
+    ///     the pool's bounds.
+    public func moveShot(shotID: ShotID, to index: Int) {
+        let outcome: (shot: Shot, from: Int, to: Int)? = state.withLock { state in
+            guard let from = state.shots.firstIndex(where: { $0.id == shotID }) else { return nil }
+            let to = min(max(index, 0), state.shots.count - 1)
+            guard to != from else { return (state.shots[from], from, from) }
+            let shot = state.shots.remove(at: from)
+            state.shots.insert(shot, at: to)
+            return (shot, from, to)
+        }
+        guard let outcome else {
+            eventBus.error(
+                "shot.move",
+                domain: .composition,
+                params: [
+                    "shot": .string(shotID.rawValue),
+                    "reason": .string("unknownShot"),
+                ]
+            )
+            return
+        }
+        guard outcome.from != outcome.to else { return }
+        eventBus.event(
+            "shot.moved",
+            domain: .composition,
+            params: [
+                "shot": .string(outcome.shot.id.rawValue),
+                "name": .string(outcome.shot.name),
+                "from": .int(outcome.from),
+                "to": .int(outcome.to),
+            ]
+        )
     }
 
     /// The shots of the loaded preset, in switcher order (empty before a

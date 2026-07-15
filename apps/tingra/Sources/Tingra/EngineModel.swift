@@ -701,6 +701,29 @@ final class EngineModel {
         await reconfigure()
     }
 
+    /// Moves a shot to a new position in the active preset's switcher order —
+    /// the shot-management reorder path (ARCHITECTURE.md, "Shot and preset
+    /// reordering"). Reordering is **not** taking: the program is untouched,
+    /// so no reconfigure is needed — every referenced input is already
+    /// running, only the switcher order changes. The move mirrors into the
+    /// compositor's pool (which reports the discrete `shot.moved` event) and
+    /// autosaves through the project-document path. The destination is clamped
+    /// to the switcher's bounds; a move to the shot's current position, or of
+    /// an unknown shot, is a no-op.
+    ///
+    /// - Parameters:
+    ///   - shotID: The id of the shot to move.
+    ///   - index: The destination position in the switcher order.
+    func moveShot(_ shotID: ShotID, to index: Int) {
+        guard let from = shots.firstIndex(where: { $0.id == shotID }) else { return }
+        let to = min(max(index, 0), shots.count - 1)
+        guard to != from else { return }
+        let shot = shots.remove(at: from)
+        shots.insert(shot, at: to)
+        compositor.moveShot(shotID: shotID, to: to)
+        scheduleAutosave()
+    }
+
     // MARK: Presets
 
     /// Switches to the preset with the given id: the shot switcher and the
@@ -823,6 +846,42 @@ final class EngineModel {
         )
         scheduleAutosave()
         await reconfigure()
+    }
+
+    /// Moves a preset to a new position in the switcher order — the reorder
+    /// path one level up from ``moveShot(_:to:)`` (ARCHITECTURE.md, "Shot and
+    /// preset reordering"). Purely app-level document state: presets are the
+    /// project's, not the compositor's (the compositor holds only the one
+    /// loaded preset), so reordering never touches the program — no
+    /// `loadPreset`, no reconfigure. Order is meaningful, though: the app
+    /// adopts the **first** preset at launch, so promoting a preset to the
+    /// front makes it the next session's default. The live session ``shots``
+    /// are synced back into the active preset first, so the reorder operates on
+    /// the operator's actual edits; the change reports the discrete
+    /// `preset.moved` event and autosaves. The destination is clamped; a move
+    /// to the preset's current position, or of an unknown preset, is a no-op.
+    ///
+    /// - Parameters:
+    ///   - presetID: The id of the preset to move.
+    ///   - index: The destination position in the switcher order.
+    func movePreset(_ presetID: PresetID, to index: Int) {
+        guard let from = presets.firstIndex(where: { $0.id == presetID }) else { return }
+        let to = min(max(index, 0), presets.count - 1)
+        guard to != from else { return }
+        syncActivePreset()
+        let preset = presets.remove(at: from)
+        presets.insert(preset, at: to)
+        eventBus.event(
+            "preset.moved",
+            domain: .composition,
+            params: [
+                "preset": .string(preset.id.rawValue),
+                "name": .string(preset.name),
+                "from": .int(from),
+                "to": .int(to),
+            ]
+        )
+        scheduleAutosave()
     }
 
     /// Writes the live session ``shots`` back into the active preset's slot

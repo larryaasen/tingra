@@ -762,6 +762,111 @@ struct CompositorTests {
         #expect(calls.last?.shot == camera)
     }
 
+    @Test("moving a shot reorders the switcher pool without changing the program — reordering is not taking")
+    func moveShotReordersWithoutTaking() async {
+        let ticks = (0..<2).map { CMTime(value: CMTimeValue($0), timescale: 30) }
+        let recorder = RenderRecorder()
+        let compositor = makeCompositor(recorder: recorder, tickTimes: ticks)
+        let display = Shot(id: ShotID(rawValue: "display"), name: "Display")
+        let camera = Shot(id: ShotID(rawValue: "camera"), name: "Camera")
+        let wide = Shot(id: ShotID(rawValue: "wide"), name: "Wide")
+        compositor.loadPreset(Preset(name: "Live", shots: [display, camera, wide]))
+        compositor.take(shotID: camera.id)
+
+        // Move the on-program shot (camera) to the front.
+        compositor.moveShot(shotID: camera.id, to: 0)
+
+        #expect(compositor.shots == [camera, display, wide])
+        // The on-program shot keeps its identity, only its position changed.
+        #expect(compositor.activeShotID == camera.id)
+        let program = compositor.programFrames()
+        compositor.start()
+        _ = await collect(program, limit: 2)
+        #expect(recorder.recorded.allSatisfy { $0.shot == camera })
+    }
+
+    @Test("moving a shot right past its neighbor swaps their switcher order")
+    func moveShotRightReorders() {
+        let recorder = RenderRecorder()
+        let compositor = makeCompositor(recorder: recorder, tickTimes: [])
+        let display = Shot(id: ShotID(rawValue: "display"), name: "Display")
+        let camera = Shot(id: ShotID(rawValue: "camera"), name: "Camera")
+        let wide = Shot(id: ShotID(rawValue: "wide"), name: "Wide")
+        compositor.loadPreset(Preset(name: "Live", shots: [display, camera, wide]))
+
+        // Move display (index 0) one step right (the Move Right command).
+        compositor.moveShot(shotID: display.id, to: 1)
+
+        #expect(compositor.shots == [camera, display, wide])
+    }
+
+    @Test("moving a shot to an out-of-range index clamps to the ends rather than trapping")
+    func moveShotClampsDestination() {
+        let recorder = RenderRecorder()
+        let compositor = makeCompositor(recorder: recorder, tickTimes: [])
+        let display = Shot(id: ShotID(rawValue: "display"), name: "Display")
+        let camera = Shot(id: ShotID(rawValue: "camera"), name: "Camera")
+        compositor.loadPreset(Preset(name: "Live", shots: [display, camera]))
+
+        // A negative or overshooting destination lands at the near end.
+        compositor.moveShot(shotID: camera.id, to: -5)
+        #expect(compositor.shots == [camera, display])
+        compositor.moveShot(shotID: camera.id, to: 99)
+        #expect(compositor.shots == [display, camera])
+    }
+
+    @Test("moving a shot to the position it already holds leaves the pool unchanged")
+    func moveShotToSamePositionIsNoOp() {
+        let recorder = RenderRecorder()
+        let compositor = makeCompositor(recorder: recorder, tickTimes: [])
+        let display = Shot(id: ShotID(rawValue: "display"), name: "Display")
+        let camera = Shot(id: ShotID(rawValue: "camera"), name: "Camera")
+        compositor.loadPreset(Preset(name: "Live", shots: [display, camera]))
+
+        compositor.moveShot(shotID: display.id, to: 0)
+
+        #expect(compositor.shots == [display, camera])
+    }
+
+    @Test("moving an unknown shot id leaves the loaded preset unchanged")
+    func moveUnknownShotIsIgnored() {
+        let recorder = RenderRecorder()
+        let compositor = makeCompositor(recorder: recorder, tickTimes: [])
+        let display = Shot(id: ShotID(rawValue: "display"), name: "Display")
+        compositor.loadPreset(Preset(name: "Live", shots: [display]))
+
+        compositor.moveShot(shotID: ShotID(rawValue: "does-not-exist"), to: 0)
+
+        #expect(compositor.shots == [display])
+        #expect(compositor.activeShotID == display.id)
+    }
+
+    @Test("reordering the outgoing shot mid-dissolve leaves the dissolve intact")
+    func moveShotMidDissolveLeavesDissolveIntact() async {
+        // 30 fps, a 0.1s dissolve — 3 blending ticks, plus one settled tick.
+        let ticks = (0..<4).map { CMTime(value: CMTimeValue($0), timescale: 30) }
+        let recorder = RenderRecorder()
+        let compositor = makeCompositor(recorder: recorder, tickTimes: ticks)
+        let display = Shot(id: ShotID(rawValue: "display"), name: "Display")
+        let camera = Shot(id: ShotID(rawValue: "camera"), name: "Camera")
+        compositor.loadPreset(Preset(name: "Live", shots: [display, camera]))
+        compositor.take(shotID: camera.id, transition: .dissolve(duration: 0.1))
+
+        // Reordering the outgoing shot changes only the pool order — the
+        // dissolve keeps blending from display toward camera, untouched.
+        compositor.moveShot(shotID: display.id, to: 1)
+
+        #expect(compositor.shots == [camera, display])
+        #expect(compositor.activeShotID == camera.id)
+        let program = compositor.programFrames()
+        compositor.start()
+        _ = await collect(program, limit: 4)
+        let calls = recorder.recorded
+        #expect(calls.prefix(3).allSatisfy { $0.dissolveOutgoing == display && $0.shot == camera })
+        #expect(calls.last?.dissolveProgress == nil)
+        #expect(calls.last?.shot == camera)
+    }
+
     @Test("stop() finishes the program stream")
     func stopFinishesProgramStream() async {
         // A clock that would tick forever is not needed: stop() finishes the

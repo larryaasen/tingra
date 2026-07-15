@@ -341,6 +341,40 @@
         }
       }
     },
+    "Move Left" : {
+      "comment" : "Context menu: move this shot or preset earlier in the switcher order",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nach links"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mover a la izquierda"
+          }
+        }
+      }
+    },
+    "Move Right" : {
+      "comment" : "Context menu: move this shot or preset later in the switcher order",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nach rechts"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mover a la derecha"
+          }
+        }
+      }
+    },
     "Move Up" : {
       "comment" : "Button moving the selected layer toward the top of the stack",
       "localizations" : {
