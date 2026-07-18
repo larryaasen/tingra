@@ -16,10 +16,11 @@ import Foundation
 ///
 /// A plain `Codable` value type — the same project-file contract as
 /// ``Preset``/``Shot`` (CLAUDE.md, "Data Models"): stable camelCase keys, so
-/// a transition round-trips exactly wherever it is later persisted (a
-/// preset's default transition, say). For now ``Compositor/take(shotID:transition:)``
-/// takes one directly per call; it is not yet a field on ``Shot`` or
-/// ``Preset`` (ARCHITECTURE.md, "Presets and shots").
+/// a transition round-trips exactly wherever it is persisted — a shot's
+/// ``Shot/defaultTransition``. ``Compositor/take(shotID:transition:)`` still
+/// takes one directly per call; resolving a shot's default against an
+/// operator's override is the caller's decision (ARCHITECTURE.md, "Per-shot
+/// default transitions").
 public enum Transition: Sendable, Equatable, Codable {
     /// An instant switch: the outgoing shot is replaced by the incoming one
     /// on the very next program tick, with no blending — the behavior

@@ -155,7 +155,7 @@
       }
     },
     "Default" : {
-      "comment" : "Name of a fresh project's seeded preset",
+      "comment" : "Name of a fresh project's seeded preset; also the transition picker option taking each shot with its own default transition",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -167,6 +167,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Predeterminado"
+          }
+        }
+      }
+    },
+    "Default Transition" : {
+      "comment" : "Shot context menu: submenu setting this shot's default transition",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Standardübergang"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transición predeterminada"
           }
         }
       }
@@ -524,6 +541,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Nueva toma"
+          }
+        }
+      }
+    },
+    "No Default" : {
+      "comment" : "Default transition option: this shot has no default, so it is taken as set",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kein Standard"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sin predeterminada"
           }
         }
       }
@@ -966,6 +1000,74 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Cortinilla"
+          }
+        }
+      }
+    },
+    "Wipe from Bottom" : {
+      "comment" : "Default transition option: wipe revealing this shot from the bottom edge",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wischblende von unten"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cortinilla desde abajo"
+          }
+        }
+      }
+    },
+    "Wipe from Left" : {
+      "comment" : "Default transition option: wipe revealing this shot from the left edge",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wischblende von links"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cortinilla desde la izquierda"
+          }
+        }
+      }
+    },
+    "Wipe from Right" : {
+      "comment" : "Default transition option: wipe revealing this shot from the right edge",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wischblende von rechts"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cortinilla desde la derecha"
+          }
+        }
+      }
+    },
+    "Wipe from Top" : {
+      "comment" : "Default transition option: wipe revealing this shot from the top edge",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wischblende von oben"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cortinilla desde arriba"
           }
         }
       }

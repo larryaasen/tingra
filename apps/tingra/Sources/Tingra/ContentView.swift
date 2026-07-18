@@ -21,8 +21,9 @@ import TingraPlugInKit
 /// preset, and each preset button's context menu duplicates, renames,
 /// reorders (Move Left / Move Right), or removes it. The pickers pick one
 /// camera and one display; the shot switcher takes the chosen shot to
-/// program — a cut, dissolve, or wipe, per the switcher's transition picker
-/// and, for a wipe, its edge picker (GLOSSARY.md, "Transition") — and
+/// program — each shot's own default transition while the switcher's
+/// transition picker is on Default, or an explicit cut, dissolve, or wipe
+/// (with its edge picker) as the override (GLOSSARY.md, "Transition") — and
 /// manages the active preset's shots the same way, one level down
 /// (ARCHITECTURE.md, "Shot management", "Shot and preset reordering"); the
 /// editor (``LayerTreeEditorView``) edits the selected shot's layer tree
@@ -280,8 +281,9 @@ struct ContentView: View {
 
     /// The shot switcher: one button per available shot, taking it to program
     /// on tap with the transition the segmented picker selects
-    /// (``EngineModel/takeTransitionKind`` — cut, dissolve, or wipe; a wipe's
-    /// edge comes from the adjacent pop-up, shown only while Wipe is
+    /// (``EngineModel/takeTransitionKind`` — Default resolves the taken
+    /// shot's own default transition; Cut, Dissolve, and Wipe override it; a
+    /// wipe's edge comes from the adjacent pop-up, shown only while Wipe is
     /// selected). The button for the shot currently on program is
     /// highlighted; its context menu duplicates, renames, or removes the
     /// shot, and the trailing Add Shot button appends a new empty one — the
@@ -322,6 +324,11 @@ struct ContentView: View {
             if !model.shots.isEmpty {
                 HStack(spacing: 12) {
                     Picker(selection: $model.takeTransitionKind) {
+                        Text(
+                            "Default",
+                            comment: "Transition picker option: take each shot with its own default transition"
+                        )
+                        .tag(TakeTransitionKind.default)
                         Text("Cut", comment: "Transition picker option: switch to the next shot taken instantly")
                             .tag(TakeTransitionKind.cut)
                         Text("Dissolve", comment: "Transition picker option: crossfade to the next shot taken")
@@ -415,14 +422,16 @@ struct ContentView: View {
         }
     }
 
-    /// One shot button's context menu: duplicate, rename, reorder (Move Left /
-    /// Move Right), and remove that shot (ARCHITECTURE.md, "Shot management",
-    /// "Shot and preset reordering"). Reorder rides the context menu — not
-    /// drag-and-drop — so the shot buttons' single click stays reserved for the
-    /// on-air take; the commands mirror the layer editor's Move Up / Move Down
-    /// one level up, on the horizontal switcher axis, and disable at the ends.
-    /// Remove is immediate — a destructive-role item, no confirmation: shots
-    /// are quick to create, switch, and discard (GLOSSARY.md, "Shot").
+    /// One shot button's context menu: duplicate, rename, set the shot's
+    /// default transition, reorder (Move Left / Move Right), and remove that
+    /// shot (ARCHITECTURE.md, "Shot management", "Shot and preset
+    /// reordering", "Per-shot default transitions"). Reorder rides the
+    /// context menu — not drag-and-drop — so the shot buttons' single click
+    /// stays reserved for the on-air take; the commands mirror the layer
+    /// editor's Move Up / Move Down one level up, on the horizontal switcher
+    /// axis, and disable at the ends. Remove is immediate — a
+    /// destructive-role item, no confirmation: shots are quick to create,
+    /// switch, and discard (GLOSSARY.md, "Shot").
     @ViewBuilder private func shotCommands(for shot: Shot) -> some View {
         let index = model.shots.firstIndex { $0.id == shot.id }
 
@@ -447,6 +456,12 @@ struct ContentView: View {
             shotBeingRenamed = shot
         } label: {
             Text("Rename…", comment: "Context menu: rename this shot or preset")
+        }
+
+        Menu {
+            defaultTransitionPicker(for: shot)
+        } label: {
+            Text("Default Transition", comment: "Shot context menu: submenu setting this shot's default transition")
         }
 
         Divider()
@@ -489,6 +504,52 @@ struct ContentView: View {
         } label: {
             Text("Remove Shot", comment: "Shot context menu: remove this shot from the preset")
         }
+    }
+
+    /// The Default Transition submenu's picker: a checkmarked radio group
+    /// choosing the shot's ``Shot/defaultTransition`` — None (an unresolved
+    /// take is a cut), Cut, Dissolve, or a wipe from each frame edge, all at
+    /// the default durations, matching what the switcher's own picker offers
+    /// (ARCHITECTURE.md, "Per-shot default transitions"). The selection
+    /// binding reports its `tap` event in its setter — the menu item is where
+    /// this user action executes (EVENTS.md, "The `tap` convention") — then
+    /// hands the edit to the model, which autosaves it like any other
+    /// document edit.
+    private func defaultTransitionPicker(for shot: Shot) -> some View {
+        let selection = Binding<DefaultTransitionChoice> {
+            DefaultTransitionChoice(shot.defaultTransition)
+        } set: { choice in
+            var params: [String: EventValue] = [
+                "shot": .string(shot.id.rawValue),
+                "transition": .string(choice.tapValue),
+            ]
+            if case .wipe(let edge) = choice { params["edge"] = .string(edge.rawValue) }
+            model.eventBus.tap("shotDefaultTransition.menu", domain: .composition, params: params)
+            model.setShotDefaultTransition(choice.transition, for: shot.id)
+        }
+        return Picker(selection: selection) {
+            Text("No Default", comment: "Default transition option: this shot has no default, so it is taken as set")
+                .tag(DefaultTransitionChoice.none)
+            Text("Cut", comment: "Transition picker option: switch to the next shot taken instantly")
+                .tag(DefaultTransitionChoice.cut)
+            Text("Dissolve", comment: "Transition picker option: crossfade to the next shot taken")
+                .tag(DefaultTransitionChoice.dissolve)
+            Text("Wipe from Left", comment: "Default transition option: wipe revealing this shot from the left edge")
+                .tag(DefaultTransitionChoice.wipe(.left))
+            Text("Wipe from Right", comment: "Default transition option: wipe revealing this shot from the right edge")
+                .tag(DefaultTransitionChoice.wipe(.right))
+            Text("Wipe from Top", comment: "Default transition option: wipe revealing this shot from the top edge")
+                .tag(DefaultTransitionChoice.wipe(.top))
+            Text(
+                "Wipe from Bottom",
+                comment: "Default transition option: wipe revealing this shot from the bottom edge"
+            )
+            .tag(DefaultTransitionChoice.wipe(.bottom))
+        } label: {
+            EmptyView()
+        }
+        .pickerStyle(.inline)
+        .labelsHidden()
     }
 
     /// The camera and display pickers.
@@ -611,6 +672,67 @@ struct ContentView: View {
             Text("Error", comment: "Stream status: the stream ended on a failure")
                 .foregroundStyle(.red)
                 .help(message)
+        }
+    }
+}
+
+/// The Default Transition submenu's selectable choices, mapping a shot's
+/// stored ``Shot/defaultTransition`` to and from a checkmarkable menu
+/// selection. The mapping is by kind and edge only — a stored default with a
+/// hand-edited duration still checkmarks its kind, and choosing a kind here
+/// stores it at the default duration, matching what the switcher's own
+/// transition picker takes with.
+private enum DefaultTransitionChoice: Hashable {
+    /// No default: an unresolved take of this shot is a cut.
+    case none
+
+    /// An instant cut.
+    case cut
+
+    /// A crossfade at the default dissolve duration.
+    case dissolve
+
+    /// A directional reveal from the given frame edge at the default wipe
+    /// duration.
+    case wipe(WipeEdge)
+
+    /// The choice a stored default transition checkmarks.
+    ///
+    /// - Parameter transition: The shot's stored default, or nil for none.
+    /// (`Transition` is module-qualified here: at this file's scope the name
+    /// would otherwise collide with SwiftUI's `Transition` protocol.)
+    init(_ transition: TingraComposition.Transition?) {
+        switch transition {
+        case Optional.none:
+            self = .none
+        case .some(.cut):
+            self = .cut
+        case .some(.dissolve(duration: _)):
+            self = .dissolve
+        case .some(.wipe(edge: let edge, duration: _)):
+            self = .wipe(edge)
+        }
+    }
+
+    /// The default transition this choice stores on the shot — nil for
+    /// ``none``, the concrete transition at its default duration otherwise.
+    var transition: TingraComposition.Transition? {
+        switch self {
+        case .none: nil
+        case .cut: .cut
+        case .dissolve: .dissolve
+        case .wipe(let edge): .wipe(edge: edge)
+        }
+    }
+
+    /// The choice's stable name for the menu's `tap` event params (the wipe
+    /// edge rides in a separate `edge` param).
+    var tapValue: String {
+        switch self {
+        case .none: "none"
+        case .cut: "cut"
+        case .dissolve: "dissolve"
+        case .wipe: "wipe"
         }
     }
 }

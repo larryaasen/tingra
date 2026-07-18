@@ -99,11 +99,11 @@ struct ProjectCodableTests {
         #expect(base != withDestination)
     }
 
-    // MARK: Destination (document version 2)
+    // MARK: Destination
 
-    @Test("the document format version is 2 since destinations were added")
-    func currentVersionIsTwo() {
-        #expect(Project.currentVersion == 2)
+    @Test("the document format version is 1 — pre-release, the format grows within v1")
+    func currentVersionIsOne() {
+        #expect(Project.currentVersion == 1)
     }
 
     @Test("a project with a destination round-trips through JSON unchanged")
@@ -129,12 +129,44 @@ struct ProjectCodableTests {
         #expect(Set(object.keys) == ["version", "presets", "destination"])
     }
 
-    @Test("a version-1 document without a destination decodes forward with destination nil")
-    func versionOneDecodesForward() throws {
+    @Test("a document without a destination key decodes with destination nil")
+    func missingDestinationDecodesNil() throws {
         let json = Data(#"{"version":1,"presets":[]}"#.utf8)
         let decoded = try JSONDecoder().decode(Project.self, from: json)
         #expect(decoded.version == 1)
         #expect(decoded.destination == nil)
+    }
+
+    // MARK: Default transitions
+
+    @Test("a document whose shots have no defaultTransition keys decodes with no defaults")
+    func missingDefaultTransitionsDecodeNil() throws {
+        let json = Data(
+            #"{"version":1,"presets":[{"id":"p","name":"Live","shots":[{"id":"s","name":"Wide"}]}]}"#.utf8)
+        let decoded = try JSONDecoder().decode(Project.self, from: json)
+        #expect(decoded.version == 1)
+        #expect(decoded.presets.first?.shots.first?.defaultTransition == nil)
+    }
+
+    @Test("a project whose shot carries a default transition round-trips through JSON unchanged")
+    func projectWithDefaultTransitionRoundTrips() throws {
+        let project = Project(
+            presets: [
+                Preset(
+                    id: PresetID(rawValue: "preset-1"),
+                    name: "Live",
+                    shots: [
+                        Shot(
+                            id: ShotID(rawValue: "display"), name: "Display",
+                            defaultTransition: .wipe(edge: .bottom, duration: 0.4))
+                    ]
+                )
+            ]
+        )
+        let data = try JSONEncoder().encode(project)
+        let decoded = try JSONDecoder().decode(Project.self, from: data)
+        #expect(decoded == project)
+        #expect(decoded.presets.first?.shots.first?.defaultTransition == .wipe(edge: .bottom, duration: 0.4))
     }
 
     @Test("a ProjectDestination round-trips through JSON unchanged")

@@ -27,7 +27,8 @@ struct LayerTreeEditTests {
             id: ShotID(rawValue: "pip"),
             name: "Picture in Picture",
             layers: ProgramLayout.layers(displayID: display, cameraID: camera),
-            background: BackgroundColor(red: 0.1, green: 0.2, blue: 0.3)
+            background: BackgroundColor(red: 0.1, green: 0.2, blue: 0.3),
+            defaultTransition: .dissolve
         )
     }
 
@@ -113,7 +114,7 @@ struct LayerTreeEditTests {
         #expect(LayerTreeEdit.rebindingLayers(boundTo: extra, to: camera, in: shot) == shot)
     }
 
-    @Test("every edit preserves the shot's identity — id, name, and background never change")
+    @Test("every edit preserves the shot's identity — id, name, background, and default transition never change")
     func editsPreserveShotIdentity() {
         let edits: [Shot] = [
             LayerTreeEdit.addingLayer(boundTo: extra, to: shot),
@@ -127,6 +128,7 @@ struct LayerTreeEditTests {
             #expect(edited.id == shot.id)
             #expect(edited.name == shot.name)
             #expect(edited.background == shot.background)
+            #expect(edited.defaultTransition == shot.defaultTransition)
         }
     }
 }

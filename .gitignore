@@ -3,3 +3,4 @@
 .swiftpm/
 apps/ingest-simulator/.bin/
 dist/
+UserInterfaceState.xcuserstate

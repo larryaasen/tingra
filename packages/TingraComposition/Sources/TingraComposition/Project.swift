@@ -10,10 +10,11 @@
 import Foundation
 
 /// The saved document for a whole show (GLOSSARY.md, "Project"): everything
-/// needed to reopen the show exactly as it was. Version 1 held the presets
-/// only; version 2 adds the ``destination`` configuration (the stream key is
-/// excluded — it lives in secure storage; see ARCHITECTURE.md, "Streaming the
-/// program"). Further settings join it in later iterations.
+/// needed to reopen the show exactly as it was — the presets, the
+/// ``destination`` configuration (the stream key is excluded — it lives in
+/// secure storage; see ARCHITECTURE.md, "Streaming the program"), and each
+/// shot's optional default transition. Further settings join it in later
+/// iterations.
 ///
 /// A project is a plain `Codable` value type — the serialized form is the
 /// project / scripting contract (CLAUDE.md, "Data Models"), so its JSON keys
@@ -21,12 +22,16 @@ import Foundation
 /// required ``version`` so a future format can migrate older documents, and
 /// decoding a document **newer** than this build understands throws rather
 /// than silently loading (and, on the next save, clobbering) fields this
-/// build does not know about. An older document decodes forward: a v1 file
-/// (no `destination`) loads cleanly with ``destination`` nil.
+/// build does not know about. **Pre-release the format is simply version 1**
+/// — nothing has shipped, so there are no older documents to migrate and the
+/// format grows freely within v1 (optional fields decode forgivingly);
+/// version 2 happens the first time the format changes after the first
+/// release (ARCHITECTURE.md, "Per-shot default transitions").
 public struct Project: Sendable, Equatable, Codable {
-    /// The newest document format version this build reads and writes. Bumped
-    /// to 2 when ``destination`` was added.
-    public static let currentVersion = 2
+    /// The newest document format version this build reads and writes —
+    /// version 1 until the first release ships; the format grows within v1
+    /// pre-release.
+    public static let currentVersion = 1
 
     /// The document format version this project was written with.
     public let version: Int
@@ -38,9 +43,8 @@ public struct Project: Sendable, Equatable, Codable {
 
     /// The stream destination this project last configured, or `nil` when
     /// none has been set. The key is never stored here — only in the host's
-    /// secure storage, referenced by this destination's URL (added in
-    /// document version 2). One destination in v1 of the app; multiple
-    /// destinations are roadmap step 8.
+    /// secure storage, referenced by this destination's URL. One destination
+    /// in v1 of the app; multiple destinations are roadmap step 8.
     public let destination: ProjectDestination?
 
     /// Creates a project.
@@ -68,8 +72,8 @@ public struct Project: Sendable, Equatable, Codable {
 
     /// Decodes a project. `version` is required (a document must declare its
     /// format so future versions can migrate it) and must not exceed
-    /// ``currentVersion``; `presets` and `destination` are optional (an older
-    /// document that predates a field decodes forward with it absent).
+    /// ``currentVersion``; `presets` and `destination` are optional (a
+    /// minimal document decodes forgivingly with them absent).
     ///
     /// - Throws: `DecodingError.keyNotFound` when `version` is missing, and
     ///   `DecodingError.dataCorrupted` when the document declares a format

@@ -218,6 +218,44 @@ or two in the doc that owns them — none need a rewrite.
 
 - [ ] **Steps 7–8** — app era: production features (presets, shots, layers,
   transitions, audio mixer), SRT/multiple destinations.
+  - [x] **Step 7, per-shot default transitions** *(code complete 2026-07-18)* —
+    the eleventh production-feature iteration, landing the deferral recorded
+    since the shot-management iteration: a shot carries the transition it is
+    taken with, set once instead of re-picked per take (custom-shader
+    transitions and SRT/multiple destinations — step 8 — remain).
+    `TingraComposition`'s `Shot` gained an optional **`defaultTransition:
+    Transition?`** — per-shot, not per-preset (the preference is about
+    *arriving at a shot*: a title dissolves in while the interview beside it
+    cuts) — on the project/scripting contract: stable camelCase
+    `defaultTransition` key, encoded only when set, absent = no default =
+    today's cut. **New standing rule (Larry, 2026-07-18): pre-release the
+    document format stays version 1** — nothing has shipped, so there are no
+    documents in the field to migrate; the interim v1→v2 `destination` bump is
+    retired (`Project.currentVersion` returns to 1, the destination and the
+    default simply part of v1), the version-key + decode-newer-throws
+    machinery stays armed, and version 2 happens the first time the format
+    changes after the first release. A stale dev file written under the
+    interim numbering decode-throws and is set aside/reseeded (accepted,
+    dev-only). The engine surface is otherwise
+    untouched: **resolution happens in `EngineModel`**, not the compositor —
+    `take(shotID:transition:)` keeps its caller-states-the-transition
+    contract, the app resolves the taken shot's `defaultTransition ?? .cut`
+    while the switcher's picker is on **Default** (a new leading segment and
+    the initial selection; Cut/Dissolve/Wipe are explicit overrides), and
+    `program.take` keeps reporting the resolved kind. The default is set from
+    a **Default Transition submenu** in the shot's context menu (a
+    checkmarked radio group: No Default, Cut, Dissolve, a wipe per edge — all
+    at the default durations), a document edit on the rename's line: through
+    `Compositor.updateShot(_:)`, debounced autosave, `tap`-event
+    observability only (`shotDefaultTransition.menu`); new strings localized
+    `de`/`es`. Decisions recorded in ARCHITECTURE.md, "Per-shot default
+    transitions". Tests: `TingraCompositionTests` (now 100 — the
+    `defaultTransition` round-trip per kind, stable key, omitted-when-nil,
+    missing-key, and unknown-kind decoding cases, Shot equality, and the
+    document-level missing-key + full round-trip cases) and the app's
+    `TingraTests` (now 57 — `ShotEdit.settingDefaultTransition`
+    set/clear/no-op, duplicate/rename preservation, and the layer-tree edits'
+    preservation of the field).
   - [x] **Step 7, wipe transitions** *(code complete 2026-07-18)* — the tenth
     production-feature iteration, completing the transitions story cut and
     dissolve opened 2026-07-08: the third transition kind, a **directional

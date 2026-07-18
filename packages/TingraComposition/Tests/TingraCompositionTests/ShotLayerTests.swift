@@ -46,17 +46,18 @@ struct LayerTests {
 
 @Suite("Shot")
 struct ShotTests {
-    @Test("a shot defaults to no layers over opaque black with an unnamed, fresh identity")
+    @Test("a shot defaults to no layers over opaque black with an unnamed, fresh identity and no default transition")
     func shotDefaults() {
         let shot = Shot()
         #expect(shot.layers.isEmpty)
         #expect(shot.background == .black)
         #expect(shot.name.isEmpty)
+        #expect(shot.defaultTransition == nil)
         // Two default shots get distinct identities.
         #expect(Shot().id != Shot().id)
     }
 
-    @Test("shots are equal only when their id, name, layers, and background all match")
+    @Test("shots are equal only when their id, name, layers, background, and default transition all match")
     func shotEquality() {
         let id = ShotID(rawValue: "shot-1")
         let layer = Layer(input: InputID(rawValue: "a"))
@@ -67,11 +68,14 @@ struct ShotTests {
         let otherLayers = Shot(id: id, name: "Wide", layers: [], background: .black)
         let otherBackground = Shot(
             id: id, name: "Wide", layers: [layer], background: BackgroundColor(red: 1, green: 1, blue: 1))
+        let otherDefaultTransition = Shot(
+            id: id, name: "Wide", layers: [layer], background: .black, defaultTransition: .dissolve)
         #expect(base == same)
         #expect(base != otherID)
         #expect(base != otherName)
         #expect(base != otherLayers)
         #expect(base != otherBackground)
+        #expect(base != otherDefaultTransition)
     }
 }
 

@@ -128,8 +128,15 @@ enum LayerTreeEdit {
     }
 
     /// Rebuilds the shot with an edited layer tree, preserving its identity —
-    /// the id, name, and background never change under a layer-tree edit.
+    /// the id, name, background, and default transition never change under a
+    /// layer-tree edit.
     private static func replacingLayers(of shot: Shot, with layers: [Layer]) -> Shot {
-        Shot(id: shot.id, name: shot.name, layers: layers, background: shot.background)
+        Shot(
+            id: shot.id,
+            name: shot.name,
+            layers: layers,
+            background: shot.background,
+            defaultTransition: shot.defaultTransition
+        )
     }
 }

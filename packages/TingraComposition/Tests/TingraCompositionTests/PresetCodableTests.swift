@@ -102,6 +102,56 @@ struct PresetCodableTests {
         #expect(decoded.background == .black)
     }
 
+    // MARK: Default transition
+
+    @Test("a shot with no defaultTransition key decodes with no default transition")
+    func shotMissingDefaultTransitionDecodesNil() throws {
+        let json = Data(#"{"id":"s","name":"Wide"}"#.utf8)
+        let decoded = try JSONDecoder().decode(Shot.self, from: json)
+        #expect(decoded.defaultTransition == nil)
+    }
+
+    @Test("a shot with no default transition encodes without the defaultTransition key")
+    func shotWithoutDefaultOmitsKey() throws {
+        let data = try JSONEncoder().encode(Shot(id: ShotID(rawValue: "s"), name: "Wide"))
+        let object = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(Set(object.keys) == ["id", "name", "layers", "background"])
+    }
+
+    @Test(
+        "a shot's default transition round-trips through JSON unchanged for every kind",
+        arguments: [
+            Transition.cut,
+            .dissolve(duration: 1.25),
+            .wipe(edge: .top, duration: 0.75),
+        ]
+    )
+    func shotDefaultTransitionRoundTrips(transition: Transition) throws {
+        let shot = Shot(id: ShotID(rawValue: "s"), name: "Wide", defaultTransition: transition)
+        let data = try JSONEncoder().encode(shot)
+        let decoded = try JSONDecoder().decode(Shot.self, from: data)
+        #expect(decoded == shot)
+        #expect(decoded.defaultTransition == transition)
+    }
+
+    @Test("a shot's default transition encodes under the stable defaultTransition key")
+    func shotDefaultTransitionKeyIsStable() throws {
+        let shot = Shot(id: ShotID(rawValue: "s"), name: "Wide", defaultTransition: .wipe(edge: .right))
+        let data = try JSONEncoder().encode(shot)
+        let object = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let transition = try #require(object["defaultTransition"] as? [String: Any])
+        #expect(transition["kind"] as? String == "wipe")
+        #expect(transition["edge"] as? String == "right")
+    }
+
+    @Test("a shot with an unknown defaultTransition kind throws a decoding error")
+    func shotUnknownDefaultTransitionThrows() throws {
+        let json = Data(#"{"id":"s","name":"Wide","defaultTransition":{"kind":"starWipe"}}"#.utf8)
+        #expect(throws: DecodingError.self) {
+            try JSONDecoder().decode(Shot.self, from: json)
+        }
+    }
+
     @Test("a layer with only an input decodes to the full-frame, full-opacity defaults")
     func layerOptionalFieldsDefault() throws {
         let json = Data(#"{"input":"camera-1"}"#.utf8)

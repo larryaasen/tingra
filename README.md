@@ -423,10 +423,11 @@ so it stays testable with a synthetic clock and a mock renderer (see
   latest frame" replaced by "render the layer tree"; renders a live background
   canvas from the first tick.
 - `Project` — the saved document for a whole show: a versioned, plain `Codable`
-  value type holding the presets and (since document version 2) the stream
-  `destination` (key excluded — it lives in secure storage). A v1 document
-  decodes forward with the destination nil; decoding a document newer than the
-  build understands throws rather than silently loading it.
+  value type holding the presets, the stream `destination` (key excluded — it
+  lives in secure storage), and each shot's optional default transition. The
+  format is version 1 until the first release ships (pre-release it grows
+  within v1, optional fields decoding forgivingly); decoding a document newer
+  than the build understands throws rather than silently loading it.
 - `ProjectDestination` — a key-free destination configuration saved in a
   `Project` (the RTMP(S) URL only); the secret it references lives in the
   host's secure storage, keyed by that URL. Deliberately `Codable` precisely
@@ -439,8 +440,9 @@ so it stays testable with a synthetic clock and a mock renderer (see
 - `PresetID` — a stable, string-backed identifier for a preset (a fresh UUID by
   default).
 - `Shot` — a short-term composition with a stable `id` and user-facing `name`:
-  an ordered layer tree (bottom to top) over a `BackgroundColor`. `Codable` as
-  part of the persisted preset.
+  an ordered layer tree (bottom to top) over a `BackgroundColor`, plus an
+  optional `defaultTransition` the shot is taken with when the caller does not
+  name one (absent = a cut). `Codable` as part of the persisted preset.
 - `ShotID` — a stable, string-backed identifier for a shot, used to take it to
   program (a fresh UUID by default, or a fixed token for a built-in shot).
 - `Layer` — one positioned element: an input referenced by `InputID`, placed in
@@ -453,8 +455,9 @@ so it stays testable with a synthetic clock and a mock renderer (see
 - `Transition` — the move from one shot to the next, passed per call to
   `take(shotID:transition:)`: `cut` (instant, the default), `dissolve(duration:)`
   (crossfade), or `wipe(edge:duration:)` (directional reveal); a plain `Codable`
-  value type on the same project/scripting contract as `Preset`/`Shot` (custom
-  shader based transitions are a later iteration).
+  value type on the same project/scripting contract as `Preset`/`Shot`, persisted
+  as a shot's `defaultTransition` (custom shader based transitions are a later
+  iteration).
 - `WipeEdge` — the frame edge a wipe reveals the incoming shot from (`left`,
   `right`, `top`, `bottom`, in the operator's top-left-origin screen terms),
   its boundary sweeping to the opposite edge; `Codable` by its stable camelCase
@@ -629,9 +632,11 @@ manages the project's presets — an Add Preset button plus a per-preset context
 menu with Duplicate, Rename…, Move Left / Move Right, and Remove Preset,
 disabled on the last remaining preset — above a shot switcher that also manages
 shots: an Add Shot button plus a per-shot context menu with Duplicate,
-Rename…, Move Left / Move Right, and Remove Shot, and a segmented transition
-picker — Cut, Dissolve, or Wipe, with an edge pop-up while Wipe is selected —
-choosing how the next take reaches program), `MixerView` (the mixer
+Rename…, a Default Transition submenu setting the shot's persisted default,
+Move Left / Move Right, and Remove Shot, and a segmented transition
+picker — Default (each shot's own default transition, the initial selection),
+or an explicit Cut, Dissolve, or Wipe, with an edge pop-up while Wipe is
+selected — choosing how the next take reaches program), `MixerView` (the mixer
 panel: one channel strip per discovered audio input, each with a mute toggle and
 a live level slider — it replaces the streaming panel's microphone picker),
 `MixerStrip` (the pure, unit-tested strip state and its seeding: first input
@@ -641,7 +646,8 @@ adjust a layer's frame and opacity with live sliders — every edit on program a
 the next tick, and autosaved to the project file), `LayerTreeEdit` (the pure,
 unit-tested edit operations over a `Shot`, including the rebind a picker change
 applies), `ShotEdit` (the pure, unit-tested shot-management operations: a new
-empty shot, a duplicate under a fresh id, a rename that ignores empty names),
+empty shot, a duplicate under a fresh id, a rename that ignores empty names,
+and setting or clearing a shot's default transition),
 `PresetEdit` (the same operations one level up: a new empty preset, a duplicate
 under a fresh id with the source's shot ids preserved — so switching between
 original and copy holds the on-program shot — and a rename that ignores empty

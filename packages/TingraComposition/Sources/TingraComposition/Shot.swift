@@ -63,6 +63,17 @@ public struct Shot: Sendable, Equatable, Codable, Identifiable {
     /// program.
     public let background: BackgroundColor
 
+    /// The transition this shot is taken to program with when the caller
+    /// does not name one explicitly — how a switcher's Default choice
+    /// resolves per shot (ARCHITECTURE.md, "Per-shot default transitions").
+    /// `nil` (the default) means no per-shot preference: an unresolved take
+    /// is a cut, the behavior every shot had before this field existed.
+    ///
+    /// The compositor never reads it: `take(shotID:transition:)` still takes
+    /// exactly the transition it is passed, and resolving a default against
+    /// an operator's override is the caller's decision.
+    public let defaultTransition: Transition?
+
     /// Creates a shot.
     ///
     /// - Parameters:
@@ -70,16 +81,20 @@ public struct Shot: Sendable, Equatable, Codable, Identifiable {
     ///   - name: The user-facing name (default: empty).
     ///   - layers: The layer tree, bottom to top (default: none).
     ///   - background: The background color (default: opaque black).
+    ///   - defaultTransition: The transition an unresolved take uses
+    ///     (default: none — a cut).
     public init(
         id: ShotID = ShotID(),
         name: String = "",
         layers: [Layer] = [],
-        background: BackgroundColor = .black
+        background: BackgroundColor = .black,
+        defaultTransition: Transition? = nil
     ) {
         self.id = id
         self.name = name
         self.layers = layers
         self.background = background
+        self.defaultTransition = defaultTransition
     }
 
     /// The coding keys — stable camelCase names for the project document.
@@ -88,28 +103,34 @@ public struct Shot: Sendable, Equatable, Codable, Identifiable {
         case name
         case layers
         case background
+        case defaultTransition
     }
 
     /// Decodes a shot. `id` and `name` are required (a persisted shot has an
     /// identity and a name); `layers` and `background` are optional and
     /// default to an empty tree over opaque black, so a minimal hand-written
-    /// shot is valid.
+    /// shot is valid; `defaultTransition` is optional and absent means no
+    /// default.
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(ShotID.self, forKey: .id)
         name = try container.decode(String.self, forKey: .name)
         layers = try container.decodeIfPresent([Layer].self, forKey: .layers) ?? []
         background = try container.decodeIfPresent(BackgroundColor.self, forKey: .background) ?? .black
+        defaultTransition = try container.decodeIfPresent(Transition.self, forKey: .defaultTransition)
     }
 
-    /// Encodes a shot, always writing every field so the document round-trips
-    /// exactly.
+    /// Encodes a shot, always writing every field — except
+    /// `defaultTransition`, written only when set, so a shot with no default
+    /// round-trips to a document without the key (and reads back as nil, the
+    /// same rule as `Project`'s `destination`).
     public func encode(to encoder: any Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(id, forKey: .id)
         try container.encode(name, forKey: .name)
         try container.encode(layers, forKey: .layers)
         try container.encode(background, forKey: .background)
+        try container.encodeIfPresent(defaultTransition, forKey: .defaultTransition)
     }
 }
 

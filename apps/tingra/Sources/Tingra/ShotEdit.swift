@@ -32,8 +32,8 @@ enum ShotEdit {
         Shot(name: String(localized: "New Shot", bundle: .module, comment: "Default name of a newly added shot"))
     }
 
-    /// A duplicate of a shot: the source's layer tree and background under a
-    /// fresh UUID and a "<name> copy" name.
+    /// A duplicate of a shot: the source's layer tree, background, and
+    /// default transition under a fresh UUID and a "<name> copy" name.
     ///
     /// - Parameter shot: The shot to duplicate.
     /// - Returns: The duplicate.
@@ -46,14 +46,16 @@ enum ShotEdit {
                 comment: "Name of a duplicated shot or preset; the placeholder is the source's name"
             ),
             layers: shot.layers,
-            background: shot.background
+            background: shot.background,
+            defaultTransition: shot.defaultTransition
         )
     }
 
-    /// Renames a shot, preserving its identity, layer tree, and background.
-    /// The name is trimmed of surrounding whitespace; a rename to an empty
-    /// (or whitespace-only) name returns the shot unchanged — a switcher
-    /// button needs a label, so the UI never produces an unnamed shot.
+    /// Renames a shot, preserving its identity, layer tree, background, and
+    /// default transition. The name is trimmed of surrounding whitespace; a
+    /// rename to an empty (or whitespace-only) name returns the shot
+    /// unchanged — a switcher button needs a label, so the UI never produces
+    /// an unnamed shot.
     ///
     /// - Parameters:
     ///   - shot: The shot to rename.
@@ -63,6 +65,32 @@ enum ShotEdit {
     static func renaming(_ shot: Shot, to name: String) -> Shot {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return shot }
-        return Shot(id: shot.id, name: trimmed, layers: shot.layers, background: shot.background)
+        return Shot(
+            id: shot.id,
+            name: trimmed,
+            layers: shot.layers,
+            background: shot.background,
+            defaultTransition: shot.defaultTransition
+        )
+    }
+
+    /// Sets — or, passed nil, clears — a shot's default transition,
+    /// preserving everything else: the transition the shot is taken with
+    /// while the switcher's transition picker is on Default
+    /// (ARCHITECTURE.md, "Per-shot default transitions").
+    ///
+    /// - Parameters:
+    ///   - transition: The new default transition, or nil for none (an
+    ///     unresolved take is a cut).
+    ///   - shot: The shot to edit.
+    /// - Returns: The shot with its default transition replaced.
+    static func settingDefaultTransition(_ transition: Transition?, of shot: Shot) -> Shot {
+        Shot(
+            id: shot.id,
+            name: shot.name,
+            layers: shot.layers,
+            background: shot.background,
+            defaultTransition: transition
+        )
     }
 }

@@ -161,10 +161,13 @@ final class EngineModel {
 
     /// The transition kind the next shot switcher tap takes with
     /// (GLOSSARY.md, "Transition") — session state bound from `ContentView`'s
-    /// transition picker, never part of the saved document. The switcher
-    /// itself still always reports the choice it used, never guesses at
-    /// intent.
-    var takeTransitionKind: TakeTransitionKind = .cut
+    /// transition picker, never part of the saved document. Starts on
+    /// ``TakeTransitionKind/default``, so each take resolves the taken shot's
+    /// own ``Shot/defaultTransition`` until the operator overrides it with an
+    /// explicit kind (ARCHITECTURE.md, "Per-shot default transitions"). The
+    /// switcher itself still always reports the choice it used, never guesses
+    /// at intent.
+    var takeTransitionKind: TakeTransitionKind = .default
 
     /// The frame edge the next wipe reveals the incoming shot from — session
     /// state bound from the switcher's edge picker, read only while
@@ -625,12 +628,14 @@ final class EngineModel {
 
     /// Takes the shot with the given id to program with the transition the
     /// switcher currently selects — ``takeTransitionKind``, plus ``wipeEdge``
-    /// for a wipe (GLOSSARY.md, "Transition"). Driven by the shot switcher
-    /// button; the compositor renders it starting the next tick.
+    /// for a wipe; on Default, the taken shot's own ``Shot/defaultTransition``
+    /// (GLOSSARY.md, "Transition"). Driven by the shot switcher button; the
+    /// compositor renders it starting the next tick.
     ///
     /// Reports no `tap` event itself — the switcher button's action closure
     /// in `ContentView` reports the tap before calling this, right where the
-    /// user action is executed (EVENTS.md, "The `tap` convention").
+    /// user action is executed (EVENTS.md, "The `tap` convention"); the
+    /// compositor's `program.take` event carries the resolved transition.
     ///
     /// - Parameter shotID: The id of the shot to take to program.
     func take(_ shotID: ShotID) {
@@ -638,11 +643,32 @@ final class EngineModel {
         // outside the loaded pool (see ``switchPreset(to:)``) whose inputs
         // can stop once this take replaces it.
         let wasHoldingSnapshot = activeShotID == nil && hasSessionPreset
-        compositor.take(shotID: shotID, transition: takeTransition)
+        compositor.take(shotID: shotID, transition: resolvedTransition(for: shotID))
         activeShotID = compositor.activeShotID
         if wasHoldingSnapshot {
             Task { await reconfigure() }
         }
+    }
+
+    /// Sets — or, passed nil, clears — a shot's default transition: the
+    /// transition the shot is taken with while the switcher's transition
+    /// picker is on Default (ARCHITECTURE.md, "Per-shot default
+    /// transitions"). A document edit like a rename: it flows through the
+    /// compositor's `updateShot` path and autosaves through the
+    /// project-document path; the context menu's `tap` event carries the
+    /// observability (EVENTS.md).
+    ///
+    /// - Parameters:
+    ///   - transition: The new default transition, or nil for none (an
+    ///     unresolved take is a cut).
+    ///   - shotID: The id of the shot to edit.
+    func setShotDefaultTransition(_ transition: Transition?, for shotID: ShotID) {
+        guard let index = shots.firstIndex(where: { $0.id == shotID }) else { return }
+        let edited = ShotEdit.settingDefaultTransition(transition, of: shots[index])
+        guard edited != shots[index] else { return }
+        shots[index] = edited
+        compositor.updateShot(edited)
+        scheduleAutosave()
     }
 
     /// Adds a new, empty user-authored shot (fresh UUID, localized default
@@ -1368,8 +1394,8 @@ final class EngineModel {
         autosaveTask?.cancel()
         autosaveTask = nil
         syncActivePreset()
-        // The destination URL joins the document (project format v2); its
-        // stream key is excluded — it lives only in secure storage.
+        // The destination URL joins the document; its stream key is
+        // excluded — it lives only in secure storage.
         let destination = URL(string: destinationURL).flatMap {
             destinationURL.isEmpty ? nil : ProjectDestination(url: $0)
         }
@@ -1409,11 +1435,21 @@ final class EngineModel {
         }
     }
 
-    /// The concrete transition ``take(_:)`` passes to the compositor: the
-    /// switcher's selected kind at its default duration, with the selected
-    /// edge for a wipe.
-    private var takeTransition: Transition {
+    /// The concrete transition ``take(_:)`` passes to the compositor for the
+    /// shot being taken: the switcher's explicitly selected kind at its
+    /// default duration (with the selected edge for a wipe) — or, on Default,
+    /// the taken shot's own ``Shot/defaultTransition``, falling back to a cut
+    /// for a shot with no default (today's behavior for every shot that never
+    /// set one). Resolution lives here in the app, not the compositor: the
+    /// override source is switcher session state, and
+    /// `take(shotID:transition:)` keeps its caller-states-the-transition
+    /// contract (ARCHITECTURE.md, "Per-shot default transitions").
+    ///
+    /// - Parameter shotID: The id of the shot being taken.
+    /// - Returns: The transition to take it with.
+    private func resolvedTransition(for shotID: ShotID) -> Transition {
         switch takeTransitionKind {
+        case .default: shots.first { $0.id == shotID }?.defaultTransition ?? .cut
         case .cut: .cut
         case .dissolve: .dissolve
         case .wipe: .wipe(edge: wipeEdge)
@@ -1427,7 +1463,12 @@ final class EngineModel {
 /// take time. Custom shader based transitions join when the engine can
 /// represent them.
 enum TakeTransitionKind: String, CaseIterable {
-    /// An instant cut — the default.
+    /// The taken shot's own ``Shot/defaultTransition`` (a cut when it has
+    /// none) — the initial selection, so per-shot defaults are effective
+    /// out of the box.
+    case `default`
+
+    /// An instant cut, regardless of the taken shot's default.
     case cut
 
     /// A crossfade at the default dissolve duration.
