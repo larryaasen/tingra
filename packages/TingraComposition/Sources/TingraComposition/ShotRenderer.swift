@@ -76,4 +76,44 @@ public protocol ShotRenderer {
         format: ProgramFormat,
         time: CMTime
     ) -> CapturedFrame?
+
+    /// Renders one program frame of a **wipe** in progress (GLOSSARY.md,
+    /// "Transition"): a directional reveal of the incoming shot from `edge`
+    /// at `progress` — `0` is fully `outgoing`, `1` is fully `incoming`, and
+    /// values between show the incoming shot where the boundary has swept
+    /// past and the outgoing shot where it has not. The compositor's calling
+    /// contract matches ``renderDissolve(from:to:progress:frames:format:time:)``:
+    /// once per tick for the transition's duration, then back to the plain
+    /// render once `progress` reaches `1`.
+    ///
+    /// A deliberate per-kind requirement rather than one generalized
+    /// `renderTransition(kind:)`: the compositor is the only place that maps
+    /// a ``Transition`` to a renderer path, and each kind's pixel work stays
+    /// an explicit, separately testable method. No default implementation —
+    /// a fallback (a wipe silently rendering as a dissolve, say) would mask
+    /// a conformer that forgot the new kind; this seam is package-internal
+    /// (not the plug-in stability contract), so the compiler error is the
+    /// right tool.
+    ///
+    /// - Parameters:
+    ///   - outgoing: The shot being transitioned away from.
+    ///   - incoming: The shot being transitioned to.
+    ///   - edge: The frame edge the incoming shot is revealed from.
+    ///   - progress: How far through the wipe this tick falls, `0`...`1`.
+    ///   - frames: The latest frame each input has produced, keyed by
+    ///     ``InputID`` — shared by both shots' layers.
+    ///   - format: The program geometry to render into.
+    ///   - time: The program tick's master clock time, stamped onto the
+    ///     returned frame.
+    /// - Returns: The composited program frame, or `nil` if a buffer could
+    ///   not be produced; the compositor skips that tick rather than crash.
+    func renderWipe(
+        from outgoing: Shot,
+        to incoming: Shot,
+        edge: WipeEdge,
+        progress: Double,
+        frames: [InputID: CapturedFrame],
+        format: ProgramFormat,
+        time: CMTime
+    ) -> CapturedFrame?
 }

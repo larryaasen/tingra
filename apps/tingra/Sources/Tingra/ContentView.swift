@@ -21,14 +21,14 @@ import TingraPlugInKit
 /// preset, and each preset button's context menu duplicates, renames,
 /// reorders (Move Left / Move Right), or removes it. The pickers pick one
 /// camera and one display; the shot switcher takes the chosen shot to
-/// program — a cut, or a dissolve when the switcher's transition toggle is
-/// on (GLOSSARY.md, "Transition") — and manages the active preset's shots the
-/// same way, one level down (ARCHITECTURE.md, "Shot management", "Shot and
-/// preset reordering"); the editor (``LayerTreeEditorView``) edits the
-/// selected shot's layer tree live; the mixer panel (``MixerView``) mixes the
-/// audio inputs into the program mix the streaming panel puts on air. This is
-/// the step-7 shape — the remaining production surface (wipe transitions)
-/// grows from here.
+/// program — a cut, dissolve, or wipe, per the switcher's transition picker
+/// and, for a wipe, its edge picker (GLOSSARY.md, "Transition") — and
+/// manages the active preset's shots the same way, one level down
+/// (ARCHITECTURE.md, "Shot management", "Shot and preset reordering"); the
+/// editor (``LayerTreeEditorView``) edits the selected shot's layer tree
+/// live; the mixer panel (``MixerView``) mixes the audio inputs into the
+/// program mix the streaming panel puts on air. This is the step-7 shape —
+/// the remaining production surfaces grow from here.
 ///
 /// Every user action here reports its own `tap` event right where it's
 /// executed — a picker's `onChange`, a button's action closure — rather than
@@ -279,8 +279,10 @@ struct ContentView: View {
     }
 
     /// The shot switcher: one button per available shot, taking it to program
-    /// on tap (a dissolve when ``EngineModel/useDissolveTransition`` is on,
-    /// otherwise a cut). The button for the shot currently on program is
+    /// on tap with the transition the segmented picker selects
+    /// (``EngineModel/takeTransitionKind`` — cut, dissolve, or wipe; a wipe's
+    /// edge comes from the adjacent pop-up, shown only while Wipe is
+    /// selected). The button for the shot currently on program is
     /// highlighted; its context menu duplicates, renames, or removes the
     /// shot, and the trailing Add Shot button appends a new empty one — the
     /// button stays available even when the preset has no shots, so the
@@ -318,18 +320,58 @@ struct ContentView: View {
             }
 
             if !model.shots.isEmpty {
-                Toggle(isOn: $model.useDissolveTransition) {
-                    Text(
-                        "Dissolve",
-                        comment: "Toggle: use a dissolve transition for the next shot take, instead of a cut")
-                }
-                .toggleStyle(.checkbox)
-                .onChange(of: model.useDissolveTransition) { _, newValue in
-                    model.eventBus.tap(
-                        "transition.toggle",
-                        domain: .composition,
-                        params: ["dissolve": .bool(newValue)]
-                    )
+                HStack(spacing: 12) {
+                    Picker(selection: $model.takeTransitionKind) {
+                        Text("Cut", comment: "Transition picker option: switch to the next shot taken instantly")
+                            .tag(TakeTransitionKind.cut)
+                        Text("Dissolve", comment: "Transition picker option: crossfade to the next shot taken")
+                            .tag(TakeTransitionKind.dissolve)
+                        Text(
+                            "Wipe",
+                            comment:
+                                "Transition picker option: reveal the next shot taken across the frame from an edge"
+                        )
+                        .tag(TakeTransitionKind.wipe)
+                    } label: {
+                        Text(
+                            "Transition",
+                            comment: "Label of the picker choosing the transition kind for the next shot take")
+                    }
+                    .pickerStyle(.segmented)
+                    .fixedSize()
+                    .onChange(of: model.takeTransitionKind) { _, newValue in
+                        model.eventBus.tap(
+                            "transition.picker",
+                            domain: .composition,
+                            params: ["kind": .string(newValue.rawValue)]
+                        )
+                    }
+
+                    if model.takeTransitionKind == .wipe {
+                        Picker(selection: $model.wipeEdge) {
+                            Text("Left", comment: "Wipe edge picker option: reveal from the left edge of the frame")
+                                .tag(WipeEdge.left)
+                            Text("Right", comment: "Wipe edge picker option: reveal from the right edge of the frame")
+                                .tag(WipeEdge.right)
+                            Text("Top", comment: "Wipe edge picker option: reveal from the top edge of the frame")
+                                .tag(WipeEdge.top)
+                            Text("Bottom", comment: "Wipe edge picker option: reveal from the bottom edge of the frame")
+                                .tag(WipeEdge.bottom)
+                        } label: {
+                            Text(
+                                "Edge",
+                                comment: "Label of the picker choosing the frame edge a wipe reveals the next shot from"
+                            )
+                        }
+                        .fixedSize()
+                        .onChange(of: model.wipeEdge) { _, newValue in
+                            model.eventBus.tap(
+                                "wipeEdge.picker",
+                                domain: .composition,
+                                params: ["edge": .string(newValue.rawValue)]
+                            )
+                        }
+                    }
                 }
             }
         }

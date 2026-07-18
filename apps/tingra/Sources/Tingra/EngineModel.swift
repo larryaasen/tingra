@@ -159,11 +159,17 @@ final class EngineModel {
         cameras + displays
     }
 
-    /// Whether the next shot switcher tap dissolves rather than cuts
-    /// (GLOSSARY.md, "Transition"). A plain toggle bound from `ContentView`;
-    /// the switcher itself still always reports the cut/dissolve choice it
-    /// used, never guesses at intent.
-    var useDissolveTransition = false
+    /// The transition kind the next shot switcher tap takes with
+    /// (GLOSSARY.md, "Transition") — session state bound from `ContentView`'s
+    /// transition picker, never part of the saved document. The switcher
+    /// itself still always reports the choice it used, never guesses at
+    /// intent.
+    var takeTransitionKind: TakeTransitionKind = .cut
+
+    /// The frame edge the next wipe reveals the incoming shot from — session
+    /// state bound from the switcher's edge picker, read only while
+    /// ``takeTransitionKind`` is ``TakeTransitionKind/wipe``.
+    var wipeEdge: WipeEdge = .left
 
     /// The latest program frame, handed to the preview view to draw. Held
     /// in a plain relay (not observed) so the ~30 fps program does not churn
@@ -617,10 +623,10 @@ final class EngineModel {
         )
     }
 
-    /// Takes the shot with the given id to program, using ``useDissolveTransition``
-    /// to choose a cut or a dissolve (GLOSSARY.md, "Transition"). Driven by
-    /// the shot switcher button; the compositor renders it starting the next
-    /// tick.
+    /// Takes the shot with the given id to program with the transition the
+    /// switcher currently selects — ``takeTransitionKind``, plus ``wipeEdge``
+    /// for a wipe (GLOSSARY.md, "Transition"). Driven by the shot switcher
+    /// button; the compositor renders it starting the next tick.
     ///
     /// Reports no `tap` event itself — the switcher button's action closure
     /// in `ContentView` reports the tap before calling this, right where the
@@ -632,7 +638,7 @@ final class EngineModel {
         // outside the loaded pool (see ``switchPreset(to:)``) whose inputs
         // can stop once this take replaces it.
         let wasHoldingSnapshot = activeShotID == nil && hasSessionPreset
-        compositor.take(shotID: shotID, transition: useDissolveTransition ? .dissolve : .cut)
+        compositor.take(shotID: shotID, transition: takeTransition)
         activeShotID = compositor.activeShotID
         if wasHoldingSnapshot {
             Task { await reconfigure() }
@@ -1402,6 +1408,34 @@ final class EngineModel {
             self?.saveProject()
         }
     }
+
+    /// The concrete transition ``take(_:)`` passes to the compositor: the
+    /// switcher's selected kind at its default duration, with the selected
+    /// edge for a wipe.
+    private var takeTransition: Transition {
+        switch takeTransitionKind {
+        case .cut: .cut
+        case .dissolve: .dissolve
+        case .wipe: .wipe(edge: wipeEdge)
+        }
+    }
+}
+
+/// The transition kinds the shot switcher's picker offers (GLOSSARY.md,
+/// "Transition") — the UI's session-state selection, mapped to a concrete
+/// ``Transition`` (with the selected wipe edge and the default durations) at
+/// take time. Custom shader based transitions join when the engine can
+/// represent them.
+enum TakeTransitionKind: String, CaseIterable {
+    /// An instant cut — the default.
+    case cut
+
+    /// A crossfade at the default dissolve duration.
+    case dissolve
+
+    /// A directional reveal from ``EngineModel/wipeEdge`` at the default
+    /// wipe duration.
+    case wipe
 }
 
 /// A plain, `@MainActor` holder for the latest program pixel buffer: the

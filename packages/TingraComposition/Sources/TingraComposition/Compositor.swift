@@ -41,8 +41,10 @@ import TingraPlugInKit
 /// switch which one is on program with ``take(shotID:transition:)`` — the
 /// default is a **cut**, the instant transition (GLOSSARY.md, "Transition");
 /// passing ``Transition/dissolve`` crossfades between the outgoing and
-/// incoming shot over its duration instead. A **wipe** and custom
-/// shader-based transitions are a later iteration. ``setShot(_:)`` remains
+/// incoming shot over its duration instead, and
+/// ``Transition/wipe(edge:duration:)`` reveals the incoming shot across the
+/// frame from an edge. Custom shader based transitions are a later
+/// iteration. ``setShot(_:)`` remains
 /// the low-level "render exactly this shot" path used by the pre-preset
 /// callers and tests (always a hard cut, no blending); the preset path
 /// (``loadPreset(_:)`` + ``take(shotID:transition:)``) is what the app drives.
@@ -113,9 +115,10 @@ public final class Compositor: Sendable {
         /// ``setShot`` that bypassed the preset.
         var activeShotID: ShotID?
 
-        /// A dissolve in progress, or `nil` when idle (a cut has already
+        /// A transition in progress — a dissolve's crossfade or a wipe's
+        /// directional reveal — or `nil` when idle (a cut has already
         /// replaced `shot` outright and needs no tick-by-tick blending).
-        /// While set, the tick renders a crossfade from `outgoing` toward
+        /// While set, the tick renders a blend from `outgoing` toward
         /// `shot` (the incoming shot) instead of `shot` alone.
         var pendingTransition: PendingTransition?
 
@@ -126,16 +129,21 @@ public final class Compositor: Sendable {
         var tickTask: Task<Void, Never>?
     }
 
-    /// A dissolve counted in ticks rather than wall-clock time, so its
-    /// progress is exact and deterministic under both the master clock and a
-    /// synthetic test clock (CLOCK.md, "The program tick" — nothing outside
-    /// the tick stream decides how much time has passed).
+    /// A transition (dissolve or wipe) counted in ticks rather than
+    /// wall-clock time, so its progress is exact and deterministic under
+    /// both the master clock and a synthetic test clock (CLOCK.md, "The
+    /// program tick" — nothing outside the tick stream decides how much
+    /// time has passed). Every kind shares this one timing spine; the kind
+    /// only decides which ``ShotRenderer`` path blends each tick.
     private struct PendingTransition {
         /// The shot being transitioned away from.
         let outgoing: Shot
 
-        /// The number of ticks the whole dissolve spans, at least one so a
-        /// zero or negative duration still completes on its first tick
+        /// The renderer path that blends each tick of this transition.
+        let kind: BlendKind
+
+        /// The number of ticks the whole transition spans, at least one so
+        /// a zero or negative duration still completes on its first tick
         /// rather than never finishing.
         let totalTicks: Int
 
@@ -234,12 +242,12 @@ public final class Compositor: Sendable {
     /// - When the shot on program also exists in the incoming preset (matched
     ///   by ``Shot/id``), it stays on program, adopting the incoming preset's
     ///   version of it — the ``updateShot(_:)`` rule applied across a preset
-    ///   switch; an in-progress dissolve continues toward the adopted tree.
+    ///   switch; an in-progress transition continues toward the adopted tree.
     /// - When it does not, the outgoing shot keeps rendering as a **held
     ///   snapshot** — ``activeShotID`` becomes `nil` (no shot of the loaded
     ///   preset is on program; ``programShot`` still names what renders) —
     ///   until the caller takes a shot from the new pool; an in-progress
-    ///   dissolve completes toward the snapshot.
+    ///   transition completes toward the snapshot.
     /// - When no preset shot is on program at all (the first load after boot,
     ///   or after a direct ``setShot(_:)``), it cuts to the preset's first
     ///   shot — or the empty background-only program when the preset has no
@@ -283,8 +291,10 @@ public final class Compositor: Sendable {
     /// on the next tick. `transition` defaults to a **cut** (the instant
     /// switch, unchanged from before this shot ever accepted a transition);
     /// passing ``Transition/dissolve`` crossfades from the outgoing shot to
-    /// the incoming one over its duration instead — the tick renders the
-    /// blend every tick until the dissolve completes, then settles on the
+    /// the incoming one over its duration instead, and
+    /// ``Transition/wipe(edge:duration:)`` reveals the incoming shot across
+    /// the frame from the given edge — either way the tick renders the blend
+    /// every tick until the transition completes, then settles on the
     /// incoming shot alone. Taking an id that is not in the loaded preset
     /// leaves the program unchanged and reports a `program.take` error event
     /// (a stale switcher selection is recoverable, never a crash); otherwise
@@ -304,10 +314,17 @@ public final class Compositor: Sendable {
             case .cut:
                 state.pendingTransition = nil
             case .dissolve(let duration):
-                // At least one tick, so a zero or negative duration still
-                // completes on its first tick rather than never finishing.
-                let totalTicks = max(1, Int((duration * Double(frameRate)).rounded()))
-                state.pendingTransition = PendingTransition(outgoing: outgoing, totalTicks: totalTicks)
+                state.pendingTransition = PendingTransition(
+                    outgoing: outgoing,
+                    kind: .dissolve,
+                    totalTicks: Self.tickCount(for: duration, frameRate: frameRate)
+                )
+            case .wipe(let edge, let duration):
+                state.pendingTransition = PendingTransition(
+                    outgoing: outgoing,
+                    kind: .wipe(edge: edge),
+                    totalTicks: Self.tickCount(for: duration, frameRate: frameRate)
+                )
             }
             return shot
         }
@@ -337,7 +354,7 @@ public final class Compositor: Sendable {
     /// live edit path a layer-tree editor drives. When the edited shot is
     /// the one on program, the very next tick renders the edited layer tree
     /// (no separate "apply" step — the program is a live canvas, CLOCK.md);
-    /// while a dissolve is in progress toward it, the dissolve continues
+    /// while a transition is in progress toward it, the transition continues
     /// toward the edited tree. The edit persists in the loaded preset, so
     /// the shot keeps it across later ``take(shotID:transition:)`` switches
     /// within the session. ``activeShotID`` is untouched — editing a shot is
@@ -377,7 +394,7 @@ public final class Compositor: Sendable {
     /// Inserts a shot into the loaded preset's pool, making it available to
     /// ``take(shotID:transition:)`` — the shot-management add/duplicate path
     /// (ARCHITECTURE.md, "Shot management"). Adding a shot is **not** taking
-    /// it: the program, ``activeShotID``, and any in-progress dissolve are
+    /// it: the program, ``activeShotID``, and any in-progress transition are
     /// untouched, matching ``updateShot(_:)``'s contract that editing the
     /// pool never changes what is on air.
     ///
@@ -425,11 +442,11 @@ public final class Compositor: Sendable {
     /// is on program, the compositor **cuts to the adjacent shot** — the
     /// shot now occupying the removed shot's switcher position, or the new
     /// last shot when the removed one was last — clearing any in-progress
-    /// dissolve; removing the last remaining shot leaves the pool empty and
+    /// transition; removing the last remaining shot leaves the pool empty and
     /// the program on the background-only canvas with no active shot (still
     /// a live canvas, never a dead program — ARCHITECTURE.md, "Shot
     /// management"). Removing a shot that is only the *outgoing* side of an
-    /// in-progress dissolve lets the dissolve finish from its snapshot — the
+    /// in-progress transition lets the transition finish from its snapshot — the
     /// outgoing shot is on its way off program, the same rule
     /// ``updateShot(_:)`` follows.
     ///
@@ -482,9 +499,9 @@ public final class Compositor: Sendable {
     /// Moves a shot to a new position in the loaded preset's switcher order —
     /// the shot-management reorder path (ARCHITECTURE.md, "Shot and preset
     /// reordering"). **Reordering never changes the program:** ``activeShotID``,
-    /// the shot the tick renders, and any in-progress dissolve are all untouched
+    /// the shot the tick renders, and any in-progress transition are all untouched
     /// — the on-program shot keeps its identity and simply sits at a different
-    /// index, so a reorder survives a live take and a live dissolve by
+    /// index, so a reorder survives a live take and a live transition by
     /// construction, the same guarantee ``updateShot(_:)`` and ``addShot(_:at:)``
     /// give. Reordering *does* change which shot ``removeShot(shotID:)`` would
     /// cut to (its adjacency rule reads the switcher order), which is the point.
@@ -576,31 +593,45 @@ public final class Compositor: Sendable {
                 for await tickTime in clock.tick(every: frameDuration) {
                     guard !Task.isCancelled, let self else { break }
                     let snapshot = self.state.withLock { state -> TickSnapshot in
-                        var dissolve: TickSnapshot.Dissolve?
+                        var blend: TickSnapshot.Blend?
                         if var pending = state.pendingTransition {
                             pending.elapsedTicks += 1
                             let progress = min(1, Double(pending.elapsedTicks) / Double(pending.totalTicks))
-                            dissolve = TickSnapshot.Dissolve(outgoing: pending.outgoing, progress: progress)
+                            blend = TickSnapshot.Blend(
+                                outgoing: pending.outgoing, kind: pending.kind, progress: progress)
                             state.pendingTransition = pending.elapsedTicks >= pending.totalTicks ? nil : pending
                         }
                         return TickSnapshot(
                             shot: state.shot,
                             frames: state.slots,
                             continuation: state.programContinuation,
-                            dissolve: dissolve
+                            blend: blend
                         )
                     }
                     guard let continuation = snapshot.continuation else { continue }
                     let program: CapturedFrame? =
-                        if let dissolve = snapshot.dissolve {
-                            renderer.renderDissolve(
-                                from: dissolve.outgoing,
-                                to: snapshot.shot,
-                                progress: dissolve.progress,
-                                frames: snapshot.frames,
-                                format: format,
-                                time: tickTime
-                            )
+                        if let blend = snapshot.blend {
+                            switch blend.kind {
+                            case .dissolve:
+                                renderer.renderDissolve(
+                                    from: blend.outgoing,
+                                    to: snapshot.shot,
+                                    progress: blend.progress,
+                                    frames: snapshot.frames,
+                                    format: format,
+                                    time: tickTime
+                                )
+                            case .wipe(let edge):
+                                renderer.renderWipe(
+                                    from: blend.outgoing,
+                                    to: snapshot.shot,
+                                    edge: edge,
+                                    progress: blend.progress,
+                                    frames: snapshot.frames,
+                                    format: format,
+                                    time: tickTime
+                                )
+                            }
                         } else {
                             renderer.render(
                                 shot: snapshot.shot, frames: snapshot.frames, format: format, time: tickTime)
@@ -645,23 +676,48 @@ public final class Compositor: Sendable {
     private func store(_ frame: CapturedFrame, for id: InputID) {
         state.withLock { $0.slots[id] = frame }
     }
+
+    /// Converts a transition duration in seconds to the whole number of
+    /// program ticks it spans — at least one, so a zero or negative duration
+    /// still completes on its first tick rather than never finishing.
+    private static func tickCount(for duration: TimeInterval, frameRate: Int) -> Int {
+        max(1, Int((duration * Double(frameRate)).rounded()))
+    }
+}
+
+/// The renderer path an in-progress transition blends each tick with — how
+/// a ``PendingTransition``'s tick-counted progress turns into pixels. Every
+/// kind shares the same timing spine; only the ``ShotRenderer`` call
+/// differs.
+private enum BlendKind {
+    /// A crossfade —
+    /// ``ShotRenderer/renderDissolve(from:to:progress:frames:format:time:)``.
+    case dissolve
+
+    /// A directional reveal from the given edge —
+    /// ``ShotRenderer/renderWipe(from:to:edge:progress:frames:format:time:)``.
+    case wipe(edge: WipeEdge)
 }
 
 /// What one tick needs to render, snapshotted out of ``Compositor/State``
 /// under its lock in a single pass — including advancing (and, on
-/// completion, clearing) any in-progress dissolve, so the tick task never
+/// completion, clearing) any in-progress transition, so the tick task never
 /// re-enters the lock mid-render.
 private struct TickSnapshot {
-    /// A dissolve in progress this tick, or `nil` for a plain render.
-    struct Dissolve {
+    /// A transition blend in progress this tick, or `nil` for a plain
+    /// render.
+    struct Blend {
         /// The shot being transitioned away from.
         let outgoing: Shot
 
-        /// How far through the dissolve this tick falls, `0`...`1`.
+        /// The renderer path that blends this tick.
+        let kind: BlendKind
+
+        /// How far through the transition this tick falls, `0`...`1`.
         let progress: Double
     }
 
-    /// The shot to render — the incoming shot while a dissolve is in
+    /// The shot to render — the incoming shot while a transition is in
     /// progress, otherwise the shot currently on program.
     let shot: Shot
 
@@ -671,18 +727,20 @@ private struct TickSnapshot {
     /// The active program-frame consumer, or `nil` if none is attached.
     let continuation: AsyncStream<CapturedFrame>.Continuation?
 
-    /// The dissolve to render this tick, or `nil` for a plain render of
+    /// The blend to render this tick, or `nil` for a plain render of
     /// `shot`.
-    let dissolve: Dissolve?
+    let blend: Blend?
 }
 
 extension Transition {
-    /// The event-bus name for this transition's kind — `"cut"` or
-    /// `"dissolve"` — reported on ``Compositor``'s `program.take` event.
+    /// The event-bus name for this transition's kind — `"cut"`,
+    /// `"dissolve"`, or `"wipe"` — reported on ``Compositor``'s
+    /// `program.take` event.
     fileprivate var eventName: String {
         switch self {
         case .cut: "cut"
         case .dissolve: "dissolve"
+        case .wipe: "wipe"
         }
     }
 }

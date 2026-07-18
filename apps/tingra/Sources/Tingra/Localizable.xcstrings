@@ -69,6 +69,23 @@
         }
       }
     },
+    "Bottom" : {
+      "comment" : "Wipe edge picker option: reveal from the bottom edge of the frame",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unten"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abajo"
+          }
+        }
+      }
+    },
     "Camera" : {
       "comment" : "Camera input picker label",
       "localizations" : {
@@ -116,6 +133,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Conectando…"
+          }
+        }
+      }
+    },
+    "Cut" : {
+      "comment" : "Transition picker option: switch to the next shot taken instantly",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schnitt"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Corte"
           }
         }
       }
@@ -172,7 +206,7 @@
       }
     },
     "Dissolve" : {
-      "comment" : "Toggle: use a dissolve transition for the next shot take, instead of a cut",
+      "comment" : "Transition picker option: crossfade to the next shot taken",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -201,6 +235,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Duplicar"
+          }
+        }
+      }
+    },
+    "Edge" : {
+      "comment" : "Label of the picker choosing the frame edge a wipe reveals the next shot from",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kante"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Borde"
           }
         }
       }
@@ -269,6 +320,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Capas"
+          }
+        }
+      }
+    },
+    "Left" : {
+      "comment" : "Wipe edge picker option: reveal from the left edge of the frame",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Links"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Izquierda"
           }
         }
       }
@@ -715,6 +783,23 @@
         }
       }
     },
+    "Right" : {
+      "comment" : "Wipe edge picker option: reveal from the right edge of the frame",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rechts"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Derecha"
+          }
+        }
+      }
+    },
     "Select a layer to edit its frame and opacity." : {
       "comment" : "Layer editor empty-selection hint",
       "localizations" : {
@@ -817,6 +902,40 @@
         }
       }
     },
+    "Top" : {
+      "comment" : "Wipe edge picker option: reveal from the top edge of the frame",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Oben"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Arriba"
+          }
+        }
+      }
+    },
+    "Transition" : {
+      "comment" : "Label of the picker choosing the transition kind for the next shot take",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Übergang"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transición"
+          }
+        }
+      }
+    },
     "Width" : {
       "comment" : "Layer frame slider label",
       "localizations" : {
@@ -830,6 +949,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ancho"
+          }
+        }
+      }
+    },
+    "Wipe" : {
+      "comment" : "Transition picker option: reveal the next shot taken across the frame from an edge",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wischblende"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cortinilla"
           }
         }
       }

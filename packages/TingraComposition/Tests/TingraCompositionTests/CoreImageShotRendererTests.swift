@@ -260,6 +260,160 @@ struct CoreImageShotRendererTests {
         #expect(pixel.red > 0)
     }
 
+    @Test("a wipe at progress 0 renders the outgoing shot alone")
+    func wipeAtZeroProgressRendersOutgoingAlone() throws {
+        let renderer = makeRenderer()
+        let format = ProgramFormat(width: 4, height: 4, frameRate: 30)
+        let camera = InputID(rawValue: "camera")
+        let red = Shot(layers: [Layer(input: camera)], background: .black)
+        let black = Shot(background: .black)
+
+        let program = try #require(
+            renderer.renderWipe(
+                from: red,
+                to: black,
+                edge: .left,
+                progress: 0,
+                frames: [camera: solidFrame(red: 255, green: 0, blue: 0)],
+                format: format,
+                time: .zero
+            )
+        )
+
+        // Every pixel is still the outgoing shot — the reveal has not
+        // entered the frame.
+        for x in [0, 3] {
+            let pixel = readPixel(program.pixelBuffer, x: x, y: 2)
+            #expect(pixel.red > 250)
+        }
+    }
+
+    @Test("a wipe at progress 1 renders the incoming shot alone")
+    func wipeAtFullProgressRendersIncomingAlone() throws {
+        let renderer = makeRenderer()
+        let format = ProgramFormat(width: 4, height: 4, frameRate: 30)
+        let camera = InputID(rawValue: "camera")
+        let outgoing = Shot(background: .black)
+        let incoming = Shot(layers: [Layer(input: camera)], background: .black)
+
+        let program = try #require(
+            renderer.renderWipe(
+                from: outgoing,
+                to: incoming,
+                edge: .left,
+                progress: 1,
+                frames: [camera: solidFrame(red: 0, green: 0, blue: 255)],
+                format: format,
+                time: .zero
+            )
+        )
+
+        // Every pixel is the incoming shot — the reveal has crossed the
+        // whole frame, feather included.
+        for x in [0, 3] {
+            let pixel = readPixel(program.pixelBuffer, x: x, y: 2)
+            #expect(pixel.blue > 250)
+            #expect(pixel.red < 5)
+        }
+    }
+
+    @Test("a left-edge wipe midway shows the incoming shot on the left and the outgoing on the right")
+    func leftEdgeWipeMidwayRevealsLeftSide() throws {
+        let renderer = makeRenderer()
+        let format = ProgramFormat(width: 4, height: 4, frameRate: 30)
+        let cameraA = InputID(rawValue: "cameraA")
+        let cameraB = InputID(rawValue: "cameraB")
+        let outgoing = Shot(layers: [Layer(input: cameraA)], background: .black)
+        let incoming = Shot(layers: [Layer(input: cameraB)], background: .black)
+        let frames = [
+            cameraA: solidFrame(red: 255, green: 0, blue: 0),
+            cameraB: solidFrame(red: 0, green: 0, blue: 255),
+        ]
+
+        let program = try #require(
+            renderer.renderWipe(
+                from: outgoing,
+                to: incoming,
+                edge: .left,
+                progress: 0.5,
+                frames: frames,
+                format: format,
+                time: .zero
+            )
+        )
+
+        // The boundary sits mid-frame: the left column is revealed
+        // (incoming blue), the right column is not yet (outgoing red);
+        // columns near the soft boundary are deliberately not probed.
+        let left = readPixel(program.pixelBuffer, x: 0, y: 2)
+        let right = readPixel(program.pixelBuffer, x: 3, y: 2)
+        #expect(left.blue > 250)
+        #expect(left.red < 5)
+        #expect(right.red > 250)
+        #expect(right.blue < 5)
+    }
+
+    @Test("a top-edge wipe midway reveals the top of the frame (Y-flip correct)")
+    func topEdgeWipeMidwayRevealsTopSide() throws {
+        let renderer = makeRenderer()
+        let format = ProgramFormat(width: 4, height: 4, frameRate: 30)
+        let cameraA = InputID(rawValue: "cameraA")
+        let cameraB = InputID(rawValue: "cameraB")
+        let outgoing = Shot(layers: [Layer(input: cameraA)], background: .black)
+        let incoming = Shot(layers: [Layer(input: cameraB)], background: .black)
+        let frames = [
+            cameraA: solidFrame(red: 255, green: 0, blue: 0),
+            cameraB: solidFrame(red: 0, green: 0, blue: 255),
+        ]
+
+        let program = try #require(
+            renderer.renderWipe(
+                from: outgoing,
+                to: incoming,
+                edge: .top,
+                progress: 0.5,
+                frames: frames,
+                format: format,
+                time: .zero
+            )
+        )
+
+        // The top row (operator terms — row 0) is revealed, the bottom row
+        // is not: the edge names follow the layer frames' top-left origin,
+        // not Core Image's bottom-left one.
+        let top = readPixel(program.pixelBuffer, x: 2, y: 0)
+        let bottom = readPixel(program.pixelBuffer, x: 2, y: 3)
+        #expect(top.blue > 250)
+        #expect(top.red < 5)
+        #expect(bottom.red > 250)
+        #expect(bottom.blue < 5)
+    }
+
+    @Test("the program frame stamped by a wipe carries the tick's time and BT.709 tags")
+    func wipeStampsTickTimeAndTags() throws {
+        let renderer = makeRenderer()
+        let format = ProgramFormat(width: 4, height: 4, frameRate: 30)
+
+        let program = try #require(
+            renderer.renderWipe(
+                from: Shot(),
+                to: Shot(),
+                edge: .bottom,
+                progress: 0.5,
+                frames: [:],
+                format: format,
+                time: CMTime(value: 9, timescale: 30)
+            )
+        )
+
+        #expect(program.presentationTime == CMTime(value: 9, timescale: 30))
+        // No untagged buffer leaves the renderer (ARCHITECTURE.md, "Color
+        // and pixel format conventions") — the wipe path shares the tagged
+        // output tail with every other render.
+        let primaries = CVBufferCopyAttachment(program.pixelBuffer, kCVImageBufferColorPrimariesKey, nil)
+        #expect(primaries as? String == kCVImageBufferColorPrimaries_ITU_R_709_2 as String)
+    }
+
     @Test("the program frame stamped by a dissolve carries the tick's time")
     func dissolveStampsTickTime() throws {
         let renderer = makeRenderer()

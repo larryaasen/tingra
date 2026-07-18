@@ -407,7 +407,8 @@ so it stays testable with a synthetic clock and a mock renderer (see
 - `Compositor` — the tick-paced engine: holds a latest-wins slot per input and,
   on each program tick, renders the current shot's layer tree over every slot's
   latest frame, yielding one program frame stamped with the tick's master clock
-  time. Holds a loaded preset's shots, cuts among them with `take(shotID:)`
+  time. Holds a loaded preset's shots, switches among them with
+  `take(shotID:transition:)` — a cut by default, or a dissolve or wipe
   (`loadPreset(_:)` — which never interrupts what is already playing out: the
   on-program shot holds when its id exists in the incoming preset, and otherwise
   keeps rendering as a held snapshot, readable via `programShot`, until a take;
@@ -449,13 +450,25 @@ so it stays testable with a synthetic clock and a mock renderer (see
   (defaults to opaque black).
 - `ProgramFormat` — the program's output geometry and rate (width, height, frame
   rate) every frame is rendered at.
+- `Transition` — the move from one shot to the next, passed per call to
+  `take(shotID:transition:)`: `cut` (instant, the default), `dissolve(duration:)`
+  (crossfade), or `wipe(edge:duration:)` (directional reveal); a plain `Codable`
+  value type on the same project/scripting contract as `Preset`/`Shot` (custom
+  shader based transitions are a later iteration).
+- `WipeEdge` — the frame edge a wipe reveals the incoming shot from (`left`,
+  `right`, `top`, `bottom`, in the operator's top-left-origin screen terms),
+  its boundary sweeping to the opposite edge; `Codable` by its stable camelCase
+  raw value.
 - `ShotRenderer` — the internal seam between the compositor's tick-paced control
-  flow and the pixel work; task-confined, so it needs no `Sendable`, and
-  swappable for a mock in tests.
+  flow and the pixel work (a plain render, a dissolve's crossfade, a wipe's
+  directional reveal); task-confined, so it needs no `Sendable`, and swappable
+  for a mock in tests.
 - `CoreImageShotRenderer` — the default renderer: composites the layer tree with
   a Metal-backed `CIContext`, GPU-resident, into an IOSurface-backed 32BGRA
   program buffer tagged BT.709 (a software `CIContext` makes the compositing
-  math unit-testable with no GPU).
+  math unit-testable with no GPU); dissolves alpha-blend the two layer trees,
+  wipes blend them behind a soft-edged swept gradient mask — built-in filters,
+  no custom shader.
 
 ### `packages/TingraAudio`
 
@@ -616,7 +629,9 @@ manages the project's presets — an Add Preset button plus a per-preset context
 menu with Duplicate, Rename…, Move Left / Move Right, and Remove Preset,
 disabled on the last remaining preset — above a shot switcher that also manages
 shots: an Add Shot button plus a per-shot context menu with Duplicate,
-Rename…, Move Left / Move Right, and Remove Shot), `MixerView` (the mixer
+Rename…, Move Left / Move Right, and Remove Shot, and a segmented transition
+picker — Cut, Dissolve, or Wipe, with an edge pop-up while Wipe is selected —
+choosing how the next take reaches program), `MixerView` (the mixer
 panel: one channel strip per discovered audio input, each with a mute toggle and
 a live level slider — it replaces the streaming panel's microphone picker),
 `MixerStrip` (the pure, unit-tested strip state and its seeding: first input

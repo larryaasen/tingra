@@ -218,6 +218,41 @@ or two in the doc that owns them — none need a rewrite.
 
 - [ ] **Steps 7–8** — app era: production features (presets, shots, layers,
   transitions, audio mixer), SRT/multiple destinations.
+  - [x] **Step 7, wipe transitions** *(code complete 2026-07-18)* — the tenth
+    production-feature iteration, completing the transitions story cut and
+    dissolve opened 2026-07-08: the third transition kind, a **directional
+    reveal** of the incoming shot from a frame edge (custom-shader transitions
+    and SRT/multiple destinations — step 8 — remain). `TingraComposition`'s
+    `Transition` gained `.wipe(edge:duration:)` with a four-edge **`WipeEdge`**
+    (`left`/`right`/`top`/`bottom`, the operator's top-left-origin screen
+    terms) — an **additive** change to the project/scripting contract: stable
+    camelCase `kind`/`edge`/`durationSeconds` keys, both non-kind keys optional
+    on decode (left edge, half-second default — the dissolve's forgiving-decode
+    rule), `cut`/`dissolve` encoding unchanged. The tick-counted transition
+    spine is untouched — the compositor's `PendingTransition` gained only a
+    kind — and the pixel work landed as a per-kind
+    `ShotRenderer.renderWipe(from:to:edge:progress:frames:format:time:)`
+    beside `renderDissolve` (deliberately not a generalized
+    `renderTransition(kind:)`, and deliberately **no default implementation** —
+    a silent dissolve fallback would mask a conformer missing the new kind);
+    `CoreImageShotRenderer` implements it **soft-edged** — a `CILinearGradient`
+    mask driving `CIBlendWithMask`, feather fixed at 5% of the sweep span,
+    endpoints exact (the blend band starts fully off-frame and finishes fully
+    past the far edge), the same IOSurface-backed 32BGRA BT.709-tagged output
+    tail. `program.take`'s `transition` param extends with `"wipe"`.
+    `apps/tingra`'s switcher replaced the boolean Dissolve checkbox with a
+    segmented **Transition picker** (Cut ∣ Dissolve ∣ Wipe — visible,
+    one-click state for a live switcher, per the HIG) plus an **Edge pop-up**
+    shown only while Wipe is selected; both per-take session state (no
+    document version bump, format stays v2), both reporting their `tap`
+    (`transition.picker`/`wipeEdge.picker`) in `onChange`; new strings
+    localized `de`/`es` (Wischblende/Cortinilla). Decisions recorded in
+    ARCHITECTURE.md, "Wipe transitions". Tests: `TingraCompositionTests` (now
+    93 — `Transition` wipe round-trip/keys/defaults/unknown-edge decoding, the
+    repointed unknown-kind case, wipe progress ramping and zero-duration
+    completion through the wipe path with its edge, and the renderer's wipe
+    pixel output at progress 0/0.5/1 including the top-edge Y-flip and the
+    BT.709-tagged, tick-stamped output frame).
   - [x] **Step 7, shot and preset reordering** *(code complete 2026-07-14)* —
     the ninth production-feature iteration, completing the shot-management
     story: the operator changes the switcher order of the active preset's shots

@@ -27,7 +27,11 @@ import TingraPlugInKit
 /// **dissolve** (``renderDissolve(from:to:progress:frames:format:time:)``)
 /// renders both shots' layer trees this same way and alpha-blends them —
 /// no separate shader, just the layer-opacity math applied to the whole
-/// incoming image.
+/// incoming image. A **wipe**
+/// (``renderWipe(from:to:edge:progress:frames:format:time:)``) renders both
+/// trees the same way and blends them behind a soft-edged linear-gradient
+/// mask swept across the frame — built-in Core Image filters, still no
+/// custom shader.
 ///
 /// Not `Sendable` by design (see ``ShotRenderer``): an instance and its
 /// `CIContext` and buffer pool live entirely inside the compositor's tick
@@ -106,9 +110,110 @@ public final class CoreImageShotRenderer: ShotRenderer {
         return renderToBuffer(blended, format: format, time: time)
     }
 
+    /// Composites a wipe: both shots' layer trees are rendered
+    /// independently, then the incoming image is revealed from `edge` behind
+    /// a moving, soft-edged boundary — a `CILinearGradient` mask swept
+    /// across the frame drives `CIBlendWithMask` (white shows `incoming`,
+    /// black keeps `outgoing`). The mask's blend band sits fully off-frame
+    /// at progress `0` and fully past the far edge at progress `1`, so the
+    /// endpoints render the outgoing and incoming shot exactly.
+    public func renderWipe(
+        from outgoing: Shot,
+        to incoming: Shot,
+        edge: WipeEdge,
+        progress: Double,
+        frames: [InputID: CapturedFrame],
+        format: ProgramFormat,
+        time: CMTime
+    ) -> CapturedFrame? {
+        let clampedProgress = min(max(progress, 0), 1)
+        let outgoingImage = layerTreeImage(shot: outgoing, frames: frames, format: format)
+        let incomingImage = layerTreeImage(shot: incoming, frames: frames, format: format)
+        let mask = wipeMask(edge: edge, progress: clampedProgress, format: format)
+        let blended = incomingImage.applyingFilter(
+            "CIBlendWithMask",
+            parameters: [
+                "inputBackgroundImage": outgoingImage,
+                "inputMaskImage": mask,
+            ]
+        )
+        return renderToBuffer(blended, format: format, time: time)
+    }
+
+    /// The width of a wipe's soft edge as a fraction of the sweep span — a
+    /// fixed, narrow feather so the moving boundary blends instead of
+    /// crawling as a hard aliased line. An adjustable softness is a
+    /// plausible later parameter of the wipe itself; this iteration keeps
+    /// the transition contract to edge and duration.
+    private static let wipeFeatherFraction = 0.05
+
+    /// The wipe's grayscale mask: white where the incoming shot has been
+    /// revealed, black where the outgoing shot still shows, ramping across a
+    /// feather band that trails the boundary into the outgoing side.
+    ///
+    /// The revealed distance runs from `-feather` at progress `0` (the band
+    /// entirely off-frame — pure outgoing) to the full sweep span at
+    /// progress `1` (the band past the far edge — pure incoming). Edges are
+    /// named in the operator's top-left-origin screen terms; Core Image's
+    /// bottom-left origin flips the vertical cases here, the same flip
+    /// ``placedImage(for:layer:format:)`` applies to layer frames.
+    private func wipeMask(edge: WipeEdge, progress: Double, format: ProgramFormat) -> CIImage {
+        let width = Double(format.width)
+        let height = Double(format.height)
+        let span =
+            switch edge {
+            case .left, .right: width
+            case .top, .bottom: height
+            }
+        let feather = span * Self.wipeFeatherFraction
+        let distance = -feather + progress * (span + feather)
+
+        // The gradient's white point sits at the boundary (revealed side);
+        // the black point sits one feather past it, into the outgoing side.
+        let revealed: CGPoint
+        let concealed: CGPoint
+        switch edge {
+        case .left:
+            revealed = CGPoint(x: distance, y: 0)
+            concealed = CGPoint(x: distance + feather, y: 0)
+        case .right:
+            revealed = CGPoint(x: width - distance, y: 0)
+            concealed = CGPoint(x: width - distance - feather, y: 0)
+        case .top:
+            revealed = CGPoint(x: 0, y: height - distance)
+            concealed = CGPoint(x: 0, y: height - distance - feather)
+        case .bottom:
+            revealed = CGPoint(x: 0, y: distance)
+            concealed = CGPoint(x: 0, y: distance + feather)
+        }
+
+        let programRect = CGRect(x: 0, y: 0, width: format.width, height: format.height)
+        let white = CIColor(red: 1, green: 1, blue: 1, alpha: 1)
+        let black = CIColor(red: 0, green: 0, blue: 0, alpha: 1)
+        guard
+            let gradient = CIFilter(
+                name: "CILinearGradient",
+                parameters: [
+                    "inputPoint0": CIVector(cgPoint: revealed),
+                    "inputColor0": white,
+                    "inputPoint1": CIVector(cgPoint: concealed),
+                    "inputColor1": black,
+                ]
+            )?.outputImage
+        else {
+            // The built-in gradient should always exist; if it ever does
+            // not, keep the outgoing shot on program (an all-black mask)
+            // rather than glitch — a renderer problem must never take down
+            // the pipeline.
+            return CIImage(color: black).cropped(to: programRect)
+        }
+        return gradient.cropped(to: programRect)
+    }
+
     /// Composites one shot's layer tree, bottom to top, over its background —
-    /// the shared pixel work behind both ``render(shot:frames:format:time:)``
-    /// and ``renderDissolve(from:to:progress:frames:format:time:)``.
+    /// the shared pixel work behind ``render(shot:frames:format:time:)``,
+    /// ``renderDissolve(from:to:progress:frames:format:time:)``, and
+    /// ``renderWipe(from:to:edge:progress:frames:format:time:)``.
     private func layerTreeImage(shot: Shot, frames: [InputID: CapturedFrame], format: ProgramFormat) -> CIImage {
         let programRect = CGRect(x: 0, y: 0, width: format.width, height: format.height)
         var image = backgroundImage(shot.background, in: programRect)
