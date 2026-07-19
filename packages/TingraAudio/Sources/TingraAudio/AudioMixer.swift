@@ -40,6 +40,12 @@ import TingraPlugInKit
 /// growing latency without bound. The mix is a float sum with no bus clamp:
 /// float32 has headroom, and delivery saturates at compression.
 ///
+/// While a meter consumer is attached (``meterReadings()``), the same walk
+/// also measures every channel's consumed samples — pre-fader, before level,
+/// pan, and mute — into one ``MeterBlock`` per tick: a byproduct of the mix,
+/// never a second pass, and per-block data that never rides the event bus
+/// (EVENTS.md; ARCHITECTURE.md, "Per-strip meters").
+///
 /// The mixer emits from its first tick — silence before any strip delivers —
 /// so the program mix, like the program video, is a live canvas at the tick
 /// rate from the moment it starts. Level, pan, and mute changes are gesture-rate
@@ -88,6 +94,11 @@ public final class AudioMixer: Sendable {
 
         /// The single active program-audio consumer, while attached.
         var programContinuation: AsyncStream<CapturedAudio>.Continuation?
+
+        /// The single active meter consumer, while attached — measurement
+        /// only happens while this is non-nil, so an unwatched meter costs
+        /// nothing.
+        var meterContinuation: AsyncStream<MeterBlock>.Continuation?
 
         /// The running mix task, while started.
         var mixTask: Task<Void, Never>?
@@ -138,6 +149,25 @@ public final class AudioMixer: Sendable {
             let previous = state.withLock { state in
                 let previous = state.programContinuation
                 state.programContinuation = continuation
+                return previous
+            }
+            previous?.finish()
+        }
+    }
+
+    /// The meter stream: one ``MeterBlock`` per mix tick while the mixer
+    /// runs, measuring every strip's signal **pre-fader** — before level,
+    /// pan, and mute; see ``MeterReading`` — as a byproduct of the same walk
+    /// the tick already makes over every channel's samples, never a second
+    /// pass. Readings are per-block data, so they ride this dedicated stream
+    /// and never the event bus (EVENTS.md, control plane only). A new call
+    /// replaces the previous consumer (finishing its stream) — the
+    /// one-consumer contract of ``programAudio()``.
+    public func meterReadings() -> AsyncStream<MeterBlock> {
+        AsyncStream { continuation in
+            let previous = state.withLock { state in
+                let previous = state.meterContinuation
+                state.meterContinuation = continuation
                 return previous
             }
             previous?.finish()
@@ -262,14 +292,18 @@ public final class AudioMixer: Sendable {
         )
     }
 
-    /// Stops the mix tick, cancels every fill task, finishes the program
-    /// stream, and clears the channels. Safe to call more than once.
+    /// Stops the mix tick, cancels every fill task, finishes the program and
+    /// meter streams, and clears the channels. Safe to call more than once.
     public func stop() {
-        let (mixTask, fillTasks, continuation) = state.withLock { state in
-            let taken = (state.mixTask, state.channels.values.compactMap(\.fillTask), state.programContinuation)
+        let (mixTask, fillTasks, continuation, meterContinuation) = state.withLock { state in
+            let taken = (
+                state.mixTask, state.channels.values.compactMap(\.fillTask), state.programContinuation,
+                state.meterContinuation
+            )
             state.mixTask = nil
             state.channels.removeAll()
             state.programContinuation = nil
+            state.meterContinuation = nil
             return taken
         }
         mixTask?.cancel()
@@ -277,6 +311,7 @@ public final class AudioMixer: Sendable {
             task.cancel()
         }
         continuation?.finish()
+        meterContinuation?.finish()
         eventBus.event("mixer.stopped", domain: .audio)
     }
 
@@ -284,58 +319,102 @@ public final class AudioMixer: Sendable {
     /// queue (muted strips drain too, so unmuting never replays stale
     /// audio), sums the audible ones into a stereo block, and yields it
     /// stamped with the tick time. Missing samples are silence — an
-    /// underrunning channel never stalls the block.
+    /// underrunning channel never stalls the block. While a meter consumer
+    /// is attached, the same walk also measures each channel's consumed
+    /// samples pre-fader and yields the tick's ``MeterBlock``.
     private func mixBlock(at tickTime: CMTime, format: MixFormat) {
         let frames = format.blockFrames
-        let block: (left: [Float], right: [Float], continuation: AsyncStream<CapturedAudio>.Continuation)? =
-            state.withLock { state in
-                var left = [Float](repeating: 0, count: frames)
-                var right = [Float](repeating: 0, count: frames)
-                for id in Array(state.channels.keys) {
-                    guard var channel = state.channels[id], !channel.queue.isEmpty else { continue }
-                    let available = channel.queue[0].count
-                    let take = min(frames, available)
-                    guard take > 0 else { continue }
-                    let gain = channel.isMuted ? 0 : Float(max(0, channel.level))
-                    if gain > 0 {
-                        let pan = Self.panGains(channel.pan)
-                        let leftGain = gain * pan.left
-                        let rightGain = gain * pan.right
-                        if channel.queue.count == 1 {
-                            // Mono spreads into both program channels through
-                            // the pan gains — a constant-power panner.
-                            let mono = channel.queue[0]
-                            for i in 0..<take {
-                                left[i] += mono[i] * leftGain
-                                right[i] += mono[i] * rightGain
-                            }
-                        } else {
-                            // Stereo (and wider) maps its first two channels
-                            // through the pan gains — a balance: each channel
-                            // is scaled, never folded into the other; the
-                            // rest are dropped at the mix.
-                            let sourceLeft = channel.queue[0]
-                            let sourceRight = channel.queue[1]
-                            for i in 0..<take {
-                                left[i] += sourceLeft[i] * leftGain
-                                right[i] += sourceRight[i] * rightGain
+        let output:
+            (
+                program: (left: [Float], right: [Float], continuation: AsyncStream<CapturedAudio>.Continuation)?,
+                meters: (block: MeterBlock, continuation: AsyncStream<MeterBlock>.Continuation)?
+            ) =
+                state.withLock { state in
+                    let metering = state.meterContinuation != nil
+                    var readings: [InputID: MeterReading] = [:]
+                    var left = [Float](repeating: 0, count: frames)
+                    var right = [Float](repeating: 0, count: frames)
+                    for id in Array(state.channels.keys) {
+                        // A channel with nothing queued this tick meters at the
+                        // floor — a consumer sees the floor, never a gap.
+                        if metering { readings[id] = .floor }
+                        guard var channel = state.channels[id], !channel.queue.isEmpty else { continue }
+                        let available = channel.queue[0].count
+                        let take = min(frames, available)
+                        guard take > 0 else { continue }
+                        if metering {
+                            readings[id] = Self.meterReading(over: channel.queue, frames: take)
+                        }
+                        let gain = channel.isMuted ? 0 : Float(max(0, channel.level))
+                        if gain > 0 {
+                            let pan = Self.panGains(channel.pan)
+                            let leftGain = gain * pan.left
+                            let rightGain = gain * pan.right
+                            if channel.queue.count == 1 {
+                                // Mono spreads into both program channels through
+                                // the pan gains — a constant-power panner.
+                                let mono = channel.queue[0]
+                                for i in 0..<take {
+                                    left[i] += mono[i] * leftGain
+                                    right[i] += mono[i] * rightGain
+                                }
+                            } else {
+                                // Stereo (and wider) maps its first two channels
+                                // through the pan gains — a balance: each channel
+                                // is scaled, never folded into the other; the
+                                // rest are dropped at the mix.
+                                let sourceLeft = channel.queue[0]
+                                let sourceRight = channel.queue[1]
+                                for i in 0..<take {
+                                    left[i] += sourceLeft[i] * leftGain
+                                    right[i] += sourceRight[i] * rightGain
+                                }
                             }
                         }
+                        for c in channel.queue.indices {
+                            channel.queue[c].removeFirst(take)
+                        }
+                        state.channels[id] = channel
                     }
-                    for c in channel.queue.indices {
-                        channel.queue[c].removeFirst(take)
-                    }
-                    state.channels[id] = channel
+                    let program = state.programContinuation.map { (left, right, $0) }
+                    let meters = state.meterContinuation.map { (MeterBlock(time: tickTime, strips: readings), $0) }
+                    return (program, meters)
                 }
-                guard let continuation = state.programContinuation else { return nil }
-                return (left, right, continuation)
-            }
-        guard let block else { return }
+        if let meters = output.meters {
+            meters.continuation.yield(meters.block)
+        }
+        guard let block = output.program else { return }
         guard
             let mixed = Self.capturedAudio(
                 left: block.left, right: block.right, at: tickTime, sampleRate: format.sampleRate)
         else { return }
         block.continuation.yield(mixed)
+    }
+
+    /// Measures one strip's meter reading over the samples a tick consumed:
+    /// the peak is the largest absolute sample across the strip's source
+    /// channels, the RMS the hotter channel's root-mean-square — both over
+    /// exactly the `frames` consumed samples, so an underrunning strip
+    /// meters the signal it delivered, never the silence that pads the
+    /// block. Pre-fader by construction: the queue holds intake-normalized
+    /// samples the strip's level, pan, and mute have not yet touched.
+    ///
+    /// - Parameters:
+    ///   - queue: The strip's queued samples, channel-major.
+    ///   - frames: The frame count the tick consumed (at least 1).
+    /// - Returns: The strip's reading.
+    static func meterReading(over queue: [[Float]], frames: Int) -> MeterReading {
+        var peak: Float = 0
+        var maxMeanSquare: Float = 0
+        for channel in queue {
+            var sumOfSquares: Float = 0
+            for sample in channel.prefix(frames) {
+                peak = max(peak, abs(sample))
+                sumOfSquares += sample * sample
+            }
+            maxMeanSquare = max(maxMeanSquare, sumOfSquares / Float(frames))
+        }
+        return MeterReading(peak: peak, rms: maxMeanSquare.squareRoot())
     }
 
     /// The per-program-channel gains of a pan position: the equal-power

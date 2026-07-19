@@ -10,11 +10,12 @@
 import Foundation
 
 /// The saved document for a whole show (GLOSSARY.md, "Project"): everything
-/// needed to reopen the show exactly as it was — the presets, the
-/// ``destination`` configuration (the stream key is excluded — it lives in
-/// secure storage; see ARCHITECTURE.md, "Streaming the program"), and each
-/// shot's optional default transition. Further settings join it in later
-/// iterations.
+/// needed to reopen the show exactly as it was — the presets (each with its
+/// shots, optional per-shot default transitions, and optional authored audio
+/// configuration; see ``Preset/audioChannels``) and the ``destination``
+/// configuration (the stream key is excluded — it lives in secure storage;
+/// see ARCHITECTURE.md, "Streaming the program"). Further settings join it
+/// in later iterations.
 ///
 /// A project is a plain `Codable` value type — the serialized form is the
 /// project / scripting contract (CLAUDE.md, "Data Models"), so its JSON keys

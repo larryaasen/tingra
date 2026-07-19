@@ -433,10 +433,19 @@ so it stays testable with a synthetic clock and a mock renderer (see
   host's secure storage, keyed by that URL. Deliberately `Codable` precisely
   because it holds no secret, unlike the plug-in seam's `Destination`.
 - `Preset` — a named, persisted collection of shots you cut among during a live
-  session; a plain `Codable` value type (the project/scripting contract).
+  session; a plain `Codable` value type (the project/scripting contract), also
+  carrying the preset's optional authored audio configuration (`audioChannels`
+  — absent when never authored, so pre-routing documents decode unchanged).
   Active-shot selection is session state on the compositor, not part of the
   saved preset — and which of the project's presets is active is session state
   too, never a field of the saved document.
+- `AudioChannel` — one authored channel of a preset's audio configuration: a
+  channel strip as the document persists it — the input's device-stable
+  `InputID`, a cached display `name`, and the authored `level`, `pan`, and
+  `isMuted`. Routed to the program mix, v1's only bus: membership is routing
+  (sends and further buses are later). Lives beside `Preset` because the
+  document types live together; the live strip stays `TingraAudio`'s
+  deliberately non-`Codable` `ChannelStrip`.
 - `PresetID` — a stable, string-backed identifier for a preset (a fresh UUID by
   default).
 - `Shot` — a short-term composition with a stable `id` and user-facing `name`:
@@ -492,11 +501,23 @@ with a synthetic clock and scripted inputs (see [ARCHITECTURE.md](docs/ARCHITECT
   strip contributes silence and never stalls the mix.
   `setChannelStrips(_:)` attaches and detaches strips live;
   `setLevel(_:forInput:)`/`setPan(_:forInput:)`/`setMuted(_:forInput:)` apply
-  from the next tick; `programAudio()` is the single-consumer mixed stream.
+  from the next tick; `programAudio()` is the single-consumer mixed stream, and
+  `meterReadings()` its meter sibling — one `MeterBlock` per tick, measured
+  pre-fader as a byproduct of the same walk, only while a consumer is attached,
+  and never on the event bus.
 - `ChannelStrip` — one input's slot in the mixer: the input and its level, pan,
-  and mute (routing and the audio effect chain are later iterations). Engine
-  mute is independent of device lifecycle — whether a muted strip's device keeps
-  capturing is the caller's policy.
+  and mute (the audio effect chain is a later iteration; routing needs no
+  surface here — the program mix is v1's only bus, and the strip's persisted
+  form is `TingraComposition`'s `AudioChannel`). Engine mute is independent of
+  device lifecycle — whether a muted strip's device keeps capturing is the
+  caller's policy.
+- `MeterReading` — one strip's meter measurement over one mix block, pre-fader
+  (after intake normalization, before level, pan, and mute): the block's peak
+  and its RMS (the hotter channel's, for stereo), as linear magnitudes;
+  `floor` is what silence meters as.
+- `MeterBlock` — one mix tick's readings: every live strip's `MeterReading`
+  keyed by input id (a strip with nothing queued reads the floor, never a
+  gap), stamped with the tick's master clock time.
 - `MixFormat` — the program mix's audio geometry: the sample rate and the block
   size each mix tick produces (48 kHz, 1024-frame blocks by default; the mix is
   always stereo float32).
@@ -638,11 +659,22 @@ Move Left / Move Right, and Remove Shot, and a segmented transition
 picker — Default (each shot's own default transition, the initial selection),
 or an explicit Cut, Dissolve, or Wipe, with an edge pop-up while Wipe is
 selected — choosing how the next take reaches program), `MixerView` (the mixer
-panel: one channel strip per discovered audio input, each with a mute toggle, a
-live level slider, and a pan slider that recenters on double-click — it
-replaces the streaming panel's microphone picker),
-`MixerStrip` (the pure, unit-tested strip state and its seeding: first input
-unmuted at unity, the rest muted, every strip centered), `LayerTreeEditorView` (the layer-tree editor:
+panel: one channel strip per authored audio channel and per discovered audio
+input, each with a mute toggle, a meter, a live level slider, and a pan slider
+that recenters on double-click; a strip whose device is absent stays on the
+panel, marked not connected, its settings kept for the device's return),
+`MixerStrip` (the pure, unit-tested strip state: the merge of the active
+preset's authored `AudioChannel`s with live discovery — authored channels
+first in document order, new devices appended muted — falling back to the
+seeding policy, first input unmuted at unity, the rest muted, every strip
+centered, when nothing is authored; strip edits sync back into the active
+preset and autosave debounced like shot edits), `StripMeter` (one
+strip's meter: a compact capsule showing the strip's pre-fader signal — an RMS
+bar over broadcast green/yellow/red zones with a decayed peak marker — drawn at
+display cadence in a `TimelineView` sampling the shared `MeterRelay` the
+model's meter drain fills, so readings never churn SwiftUI observation, with
+unit-tested `MeterBallistics`: instant attack, 20 dB/s decay on a −60…0 dBFS
+scale), `LayerTreeEditorView` (the layer-tree editor:
 add a layer bound to any discovered camera or display, remove, reorder, and
 adjust a layer's frame and opacity with live sliders — every edit on program at
 the next tick, and autosaved to the project file), `LayerTreeEdit` (the pure,

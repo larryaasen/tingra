@@ -44,7 +44,11 @@ A project is the saved file for an entire show. A project contains presets. A pr
 
 **Mixer** — the audio surface of the engine: combines every audio input into the program mix.
 
-**Channel strip** — one input's slot in the mixer: its level, mute, pan, routing, and audio effect chain.
+**Channel strip** — one input's slot in the mixer: its level, mute, pan, meter, routing, and audio effect chain.
+
+**Meter** — a channel strip's level display: the strip's signal measured at each mix tick — the block's peak and RMS — shown beside the strip's controls. Metering is pre-fader: the meter reads what the input delivers, before the strip's level, pan, and mute.
+
+**Routing** — where a channel strip's signal goes: the bus its audio feeds. V1 has exactly one bus — the program mix — so a strip's routing is its membership in the preset's audio configuration: the authored channels, persisted with their level, pan, and mute, that the mixer rebuilds its strips from. Sends and additional buses are later.
 
 ## Timing
 

@@ -18,8 +18,8 @@ import TingraPlugInKit
 /// the UI").
 @Suite("PresetEdit")
 struct PresetEditTests {
-    /// A preset holding two named shots, standing in for an operator-authored
-    /// preset.
+    /// A preset holding two named shots and an authored audio channel,
+    /// standing in for an operator-authored preset.
     private func makePreset(id: String = "live", name: String = "Live") -> Preset {
         Preset(
             id: PresetID(rawValue: id),
@@ -27,7 +27,8 @@ struct PresetEditTests {
             shots: [
                 Shot(id: ShotID(rawValue: "wide"), name: "Wide", layers: [Layer(input: InputID(rawValue: "cam-1"))]),
                 Shot(id: ShotID(rawValue: "tight"), name: "Tight", layers: [Layer(input: InputID(rawValue: "cam-2"))]),
-            ]
+            ],
+            audioChannels: [AudioChannel(input: InputID(rawValue: "mic-1"), name: "Mic", level: 0.7, pan: -0.5)]
         )
     }
 
@@ -55,6 +56,9 @@ struct PresetEditTests {
         // its copy holds the on-program shot by id match (see
         // Compositor.loadPreset).
         #expect(copy.shots == source.shots)
+        // The authored audio channels copy verbatim too, so the copy sounds
+        // identical when adopted.
+        #expect(copy.audioChannels == source.audioChannels)
         // The copy is named after its source, and never collides with it.
         #expect(copy.name.contains(source.name))
         #expect(copy != source)
@@ -75,6 +79,7 @@ struct PresetEditTests {
         #expect(renamed.name == "Rehearsal")
         #expect(renamed.id == preset.id)
         #expect(renamed.shots == preset.shots)
+        #expect(renamed.audioChannels == preset.audioChannels)
         #expect(renamed != preset)
     }
 

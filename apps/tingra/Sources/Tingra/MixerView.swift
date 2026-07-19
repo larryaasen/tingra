@@ -10,13 +10,16 @@
 import SwiftUI
 import TingraPlugInKit
 
-/// The mixer panel: one channel strip per discovered audio input, each with
-/// a mute toggle, a level slider, and a pan slider (GLOSSARY.md, "Mixer",
-/// "Channel strip"). It replaces the streaming panel's single microphone
-/// picker — every strip mixes into the program audio the stream carries, and
-/// muting a strip also stops its device so the microphone indicator stays
-/// honest (ARCHITECTURE.md, "The audio mixer"). Routing, audio effect
-/// chains, and meters are later iterations.
+/// The mixer panel: one channel strip per authored audio channel and per
+/// discovered audio input, each with a mute toggle, a meter, a level slider,
+/// and a pan slider (GLOSSARY.md, "Mixer", "Channel strip"). Every strip
+/// mixes into the program audio the stream carries, and muting a strip also
+/// stops its device so the microphone indicator stays honest
+/// (ARCHITECTURE.md, "The audio mixer"). Strip settings persist in the
+/// active preset; a strip whose device is absent stays on the panel, marked
+/// not connected, its settings editable and kept for the device's return
+/// (ARCHITECTURE.md, "Per-strip routing"). Audio effect chains are a later
+/// iteration.
 ///
 /// Level and pan edits apply live, tick by tick, like the layer sliders;
 /// each control reports its own `tap` event right where it executes — the
@@ -45,7 +48,8 @@ struct MixerView: View {
         }
     }
 
-    /// One channel strip's row: mute, name, level, pan.
+    /// One channel strip's row: mute, name (marked when the strip's device
+    /// is absent), meter, level, pan.
     private func stripRow(_ strip: MixerStrip) -> some View {
         HStack(spacing: 8) {
             Toggle(isOn: muteBinding(for: strip.id)) {
@@ -55,10 +59,23 @@ struct MixerView: View {
             .help(Text("Mute", comment: "Help tag on a channel strip's mute toggle"))
             .accessibilityLabel(Text("Mute", comment: "Help tag on a channel strip's mute toggle"))
 
-            Text(strip.name)
-                .frame(width: 180, alignment: .leading)
-                .lineLimit(1)
-                .foregroundStyle(strip.isMuted ? .secondary : .primary)
+            HStack(spacing: 4) {
+                Text(strip.name)
+                    .lineLimit(1)
+                    .foregroundStyle(strip.isMuted || !isConnected(strip) ? .secondary : .primary)
+                if !isConnected(strip) {
+                    // A dormant strip: its authored channel persists while its
+                    // device is absent — silence until the device returns.
+                    Image(systemName: "mic.slash")
+                        .foregroundStyle(.secondary)
+                        .help(Text("Not connected", comment: "Help tag on a channel strip whose device is absent"))
+                        .accessibilityLabel(
+                            Text("Not connected", comment: "Help tag on a channel strip whose device is absent"))
+                }
+            }
+            .frame(width: 180, alignment: .leading)
+
+            StripMeter(relay: model.meterRelay, id: strip.id)
 
             Slider(value: levelBinding(for: strip.id), in: 0...1) { editing in
                 guard !editing else { return }
@@ -116,6 +133,13 @@ struct MixerView: View {
                 model.setStripPan(0, forStrip: strip.id)
             }
         )
+    }
+
+    /// Whether a strip's device is currently discovered. A strip with no
+    /// device — an authored channel whose device is absent — stays on the
+    /// panel as a dormant strip, contributing silence until it returns.
+    private func isConnected(_ strip: MixerStrip) -> Bool {
+        model.microphones.contains { $0.id == strip.id }
     }
 
     /// A live binding to one strip's mute, reporting the `tap` before the

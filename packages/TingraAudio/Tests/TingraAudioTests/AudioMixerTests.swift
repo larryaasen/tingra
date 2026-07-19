@@ -134,6 +134,16 @@ private func collect(_ stream: AsyncStream<CapturedAudio>, limit: Int) async -> 
     return blocks
 }
 
+/// Drains up to `limit` meter blocks from the stream.
+private func collectMeters(_ stream: AsyncStream<MeterBlock>, limit: Int) async -> [MeterBlock] {
+    var blocks: [MeterBlock] = []
+    for await block in stream {
+        blocks.append(block)
+        if blocks.count == limit { break }
+    }
+    return blocks
+}
+
 /// Waits long enough for the mixer's fill tasks to drain scripted inputs
 /// into their channel queues (the pattern the compositor tests use).
 private func letFillTasksDrain() async {
@@ -470,5 +480,116 @@ struct AudioMixerTests {
     func blockFactoryRejectsBadInput() {
         #expect(AudioMixer.capturedAudio(left: [], right: [], at: .zero, sampleRate: 48_000) == nil)
         #expect(AudioMixer.capturedAudio(left: [0, 0], right: [0], at: .zero, sampleRate: 48_000) == nil)
+    }
+
+    @Test("a constant signal meters to its known peak and RMS")
+    func constantSignalMetersKnownReading() async throws {
+        let audio = try #require(
+            makeAudio(channels: [[Float](repeating: 0.5, count: format.blockFrames)], sampleRate: format.sampleRate))
+        let input = FakeAudioInput(id: "mic", buffers: [audio])
+        let mixer = makeMixer(tickTimes: ticks(1))
+        mixer.setChannelStrips([ChannelStrip(input: input)])
+        await letFillTasksDrain()
+
+        let meters = mixer.meterReadings()
+        mixer.start()
+        let block = try #require(await collectMeters(meters, limit: 1).first)
+
+        let reading = try #require(block.strips[input.id])
+        #expect(abs(reading.peak - 0.5) < 0.0001)
+        #expect(abs(reading.rms - 0.5) < 0.0001)
+    }
+
+    @Test("peak and RMS are measured distinctly — a half-silent block's RMS sits below its peak")
+    func peakAndRMSMeasuredDistinctly() async throws {
+        // Half the block at 0.8, half at silence: peak 0.8, RMS 0.8/√2.
+        let half = format.blockFrames / 2
+        let source = [Float](repeating: 0.8, count: half) + [Float](repeating: 0, count: format.blockFrames - half)
+        let audio = try #require(makeAudio(channels: [source], sampleRate: format.sampleRate))
+        let input = FakeAudioInput(id: "mic", buffers: [audio])
+        let mixer = makeMixer(tickTimes: ticks(1))
+        mixer.setChannelStrips([ChannelStrip(input: input)])
+        await letFillTasksDrain()
+
+        let meters = mixer.meterReadings()
+        mixer.start()
+        let block = try #require(await collectMeters(meters, limit: 1).first)
+
+        let reading = try #require(block.strips[input.id])
+        #expect(abs(reading.peak - 0.8) < 0.0001)
+        #expect(abs(reading.rms - 0.8 / Float(2.0.squareRoot())) < 0.0001)
+    }
+
+    @Test("metering is pre-fader: a muted strip at zero level still meters its delivered signal")
+    func mutedStripStillMetersItsSignal() async throws {
+        let audio = try #require(
+            makeAudio(channels: [[Float](repeating: 0.5, count: format.blockFrames)], sampleRate: format.sampleRate))
+        let input = FakeAudioInput(id: "mic", buffers: [audio])
+        let mixer = makeMixer(tickTimes: ticks(1))
+        mixer.setChannelStrips([ChannelStrip(input: input, level: 0, isMuted: true)])
+        await letFillTasksDrain()
+
+        let meters = mixer.meterReadings()
+        let program = mixer.programAudio()
+        mixer.start()
+        let meterBlock = try #require(await collectMeters(meters, limit: 1).first)
+        let mixedBlock = try #require(await collect(program, limit: 1).first)
+
+        // The meter reads the intake; the program mix stays silent.
+        let reading = try #require(meterBlock.strips[input.id])
+        #expect(abs(reading.peak - 0.5) < 0.0001)
+        let channels = try #require(samples(of: mixedBlock, sampleRate: format.sampleRate))
+        #expect(channels.allSatisfy { $0.allSatisfy { $0 == 0 } })
+    }
+
+    @Test("a stereo strip meters its hotter channel")
+    func stereoStripMetersHotterChannel() async throws {
+        let left = [Float](repeating: 0.2, count: format.blockFrames)
+        let right = [Float](repeating: 0.4, count: format.blockFrames)
+        let audio = try #require(makeAudio(channels: [left, right], sampleRate: format.sampleRate))
+        let input = FakeAudioInput(id: "stereo", buffers: [audio])
+        let mixer = makeMixer(tickTimes: ticks(1))
+        mixer.setChannelStrips([ChannelStrip(input: input)])
+        await letFillTasksDrain()
+
+        let meters = mixer.meterReadings()
+        mixer.start()
+        let block = try #require(await collectMeters(meters, limit: 1).first)
+
+        let reading = try #require(block.strips[input.id])
+        #expect(abs(reading.peak - 0.4) < 0.0001)
+        #expect(abs(reading.rms - 0.4) < 0.0001)
+    }
+
+    @Test("a strip with nothing queued meters at the floor — one block per tick, stamped with the tick's time")
+    func silentStripMetersAtTheFloor() async throws {
+        let tickTimes = ticks(2)
+        let input = FakeAudioInput(id: "mic", buffers: [])
+        let mixer = makeMixer(tickTimes: tickTimes)
+        mixer.setChannelStrips([ChannelStrip(input: input)])
+        await letFillTasksDrain()
+
+        let meters = mixer.meterReadings()
+        mixer.start()
+        let blocks = await collectMeters(meters, limit: 2)
+
+        #expect(blocks.map(\.time) == tickTimes)
+        for block in blocks {
+            #expect(block.strips[input.id] == .floor)
+        }
+    }
+
+    @Test("stop finishes the meter stream")
+    func stopFinishesMeterStream() async {
+        let mixer = makeMixer(tickTimes: ticks(1))
+        let meters = mixer.meterReadings()
+        mixer.start()
+        _ = await collectMeters(meters, limit: 1)
+
+        mixer.stop()
+        // The finished stream ends this loop; reaching the expectation is
+        // the assertion.
+        for await _ in meters {}
+        #expect(Bool(true))
     }
 }

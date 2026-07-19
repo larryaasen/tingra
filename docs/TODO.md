@@ -218,6 +218,85 @@ or two in the doc that owns them — none need a rewrite.
 
 - [ ] **Steps 7–8** — app era: production features (presets, shots, layers,
   transitions, audio mixer), SRT/multiple destinations.
+  - [x] **Step 7, per-strip routing: the persisted mix** *(code complete
+    2026-07-19)* — the fourteenth production-feature iteration, landing the
+    **routing** slot of the GLOSSARY.md **channel strip** and, with it, the
+    debt three records carried: strip settings (level, pan, mute) finally
+    **persist** into the preset (audio effect chains remain, as do
+    custom-shader transitions and SRT/multiple destinations — step 8).
+    **Routing v1: the program mix is the only bus**, so a channel's routing
+    *is* its membership in the preset's authored channel list — no new
+    engine surface (`AudioMixer`/`ChannelStrip` unchanged; sends and further
+    buses are later). `TingraComposition` gained `AudioChannel` (one
+    authored channel: the device-UID-stable `input`, a cached display
+    `name`, `level`, `pan`, `isMuted` — stable camelCase keys, `input`
+    required, the rest decoding forgivingly to strip defaults) and `Preset`
+    an optional `audioChannels: [AudioChannel]?` — encodeIfPresent, **no
+    version bump** (the pre-release rule): nil = no authored audio, so
+    pre-routing documents decode unchanged; per-preset because a preset's
+    audio configuration is the console's scene snapshot (GLOSSARY.md's
+    "Preset" promise, kept). `apps/tingra`: `MixerStrip.strips(channels:discovered:)`
+    merges authored channels (document order — panel order is array order)
+    with discovery — a channel whose device is absent stays a **dormant
+    strip** (cached name, `mic.slash` "Not connected" marker, settings kept
+    for the device's return — the layer-bound-to-an-undiscovered-input
+    semantic), a discovered device the preset never authored appends
+    **muted** at unity center (never surprise-live), and `MixerStrip.seed`
+    (first mic unmuted) stays the nil fallback; strip edits schedule the
+    debounced autosave (drags coalesce — the `updateShot` rule, no engine
+    events), `syncActivePreset()` writes the session strips into the active
+    preset before every save/switch/duplicate (the first save authors a
+    pre-routing document by use), and a preset switch/active-preset removal
+    adopts the incoming preset's authored audio from the next mix tick — a
+    control change, never an interruption — or carries the session mix when
+    it has none (the old behavior as the fallback). "Not connected"
+    localized `de`/`es`. Decisions recorded in ARCHITECTURE.md, "Per-strip
+    routing"; GLOSSARY.md gained the **Routing** entry. Tests:
+    `TingraCompositionTests` (now 110 — `AudioChannel` round-trip, stable
+    keys, missing-`input` throws, forgiving defaults, equality; `Preset`
+    audioChannels round-trip, absent-key nil, omitted-when-nil,
+    authored-empty distinct) and the app's `TingraTests` (now 70 — merge
+    policy: settings kept + name refreshed, dormant strips, raw-id
+    fallback, muted appends, ordering, authored-empty, seed fallback,
+    strip→channel conversion; `PresetEdit` carrying audio through
+    duplicate/rename).
+  - [x] **Step 7, per-strip meters** *(code complete 2026-07-18)* — the
+    thirteenth production-feature iteration, landing the monitoring half of
+    the GLOSSARY.md **channel strip**: a **meter** per strip (routing and
+    audio effect chains — routing being the iteration that persists strip
+    settings into the preset — remain, as do custom-shader transitions and
+    SRT/multiple destinations — step 8). `TingraAudio` gained `MeterReading`
+    (one strip's per-block peak and RMS, linear, `floor` for silence) and
+    `MeterBlock` (every live strip's reading keyed by input id, stamped with
+    the tick's master-clock time), and `AudioMixer` a `meterReadings()`
+    stream — one block per mix tick under `programAudio()`'s single-consumer
+    replace-on-recall contract, measured as a byproduct of the walk the tick
+    already makes (never a second pass, only while a consumer is attached —
+    the streamed program path is byte-for-byte unchanged) and **never the
+    event bus** (per-block data; EVENTS.md's control-plane rule). Metering
+    is **pre-fader** — after intake normalization, before level/pan/mute —
+    so the meter answers "what is this input delivering", holds steady under
+    fader rides, and composes with a future monitoring path (engine-side, a
+    muted strip still meters; in the app it rests at the floor because
+    mute stops the device — app policy, not meter semantics). `apps/tingra`
+    gained `StripMeter` (a compact capsule between each strip's name and
+    level slider: RMS bar over broadcast green/yellow/red zones — −60…0 dBFS
+    scale, green through −20, yellow through −6 — with a decayed peak
+    marker) drawn in a `TimelineView(.animation)` off a shared `MeterRelay`
+    the model's meter drain fills (the `ProgramFrameRelay` pattern — no
+    observation-driven churn; `Gauge` rejected as unable to express zones,
+    a peak marker, and draw-time ballistics), with `MeterBallistics`
+    applying instant attack and a 20 dB/s decay at draw time (ballistics
+    are presentation — engine readings stay raw block truth). Display only:
+    no persisted state, no `tap`s, no new engine events
+    (`mixer.started`/`mixer.stopped` stay the only lifecycle events); the
+    new "Meter" string localized `de`/`es`. Decisions recorded in
+    ARCHITECTURE.md, "Per-strip meters". Tests: `TingraAudioTests` (now
+    24 — known samples to known peak/RMS, peak vs RMS distinctness,
+    pre-fader metering on a muted zero-level strip, stereo hotter-channel,
+    floor readings stamped with tick times, stop finishing the meter
+    stream) and the app's `TingraTests` (now 62 — instant attack, 20 dB/s
+    decay over elapsed time, louder-reading override, floor rest and clamp).
   - [x] **Step 7, per-strip pan** *(code complete 2026-07-18)* — the twelfth
     production-feature iteration, landing the next slot of the GLOSSARY.md
     **channel strip** after level and mute: **pan**, placing each strip in the

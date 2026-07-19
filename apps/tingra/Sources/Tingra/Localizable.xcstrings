@@ -392,6 +392,23 @@
         }
       }
     },
+    "Meter" : {
+      "comment" : "Help tag and accessibility label of a channel strip's meter",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pegelanzeige"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Medidor de nivel"
+          }
+        }
+      }
+    },
     "Microphone" : {
       "comment" : "Microphone input picker label",
       "localizations" : {
@@ -626,6 +643,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ninguno"
+          }
+        }
+      }
+    },
+    "Not connected" : {
+      "comment" : "Help tag on a channel strip whose device is absent",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht verbunden"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No conectado"
           }
         }
       }

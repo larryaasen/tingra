@@ -96,10 +96,14 @@ final class EngineModel {
     /// The discovered microphones, seeding the mixer's channel strips.
     private(set) var microphones: [InputChoice] = []
 
-    /// The mixer's channel strips, one per discovered audio input — the
-    /// level and mute the mixer panel edits (GLOSSARY.md, "Channel strip").
-    /// Session state, like the active shot; they join the persisted preset
-    /// when routing lands (ARCHITECTURE.md, "The audio mixer").
+    /// The mixer's channel strips — the level, pan, and mute the mixer panel
+    /// edits (GLOSSARY.md, "Channel strip"): the active preset's authored
+    /// audio channels merged with live discovery (see
+    /// ``MixerStrip/strips(channels:discovered:)``). Strip edits sync back
+    /// into the active preset and autosave like shot edits, so the mix
+    /// reopens as it was; a strip whose device is absent stays on the panel,
+    /// dormant, until the device returns (ARCHITECTURE.md, "Per-strip
+    /// routing").
     private(set) var mixerStrips: [MixerStrip] = []
 
     /// The RTMP(S) destination URL the streaming panel edits, persisted in the
@@ -178,6 +182,13 @@ final class EngineModel {
     /// in a plain relay (not observed) so the ~30 fps program does not churn
     /// SwiftUI — the `MTKView` samples it at display rate (CLOCK.md).
     @ObservationIgnored let programRelay = ProgramFrameRelay()
+
+    /// The latest mix tick's meter readings, handed to the strip meters to
+    /// draw — the audio mirror of ``programRelay``: the meter drain writes
+    /// it, each ``StripMeter`` samples it at display cadence, and no reading
+    /// passes through SwiftUI observation (ARCHITECTURE.md, "Per-strip
+    /// meters").
+    @ObservationIgnored let meterRelay = MeterRelay()
 
     /// The host event bus. In this dev scaffold its events are printed to
     /// stdout (the Xcode console) via ``ConsoleEventSink`` rather than routed
@@ -285,8 +296,13 @@ final class EngineModel {
 
     /// The task draining the mixer's program-audio stream, teeing each mixed
     /// block into the active session while a stream is live (there is no
-    /// audio preview yet — monitoring and meters are later iterations).
+    /// audio preview yet — that monitoring slice is a later iteration).
     @ObservationIgnored private var programAudioTask: Task<Void, Never>?
+
+    /// The task draining the mixer's meter stream into ``meterRelay`` — one
+    /// reading per mix tick, display data only, never the event bus
+    /// (EVENTS.md, control plane only).
+    @ObservationIgnored private var meterTask: Task<Void, Never>?
 
     /// Whether ``start()`` has run, so it boots the engine once.
     @ObservationIgnored private var started = false
@@ -365,8 +381,15 @@ final class EngineModel {
         cameras = inputs.filter { $0.kind == .camera }.map { InputChoice(id: $0.id, name: $0.name) }
         displays = inputs.filter { $0.kind == .display }.map { InputChoice(id: $0.id, name: $0.name) }
         microphones = inputs.filter { $0.kind == .microphone }.map { InputChoice(id: $0.id, name: $0.name) }
-        mixerStrips = MixerStrip.seed(from: microphones)
         loadProject()
+        // The strips merge the loaded preset's authored audio channels with
+        // discovery — the seed policy (first microphone unmuted) is the
+        // fallback when the document authored none (a fresh project, or one
+        // written before routing landed).
+        mixerStrips = MixerStrip.strips(
+            channels: presets.first { $0.id == activePresetID }?.audioChannels,
+            discovered: microphones
+        )
 
         let program = compositor.programFrames()
         compositor.start()
@@ -398,6 +421,16 @@ final class EngineModel {
         programAudioTask = Task { [weak self] in
             for await block in programAudio {
                 self?.streamAudioContinuation?.yield(block)
+            }
+        }
+
+        // The meters ride the same mix tick: one pre-fader reading per block
+        // into the relay the strip meters sample at display cadence —
+        // per-block data, never the event bus (EVENTS.md).
+        let meters = mixer.meterReadings()
+        meterTask = Task { [weak self] in
+            for await block in meters {
+                self?.meterRelay.latest = block.strips
             }
         }
 
@@ -529,7 +562,9 @@ final class EngineModel {
     /// next mix tick. Gesture-rate (a slider drag calls it many times a
     /// second), so it reports nothing itself — the slider's drag-end `tap`
     /// event carries the observability, the same convention as the layer
-    /// sliders (EVENTS.md).
+    /// sliders (EVENTS.md) — and the autosave is debounced, so the drag
+    /// coalesces into one write (the `updateShot` rule; strip settings
+    /// persist in the active preset — ARCHITECTURE.md, "Per-strip routing").
     ///
     /// - Parameters:
     ///   - level: The strip's linear gain, `0`...`1`.
@@ -538,14 +573,16 @@ final class EngineModel {
         guard let index = mixerStrips.firstIndex(where: { $0.id == id }) else { return }
         mixerStrips[index].level = level
         mixer.setLevel(level, forInput: id)
+        scheduleAutosave()
     }
 
     /// Sets one channel strip's pan position, applied to the program mix
     /// from the next mix tick. Gesture-rate like
     /// ``setStripLevel(_:forStrip:)``, so it reports nothing itself — the
     /// pan slider's drag-end `tap` event carries the observability
-    /// (EVENTS.md). Pan never touches device lifecycle, so unlike a mute
-    /// there is no reconfigure pass.
+    /// (EVENTS.md) — and the autosave is debounced like the level's. Pan
+    /// never touches device lifecycle, so unlike a mute there is no
+    /// reconfigure pass.
     ///
     /// - Parameters:
     ///   - pan: The strip's pan position, `-1` (hard left) to `1` (hard
@@ -555,6 +592,7 @@ final class EngineModel {
         guard let index = mixerStrips.firstIndex(where: { $0.id == id }) else { return }
         mixerStrips[index].pan = pan
         mixer.setPan(pan, forInput: id)
+        scheduleAutosave()
     }
 
     /// Mutes or unmutes one channel strip. Beyond silencing the channel in
@@ -571,6 +609,7 @@ final class EngineModel {
         guard let index = mixerStrips.firstIndex(where: { $0.id == id }) else { return }
         mixerStrips[index].isMuted = isMuted
         mixer.setMuted(isMuted, forInput: id)
+        scheduleAutosave()
         await reconfigureAudio()
     }
 
@@ -781,10 +820,12 @@ final class EngineModel {
     /// out (GLOSSARY.md, "Preset"): the on-program shot stays when its id
     /// exists in the target preset, and otherwise keeps rendering as a held
     /// snapshot — no highlighted shot — until the operator takes one from the
-    /// new pool (see ``Compositor/loadPreset(_:)``). The mixer's channel
-    /// strips are session state and carry across unchanged (ARCHITECTURE.md,
-    /// "The audio mixer"). The active preset itself is session state, so a
-    /// switch alone saves nothing.
+    /// new pool (see ``Compositor/loadPreset(_:)``). The mixer adopts the
+    /// target preset's authored audio channels — levels, pans, and mutes
+    /// apply from the next mix tick, a control change, never an interruption
+    /// — or carries the session strips unchanged when the target has none
+    /// (ARCHITECTURE.md, "Per-strip routing"). The active preset itself is
+    /// session state, so a switch alone saves nothing.
     ///
     /// - Parameter presetID: The id of the preset to switch to.
     func switchPreset(to presetID: PresetID) async {
@@ -795,6 +836,7 @@ final class EngineModel {
         compositor.loadPreset(target)
         activeShotID = compositor.activeShotID
         await reconfigure()
+        await adoptAudioChannels(of: target)
     }
 
     /// Adds a new, empty user-authored preset (fresh UUID, localized default
@@ -863,14 +905,16 @@ final class EngineModel {
     /// command). Removing the **active** preset switches to the adjacent one,
     /// and — because the removed preset's shot must leave the air, the shot-
     /// removal rule one level up — cuts to that preset's first shot unless a
-    /// matching shot id holds the program seamlessly; removing an inactive
-    /// preset touches nothing on program.
+    /// matching shot id holds the program seamlessly, with the mixer adopting
+    /// the adjacent preset's authored audio channels the same way a switch
+    /// does; removing an inactive preset touches nothing on program.
     ///
     /// - Parameter presetID: The id of the preset to remove.
     func removePreset(_ presetID: PresetID) async {
         guard presets.count > 1, let index = presets.firstIndex(where: { $0.id == presetID }) else { return }
         let removed = presets.remove(at: index)
-        if presetID == activePresetID {
+        let removedActivePreset = presetID == activePresetID
+        if removedActivePreset {
             let adjacent = presets[min(index, presets.count - 1)]
             activePresetID = adjacent.id
             shots = adjacent.shots
@@ -895,6 +939,9 @@ final class EngineModel {
         )
         scheduleAutosave()
         await reconfigure()
+        if removedActivePreset, let adopted = presets.first(where: { $0.id == activePresetID }) {
+            await adoptAudioChannels(of: adopted)
+        }
     }
 
     /// Moves a preset to a new position in the switcher order — the reorder
@@ -933,15 +980,38 @@ final class EngineModel {
         scheduleAutosave()
     }
 
-    /// Writes the live session ``shots`` back into the active preset's slot
-    /// in ``presets``, so a save, switch, or duplicate operates on the edits
-    /// the operator actually has rather than the shots the preset held when
-    /// it was last made active.
+    /// Writes the live session state back into the active preset's slot in
+    /// ``presets`` — the ``shots``, and the ``mixerStrips`` as the preset's
+    /// authored audio channels — so a save, switch, or duplicate operates on
+    /// the edits the operator actually has rather than what the preset held
+    /// when it was last made active. The session mix *is* the active
+    /// preset's audio configuration: the first sync after routing landed
+    /// authors it, growing a pre-routing document within v1 by use
+    /// (ARCHITECTURE.md, "Per-strip routing").
     private func syncActivePreset() {
         guard let index = presets.firstIndex(where: { $0.id == activePresetID }) else { return }
         let active = presets[index]
-        guard active.shots != shots else { return }
-        presets[index] = Preset(id: active.id, name: active.name, shots: shots)
+        let channels = mixerStrips.map(\.audioChannel)
+        guard active.shots != shots || active.audioChannels != channels else { return }
+        presets[index] = Preset(id: active.id, name: active.name, shots: shots, audioChannels: channels)
+    }
+
+    /// Adopts a newly active preset's authored audio configuration as the
+    /// session strips: its channels merge with live discovery (see
+    /// ``MixerStrip/strips(channels:discovered:)``) and the audio
+    /// reconfigure pass applies them — levels, pans, and mutes take effect
+    /// from the next mix tick, and devices start or stop where the mutes
+    /// differ. A preset with **no** authored audio changes nothing: the
+    /// session mix carries across the switch untouched, the pre-routing
+    /// behavior as the fallback (ARCHITECTURE.md, "Per-strip routing").
+    ///
+    /// - Parameter preset: The preset whose audio configuration to adopt.
+    private func adoptAudioChannels(of preset: Preset) async {
+        guard let channels = preset.audioChannels else { return }
+        let strips = MixerStrip.strips(channels: channels, discovered: microphones)
+        guard strips != mixerStrips else { return }
+        mixerStrips = strips
+        await reconfigureAudio()
     }
 
     /// Adds a layer bound to the given input on top of the active shot's
@@ -1250,6 +1320,8 @@ final class EngineModel {
         programTask = nil
         programAudioTask?.cancel()
         programAudioTask = nil
+        meterTask?.cancel()
+        meterTask = nil
         compositor.stop()
         mixer.stop()
         for input in activeInputs.values {

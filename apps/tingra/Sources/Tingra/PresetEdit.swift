@@ -29,12 +29,14 @@ enum PresetEdit {
             name: String(localized: "New Preset", bundle: .module, comment: "Default name of a newly added preset"))
     }
 
-    /// A duplicate of a preset: the source's shots copied **verbatim — shot
-    /// ids included** — under a fresh `PresetID` and a "<name> copy" name.
-    /// Preserving the shot ids is deliberate: switching between a preset and
-    /// its copy holds the on-program shot by id match, so the copy is a safe
-    /// place to rework a live preset seamlessly (see
-    /// ``Compositor/loadPreset(_:)``).
+    /// A duplicate of a preset: the source's shots and authored audio
+    /// channels copied **verbatim — shot ids included** — under a fresh
+    /// `PresetID` and a "<name> copy" name. Preserving the shot ids is
+    /// deliberate: switching between a preset and its copy holds the
+    /// on-program shot by id match, so the copy is a safe place to rework a
+    /// live preset seamlessly (see ``Compositor/loadPreset(_:)``); the
+    /// verbatim audio channels mean the copy also sounds identical when
+    /// adopted.
     ///
     /// - Parameter preset: The preset to duplicate.
     /// - Returns: The duplicate.
@@ -46,14 +48,16 @@ enum PresetEdit {
                 bundle: .module,
                 comment: "Name of a duplicated shot or preset; the placeholder is the source's name"
             ),
-            shots: preset.shots
+            shots: preset.shots,
+            audioChannels: preset.audioChannels
         )
     }
 
-    /// Renames a preset, preserving its identity and shots. The name is
-    /// trimmed of surrounding whitespace; a rename to an empty (or
-    /// whitespace-only) name returns the preset unchanged — a switcher button
-    /// needs a label, the same rule as ``ShotEdit/renaming(_:to:)``.
+    /// Renames a preset, preserving its identity, shots, and authored audio
+    /// channels. The name is trimmed of surrounding whitespace; a rename to
+    /// an empty (or whitespace-only) name returns the preset unchanged — a
+    /// switcher button needs a label, the same rule as
+    /// ``ShotEdit/renaming(_:to:)``.
     ///
     /// - Parameters:
     ///   - preset: The preset to rename.
@@ -63,6 +67,6 @@ enum PresetEdit {
     static func renaming(_ preset: Preset, to name: String) -> Preset {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return preset }
-        return Preset(id: preset.id, name: trimmed, shots: preset.shots)
+        return Preset(id: preset.id, name: trimmed, shots: preset.shots, audioChannels: preset.audioChannels)
     }
 }
