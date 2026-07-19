@@ -484,16 +484,17 @@ with a synthetic clock and scripted inputs (see [ARCHITECTURE.md](docs/ARCHITECT
 "The audio mixer").
 
 - `AudioMixer` — the clock-paced mixer: a mix tick sums every unmuted strip's
-  queued samples, scaled by its level, into one stereo program-audio block per
-  tick, stamped with the tick's master clock time (contiguous, monotonic PTS by
-  construction). Each strip's audio is normalized once at channel intake
-  (float32, deinterleaved, at the mix rate; mono spreads to both program
-  channels); a stalled strip contributes silence and never stalls the mix.
+  queued samples — scaled by its level, placed by its pan (the equal-power law
+  normalized to unity at center; mono pans, stereo balances) — into one stereo
+  program-audio block per tick, stamped with the tick's master clock time
+  (contiguous, monotonic PTS by construction). Each strip's audio is normalized
+  once at channel intake (float32, deinterleaved, at the mix rate); a stalled
+  strip contributes silence and never stalls the mix.
   `setChannelStrips(_:)` attaches and detaches strips live;
-  `setLevel(_:forInput:)`/`setMuted(_:forInput:)` apply from the next tick;
-  `programAudio()` is the single-consumer mixed stream.
-- `ChannelStrip` — one input's slot in the mixer: the input and its level and
-  mute (pan, routing, and the audio effect chain are later iterations). Engine
+  `setLevel(_:forInput:)`/`setPan(_:forInput:)`/`setMuted(_:forInput:)` apply
+  from the next tick; `programAudio()` is the single-consumer mixed stream.
+- `ChannelStrip` — one input's slot in the mixer: the input and its level, pan,
+  and mute (routing and the audio effect chain are later iterations). Engine
   mute is independent of device lifecycle — whether a muted strip's device keeps
   capturing is the caller's policy.
 - `MixFormat` — the program mix's audio geometry: the sample rate and the block
@@ -637,10 +638,11 @@ Move Left / Move Right, and Remove Shot, and a segmented transition
 picker — Default (each shot's own default transition, the initial selection),
 or an explicit Cut, Dissolve, or Wipe, with an edge pop-up while Wipe is
 selected — choosing how the next take reaches program), `MixerView` (the mixer
-panel: one channel strip per discovered audio input, each with a mute toggle and
-a live level slider — it replaces the streaming panel's microphone picker),
+panel: one channel strip per discovered audio input, each with a mute toggle, a
+live level slider, and a pan slider that recenters on double-click — it
+replaces the streaming panel's microphone picker),
 `MixerStrip` (the pure, unit-tested strip state and its seeding: first input
-unmuted at unity, the rest muted), `LayerTreeEditorView` (the layer-tree editor:
+unmuted at unity, the rest muted, every strip centered), `LayerTreeEditorView` (the layer-tree editor:
 add a layer bound to any discovered camera or display, remove, reorder, and
 adjust a layer's frame and opacity with live sliders — every edit on program at
 the next tick, and autosaved to the project file), `LayerTreeEdit` (the pure,

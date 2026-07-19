@@ -21,8 +21,10 @@ import TingraPlugInKit
 ///
 /// A **mix tick** paced by the injected clock produces one mixed program
 /// audio block per ``MixFormat/blockFrames`` (CLOCK.md's tick model applied
-/// to audio): each tick sums every unmuted strip's queued samples, scaled by
-/// its level, into a stereo block stamped with the tick's master clock time.
+/// to audio): each tick sums every unmuted strip's queued samples — scaled
+/// by its level and placed by its pan (the equal-power law normalized to
+/// unity at center; see ``panGains(_:)``) — into a stereo block stamped with
+/// the tick's master clock time.
 /// Because tick deadlines are absolute positions on the master clock
 /// (`T0 + n × blockDuration`), consecutive blocks form a perfectly
 /// contiguous, monotonic PTS sequence — exactly what the compression sinks
@@ -40,7 +42,7 @@ import TingraPlugInKit
 ///
 /// The mixer emits from its first tick — silence before any strip delivers —
 /// so the program mix, like the program video, is a live canvas at the tick
-/// rate from the moment it starts. Level and mute changes are gesture-rate
+/// rate from the moment it starts. Level, pan, and mute changes are gesture-rate
 /// controls and deliberately report no events (the `updateShot` rule,
 /// EVENTS.md); observability comes from the app's `tap` events, and only
 /// ``start()``/``stop()`` report `mixer.started`/`mixer.stopped`.
@@ -52,7 +54,8 @@ import TingraPlugInKit
 /// over to every block the mixer yields.
 ///
 /// The mutating controls (``setChannelStrips(_:)``, ``setLevel(_:forInput:)``,
-/// ``setMuted(_:forInput:)``, ``start()``, ``stop()``) are meant to be driven
+/// ``setPan(_:forInput:)``, ``setMuted(_:forInput:)``, ``start()``,
+/// ``stop()``) are meant to be driven
 /// from one context (the app's main actor); they are internally locked but
 /// not designed for concurrent callers racing each other — the same contract
 /// as the `Compositor`.
@@ -94,6 +97,9 @@ public final class AudioMixer: Sendable {
     private struct ChannelState {
         /// The strip's linear gain (negative treated as `0`).
         var level: Double
+
+        /// The strip's pan position (clamped to `-1`...`1` at the mix).
+        var pan: Double
 
         /// Whether the strip is muted.
         var isMuted: Bool
@@ -168,13 +174,14 @@ public final class AudioMixer: Sendable {
                 let id = strip.input.id
                 if var existing = state.channels[id] {
                     existing.level = strip.level
+                    existing.pan = strip.pan
                     existing.isMuted = strip.isMuted
                     state.channels[id] = existing
                 }
             }
             for (id, stream) in newStreams {
                 guard let strip = strips.first(where: { $0.input.id == id }) else { continue }
-                var channel = ChannelState(level: strip.level, isMuted: strip.isMuted)
+                var channel = ChannelState(level: strip.level, pan: strip.pan, isMuted: strip.isMuted)
                 channel.fillTask = Task { [weak self] in
                     var normalizer = ChannelNormalizer(sampleRate: sampleRate)
                     for await audio in stream {
@@ -201,6 +208,18 @@ public final class AudioMixer: Sendable {
     ///   - id: The strip's input id.
     public func setLevel(_ level: Double, forInput id: InputID) {
         state.withLock { $0.channels[id]?.level = level }
+    }
+
+    /// Sets one strip's pan position, applied from the next mix tick.
+    /// Unknown ids are ignored, like ``setLevel(_:forInput:)``. Gesture-rate:
+    /// deliberately reports no event (EVENTS.md; the `updateShot` rule).
+    ///
+    /// - Parameters:
+    ///   - pan: The strip's pan position, `-1` (hard left) to `1` (hard
+    ///     right); values outside that range are clamped.
+    ///   - id: The strip's input id.
+    public func setPan(_ pan: Double, forInput id: InputID) {
+        state.withLock { $0.channels[id]?.pan = pan }
     }
 
     /// Sets one strip's mute, applied from the next mix tick. Unknown ids
@@ -279,22 +298,27 @@ public final class AudioMixer: Sendable {
                     guard take > 0 else { continue }
                     let gain = channel.isMuted ? 0 : Float(max(0, channel.level))
                     if gain > 0 {
+                        let pan = Self.panGains(channel.pan)
+                        let leftGain = gain * pan.left
+                        let rightGain = gain * pan.right
                         if channel.queue.count == 1 {
-                            // Mono spreads equally into both program channels.
+                            // Mono spreads into both program channels through
+                            // the pan gains — a constant-power panner.
                             let mono = channel.queue[0]
                             for i in 0..<take {
-                                let sample = mono[i] * gain
-                                left[i] += sample
-                                right[i] += sample
+                                left[i] += mono[i] * leftGain
+                                right[i] += mono[i] * rightGain
                             }
                         } else {
-                            // Stereo (and wider) maps its first two channels;
-                            // the rest are dropped at the mix.
+                            // Stereo (and wider) maps its first two channels
+                            // through the pan gains — a balance: each channel
+                            // is scaled, never folded into the other; the
+                            // rest are dropped at the mix.
                             let sourceLeft = channel.queue[0]
                             let sourceRight = channel.queue[1]
                             for i in 0..<take {
-                                left[i] += sourceLeft[i] * gain
-                                right[i] += sourceRight[i] * gain
+                                left[i] += sourceLeft[i] * leftGain
+                                right[i] += sourceRight[i] * rightGain
                             }
                         }
                     }
@@ -312,6 +336,29 @@ public final class AudioMixer: Sendable {
                 left: block.left, right: block.right, at: tickTime, sampleRate: format.sampleRate)
         else { return }
         block.continuation.yield(mixed)
+    }
+
+    /// The per-program-channel gains of a pan position: the equal-power
+    /// (sine/cosine) law, normalized to unity at center (ARCHITECTURE.md,
+    /// "Per-strip pan"). Center yields `(1, 1)` — a centered strip mixes
+    /// exactly as it did before pan existed — and a hard-panned strip
+    /// carries the law's +3 dB (√2) on its remaining channel, inside the
+    /// float sum's headroom the same way a second unity strip is. Positions
+    /// outside `-1`...`1` are clamped, the negative-level rule's sibling.
+    ///
+    /// - Parameter pan: The pan position, `-1` (hard left) to `1` (hard
+    ///   right).
+    /// - Returns: The left and right program-channel gains.
+    static func panGains(_ pan: Double) -> (left: Float, right: Float) {
+        // The symmetric sine form of the law: `sin(0)` is exactly zero where
+        // `cos(π/2)` is not, so a hard-panned strip's silent channel is
+        // exact silence, not a rounding residue.
+        let clamped = min(1, max(-1, pan))
+        let scale = 2.0.squareRoot()
+        return (
+            Float(scale * sin((1 - clamped) * .pi / 4)),
+            Float(scale * sin((1 + clamped) * .pi / 4))
+        )
     }
 
     /// Appends one intake's normalized samples to its channel's queue,

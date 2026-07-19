@@ -206,7 +206,7 @@ The engine is organized as services, each exposing its capabilities through plug
 
 1. **Capture** – inputs, generators, input discovery, device connection/disconnection
 2. **Composition** – presets, shots, layer tree, transitions, Metal renderer, effects, program/preview buses (in `TingraComposition`: the tick-paced compositor, shots/layers, and the Core Image `ShotRenderer` landed at step 6; transitions, effects, and presets follow at step 7)
-3. **Audio** – mixer, channel strips, routing, audio effects (in `TingraAudio`: the clock-paced `AudioMixer` with per-strip level/mute landed at step 7; pan, routing, and audio effects follow)
+3. **Audio** – mixer, channel strips, routing, audio effects (in `TingraAudio`: the clock-paced `AudioMixer` with per-strip level/mute/pan landed at step 7; routing and audio effects follow)
 4. **Compression** – VideoToolbox compression sessions, rate control, local recording
 5. **Output** – the `StreamingService` seam, with HaishinKit-backed RTMP/SRT implementations
 6. **Plug-in** – discovery, lifecycle, isolation

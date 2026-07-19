@@ -324,6 +324,23 @@
         }
       }
     },
+    "L" : {
+      "comment" : "Left label beside a channel strip's pan slider",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "L"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "I"
+          }
+        }
+      }
+    },
     "Layers" : {
       "comment" : "Layer editor section title",
       "localizations" : {
@@ -630,6 +647,23 @@
         }
       }
     },
+    "Pan" : {
+      "comment" : "Label of a channel strip's pan slider",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Panorama"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Panorámica"
+          }
+        }
+      }
+    },
     "Picture in Picture" : {
       "comment" : "Shot: display with camera inset",
       "localizations" : {
@@ -677,6 +711,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Programa"
+          }
+        }
+      }
+    },
+    "R" : {
+      "comment" : "Right label beside a channel strip's pan slider",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "R"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "D"
           }
         }
       }

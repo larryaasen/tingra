@@ -28,6 +28,7 @@ struct MixerStripTests {
         #expect(strips.count == 3)
         #expect(strips.map(\.isMuted) == [false, true, true])
         #expect(strips.allSatisfy { $0.level == 1 })
+        #expect(strips.allSatisfy { $0.pan == 0 })
         #expect(strips.map(\.id.rawValue) == ["mic-1", "mic-2", "mic-3"])
         #expect(strips.map(\.name) == ["mic-1", "mic-2", "mic-3"])
     }
@@ -41,10 +42,13 @@ struct MixerStripTests {
     @Test("strips compare equal only when every field matches")
     @MainActor
     func stripEquality() {
-        let strip = MixerStrip(id: InputID(rawValue: "mic-1"), name: "Mic", level: 1, isMuted: false)
+        let strip = MixerStrip(id: InputID(rawValue: "mic-1"), name: "Mic", level: 1, pan: 0, isMuted: false)
         var same = strip
         #expect(strip == same)
         same.level = 0.5
+        #expect(strip != same)
+        same = strip
+        same.pan = -1
         #expect(strip != same)
     }
 }

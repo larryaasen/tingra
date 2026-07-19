@@ -10,7 +10,7 @@
 import TingraPlugInKit
 
 /// One channel strip as the mixer panel shows it: a discovered audio input's
-/// level and mute (GLOSSARY.md, "Channel strip" — pan, routing, and the
+/// level, pan, and mute (GLOSSARY.md, "Channel strip" — routing and the
 /// audio effect chain are later iterations). The engine-side strip lives in
 /// the mixer (`TingraAudio.ChannelStrip`, which carries the running input);
 /// this is the app's observable session state for it, kept even while the
@@ -30,6 +30,11 @@ struct MixerStrip: Identifiable, Equatable {
     /// panel's level slider edits.
     var level: Double
 
+    /// The strip's pan position, `-1` (hard left) through `0` (center) to
+    /// `1` (hard right) — what the panel's pan slider edits (double-click
+    /// recenters it).
+    var pan: Double
+
     /// Whether the strip is muted. In the app, muting also stops the
     /// strip's device (the microphone indicator goes dark); the strip keeps
     /// its settings for unmute.
@@ -39,13 +44,13 @@ struct MixerStrip: Identifiable, Equatable {
     /// first input unmuted at unity — the successor of the CLI-era "first
     /// microphone streams" default — and every other input muted at unity,
     /// present on the panel but silent (and not capturing) until the
-    /// operator unmutes it.
+    /// operator unmutes it. Every strip seeds centered.
     ///
     /// - Parameter inputs: The discovered audio inputs, in listing order.
     /// - Returns: One strip per input.
     static func seed(from inputs: [EngineModel.InputChoice]) -> [MixerStrip] {
         inputs.enumerated().map { index, input in
-            MixerStrip(id: input.id, name: input.name, level: 1, isMuted: index != 0)
+            MixerStrip(id: input.id, name: input.name, level: 1, pan: 0, isMuted: index != 0)
         }
     }
 }

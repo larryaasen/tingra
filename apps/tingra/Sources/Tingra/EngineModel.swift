@@ -540,6 +540,23 @@ final class EngineModel {
         mixer.setLevel(level, forInput: id)
     }
 
+    /// Sets one channel strip's pan position, applied to the program mix
+    /// from the next mix tick. Gesture-rate like
+    /// ``setStripLevel(_:forStrip:)``, so it reports nothing itself — the
+    /// pan slider's drag-end `tap` event carries the observability
+    /// (EVENTS.md). Pan never touches device lifecycle, so unlike a mute
+    /// there is no reconfigure pass.
+    ///
+    /// - Parameters:
+    ///   - pan: The strip's pan position, `-1` (hard left) to `1` (hard
+    ///     right).
+    ///   - id: The strip's input id.
+    func setStripPan(_ pan: Double, forStrip id: InputID) {
+        guard let index = mixerStrips.firstIndex(where: { $0.id == id }) else { return }
+        mixerStrips[index].pan = pan
+        mixer.setPan(pan, forInput: id)
+    }
+
     /// Mutes or unmutes one channel strip. Beyond silencing the channel in
     /// the mix, the app ties the strip's device lifecycle to its mute:
     /// muting stops the device (the microphone indicator goes dark — a muted
@@ -613,10 +630,10 @@ final class EngineModel {
         }
 
         // The mixer gets every strip whose device is running, with its
-        // current level and mute — the engine-side strips of the mix.
+        // current level, pan, and mute — the engine-side strips of the mix.
         let strips = mixerStrips.compactMap { strip -> ChannelStrip? in
             guard let input = activeAudioInputs[strip.id] else { return nil }
-            return ChannelStrip(input: input, level: strip.level, isMuted: strip.isMuted)
+            return ChannelStrip(input: input, level: strip.level, pan: strip.pan, isMuted: strip.isMuted)
         }
         mixer.setChannelStrips(strips)
         eventBus.event(

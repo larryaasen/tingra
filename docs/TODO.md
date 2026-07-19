@@ -218,6 +218,37 @@ or two in the doc that owns them — none need a rewrite.
 
 - [ ] **Steps 7–8** — app era: production features (presets, shots, layers,
   transitions, audio mixer), SRT/multiple destinations.
+  - [x] **Step 7, per-strip pan** *(code complete 2026-07-18)* — the twelfth
+    production-feature iteration, landing the next slot of the GLOSSARY.md
+    **channel strip** after level and mute: **pan**, placing each strip in the
+    stereo program mix (routing, audio effect chains, and monitoring/meters
+    are later iterations; custom-shader transitions and SRT/multiple
+    destinations — step 8 — also remain). `TingraAudio`'s `ChannelStrip`
+    gained `pan: Double` (−1 hard left, 0 center — the default — 1 hard
+    right, clamped at the mix) and `AudioMixer` a `setPan(_:forInput:)`
+    mirroring `setLevel` — gesture-rate, no engine events (the `updateShot`
+    rule). The pan law is **equal-power (sine/cosine), normalized to unity at
+    center**: a centered strip mixes byte-for-byte as before pan existed (the
+    pre-pan mixer tests stay green unchanged as the proof), a hard-panned
+    strip carries the law's +3 dB on its remaining channel inside the float
+    sum's recorded headroom posture, and one law serves both intake shapes —
+    a mono strip pans at constant power, a stereo strip balances (channels
+    scaled, never folded; implemented in the symmetric sine form so a hard
+    pan's silent channel is exact silence). Pan **stays session state** — the
+    strip list is still derived from discovery, so pan joins levels and mutes
+    in the persisted preset when routing lands (an optional key within v1
+    under the pre-release rule, never a bump). `apps/tingra`'s `MixerStrip`
+    gained `pan` (seeded centered) and `EngineModel` a
+    `setStripPan(_:forStrip:)` (no reconfigure pass — pan never touches
+    device lifecycle); `MixerView` grew a compact per-strip pan slider with
+    broadcast `L`/`R` value labels and double-click recentering (the macOS
+    slider-reset convention), reporting the drag-end `mixerPan.slider` `tap`
+    and the discrete `mixerPan.reset` `tap`; new strings localized `de`/`es`.
+    Decisions recorded in ARCHITECTURE.md, "Per-strip pan". Tests:
+    `TingraAudioTests` (now 18 — mono hard-left/hard-right, center preserving
+    the pre-pan spread exactly, stereo balance never folding, `setPan`
+    application, beyond-range clamping) and the app's `TingraTests` (still
+    57 — seeding centered, pan inequality).
   - [x] **Step 7, per-shot default transitions** *(code complete 2026-07-18)* —
     the eleventh production-feature iteration, landing the deferral recorded
     since the shot-management iteration: a shot carries the transition it is

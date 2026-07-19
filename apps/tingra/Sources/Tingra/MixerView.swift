@@ -11,17 +11,18 @@ import SwiftUI
 import TingraPlugInKit
 
 /// The mixer panel: one channel strip per discovered audio input, each with
-/// a mute toggle and a level slider (GLOSSARY.md, "Mixer", "Channel strip").
-/// It replaces the streaming panel's single microphone picker — every strip
-/// mixes into the program audio the stream carries, and muting a strip also
-/// stops its device so the microphone indicator stays honest
-/// (ARCHITECTURE.md, "The audio mixer"). Pan, routing, audio effect chains,
-/// and meters are later iterations.
+/// a mute toggle, a level slider, and a pan slider (GLOSSARY.md, "Mixer",
+/// "Channel strip"). It replaces the streaming panel's single microphone
+/// picker — every strip mixes into the program audio the stream carries, and
+/// muting a strip also stops its device so the microphone indicator stays
+/// honest (ARCHITECTURE.md, "The audio mixer"). Routing, audio effect
+/// chains, and meters are later iterations.
 ///
-/// Level edits apply live, tick by tick, like the layer sliders; each
-/// control reports its own `tap` event right where it executes — the mute
-/// toggle on flip, the slider at drag end (EVENTS.md, "The `tap`
-/// convention").
+/// Level and pan edits apply live, tick by tick, like the layer sliders;
+/// each control reports its own `tap` event right where it executes — the
+/// mute toggle on flip, the sliders at drag end (EVENTS.md, "The `tap`
+/// convention"). The pan slider seeds centered and double-clicking recenters
+/// it, the macOS convention for a slider with a meaningful default.
 struct MixerView: View {
     /// The engine model whose strips the panel edits.
     @Bindable var model: EngineModel
@@ -44,7 +45,7 @@ struct MixerView: View {
         }
     }
 
-    /// One channel strip's row: mute, name, level.
+    /// One channel strip's row: mute, name, level, pan.
     private func stripRow(_ strip: MixerStrip) -> some View {
         HStack(spacing: 8) {
             Toggle(isOn: muteBinding(for: strip.id)) {
@@ -74,8 +75,47 @@ struct MixerView: View {
                 .foregroundStyle(.secondary)
                 .monospacedDigit()
                 .frame(width: 44, alignment: .trailing)
+
+            panSlider(for: strip)
         }
         .controlSize(.small)
+    }
+
+    /// One strip's pan slider: hard left to hard right around a centered
+    /// default, flanked by the broadcast L/R value labels. The drag-end
+    /// `tap` reports where the pan landed; a double-click recenters it (the
+    /// macOS slider-reset convention), reporting its own `tap` since a reset
+    /// is a discrete action, not a drag.
+    private func panSlider(for strip: MixerStrip) -> some View {
+        Slider(value: panBinding(for: strip.id), in: -1...1) {
+            Text("Pan", comment: "Label of a channel strip's pan slider")
+        } minimumValueLabel: {
+            Text("L", comment: "Left label beside a channel strip's pan slider")
+        } maximumValueLabel: {
+            Text("R", comment: "Right label beside a channel strip's pan slider")
+        } onEditingChanged: { editing in
+            guard !editing else { return }
+            let pan = model.mixerStrips.first { $0.id == strip.id }?.pan ?? 0
+            model.eventBus.tap(
+                "mixerPan.slider",
+                domain: .audio,
+                params: ["id": .string(strip.id.rawValue), "value": .double(pan)]
+            )
+        }
+        .labelsHidden()
+        .frame(width: 110)
+        .help(Text("Pan", comment: "Label of a channel strip's pan slider"))
+        .accessibilityLabel(Text("Pan", comment: "Label of a channel strip's pan slider"))
+        .simultaneousGesture(
+            TapGesture(count: 2).onEnded {
+                model.eventBus.tap(
+                    "mixerPan.reset",
+                    domain: .audio,
+                    params: ["id": .string(strip.id.rawValue)]
+                )
+                model.setStripPan(0, forStrip: strip.id)
+            }
+        )
     }
 
     /// A live binding to one strip's mute, reporting the `tap` before the
@@ -99,6 +139,15 @@ struct MixerView: View {
             model.mixerStrips.first { $0.id == id }?.level ?? 0
         } set: { newValue in
             model.setStripLevel(newValue, forStrip: id)
+        }
+    }
+
+    /// A live binding to one strip's pan, applied to the mix as it drags.
+    private func panBinding(for id: InputID) -> Binding<Double> {
+        Binding {
+            model.mixerStrips.first { $0.id == id }?.pan ?? 0
+        } set: { newValue in
+            model.setStripPan(newValue, forStrip: id)
         }
     }
 }

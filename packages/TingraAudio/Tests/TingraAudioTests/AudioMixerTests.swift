@@ -292,6 +292,106 @@ struct AudioMixerTests {
         #expect(channels.allSatisfy { $0.allSatisfy { $0 == 0 } })
     }
 
+    @Test("a mono strip panned hard left reaches only the left program channel, at the law's √2 gain")
+    func monoStripPannedHardLeft() async throws {
+        let audio = try #require(
+            makeAudio(channels: [[Float](repeating: 0.5, count: format.blockFrames)], sampleRate: format.sampleRate))
+        let mixer = makeMixer(tickTimes: ticks(1))
+        mixer.setChannelStrips([ChannelStrip(input: FakeAudioInput(id: "mic", buffers: [audio]), pan: -1)])
+        await letFillTasksDrain()
+
+        let program = mixer.programAudio()
+        mixer.start()
+        let block = try #require(await collect(program, limit: 1).first)
+
+        let channels = try #require(samples(of: block, sampleRate: format.sampleRate))
+        #expect(abs((channels[0].first ?? 0) - 0.5 * Float(2.0.squareRoot())) < 0.0001)
+        #expect(channels[1].allSatisfy { $0 == 0 })
+    }
+
+    @Test("a mono strip panned hard right reaches only the right program channel, scaled by its level")
+    func monoStripPannedHardRight() async throws {
+        let audio = try #require(
+            makeAudio(channels: [[Float](repeating: 0.5, count: format.blockFrames)], sampleRate: format.sampleRate))
+        let mixer = makeMixer(tickTimes: ticks(1))
+        mixer.setChannelStrips([
+            ChannelStrip(input: FakeAudioInput(id: "mic", buffers: [audio]), level: 0.5, pan: 1)
+        ])
+        await letFillTasksDrain()
+
+        let program = mixer.programAudio()
+        mixer.start()
+        let block = try #require(await collect(program, limit: 1).first)
+
+        let channels = try #require(samples(of: block, sampleRate: format.sampleRate))
+        #expect(channels[0].allSatisfy { $0 == 0 })
+        #expect(abs((channels[1].first ?? 0) - 0.25 * Float(2.0.squareRoot())) < 0.0001)
+    }
+
+    @Test("a centered pan mixes exactly as the pre-pan spread — unity into both program channels")
+    func centeredPanPreservesTheSpread() async throws {
+        let audio = try #require(
+            makeAudio(channels: [[Float](repeating: 0.5, count: format.blockFrames)], sampleRate: format.sampleRate))
+        let mixer = makeMixer(tickTimes: ticks(1))
+        mixer.setChannelStrips([ChannelStrip(input: FakeAudioInput(id: "mic", buffers: [audio]), pan: 0)])
+        await letFillTasksDrain()
+
+        let program = mixer.programAudio()
+        mixer.start()
+        let block = try #require(await collect(program, limit: 1).first)
+
+        let channels = try #require(samples(of: block, sampleRate: format.sampleRate))
+        #expect(channels[0].first == 0.5)
+        #expect(channels[0] == channels[1])
+    }
+
+    @Test("a stereo strip's pan is a balance: hard right keeps only the source's right channel, never folds the left")
+    func stereoStripPannedHardRightIsABalance() async throws {
+        let left = [Float](repeating: 0.2, count: format.blockFrames)
+        let right = [Float](repeating: 0.4, count: format.blockFrames)
+        let audio = try #require(makeAudio(channels: [left, right], sampleRate: format.sampleRate))
+        let mixer = makeMixer(tickTimes: ticks(1))
+        mixer.setChannelStrips([ChannelStrip(input: FakeAudioInput(id: "stereo", buffers: [audio]), pan: 1)])
+        await letFillTasksDrain()
+
+        let program = mixer.programAudio()
+        mixer.start()
+        let block = try #require(await collect(program, limit: 1).first)
+
+        let channels = try #require(samples(of: block, sampleRate: format.sampleRate))
+        #expect(channels[0].allSatisfy { $0 == 0 })
+        #expect(abs((channels[1].first ?? 0) - 0.4 * Float(2.0.squareRoot())) < 0.0001)
+    }
+
+    @Test("setPan applies to the strips of the mix")
+    func setPanAppliesToStrips() async throws {
+        let audio = try #require(
+            makeAudio(channels: [[Float](repeating: 0.5, count: format.blockFrames)], sampleRate: format.sampleRate))
+        let input = FakeAudioInput(id: "mic", buffers: [audio])
+        let mixer = makeMixer(tickTimes: ticks(1))
+        mixer.setChannelStrips([ChannelStrip(input: input)])
+        mixer.setPan(-1, forInput: input.id)
+        await letFillTasksDrain()
+
+        let program = mixer.programAudio()
+        mixer.start()
+        let block = try #require(await collect(program, limit: 1).first)
+
+        let channels = try #require(samples(of: block, sampleRate: format.sampleRate))
+        #expect(abs((channels[0].first ?? 0) - 0.5 * Float(2.0.squareRoot())) < 0.0001)
+        #expect(channels[1].allSatisfy { $0 == 0 })
+    }
+
+    @Test("a pan beyond the range is clamped to hard, never over-rotated")
+    func panBeyondRangeIsClamped() {
+        let hardLeft = AudioMixer.panGains(-5)
+        let hardRight = AudioMixer.panGains(5)
+        #expect(abs(hardLeft.left - Float(2.0.squareRoot())) < 0.0001)
+        #expect(hardLeft.right == 0)
+        #expect(hardRight.left == 0)
+        #expect(abs(hardRight.right - Float(2.0.squareRoot())) < 0.0001)
+    }
+
     @Test("a strip at another sample rate is converted to the mix rate at intake")
     func sampleRateConversionAtIntake() async throws {
         // Two blocks' worth of a constant signal at half the mix rate: the
