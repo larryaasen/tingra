@@ -30,7 +30,7 @@ A project is the saved file for an entire show. A project contains presets. A pr
 
 **Overlay** — a graphic or input displayed on top of the program, independent of the current shot: a logo, a frame, an alert, a persistent title.
 
-**Transition** — the move from one shot or preset to the next. Types: **cut** (instant), **dissolve** (crossfade), **wipe** (directional reveal), plus custom shader based transitions. A shot may carry a **default transition** — the transition it is taken with unless the operator overrides it with an explicit choice; a shot with no default is taken with a cut.
+**Transition** — the move from one shot or preset to the next. Types: **cut** (instant), **dissolve** (crossfade), **wipe** (directional reveal), and **shader** (a custom Metal-shader reveal, chosen from the built-in menu: **iris**, **diagonal**, **blinds**). A shot may carry a **default transition** — the transition it is taken with unless the operator overrides it with an explicit choice; a shot with no default is taken with a cut.
 
 ## Buses and monitoring
 

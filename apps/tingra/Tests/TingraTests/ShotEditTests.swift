@@ -116,6 +116,12 @@ struct ShotEditTests {
         #expect(edited != shot)
     }
 
+    @Test("setting a shader default transition stores the shader at the default duration")
+    func settingShaderDefaultTransitionStoresShader() {
+        let edited = ShotEdit.settingDefaultTransition(.shader(name: .blinds), of: makeShot())
+        #expect(edited.defaultTransition == .shader(name: .blinds, duration: Transition.defaultShaderDuration))
+    }
+
     @Test("setting a nil default transition clears the shot's default")
     func settingNilDefaultTransitionClears() {
         let cleared = ShotEdit.settingDefaultTransition(nil, of: makeShot())

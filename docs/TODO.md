@@ -218,6 +218,96 @@ or two in the doc that owns them — none need a rewrite.
 
 - [ ] **Steps 7–8** — app era: production features (presets, shots, layers,
   transitions, audio mixer), SRT/multiple destinations.
+  - [ ] **Step 7 remaining (exit criteria)** *(drawn 2026-07-19)* — the
+    iterations that must land before step 8 opens, collected from the
+    deferrals the fourteen records above carried. When this sub-list is
+    empty, step 7 is done; nothing joins it silently — widening the list is
+    itself a recorded decision. Checked against the roadmap definition
+    (ARCHITECTURE.md step 7: "presets, shots, layers, transitions, audio
+    mixer") and the GLOSSARY.md vocabulary: transitions are complete when
+    all four GLOSSARY.md "Transition" kinds exist (custom shader is the
+    last), and the audio mixer is complete when every GLOSSARY.md "channel
+    strip" slot exists (the audio effect chain is the last).
+    - [x] **Custom-shader transitions** *(landed 2026-07-19 — see the
+      fifteenth-iteration record below)* — the last GLOSSARY.md transition
+      kind, completing the transitions story: a `Transition` case carrying
+      a shader choice, rendered through a `ShotRenderer` seam requirement
+      beside `renderWipe` on the dissolve's untouched tick-counted timing
+      spine (the wipe pattern). **V1 is first-party built-in shaders
+      only** — a fixed menu compiled into the app; loading third-party
+      shader code is a plug-in-era surface with a security posture to
+      record first (user-supplied GPU code is the dual-use boundary), so
+      it is *not* step-7 exit criteria.
+    - [x] **The effect seam decision** *(decided 2026-07-19, flagged for
+      Larry's veto — see "Decisions to settle" and ARCHITECTURE.md, "The
+      effect seam"; no code lands until the veto clears)* — effects are
+      plug-ins (CLAUDE.md), so the seam lands in `TingraPlugInKit` under
+      the plug-in API stability contract (SemVer, the
+      default-implementation rule, the diagnose-api-breaking-changes check
+      once tags exist) — the one call that had to be made and recorded in
+      ARCHITECTURE.md *before any effect code*: **one shared seam, two
+      media protocols** (`AudioEffect`/`VideoEffect` under one
+      `EffectRegistering`/identity/parameter surface). Never rushed — a
+      half-designed stability contract is worse than an unfinished step.
+    - [ ] **Effect chains** — against the recorded seam, as thin
+      conformances in a first-party effect plug-in package: **audio effect
+      chains** (the last GLOSSARY.md channel-strip slot, after routing)
+      and **per-layer video effects** (the "later 'Effect' iteration"
+      deferred since the layer-tree editor). May land as one iteration or
+      two, per the seam decision.
+    - [x] **Monitoring is ruled out of step 7** *(decided 2026-07-19)* —
+      the monitoring slice the docs point at from three places (the app's
+      "no audio preview yet" drain note, the mixer record's "a future
+      monitoring path may keep muted devices running", the meters record's
+      "post-fader metering belongs to the master bus, a later monitoring
+      slice") is **not** exit criteria: the roadmap defines step 7's audio
+      scope as the mixer, the GLOSSARY.md channel strip has no monitoring
+      slot (its meter landed), and audio preview / post-fader master
+      metering belong to the buses-and-monitoring vocabulary (preview,
+      multiview) — an app-era slice sequenced after step 8, alongside the
+      video preview bus it parallels. Recorded here so it cannot silently
+      expand the bucket.
+  - [x] **Step 7, custom-shader transitions** *(code complete 2026-07-19)* —
+    the fifteenth production-feature iteration, landing the fourth and last
+    GLOSSARY.md **transition** kind — **shader**, a custom Metal-shader
+    reveal — and with it the repo's first hand-written Metal, arriving
+    exactly where the renderer decision sequenced it (the effect subsystem
+    is now step 7's one remaining exit criterion; SRT/multiple
+    destinations — step 8 — remain). `TingraComposition`'s `Transition`
+    gained **`.shader(name:duration:)`** over a new **`TransitionShader`**
+    menu (`iris`/`diagonal`/`blinds` — the shapes the wipe record deferred
+    as "diagonals, irises, and patterns"), on the project/scripting
+    contract: stable `kind: "shader"` + `shader` + `durationSeconds` keys,
+    forgiving decode (iris, half-second default), an **unknown shader name
+    throws** (a document must not silently take with a different look), no
+    version bump. The kernels are **stitchable Metal, runtime-compiled from
+    compiled-in first-party source** (`CIKernel.kernels(withMetalString:)`,
+    inside the macOS 15 floor; no SPM metallib machinery) behind a new
+    per-kind `ShotRenderer.renderShader` requirement — no default
+    implementation, the wipe's reasoning — sharing the wipe's feathered
+    sweep rule (exact endpoints) and the operator's top-left screen terms
+    (the Y-flip); the dissolve's tick-counted `PendingTransition` spine is
+    untouched, and a kernel that cannot compile or apply **degrades to the
+    incoming shot** (a visible cut — never a crash, never a frozen
+    program). **Security posture recorded**: v1 runs first-party shader
+    source only — no path reads shader code from documents, files, or user
+    input; a third-party shader seam is deferred plug-in-era work whose
+    validation/isolation posture must be recorded before any loader lands.
+    `apps/tingra`: the switcher picker gained a **Shader** segment with a
+    shader pop-up (the wipe's Edge pattern; `shaderName.picker` `tap`), the
+    Default Transition submenu the three shaders (`shader` param on its
+    `tap`), and `program.take` keeps reporting the kind alone (`"shader"`);
+    new strings localized `de`/`es` (Jalousie/Persiana). Decisions recorded
+    in ARCHITECTURE.md, "Custom-shader transitions"; GLOSSARY.md's
+    Transition entry now names all four kinds and the shader menu; README
+    gained `TransitionShader`. Tests: `TingraCompositionTests` (now 123 —
+    shader `Transition` round-trip/stable-keys/forgiving-decode/
+    unknown-name-throws/equality, the compositor's shader-take progress
+    ramp over the mock renderer, and per-shader software-`CIContext` pixel
+    tests: exact endpoints doubling as compile checks, iris center-vs-corner,
+    diagonal top-left origin, blinds parallel bands, BT.709 tag + tick-time
+    stamp) and the app's `TingraTests` (now 71 — a shader default
+    transition stored at the default duration).
   - [x] **Step 7, per-strip routing: the persisted mix** *(code complete
     2026-07-19)* — the fourteenth production-feature iteration, landing the
     **routing** slot of the GLOSSARY.md **channel strip** and, with it, the
@@ -685,6 +775,20 @@ or two in the doc that owns them — none need a rewrite.
     behavior).
 
 ## Decisions to settle
+
+- [x] **The effect seam shape: one seam, two media protocols.** Decided
+  2026-07-19 (recorded in ARCHITECTURE.md, "The effect seam"; **flagged for
+  Larry's veto before any conformance code lands** — the seam joins the
+  `TingraPlugInKit` stability contract, so the shape is settled before the
+  build): one registration surface (`EffectRegistering`), identity model,
+  provider/instance split (the `StreamingServiceProvider` pattern), and
+  persisted parameter shape — with **two processing protocols**,
+  `AudioEffect` (deinterleaved float32 blocks at the mix tick) and
+  `VideoEffect` (`CIImage → CIImage`, so a chain fuses into one render
+  pass), never one protocol straddling both (the recording-seam precedent).
+  Chains persist as optional `effects` arrays on `AudioChannel` and `Layer`
+  within v1; first-party effects land in a new `TingraEffectPlugIns`
+  package as two iterations — audio chains first, then per-layer video.
 
 - [x] **OSLog sink attachment in `tingra-cli`.** Decided 2026-07-04: skip
   attaching `OSLogSink` when standard error is a terminal, since macOS's own

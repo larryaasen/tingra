@@ -463,24 +463,29 @@ so it stays testable with a synthetic clock and a mock renderer (see
   rate) every frame is rendered at.
 - `Transition` — the move from one shot to the next, passed per call to
   `take(shotID:transition:)`: `cut` (instant, the default), `dissolve(duration:)`
-  (crossfade), or `wipe(edge:duration:)` (directional reveal); a plain `Codable`
-  value type on the same project/scripting contract as `Preset`/`Shot`, persisted
-  as a shot's `defaultTransition` (custom shader based transitions are a later
-  iteration).
+  (crossfade), `wipe(edge:duration:)` (directional reveal), or
+  `shader(name:duration:)` (a custom Metal-shader reveal from the built-in
+  menu); a plain `Codable` value type on the same project/scripting contract as
+  `Preset`/`Shot`, persisted as a shot's `defaultTransition`.
 - `WipeEdge` — the frame edge a wipe reveals the incoming shot from (`left`,
   `right`, `top`, `bottom`, in the operator's top-left-origin screen terms),
   its boundary sweeping to the opposite edge; `Codable` by its stable camelCase
   raw value.
+- `TransitionShader` — the built-in menu of custom-shader transitions (`iris`,
+  `diagonal`, `blinds`), each a first-party hand-written Metal kernel compiled
+  into the app — a project document can only name an entry here, never supply
+  shader code; `Codable` by its stable camelCase raw value.
 - `ShotRenderer` — the internal seam between the compositor's tick-paced control
   flow and the pixel work (a plain render, a dissolve's crossfade, a wipe's
-  directional reveal); task-confined, so it needs no `Sendable`, and swappable
-  for a mock in tests.
+  directional reveal, a shader transition's kernel blend); task-confined, so it
+  needs no `Sendable`, and swappable for a mock in tests.
 - `CoreImageShotRenderer` — the default renderer: composites the layer tree with
   a Metal-backed `CIContext`, GPU-resident, into an IOSurface-backed 32BGRA
   program buffer tagged BT.709 (a software `CIContext` makes the compositing
   math unit-testable with no GPU); dissolves alpha-blend the two layer trees,
-  wipes blend them behind a soft-edged swept gradient mask — built-in filters,
-  no custom shader.
+  wipes blend them behind a soft-edged swept gradient mask, and shader
+  transitions blend through the first-party stitchable Metal kernels, compiled
+  once at first use from compiled-in source.
 
 ### `packages/TingraAudio`
 

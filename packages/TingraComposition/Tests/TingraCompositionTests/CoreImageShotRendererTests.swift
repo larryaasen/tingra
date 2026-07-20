@@ -389,6 +389,209 @@ struct CoreImageShotRendererTests {
         #expect(bottom.blue < 5)
     }
 
+    @Test(
+        "a shader transition at progress 0 renders the outgoing shot alone — proof the kernel compiled and applied",
+        arguments: TransitionShader.allCases
+    )
+    func shaderAtZeroProgressRendersOutgoingAlone(shader: TransitionShader) throws {
+        let renderer = makeRenderer()
+        let format = ProgramFormat(width: 4, height: 16, frameRate: 30)
+        let camera = InputID(rawValue: "camera")
+        let outgoing = Shot(layers: [Layer(input: camera)], background: .black)
+        let incoming = Shot(background: .black)
+
+        let program = try #require(
+            renderer.renderShader(
+                from: outgoing,
+                to: incoming,
+                shader: shader,
+                progress: 0,
+                frames: [camera: solidFrame(red: 255, green: 0, blue: 0)],
+                format: format,
+                time: .zero
+            )
+        )
+
+        // Every probed pixel is still the outgoing shot — the reveal has
+        // not entered its span. This doubles as the compile check: a kernel
+        // that did not build degrades to the *incoming* shot, which would
+        // read black here.
+        for (x, y) in [(0, 0), (3, 15), (2, 8)] {
+            let pixel = readPixel(program.pixelBuffer, x: x, y: y)
+            #expect(pixel.red > 250)
+        }
+    }
+
+    @Test(
+        "a shader transition at progress 1 renders the incoming shot alone",
+        arguments: TransitionShader.allCases
+    )
+    func shaderAtFullProgressRendersIncomingAlone(shader: TransitionShader) throws {
+        let renderer = makeRenderer()
+        let format = ProgramFormat(width: 4, height: 16, frameRate: 30)
+        let camera = InputID(rawValue: "camera")
+        let outgoing = Shot(background: .black)
+        let incoming = Shot(layers: [Layer(input: camera)], background: .black)
+
+        let program = try #require(
+            renderer.renderShader(
+                from: outgoing,
+                to: incoming,
+                shader: shader,
+                progress: 1,
+                frames: [camera: solidFrame(red: 0, green: 0, blue: 255)],
+                format: format,
+                time: .zero
+            )
+        )
+
+        // Every probed pixel is the incoming shot — the reveal has crossed
+        // its whole span, feather included.
+        for (x, y) in [(0, 0), (3, 15), (2, 8)] {
+            let pixel = readPixel(program.pixelBuffer, x: x, y: y)
+            #expect(pixel.blue > 250)
+            #expect(pixel.red < 5)
+        }
+    }
+
+    @Test("an iris midway reveals the frame's center while its corners stay outgoing")
+    func irisMidwayRevealsCenter() throws {
+        let renderer = makeRenderer()
+        let format = ProgramFormat(width: 4, height: 4, frameRate: 30)
+        let cameraA = InputID(rawValue: "cameraA")
+        let cameraB = InputID(rawValue: "cameraB")
+        let outgoing = Shot(layers: [Layer(input: cameraA)], background: .black)
+        let incoming = Shot(layers: [Layer(input: cameraB)], background: .black)
+        let frames = [
+            cameraA: solidFrame(red: 255, green: 0, blue: 0),
+            cameraB: solidFrame(red: 0, green: 0, blue: 255),
+        ]
+
+        let program = try #require(
+            renderer.renderShader(
+                from: outgoing,
+                to: incoming,
+                shader: .iris,
+                progress: 0.5,
+                frames: frames,
+                format: format,
+                time: .zero
+            )
+        )
+
+        // The circular boundary sits mid-sweep: the center pixel is
+        // revealed (incoming blue), the corners are not yet (outgoing red).
+        let center = readPixel(program.pixelBuffer, x: 2, y: 2)
+        let corner = readPixel(program.pixelBuffer, x: 0, y: 0)
+        #expect(center.blue > 250)
+        #expect(center.red < 5)
+        #expect(corner.red > 250)
+        #expect(corner.blue < 5)
+    }
+
+    @Test("a diagonal midway reveals from the screen's top-left corner toward the bottom-right (Y-flip correct)")
+    func diagonalMidwayRevealsTopLeft() throws {
+        let renderer = makeRenderer()
+        let format = ProgramFormat(width: 4, height: 4, frameRate: 30)
+        let cameraA = InputID(rawValue: "cameraA")
+        let cameraB = InputID(rawValue: "cameraB")
+        let outgoing = Shot(layers: [Layer(input: cameraA)], background: .black)
+        let incoming = Shot(layers: [Layer(input: cameraB)], background: .black)
+        let frames = [
+            cameraA: solidFrame(red: 255, green: 0, blue: 0),
+            cameraB: solidFrame(red: 0, green: 0, blue: 255),
+        ]
+
+        let program = try #require(
+            renderer.renderShader(
+                from: outgoing,
+                to: incoming,
+                shader: .diagonal,
+                progress: 0.5,
+                frames: frames,
+                format: format,
+                time: .zero
+            )
+        )
+
+        // The diagonal boundary sits mid-sweep: the top-left pixel
+        // (operator terms — row 0) is revealed, the bottom-right is not —
+        // the sweep opens from the screen's top-left, not Core Image's
+        // bottom-left.
+        let topLeft = readPixel(program.pixelBuffer, x: 0, y: 0)
+        let bottomRight = readPixel(program.pixelBuffer, x: 3, y: 3)
+        #expect(topLeft.blue > 250)
+        #expect(topLeft.red < 5)
+        #expect(bottomRight.red > 250)
+        #expect(bottomRight.blue < 5)
+    }
+
+    @Test("blinds midway reveal the leading rows of every band in parallel")
+    func blindsMidwayRevealBandsInParallel() throws {
+        let renderer = makeRenderer()
+        // 16 rows over the shader's 8 bands: each band is 2 rows tall, its
+        // first (screen-upper) row revealed at half progress, its second
+        // not yet.
+        let format = ProgramFormat(width: 4, height: 16, frameRate: 30)
+        let cameraA = InputID(rawValue: "cameraA")
+        let cameraB = InputID(rawValue: "cameraB")
+        let outgoing = Shot(layers: [Layer(input: cameraA)], background: .black)
+        let incoming = Shot(layers: [Layer(input: cameraB)], background: .black)
+        let frames = [
+            cameraA: solidFrame(red: 255, green: 0, blue: 0),
+            cameraB: solidFrame(red: 0, green: 0, blue: 255),
+        ]
+
+        let program = try #require(
+            renderer.renderShader(
+                from: outgoing,
+                to: incoming,
+                shader: .blinds,
+                progress: 0.5,
+                frames: frames,
+                format: format,
+                time: .zero
+            )
+        )
+
+        // Two bands sampled: each opens from its screen-upper row — the
+        // parallel reveal that distinguishes blinds from one full-height
+        // wipe.
+        for bandStart in [0, 8] {
+            let upper = readPixel(program.pixelBuffer, x: 2, y: bandStart)
+            let lower = readPixel(program.pixelBuffer, x: 2, y: bandStart + 1)
+            #expect(upper.blue > 250)
+            #expect(upper.red < 5)
+            #expect(lower.red > 250)
+            #expect(lower.blue < 5)
+        }
+    }
+
+    @Test("the program frame stamped by a shader transition carries the tick's time and BT.709 tags")
+    func shaderStampsTickTimeAndTags() throws {
+        let renderer = makeRenderer()
+        let format = ProgramFormat(width: 4, height: 4, frameRate: 30)
+
+        let program = try #require(
+            renderer.renderShader(
+                from: Shot(),
+                to: Shot(),
+                shader: .iris,
+                progress: 0.5,
+                frames: [:],
+                format: format,
+                time: CMTime(value: 9, timescale: 30)
+            )
+        )
+
+        #expect(program.presentationTime == CMTime(value: 9, timescale: 30))
+        // No untagged buffer leaves the renderer (ARCHITECTURE.md, "Color
+        // and pixel format conventions") — the shader path shares the
+        // tagged output tail with every other render.
+        let primaries = CVBufferCopyAttachment(program.pixelBuffer, kCVImageBufferColorPrimariesKey, nil)
+        #expect(primaries as? String == kCVImageBufferColorPrimaries_ITU_R_709_2 as String)
+    }
+
     @Test("the program frame stamped by a wipe carries the tick's time and BT.709 tags")
     func wipeStampsTickTimeAndTags() throws {
         let renderer = makeRenderer()

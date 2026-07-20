@@ -31,7 +31,11 @@ import TingraPlugInKit
 /// (``renderWipe(from:to:edge:progress:frames:format:time:)``) renders both
 /// trees the same way and blends them behind a soft-edged linear-gradient
 /// mask swept across the frame — built-in Core Image filters, still no
-/// custom shader.
+/// custom shader. A **custom-shader transition**
+/// (``renderShader(from:to:shader:progress:frames:format:time:)``) is where
+/// hand-written Metal finally arrives: both trees blend through one of the
+/// first-party stitchable Metal kernels (``TransitionShader``), compiled
+/// once at first use from compiled-in source.
 ///
 /// Not `Sendable` by design (see ``ShotRenderer``): an instance and its
 /// `CIContext` and buffer pool live entirely inside the compositor's tick
@@ -139,6 +143,130 @@ public final class CoreImageShotRenderer: ShotRenderer {
         )
         return renderToBuffer(blended, format: format, time: time)
     }
+
+    /// Composites a custom-shader transition: both shots' layer trees are
+    /// rendered independently, then blended per pixel by the built-in
+    /// stitchable Metal kernel named by `shader`, its reveal ramping with
+    /// `progress` — the endpoints render the outgoing and incoming shot
+    /// exactly (each kernel's swept band, feathered like the wipe's, sits
+    /// fully off its span at progress `0` and fully past it at `1`).
+    ///
+    /// If the kernel could not be compiled or refuses to apply — an
+    /// environment defect, never expected for first-party source — the
+    /// transition **degrades to the incoming shot** (visually a cut):
+    /// returning `nil` would make the compositor skip every tick of the
+    /// transition and freeze the program for its duration, where a visible
+    /// early cut keeps the program live (ARCHITECTURE.md, "Custom-shader
+    /// transitions").
+    public func renderShader(
+        from outgoing: Shot,
+        to incoming: Shot,
+        shader: TransitionShader,
+        progress: Double,
+        frames: [InputID: CapturedFrame],
+        format: ProgramFormat,
+        time: CMTime
+    ) -> CapturedFrame? {
+        let clampedProgress = min(max(progress, 0), 1)
+        let outgoingImage = layerTreeImage(shot: outgoing, frames: frames, format: format)
+        let incomingImage = layerTreeImage(shot: incoming, frames: frames, format: format)
+        let programRect = CGRect(x: 0, y: 0, width: format.width, height: format.height)
+        guard
+            let kernel = shaderKernels[shader],
+            let blended = kernel.apply(
+                extent: programRect,
+                arguments: [
+                    outgoingImage,
+                    incomingImage,
+                    Float(clampedProgress),
+                    Float(format.width),
+                    Float(format.height),
+                ]
+            )
+        else {
+            return renderToBuffer(incomingImage, format: format, time: time)
+        }
+        return renderToBuffer(blended, format: format, time: time)
+    }
+
+    /// The compiled transition kernels, keyed by shader — built once on
+    /// first use (`lazy`, so a session that never takes a shader transition
+    /// never compiles), inside the tick task like everything else in this
+    /// renderer. A shader whose kernel did not compile is simply absent;
+    /// ``renderShader(from:to:shader:progress:frames:format:time:)``
+    /// degrades it to the incoming shot.
+    private lazy var shaderKernels: [TransitionShader: CIColorKernel] = Self.compileShaderKernels()
+
+    /// Compiles the first-party transition kernels from their compiled-in
+    /// Metal source and maps them by ``TransitionShader`` — each kernel's
+    /// Metal function name is the shader's raw value. Runtime compilation
+    /// (`CIKernel.kernels(withMetalString:)`) keeps the build free of
+    /// Metal-library plumbing and takes only these fixed constants as
+    /// input — never a document, a file, or user input (the first-party-only
+    /// security posture; ARCHITECTURE.md, "Custom-shader transitions"). A
+    /// compile failure yields an incomplete map, never a crash.
+    private static func compileShaderKernels() -> [TransitionShader: CIColorKernel] {
+        guard let kernels = try? CIKernel.kernels(withMetalString: transitionShaderSource) else { return [:] }
+        var compiled: [TransitionShader: CIColorKernel] = [:]
+        for kernel in kernels {
+            guard let shader = TransitionShader(rawValue: kernel.name), let colorKernel = kernel as? CIColorKernel
+            else { continue }
+            compiled[shader] = colorKernel
+        }
+        return compiled
+    }
+
+    /// The first-party transition shaders — the repo's first hand-written
+    /// Metal, arriving exactly where ARCHITECTURE.md sequenced it ("raw
+    /// Metal shaders arrive only where custom work demands them"). Each
+    /// `[[stitchable]]` kernel shares one signature — the two shots'
+    /// samples, the progress, the program size, and the destination — and
+    /// one sweep rule, the wipe's: a feathered band (5% of the swept span)
+    /// runs from fully off its span at progress 0 to fully past it at 1,
+    /// so the endpoints are exact. Coordinates are flipped from Core
+    /// Image's bottom-left origin into the operator's top-left screen
+    /// terms (the `placedImage(for:layer:format:)` flip), so the diagonal
+    /// opens from the screen's top-left and blinds reveal downward.
+    private static let transitionShaderSource = """
+        #include <CoreImage/CoreImage.h>
+        using namespace metal;
+
+        /// The shared sweep: 1 where the boundary has revealed the incoming
+        /// shot, 0 where the outgoing shot still shows, ramping across a
+        /// feather band that trails the boundary.
+        static float reveal(float distance, float span, float progress) {
+            float feather = span * 0.05;
+            float swept = -feather + progress * (span + feather);
+            return 1.0 - smoothstep(swept, swept + feather, distance);
+        }
+
+        [[ stitchable ]] float4 iris(
+            coreimage::sample_t outgoing, coreimage::sample_t incoming,
+            float progress, float width, float height, coreimage::destination dest
+        ) {
+            float2 center = float2(width, height) * 0.5;
+            float span = length(center);
+            float d = distance(dest.coord(), center);
+            return mix(outgoing, incoming, reveal(d, span, progress));
+        }
+
+        [[ stitchable ]] float4 diagonal(
+            coreimage::sample_t outgoing, coreimage::sample_t incoming,
+            float progress, float width, float height, coreimage::destination dest
+        ) {
+            float d = dest.coord().x + (height - dest.coord().y);
+            return mix(outgoing, incoming, reveal(d, width + height, progress));
+        }
+
+        [[ stitchable ]] float4 blinds(
+            coreimage::sample_t outgoing, coreimage::sample_t incoming,
+            float progress, float width, float height, coreimage::destination dest
+        ) {
+            float band = height / 8.0;
+            float d = fmod(height - dest.coord().y, band);
+            return mix(outgoing, incoming, reveal(d, band, progress));
+        }
+        """
 
     /// The width of a wipe's soft edge as a fraction of the sweep span — a
     /// fixed, narrow feather so the moving boundary blends instead of

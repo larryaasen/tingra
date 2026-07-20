@@ -69,6 +69,23 @@
         }
       }
     },
+    "Blinds" : {
+      "comment" : "Shader picker option: horizontal bands revealing in parallel",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jalousie"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Persiana"
+          }
+        }
+      }
+    },
     "Bottom" : {
       "comment" : "Wipe edge picker option: reveal from the bottom edge of the frame",
       "localizations" : {
@@ -205,6 +222,23 @@
         }
       }
     },
+    "Diagonal" : {
+      "comment" : "Shader picker option: diagonal sweep from the top-left corner",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diagonal"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diagonal"
+          }
+        }
+      }
+    },
     "Display" : {
       "comment" : "Display input picker label",
       "localizations" : {
@@ -320,6 +354,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Inactivo"
+          }
+        }
+      }
+    },
+    "Iris" : {
+      "comment" : "Shader picker option: circular reveal opening from the center",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Iris"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Iris"
           }
         }
       }
@@ -932,6 +983,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Selecciona una capa para editar su marco y opacidad."
+          }
+        }
+      }
+    },
+    "Shader" : {
+      "comment" : "Transition picker option: reveal the next shot taken through a built-in custom shader",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shader"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shader"
           }
         }
       }

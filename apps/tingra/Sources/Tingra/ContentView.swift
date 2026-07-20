@@ -339,6 +339,12 @@ struct ContentView: View {
                                 "Transition picker option: reveal the next shot taken across the frame from an edge"
                         )
                         .tag(TakeTransitionKind.wipe)
+                        Text(
+                            "Shader",
+                            comment:
+                                "Transition picker option: reveal the next shot taken through a built-in custom shader"
+                        )
+                        .tag(TakeTransitionKind.shader)
                     } label: {
                         Text(
                             "Transition",
@@ -376,6 +382,34 @@ struct ContentView: View {
                                 "wipeEdge.picker",
                                 domain: .composition,
                                 params: ["edge": .string(newValue.rawValue)]
+                            )
+                        }
+                    }
+
+                    if model.takeTransitionKind == .shader {
+                        Picker(selection: $model.shaderName) {
+                            Text("Iris", comment: "Shader picker option: circular reveal opening from the center")
+                                .tag(TransitionShader.iris)
+                            Text(
+                                "Diagonal",
+                                comment: "Shader picker option: diagonal sweep from the top-left corner"
+                            )
+                            .tag(TransitionShader.diagonal)
+                            Text("Blinds", comment: "Shader picker option: horizontal bands revealing in parallel")
+                                .tag(TransitionShader.blinds)
+                        } label: {
+                            Text(
+                                "Shader",
+                                comment:
+                                    "Label of the picker choosing the built-in shader a shader transition reveals with"
+                            )
+                        }
+                        .fixedSize()
+                        .onChange(of: model.shaderName) { _, newValue in
+                            model.eventBus.tap(
+                                "shaderName.picker",
+                                domain: .composition,
+                                params: ["shader": .string(newValue.rawValue)]
                             )
                         }
                     }
@@ -508,7 +542,8 @@ struct ContentView: View {
 
     /// The Default Transition submenu's picker: a checkmarked radio group
     /// choosing the shot's ``Shot/defaultTransition`` — None (an unresolved
-    /// take is a cut), Cut, Dissolve, or a wipe from each frame edge, all at
+    /// take is a cut), Cut, Dissolve, a wipe from each frame edge, or a
+    /// built-in shader transition, all at
     /// the default durations, matching what the switcher's own picker offers
     /// (ARCHITECTURE.md, "Per-shot default transitions"). The selection
     /// binding reports its `tap` event in its setter — the menu item is where
@@ -524,6 +559,7 @@ struct ContentView: View {
                 "transition": .string(choice.tapValue),
             ]
             if case .wipe(let edge) = choice { params["edge"] = .string(edge.rawValue) }
+            if case .shader(let name) = choice { params["shader"] = .string(name.rawValue) }
             model.eventBus.tap("shotDefaultTransition.menu", domain: .composition, params: params)
             model.setShotDefaultTransition(choice.transition, for: shot.id)
         }
@@ -545,6 +581,12 @@ struct ContentView: View {
                 comment: "Default transition option: wipe revealing this shot from the bottom edge"
             )
             .tag(DefaultTransitionChoice.wipe(.bottom))
+            Text("Iris", comment: "Shader picker option: circular reveal opening from the center")
+                .tag(DefaultTransitionChoice.shader(.iris))
+            Text("Diagonal", comment: "Shader picker option: diagonal sweep from the top-left corner")
+                .tag(DefaultTransitionChoice.shader(.diagonal))
+            Text("Blinds", comment: "Shader picker option: horizontal bands revealing in parallel")
+                .tag(DefaultTransitionChoice.shader(.blinds))
         } label: {
             EmptyView()
         }
@@ -696,6 +738,10 @@ private enum DefaultTransitionChoice: Hashable {
     /// duration.
     case wipe(WipeEdge)
 
+    /// A custom-shader reveal with the given built-in shader at the default
+    /// shader-transition duration.
+    case shader(TransitionShader)
+
     /// The choice a stored default transition checkmarks.
     ///
     /// - Parameter transition: The shot's stored default, or nil for none.
@@ -711,6 +757,8 @@ private enum DefaultTransitionChoice: Hashable {
             self = .dissolve
         case .some(.wipe(edge: let edge, duration: _)):
             self = .wipe(edge)
+        case .some(.shader(name: let name, duration: _)):
+            self = .shader(name)
         }
     }
 
@@ -722,17 +770,19 @@ private enum DefaultTransitionChoice: Hashable {
         case .cut: .cut
         case .dissolve: .dissolve
         case .wipe(let edge): .wipe(edge: edge)
+        case .shader(let name): .shader(name: name)
         }
     }
 
     /// The choice's stable name for the menu's `tap` event params (the wipe
-    /// edge rides in a separate `edge` param).
+    /// edge and the shader name ride in separate `edge`/`shader` params).
     var tapValue: String {
         switch self {
         case .none: "none"
         case .cut: "cut"
         case .dissolve: "dissolve"
         case .wipe: "wipe"
+        case .shader: "shader"
         }
     }
 }

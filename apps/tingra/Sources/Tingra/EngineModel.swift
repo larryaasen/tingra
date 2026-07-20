@@ -178,6 +178,12 @@ final class EngineModel {
     /// ``takeTransitionKind`` is ``TakeTransitionKind/wipe``.
     var wipeEdge: WipeEdge = .left
 
+    /// The built-in shader the next shader transition reveals the incoming
+    /// shot with — session state bound from the switcher's shader picker,
+    /// read only while ``takeTransitionKind`` is
+    /// ``TakeTransitionKind/shader``.
+    var shaderName: TransitionShader = .iris
+
     /// The latest program frame, handed to the preview view to draw. Held
     /// in a plain relay (not observed) so the ~30 fps program does not churn
     /// SwiftUI — the `MTKView` samples it at display rate (CLOCK.md).
@@ -1542,15 +1548,15 @@ final class EngineModel {
         case .cut: .cut
         case .dissolve: .dissolve
         case .wipe: .wipe(edge: wipeEdge)
+        case .shader: .shader(name: shaderName)
         }
     }
 }
 
 /// The transition kinds the shot switcher's picker offers (GLOSSARY.md,
 /// "Transition") — the UI's session-state selection, mapped to a concrete
-/// ``Transition`` (with the selected wipe edge and the default durations) at
-/// take time. Custom shader based transitions join when the engine can
-/// represent them.
+/// ``Transition`` (with the selected wipe edge or shader, and the default
+/// durations) at take time.
 enum TakeTransitionKind: String, CaseIterable {
     /// The taken shot's own ``Shot/defaultTransition`` (a cut when it has
     /// none) — the initial selection, so per-shot defaults are effective
@@ -1566,6 +1572,10 @@ enum TakeTransitionKind: String, CaseIterable {
     /// A directional reveal from ``EngineModel/wipeEdge`` at the default
     /// wipe duration.
     case wipe
+
+    /// A custom-shader reveal with ``EngineModel/shaderName`` at the
+    /// default shader-transition duration.
+    case shader
 }
 
 /// A plain, `@MainActor` holder for the latest program pixel buffer: the

@@ -43,8 +43,8 @@ import TingraPlugInKit
 /// passing ``Transition/dissolve`` crossfades between the outgoing and
 /// incoming shot over its duration instead, and
 /// ``Transition/wipe(edge:duration:)`` reveals the incoming shot across the
-/// frame from an edge. Custom shader based transitions are a later
-/// iteration. ``setShot(_:)`` remains
+/// frame from an edge, and ``Transition/shader(name:duration:)`` reveals it
+/// through a built-in custom Metal shader. ``setShot(_:)`` remains
 /// the low-level "render exactly this shot" path used by the pre-preset
 /// callers and tests (always a hard cut, no blending); the preset path
 /// (``loadPreset(_:)`` + ``take(shotID:transition:)``) is what the app drives.
@@ -115,8 +115,8 @@ public final class Compositor: Sendable {
         /// ``setShot`` that bypassed the preset.
         var activeShotID: ShotID?
 
-        /// A transition in progress — a dissolve's crossfade or a wipe's
-        /// directional reveal — or `nil` when idle (a cut has already
+        /// A transition in progress — a dissolve's crossfade, a wipe's
+        /// directional reveal, or a shader transition — or `nil` when idle (a cut has already
         /// replaced `shot` outright and needs no tick-by-tick blending).
         /// While set, the tick renders a blend from `outgoing` toward
         /// `shot` (the incoming shot) instead of `shot` alone.
@@ -293,9 +293,10 @@ public final class Compositor: Sendable {
     /// passing ``Transition/dissolve`` crossfades from the outgoing shot to
     /// the incoming one over its duration instead, and
     /// ``Transition/wipe(edge:duration:)`` reveals the incoming shot across
-    /// the frame from the given edge — either way the tick renders the blend
-    /// every tick until the transition completes, then settles on the
-    /// incoming shot alone. Taking an id that is not in the loaded preset
+    /// the frame from the given edge, and ``Transition/shader(name:duration:)``
+    /// reveals it through the named built-in shader — in each case the tick
+    /// renders the blend every tick until the transition completes, then
+    /// settles on the incoming shot alone. Taking an id that is not in the loaded preset
     /// leaves the program unchanged and reports a `program.take` error event
     /// (a stale switcher selection is recoverable, never a crash); otherwise
     /// it reports the take, including the transition, on the bus.
@@ -323,6 +324,12 @@ public final class Compositor: Sendable {
                 state.pendingTransition = PendingTransition(
                     outgoing: outgoing,
                     kind: .wipe(edge: edge),
+                    totalTicks: Self.tickCount(for: duration, frameRate: frameRate)
+                )
+            case .shader(let name, let duration):
+                state.pendingTransition = PendingTransition(
+                    outgoing: outgoing,
+                    kind: .shader(name: name),
                     totalTicks: Self.tickCount(for: duration, frameRate: frameRate)
                 )
             }
@@ -631,6 +638,16 @@ public final class Compositor: Sendable {
                                     format: format,
                                     time: tickTime
                                 )
+                            case .shader(let name):
+                                renderer.renderShader(
+                                    from: blend.outgoing,
+                                    to: snapshot.shot,
+                                    shader: name,
+                                    progress: blend.progress,
+                                    frames: snapshot.frames,
+                                    format: format,
+                                    time: tickTime
+                                )
                             }
                         } else {
                             renderer.render(
@@ -697,6 +714,10 @@ private enum BlendKind {
     /// A directional reveal from the given edge —
     /// ``ShotRenderer/renderWipe(from:to:edge:progress:frames:format:time:)``.
     case wipe(edge: WipeEdge)
+
+    /// A custom-shader reveal drawn by the named built-in shader —
+    /// ``ShotRenderer/renderShader(from:to:shader:progress:frames:format:time:)``.
+    case shader(name: TransitionShader)
 }
 
 /// What one tick needs to render, snapshotted out of ``Compositor/State``
@@ -734,13 +755,14 @@ private struct TickSnapshot {
 
 extension Transition {
     /// The event-bus name for this transition's kind — `"cut"`,
-    /// `"dissolve"`, or `"wipe"` — reported on ``Compositor``'s
+    /// `"dissolve"`, `"wipe"`, or `"shader"` — reported on ``Compositor``'s
     /// `program.take` event.
     fileprivate var eventName: String {
         switch self {
         case .cut: "cut"
         case .dissolve: "dissolve"
         case .wipe: "wipe"
+        case .shader: "shader"
         }
     }
 }

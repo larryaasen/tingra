@@ -41,9 +41,10 @@ private struct SyntheticClock: EngineClock {
 /// the mock renderer's factory (the renderer itself is task-confined).
 private final class RenderRecorder: Sendable {
     /// One recorded render call: the shot, the input ids that had a frame,
-    /// the tick time stamped on the output, and — for a dissolve or wipe
-    /// call — the outgoing shot and progress (`nil` for a plain render),
-    /// plus the wipe's edge (`nil` for a plain render or a dissolve).
+    /// the tick time stamped on the output, and — for a dissolve, wipe, or
+    /// shader call — the outgoing shot and progress (`nil` for a plain
+    /// render), plus the wipe's edge and the shader transition's shader
+    /// (each `nil` for every other call kind).
     struct Call: Sendable {
         let shot: Shot
         let presentedInputs: Set<InputID>
@@ -51,6 +52,7 @@ private final class RenderRecorder: Sendable {
         let blendOutgoing: Shot?
         let blendProgress: Double?
         let wipeEdge: WipeEdge?
+        let shader: TransitionShader?
     }
 
     private let calls = Mutex<[Call]>([])
@@ -84,7 +86,8 @@ private struct MockShotRenderer: ShotRenderer {
                 time: time,
                 blendOutgoing: nil,
                 blendProgress: nil,
-                wipeEdge: nil
+                wipeEdge: nil,
+                shader: nil
             )
         )
         return CapturedFrame(pixelBuffer: makePixelBuffer(), presentationTime: time)
@@ -105,7 +108,8 @@ private struct MockShotRenderer: ShotRenderer {
                 time: time,
                 blendOutgoing: outgoing,
                 blendProgress: progress,
-                wipeEdge: nil
+                wipeEdge: nil,
+                shader: nil
             )
         )
         return CapturedFrame(pixelBuffer: makePixelBuffer(), presentationTime: time)
@@ -127,7 +131,31 @@ private struct MockShotRenderer: ShotRenderer {
                 time: time,
                 blendOutgoing: outgoing,
                 blendProgress: progress,
-                wipeEdge: edge
+                wipeEdge: edge,
+                shader: nil
+            )
+        )
+        return CapturedFrame(pixelBuffer: makePixelBuffer(), presentationTime: time)
+    }
+
+    func renderShader(
+        from outgoing: Shot,
+        to incoming: Shot,
+        shader: TransitionShader,
+        progress: Double,
+        frames: [InputID: CapturedFrame],
+        format: ProgramFormat,
+        time: CMTime
+    ) -> CapturedFrame? {
+        recorder.record(
+            RenderRecorder.Call(
+                shot: incoming,
+                presentedInputs: Set(frames.keys),
+                time: time,
+                blendOutgoing: outgoing,
+                blendProgress: progress,
+                wipeEdge: nil,
+                shader: shader
             )
         )
         return CapturedFrame(pixelBuffer: makePixelBuffer(), presentationTime: time)
@@ -521,6 +549,47 @@ struct CompositorTests {
         #expect(calls[0].wipeEdge == .top)
         // Every subsequent tick is a plain render — no dangling transition.
         #expect(calls[1].blendProgress == nil)
+    }
+
+    @Test("taking a shot with a shader transition reveals it over its duration, then settles on the incoming shot")
+    func takeWithShaderRevealsOverDuration() async {
+        // 30 fps, a 0.1s shader transition — exactly 3 ticks, the same
+        // tick-counted spine as a dissolve and a wipe — followed by 2 plain
+        // ticks once the transition completes.
+        let ticks = (0..<5).map { CMTime(value: CMTimeValue($0), timescale: 30) }
+        let recorder = RenderRecorder()
+        let compositor = makeCompositor(recorder: recorder, tickTimes: ticks)
+        let display = Shot(id: ShotID(rawValue: "display"), name: "Display")
+        let camera = Shot(id: ShotID(rawValue: "camera"), name: "Camera")
+        compositor.loadPreset(Preset(name: "Live", shots: [display, camera]))
+
+        let program = compositor.programFrames()
+        compositor.start()
+        compositor.take(shotID: camera.id, transition: .shader(name: .blinds, duration: 0.1))
+        _ = await collect(program, limit: 5)
+
+        let calls = recorder.recorded
+        #expect(calls.count == 5)
+
+        // The first three ticks blend through the shader path, carrying the
+        // taken shader and ramping toward fully incoming.
+        let shaderProgresses = calls.prefix(3).map(\.blendProgress)
+        #expect(shaderProgresses.allSatisfy { $0 != nil })
+        #expect(abs((shaderProgresses[0] ?? 0) - 1.0 / 3.0) < 0.0001)
+        #expect(abs((shaderProgresses[1] ?? 0) - 2.0 / 3.0) < 0.0001)
+        #expect(abs((shaderProgresses[2] ?? 0) - 1.0) < 0.0001)
+        #expect(calls.prefix(3).allSatisfy { $0.shader == .blinds })
+        #expect(calls.prefix(3).allSatisfy { $0.blendOutgoing == display })
+        #expect(calls.prefix(3).allSatisfy { $0.shot == camera })
+
+        // Once the transition completes, later ticks render the incoming
+        // shot plainly — no more blending.
+        #expect(calls.suffix(2).allSatisfy { $0.blendProgress == nil })
+        #expect(calls.suffix(2).allSatisfy { $0.shot == camera })
+
+        // Taking effect immediately (matching every other kind's contract):
+        // the active shot id updates without waiting.
+        #expect(compositor.activeShotID == camera.id)
     }
 
     @Test("taking an unknown shot id leaves the program on the current shot")

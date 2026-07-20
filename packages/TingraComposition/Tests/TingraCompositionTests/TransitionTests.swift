@@ -78,6 +78,37 @@ struct TransitionTests {
         #expect(decoded == .wipe(edge: .right, duration: Transition.defaultWipeDuration))
     }
 
+    @Test("a shader transition round-trips through JSON with its shader and duration")
+    func shaderRoundTrips() throws {
+        let transition = Transition.shader(name: .diagonal, duration: 0.75)
+        let data = try JSONEncoder().encode(transition)
+        let decoded = try JSONDecoder().decode(Transition.self, from: data)
+        #expect(decoded == transition)
+    }
+
+    @Test("a shader transition encodes its kind, shader, and duration keys")
+    func shaderEncodesKindShaderAndDuration() throws {
+        let data = try JSONEncoder().encode(Transition.shader(name: .blinds, duration: 0.25))
+        let object = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(object["kind"] as? String == "shader")
+        #expect(object["shader"] as? String == "blinds")
+        #expect(object["durationSeconds"] as? Double == 0.25)
+    }
+
+    @Test("a shader transition without shader or durationSeconds keys decodes to the iris at the default duration")
+    func shaderOptionalKeysDefault() throws {
+        let json = Data(#"{"kind":"shader"}"#.utf8)
+        let decoded = try JSONDecoder().decode(Transition.self, from: json)
+        #expect(decoded == .shader(name: .iris, duration: Transition.defaultShaderDuration))
+    }
+
+    @Test("a shader transition with only a shader key decodes that shader at the default duration")
+    func shaderNameOnlyDecodesWithDefaultDuration() throws {
+        let json = Data(#"{"kind":"shader","shader":"diagonal"}"#.utf8)
+        let decoded = try JSONDecoder().decode(Transition.self, from: json)
+        #expect(decoded == .shader(name: .diagonal, duration: Transition.defaultShaderDuration))
+    }
+
     @Test("decoding an unknown kind throws a dataCorrupted error")
     func unknownKindThrows() throws {
         let json = Data(#"{"kind":"swirl"}"#.utf8)
@@ -94,6 +125,14 @@ struct TransitionTests {
         }
     }
 
+    @Test("decoding an unknown shader name throws a decoding error")
+    func unknownShaderNameThrows() throws {
+        let json = Data(#"{"kind":"shader","shader":"swirl"}"#.utf8)
+        #expect(throws: DecodingError.self) {
+            try JSONDecoder().decode(Transition.self, from: json)
+        }
+    }
+
     @Test("the dissolve convenience uses the default duration")
     func dissolveConvenienceUsesDefaultDuration() {
         #expect(Transition.dissolve == .dissolve(duration: Transition.defaultDissolveDuration))
@@ -105,15 +144,25 @@ struct TransitionTests {
         #expect(Transition.wipe() == .wipe(edge: .left, duration: Transition.defaultWipeDuration))
     }
 
-    @Test("transitions are equal only when their kind, duration, and (for a wipe) edge match")
+    @Test("the shader convenience uses the default duration and defaults to the iris")
+    func shaderConvenienceUsesDefaults() {
+        #expect(Transition.shader(name: .blinds) == .shader(name: .blinds, duration: Transition.defaultShaderDuration))
+        #expect(Transition.shader() == .shader(name: .iris, duration: Transition.defaultShaderDuration))
+    }
+
+    @Test("transitions are equal only when their kind, duration, and (for a wipe or shader) aspect match")
     func transitionEquality() {
         #expect(Transition.cut == Transition.cut)
         #expect(Transition.dissolve(duration: 0.5) == Transition.dissolve(duration: 0.5))
         #expect(Transition.wipe(edge: .left, duration: 0.5) == Transition.wipe(edge: .left, duration: 0.5))
+        #expect(Transition.shader(name: .iris, duration: 0.5) == Transition.shader(name: .iris, duration: 0.5))
         #expect(Transition.cut != Transition.dissolve(duration: 0.5))
         #expect(Transition.dissolve(duration: 0.5) != Transition.dissolve(duration: 1.0))
         #expect(Transition.dissolve(duration: 0.5) != Transition.wipe(edge: .left, duration: 0.5))
         #expect(Transition.wipe(edge: .left, duration: 0.5) != Transition.wipe(edge: .right, duration: 0.5))
         #expect(Transition.wipe(edge: .left, duration: 0.5) != Transition.wipe(edge: .left, duration: 1.0))
+        #expect(Transition.shader(name: .iris, duration: 0.5) != Transition.shader(name: .blinds, duration: 0.5))
+        #expect(Transition.shader(name: .iris, duration: 0.5) != Transition.shader(name: .iris, duration: 1.0))
+        #expect(Transition.shader(name: .iris, duration: 0.5) != Transition.dissolve(duration: 0.5))
     }
 }
