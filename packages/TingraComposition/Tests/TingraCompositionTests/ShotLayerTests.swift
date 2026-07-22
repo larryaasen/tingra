@@ -15,11 +15,22 @@ import TingraPlugInKit
 
 @Suite("Layer")
 struct LayerTests {
-    @Test("a layer defaults to filling the whole program at full opacity")
+    @Test("a layer defaults to filling the whole program at full opacity with no effect chain")
     func layerDefaults() {
         let layer = Layer(input: InputID(rawValue: "camera"))
         #expect(layer.frame == CGRect(x: 0, y: 0, width: 1, height: 1))
         #expect(layer.opacity == 1)
+        #expect(layer.effects == nil)
+    }
+
+    @Test("layers differing only in their effect chain compare not equal")
+    func layerChainAffectsEquality() {
+        let plain = Layer(input: InputID(rawValue: "camera"))
+        let chained = Layer(
+            input: InputID(rawValue: "camera"),
+            effects: [EffectConfiguration(effect: EffectID(rawValue: "blur"))]
+        )
+        #expect(plain != chained)
     }
 
     @Test("layers are equal only when input, frame, and opacity all match")

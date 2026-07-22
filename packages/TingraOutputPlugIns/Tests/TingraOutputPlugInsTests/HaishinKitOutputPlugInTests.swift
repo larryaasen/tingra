@@ -44,6 +44,16 @@ private struct UnusedInputRegistry: InputRegistering {
     func unregister(_ id: InputID) async {}
 }
 
+/// A no-op effect registration seam for contexts that never register
+/// effects.
+private struct UnusedEffectRegistrar: EffectRegistering {
+    /// Never called in these tests.
+    func register(_ provider: any AudioEffectProvider) async throws {}
+
+    /// Never called in these tests.
+    func register(_ provider: any VideoEffectProvider) async throws {}
+}
+
 /// A no-op tool registration seam for contexts that never register tools.
 private struct UnusedToolRegistrar: ToolRegistering {
     /// Never called in these tests.
@@ -71,6 +81,7 @@ struct HaishinKitOutputPlugInTests {
             clock: FixedClock(),
             inputs: UnusedInputRegistry(),
             outputs: registry,
+            effects: UnusedEffectRegistrar(),
             tools: UnusedToolRegistrar()
         )
         try await HaishinKitOutputPlugIn().activate(in: context)

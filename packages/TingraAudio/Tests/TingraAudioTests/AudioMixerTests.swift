@@ -150,6 +150,64 @@ private func letFillTasksDrain() async {
     try? await Task.sleep(nanoseconds: 20_000_000)
 }
 
+/// A deterministic test effect that scales every sample by a settable
+/// factor, so chain placement is observable in the mix and the meter.
+private struct ScalingEffect: AudioEffect {
+    /// The factor each sample is multiplied by.
+    var factor: Float
+
+    /// Reads a new `factor` from the payload, keeping the current one when
+    /// the key is absent or non-numeric.
+    mutating func setParameters(_ parameters: [String: JSONValue]) {
+        if let factor = parameters["factor"]?.doubleValue {
+            self.factor = Float(factor)
+        }
+    }
+
+    /// Multiplies every sample by the factor, in place.
+    func process(_ channels: inout [[Float]], sampleRate: Double) {
+        for c in channels.indices {
+            for i in channels[c].indices {
+                channels[c][i] *= factor
+            }
+        }
+    }
+}
+
+/// A deterministic test effect that adds a constant offset to every sample —
+/// paired with ``ScalingEffect``, the two make chain order observable.
+private struct OffsetEffect: AudioEffect {
+    /// The offset added to each sample.
+    var offset: Float
+
+    /// Ignores every payload.
+    func setParameters(_ parameters: [String: JSONValue]) {}
+
+    /// Adds the offset to every sample, in place.
+    func process(_ channels: inout [[Float]], sampleRate: Double) {
+        for c in channels.indices {
+            for i in channels[c].indices {
+                channels[c][i] += offset
+            }
+        }
+    }
+}
+
+/// A contract-breaking test effect that shrinks the block — what a
+/// misbehaving third-party effect could do; the mix must clamp, never
+/// crash (the never-crash rule).
+private struct TruncatingEffect: AudioEffect {
+    /// Ignores every payload.
+    func setParameters(_ parameters: [String: JSONValue]) {}
+
+    /// Halves every channel's sample count, breaking the shape contract.
+    func process(_ channels: inout [[Float]], sampleRate: Double) {
+        for c in channels.indices {
+            channels[c].removeLast(channels[c].count / 2)
+        }
+    }
+}
+
 @Suite("AudioMixer")
 struct AudioMixerTests {
     /// The mix format the tests run at: the production rate with the
@@ -591,5 +649,150 @@ struct AudioMixerTests {
         // the assertion.
         for await _ in meters {}
         #expect(Bool(true))
+    }
+
+    @Test("a strip's effect chain processes its samples before the fader scales them")
+    func effectChainProcessesBeforeFader() async throws {
+        let source = [Float](repeating: 0.25, count: format.blockFrames)
+        let audio = try #require(makeAudio(channels: [source], sampleRate: format.sampleRate))
+        let input = FakeAudioInput(id: "mic", buffers: [audio])
+        let mixer = makeMixer(tickTimes: ticks(1))
+        mixer.setChannelStrips([ChannelStrip(input: input, level: 0.5)])
+        mixer.setEffects([ScalingEffect(factor: 2)], forInput: input.id)
+        await letFillTasksDrain()
+
+        let program = mixer.programAudio()
+        mixer.start()
+        let block = try #require(await collect(program, limit: 1).first)
+
+        // (0.25 through the chain's ×2) × the 0.5 fader = 0.25.
+        let channels = try #require(samples(of: block, sampleRate: format.sampleRate))
+        #expect(abs((channels[0].first ?? 0) - 0.25) < 0.0001)
+        #expect(channels[0] == channels[1])
+    }
+
+    @Test("effects apply in signal order — the chain is its array")
+    func effectChainAppliesInSignalOrder() async throws {
+        let source = [Float](repeating: 0.5, count: format.blockFrames)
+        let audio = try #require(makeAudio(channels: [source], sampleRate: format.sampleRate))
+        let input = FakeAudioInput(id: "mic", buffers: [audio])
+        let mixer = makeMixer(tickTimes: ticks(1))
+        mixer.setChannelStrips([ChannelStrip(input: input)])
+        // Offset then scale: (0.5 + 0.25) × 2 = 1.5 — scale-then-offset
+        // would land at 1.25, so the order is observable.
+        mixer.setEffects([OffsetEffect(offset: 0.25), ScalingEffect(factor: 2)], forInput: input.id)
+        await letFillTasksDrain()
+
+        let program = mixer.programAudio()
+        mixer.start()
+        let block = try #require(await collect(program, limit: 1).first)
+
+        let channels = try #require(samples(of: block, sampleRate: format.sampleRate))
+        #expect(abs((channels[0].first ?? 0) - 1.5) < 0.0001)
+    }
+
+    @Test("setEffectParameters retunes a chain slot in place")
+    func setEffectParametersRetunesSlot() async throws {
+        let source = [Float](repeating: 0.25, count: format.blockFrames)
+        let audio = try #require(makeAudio(channels: [source], sampleRate: format.sampleRate))
+        let input = FakeAudioInput(id: "mic", buffers: [audio])
+        let mixer = makeMixer(tickTimes: ticks(1))
+        mixer.setChannelStrips([ChannelStrip(input: input)])
+        mixer.setEffects([ScalingEffect(factor: 2)], forInput: input.id)
+        mixer.setEffectParameters(["factor": .double(3)], forEffectAt: 0, forInput: input.id)
+        // An out-of-range slot and an unknown strip are stale gestures,
+        // ignored without effect.
+        mixer.setEffectParameters(["factor": .double(100)], forEffectAt: 5, forInput: input.id)
+        mixer.setEffectParameters(["factor": .double(100)], forEffectAt: 0, forInput: InputID(rawValue: "gone"))
+        await letFillTasksDrain()
+
+        let program = mixer.programAudio()
+        mixer.start()
+        let block = try #require(await collect(program, limit: 1).first)
+
+        let channels = try #require(samples(of: block, sampleRate: format.sampleRate))
+        #expect(abs((channels[0].first ?? 0) - 0.75) < 0.0001)
+    }
+
+    @Test("metering reads the chain's output — pre-fader, post-chain")
+    func meteringReadsChainOutput() async throws {
+        let audio = try #require(
+            makeAudio(channels: [[Float](repeating: 0.25, count: format.blockFrames)], sampleRate: format.sampleRate))
+        let input = FakeAudioInput(id: "mic", buffers: [audio])
+        let mixer = makeMixer(tickTimes: ticks(1))
+        mixer.setChannelStrips([ChannelStrip(input: input, level: 0, isMuted: true)])
+        mixer.setEffects([ScalingEffect(factor: 2)], forInput: input.id)
+        await letFillTasksDrain()
+
+        let meters = mixer.meterReadings()
+        mixer.start()
+        let block = try #require(await collectMeters(meters, limit: 1).first)
+
+        // The meter sees the chain's ×2 even though the strip is muted at
+        // zero level — the insert-metering point.
+        let reading = try #require(block.strips[input.id])
+        #expect(abs(reading.peak - 0.5) < 0.0001)
+    }
+
+    @Test("setChannelStrips keeps an existing strip's chain across a control update")
+    func settingStripsKeepsExistingChain() async throws {
+        let source = [Float](repeating: 0.25, count: format.blockFrames)
+        let audio = try #require(makeAudio(channels: [source], sampleRate: format.sampleRate))
+        let input = FakeAudioInput(id: "mic", buffers: [audio])
+        let mixer = makeMixer(tickTimes: ticks(1))
+        mixer.setChannelStrips([ChannelStrip(input: input)])
+        mixer.setEffects([ScalingEffect(factor: 2)], forInput: input.id)
+        // A reconfigure pass re-sends the strip list; the chain must ride
+        // through untouched.
+        mixer.setChannelStrips([ChannelStrip(input: input, level: 0.5)])
+        await letFillTasksDrain()
+
+        let program = mixer.programAudio()
+        mixer.start()
+        let block = try #require(await collect(program, limit: 1).first)
+
+        let channels = try #require(samples(of: block, sampleRate: format.sampleRate))
+        #expect(abs((channels[0].first ?? 0) - 0.25) < 0.0001)
+    }
+
+    @Test("an effect that shrinks the block is clamped, and the mix still emits")
+    func shrinkingEffectIsClamped() async throws {
+        let source = [Float](repeating: 0.5, count: format.blockFrames)
+        let audio = try #require(makeAudio(channels: [source], sampleRate: format.sampleRate))
+        let input = FakeAudioInput(id: "mic", buffers: [audio])
+        let mixer = makeMixer(tickTimes: ticks(1))
+        mixer.setChannelStrips([ChannelStrip(input: input)])
+        mixer.setEffects([TruncatingEffect()], forInput: input.id)
+        await letFillTasksDrain()
+
+        let program = mixer.programAudio()
+        mixer.start()
+        let block = try #require(await collect(program, limit: 1).first)
+
+        // The surviving half mixes; the missing half is silence — never a
+        // crash, never a stalled block.
+        let channels = try #require(samples(of: block, sampleRate: format.sampleRate))
+        let half = format.blockFrames / 2
+        #expect(abs((channels[0].first ?? 0) - 0.5) < 0.0001)
+        #expect(channels[0].suffix(half).allSatisfy { $0 == 0 })
+    }
+
+    @Test("a strip with no chain mixes exactly as before the chain existed")
+    func stripWithoutChainIsUntouched() async throws {
+        let source = [Float](repeating: 0.5, count: format.blockFrames)
+        let audio = try #require(makeAudio(channels: [source], sampleRate: format.sampleRate))
+        let input = FakeAudioInput(id: "mic", buffers: [audio])
+        let mixer = makeMixer(tickTimes: ticks(1))
+        mixer.setChannelStrips([ChannelStrip(input: input)])
+        mixer.setEffects([], forInput: input.id)
+        await letFillTasksDrain()
+
+        let program = mixer.programAudio()
+        mixer.start()
+        let block = try #require(await collect(program, limit: 1).first)
+
+        let channels = try #require(samples(of: block, sampleRate: format.sampleRate))
+        #expect(abs((channels[0].first ?? 0) - 0.5) < 0.0001)
+        #expect(channels[0] == channels[1])
     }
 }

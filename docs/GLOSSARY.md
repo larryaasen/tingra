@@ -24,7 +24,9 @@ A project is the saved file for an entire show. A project contains presets. A pr
 
 **Project** — the saved document for a whole show: every preset, destination configuration, and setting needed to reopen the show exactly as it was. Tingra saves a project as a `.tingraproject` file (JSON inside).
 
-**Effect** — a video processing step applied to a layer, a shot, or the program: color adjustment, blur, keying, stylization. **Filter** is the interchangeable term for a single video processing unit; an effect may chain several filters.
+**Effect** — a processing step applied to media in the engine. A **video effect** applies to a layer, a shot, or the program: color adjustment, blur, keying, stylization. An **audio effect** applies to a channel strip: gain, filtering, and (later) EQ and compression. **Filter** is the interchangeable term for a single video processing unit; an effect may chain several filters. Effects are plug-ins, so first- and third-party effects register through one seam.
+
+**Effect chain** — the ordered effects applied to one thing: a channel strip's audio chain, a layer's video chain. Order is signal order — each effect processes what the one before it produced — and the chain persists with the thing that owns it. An audio chain sits post-intake and pre-fader, so it shapes what the strip's meter reads and what its fader rides.
 
 **Title** — a text graphic rendered by the engine: lower thirds, headings, tickers, credits.
 
@@ -46,7 +48,7 @@ A project is the saved file for an entire show. A project contains presets. A pr
 
 **Channel strip** — one input's slot in the mixer: its level, mute, pan, meter, routing, and audio effect chain.
 
-**Meter** — a channel strip's level display: the strip's signal measured at each mix tick — the block's peak and RMS — shown beside the strip's controls. Metering is pre-fader: the meter reads what the input delivers, before the strip's level, pan, and mute.
+**Meter** — a channel strip's level display: the strip's signal measured at each mix tick — the block's peak and RMS — shown beside the strip's controls. Metering is pre-fader: the meter reads what the strip delivers to the fader — after intake and the strip's effect chain, before its level, pan, and mute.
 
 **Routing** — where a channel strip's signal goes: the bus its audio feeds. V1 has exactly one bus — the program mix — so a strip's routing is its membership in the preset's audio configuration: the authored channels, persisted with their level, pan, and mute, that the mixer rebuilds its strips from. Sends and additional buses are later.
 

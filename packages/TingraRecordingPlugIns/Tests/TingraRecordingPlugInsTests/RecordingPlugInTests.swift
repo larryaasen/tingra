@@ -25,6 +25,16 @@ private struct UnusedInputRegistrar: InputRegistering {
     func unregister(_ id: InputID) async {}
 }
 
+/// A no-op effect registration seam — the recording plug-in never registers
+/// effects.
+private struct UnusedEffectRegistrar: EffectRegistering {
+    /// Never called by this plug-in.
+    func register(_ provider: any AudioEffectProvider) async throws {}
+
+    /// Never called by this plug-in.
+    func register(_ provider: any VideoEffectProvider) async throws {}
+}
+
 /// A no-op tool registration seam — the recording plug-in never registers
 /// tools.
 private struct UnusedToolRegistrar: ToolRegistering {
@@ -82,6 +92,7 @@ struct RecordingPlugInTests {
             clock: FixedClock(),
             inputs: UnusedInputRegistrar(),
             outputs: outputs,
+            effects: UnusedEffectRegistrar(),
             tools: UnusedToolRegistrar()
         )
         try await RecordingPlugIn().activate(in: context)

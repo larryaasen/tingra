@@ -158,6 +158,40 @@ struct PresetCodableTests {
         let decoded = try JSONDecoder().decode(Layer.self, from: json)
         #expect(decoded.frame == CGRect(x: 0, y: 0, width: 1, height: 1))
         #expect(decoded.opacity == 1)
+        #expect(decoded.effects == nil)
+    }
+
+    @Test("a layer's effect chain round-trips through JSON in signal order")
+    func layerEffectChainRoundTrips() throws {
+        let chained = Layer(
+            input: InputID(rawValue: "camera-1"),
+            effects: [
+                // Non-integral values, so the exact-equality round trip is
+                // unaffected by JSONValue's narrowest-case decode.
+                EffectConfiguration(
+                    effect: EffectID(rawValue: "colorAdjust"), parameters: ["saturation": .double(0.5)]),
+                EffectConfiguration(effect: EffectID(rawValue: "blur"), parameters: ["radiusPixels": .double(7.5)]),
+            ]
+        )
+        let data = try JSONEncoder().encode(chained)
+        let decoded = try JSONDecoder().decode(Layer.self, from: data)
+        #expect(decoded == chained)
+        #expect(decoded.effects?.map(\.effect.rawValue) == ["colorAdjust", "blur"])
+    }
+
+    @Test("a layer with no chain encodes without the effects key")
+    func layerWithoutChainOmitsEffectsKey() throws {
+        let data = try JSONEncoder().encode(pipLayer)
+        let object = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(object["effects"] == nil)
+    }
+
+    @Test("a layer's authored-empty chain round-trips as empty, not as unauthored")
+    func layerAuthoredEmptyChainStaysEmpty() throws {
+        let cleared = Layer(input: InputID(rawValue: "camera-1"), effects: [])
+        let data = try JSONEncoder().encode(cleared)
+        let decoded = try JSONDecoder().decode(Layer.self, from: data)
+        #expect(decoded.effects?.isEmpty == true)
     }
 }
 

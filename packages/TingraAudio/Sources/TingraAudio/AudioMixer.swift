@@ -40,11 +40,18 @@ import TingraPlugInKit
 /// growing latency without bound. The mix is a float sum with no bus clamp:
 /// float32 has headroom, and delivery saturates at compression.
 ///
+/// Each strip's consumed samples pass through its **effect chain** in
+/// signal order before anything else touches them — post-intake,
+/// pre-fader (``setEffects(_:forInput:)``; ARCHITECTURE.md, "Audio effect
+/// chains") — so the chain shapes what the meter reads and what the fader
+/// rides.
+///
 /// While a meter consumer is attached (``meterReadings()``), the same walk
-/// also measures every channel's consumed samples — pre-fader, before level,
-/// pan, and mute — into one ``MeterBlock`` per tick: a byproduct of the mix,
-/// never a second pass, and per-block data that never rides the event bus
-/// (EVENTS.md; ARCHITECTURE.md, "Per-strip meters").
+/// also measures every channel's consumed samples — pre-fader, after the
+/// effect chain but before level, pan, and mute — into one ``MeterBlock``
+/// per tick: a byproduct of the mix, never a second pass, and per-block
+/// data that never rides the event bus (EVENTS.md; ARCHITECTURE.md,
+/// "Per-strip meters").
 ///
 /// The mixer emits from its first tick — silence before any strip delivers —
 /// so the program mix, like the program video, is a live canvas at the tick
@@ -115,6 +122,14 @@ public final class AudioMixer: Sendable {
         /// Whether the strip is muted.
         var isMuted: Bool
 
+        /// The strip's effect chain, in signal order (the chain *is* its
+        /// array — GLOSSARY.md, "Channel strip"). Each tick's consumed
+        /// samples pass through it in place, post-intake and pre-fader —
+        /// before the meter and before level, pan, and mute — so the
+        /// chain shapes what the fader rides and what the meter reads
+        /// (ARCHITECTURE.md, "Audio effect chains").
+        var effects: [any AudioEffect] = []
+
         /// Queued normalized samples, channel-major (one array per source
         /// channel, equal lengths) — the FIFO the mix tick consumes.
         var queue: [[Float]] = []
@@ -156,8 +171,9 @@ public final class AudioMixer: Sendable {
     }
 
     /// The meter stream: one ``MeterBlock`` per mix tick while the mixer
-    /// runs, measuring every strip's signal **pre-fader** — before level,
-    /// pan, and mute; see ``MeterReading`` — as a byproduct of the same walk
+    /// runs, measuring every strip's signal **pre-fader** — after the
+    /// strip's effect chain, before level, pan, and mute; see
+    /// ``MeterReading`` — as a byproduct of the same walk
     /// the tick already makes over every channel's samples, never a second
     /// pass. Readings are per-block data, so they ride this dedicated stream
     /// and never the event bus (EVENTS.md, control plane only). A new call
@@ -262,6 +278,41 @@ public final class AudioMixer: Sendable {
         state.withLock { $0.channels[id]?.isMuted = isMuted }
     }
 
+    /// Sets one strip's effect chain, applied from the next mix tick — a
+    /// structural chain change (add, remove, reorder, or adopting a
+    /// preset's authored chain), replacing the previous instances and
+    /// their processing state. For a parameter edit on an existing slot
+    /// use ``setEffectParameters(_:forEffectAt:forInput:)``, which keeps
+    /// filter memory intact. Unknown ids are ignored, like
+    /// ``setLevel(_:forInput:)``; deliberately reports no event (the
+    /// `updateShot` rule — the app's `tap` events carry observability).
+    ///
+    /// - Parameters:
+    ///   - effects: The strip's effect instances, in signal order.
+    ///   - id: The strip's input id.
+    public func setEffects(_ effects: [any AudioEffect], forInput id: InputID) {
+        state.withLock { $0.channels[id]?.effects = effects }
+    }
+
+    /// Applies a parameter payload to one slot of a strip's effect chain,
+    /// in place — the gesture-rate control for a dragging effect slider:
+    /// the instance keeps its processing state (filter memory, envelopes),
+    /// only its settings change from the next mix tick. Unknown ids and
+    /// out-of-range slots are ignored (a stale gesture, not an error);
+    /// deliberately reports no event, like ``setLevel(_:forInput:)``.
+    ///
+    /// - Parameters:
+    ///   - parameters: The parameter values to apply.
+    ///   - index: The effect's position in the strip's chain.
+    ///   - id: The strip's input id.
+    public func setEffectParameters(_ parameters: [String: JSONValue], forEffectAt index: Int, forInput id: InputID) {
+        state.withLock { state in
+            guard var channel = state.channels[id], channel.effects.indices.contains(index) else { return }
+            channel.effects[index].setParameters(parameters)
+            state.channels[id] = channel
+        }
+    }
+
     /// Starts the mix tick: the mixer sums and yields one block per tick
     /// until ``stop()`` — silence before any strip delivers. Idempotent — a
     /// second call while running does nothing.
@@ -317,11 +368,15 @@ public final class AudioMixer: Sendable {
 
     /// Runs one mix tick: consumes up to one block from every channel's
     /// queue (muted strips drain too, so unmuting never replays stale
-    /// audio), sums the audible ones into a stereo block, and yields it
-    /// stamped with the tick time. Missing samples are silence — an
-    /// underrunning channel never stalls the block. While a meter consumer
-    /// is attached, the same walk also measures each channel's consumed
-    /// samples pre-fader and yields the tick's ``MeterBlock``.
+    /// audio), passes each channel's consumed samples through its effect
+    /// chain in signal order, sums the audible ones into a stereo block,
+    /// and yields it stamped with the tick time. Missing samples are
+    /// silence — an underrunning channel never stalls the block, and a
+    /// channel that delivered nothing skips its chain (v1 effects are
+    /// processors, not generators). While a meter consumer is attached,
+    /// the same walk also measures each channel's consumed samples
+    /// pre-fader — after the chain, before level, pan, and mute — and
+    /// yields the tick's ``MeterBlock``.
     private func mixBlock(at tickTime: CMTime, format: MixFormat) {
         let frames = format.blockFrames
         let output:
@@ -342,19 +397,35 @@ public final class AudioMixer: Sendable {
                         let available = channel.queue[0].count
                         let take = min(frames, available)
                         guard take > 0 else { continue }
-                        if metering {
-                            readings[id] = Self.meterReading(over: channel.queue, frames: take)
+                        // Consume the tick's samples out of the queue into a
+                        // working block the strip's effect chain processes in
+                        // place — post-intake, pre-fader, so the chain shapes
+                        // what the meter reads and what the fader rides.
+                        var block = channel.queue.map { Array($0.prefix(take)) }
+                        for c in channel.queue.indices {
+                            channel.queue[c].removeFirst(take)
+                        }
+                        for index in channel.effects.indices {
+                            channel.effects[index].process(&block, sampleRate: format.sampleRate)
+                        }
+                        // An effect must preserve the block's shape; clamping
+                        // to what actually came out keeps a misbehaving
+                        // third-party effect from ever crashing the mix
+                        // (the never-crash rule).
+                        let use = min(take, block.map(\.count).min() ?? 0)
+                        if metering, use > 0 {
+                            readings[id] = Self.meterReading(over: block, frames: use)
                         }
                         let gain = channel.isMuted ? 0 : Float(max(0, channel.level))
-                        if gain > 0 {
+                        if gain > 0, use > 0 {
                             let pan = Self.panGains(channel.pan)
                             let leftGain = gain * pan.left
                             let rightGain = gain * pan.right
-                            if channel.queue.count == 1 {
+                            if block.count == 1 {
                                 // Mono spreads into both program channels through
                                 // the pan gains — a constant-power panner.
-                                let mono = channel.queue[0]
-                                for i in 0..<take {
+                                let mono = block[0]
+                                for i in 0..<use {
                                     left[i] += mono[i] * leftGain
                                     right[i] += mono[i] * rightGain
                                 }
@@ -363,16 +434,13 @@ public final class AudioMixer: Sendable {
                                 // through the pan gains — a balance: each channel
                                 // is scaled, never folded into the other; the
                                 // rest are dropped at the mix.
-                                let sourceLeft = channel.queue[0]
-                                let sourceRight = channel.queue[1]
-                                for i in 0..<take {
+                                let sourceLeft = block[0]
+                                let sourceRight = block[1]
+                                for i in 0..<use {
                                     left[i] += sourceLeft[i] * leftGain
                                     right[i] += sourceRight[i] * rightGain
                                 }
                             }
-                        }
-                        for c in channel.queue.indices {
-                            channel.queue[c].removeFirst(take)
                         }
                         state.channels[id] = channel
                     }
@@ -396,11 +464,12 @@ public final class AudioMixer: Sendable {
     /// channels, the RMS the hotter channel's root-mean-square — both over
     /// exactly the `frames` consumed samples, so an underrunning strip
     /// meters the signal it delivered, never the silence that pads the
-    /// block. Pre-fader by construction: the queue holds intake-normalized
-    /// samples the strip's level, pan, and mute have not yet touched.
+    /// block. Pre-fader by construction: it measures the working block
+    /// after intake normalization and the strip's effect chain, before the
+    /// strip's level, pan, and mute have touched it.
     ///
     /// - Parameters:
-    ///   - queue: The strip's queued samples, channel-major.
+    ///   - queue: The strip's consumed samples, channel-major.
     ///   - frames: The frame count the tick consumed (at least 1).
     /// - Returns: The strip's reading.
     static func meterReading(over queue: [[Float]], frames: Int) -> MeterReading {

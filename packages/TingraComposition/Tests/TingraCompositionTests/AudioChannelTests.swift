@@ -64,6 +64,54 @@ struct AudioChannelTests {
         #expect(decoded.level == 1)
         #expect(decoded.pan == 0)
         #expect(decoded.isMuted == false)
+        #expect(decoded.effects == nil)
+    }
+
+    @Test("a channel's authored effect chain round-trips through JSON in signal order")
+    func channelEffectChainRoundTrips() throws {
+        let chained = AudioChannel(
+            input: InputID(rawValue: "mic-1"),
+            name: "Studio Microphone",
+            effects: [
+                // Non-integral values: JSONValue's narrowest-case decode
+                // reads a whole JSON number back as an integer, so an
+                // exact-equality round trip needs fractional payloads (the
+                // engine reads either through `doubleValue`).
+                EffectConfiguration(
+                    effect: EffectID(rawValue: "highPass"), parameters: ["cutoffHertz": .double(82.5)]),
+                EffectConfiguration(effect: EffectID(rawValue: "gain"), parameters: ["gainDecibels": .double(-3.5)]),
+            ]
+        )
+        let data = try JSONEncoder().encode(chained)
+        let decoded = try JSONDecoder().decode(AudioChannel.self, from: data)
+        #expect(decoded == chained)
+        #expect(decoded.effects?.map(\.effect.rawValue) == ["highPass", "gain"])
+    }
+
+    @Test("a channel with no chain encodes without the effects key")
+    func channelWithoutChainOmitsEffectsKey() throws {
+        let data = try JSONEncoder().encode(hotChannel)
+        let object = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(object["effects"] == nil)
+    }
+
+    @Test("a channel's authored-empty chain round-trips as empty, not as unauthored")
+    func channelAuthoredEmptyChainStaysEmpty() throws {
+        let cleared = AudioChannel(input: InputID(rawValue: "mic-1"), effects: [])
+        let data = try JSONEncoder().encode(cleared)
+        let decoded = try JSONDecoder().decode(AudioChannel.self, from: data)
+        #expect(decoded.effects != nil)
+        #expect(decoded.effects?.isEmpty == true)
+    }
+
+    @Test("channels differing only in their effect chain compare not equal")
+    func channelEffectChainAffectsEquality() {
+        let plain = AudioChannel(input: InputID(rawValue: "mic-1"))
+        let chained = AudioChannel(
+            input: InputID(rawValue: "mic-1"),
+            effects: [EffectConfiguration(effect: EffectID(rawValue: "gain"))]
+        )
+        #expect(plain != chained)
     }
 
     @Test("channels compare equal only when every field matches")

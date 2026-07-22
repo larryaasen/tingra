@@ -10,8 +10,11 @@
 import TingraPlugInKit
 
 /// One input's slot in the mixer: the input and its level, pan, and mute
-/// (GLOSSARY.md, "Channel strip" — the audio effect chain is a later
-/// iteration; see ARCHITECTURE.md, "The audio mixer", "Per-strip pan").
+/// (GLOSSARY.md, "Channel strip"; see ARCHITECTURE.md, "The audio mixer",
+/// "Per-strip pan"). The strip's effect chain is mixer channel state, set
+/// through `AudioMixer.setEffects(_:forInput:)` rather than carried here —
+/// effect instances hold live processing state, where this value type
+/// carries the strip's authored controls.
 /// Routing needs no surface here: the program mix is the only bus, so a
 /// strip's routing is its membership in the mix — the strips the caller
 /// passes to ``AudioMixer/setChannelStrips(_:)`` — and its persisted form is

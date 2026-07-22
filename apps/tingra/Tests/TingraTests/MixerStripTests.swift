@@ -147,4 +147,61 @@ struct MixerStripTests {
         #expect(channel.pan == 0.5)
         #expect(channel.isMuted)
     }
+
+    @Test("a chainless strip authors no effects key, so a document that never used effects is unchanged")
+    @MainActor
+    func chainlessStripAuthorsNoEffectsKey() {
+        let strip = MixerStrip(id: InputID(rawValue: "mic-1"), name: "Mic", level: 1, pan: 0, isMuted: false)
+        #expect(strip.effects.isEmpty)
+        #expect(strip.audioChannel.effects == nil)
+    }
+
+    @Test("a strip's effect chain converts to the authored channel in signal order")
+    @MainActor
+    func stripChainConvertsInSignalOrder() {
+        let chain = [
+            EffectConfiguration(effect: EffectID(rawValue: "highPass"), parameters: ["cutoffHertz": .double(80)]),
+            EffectConfiguration(effect: EffectID(rawValue: "gain"), parameters: ["gainDecibels": .double(-3)]),
+        ]
+        let strip = MixerStrip(
+            id: InputID(rawValue: "mic-1"), name: "Mic", level: 1, pan: 0, isMuted: false, effects: chain)
+        #expect(strip.audioChannel.effects == chain)
+        #expect(strip.audioChannel.effects?.map(\.effect.rawValue) == ["highPass", "gain"])
+    }
+
+    @Test("merging adopts an authored channel's effect chain, and a channel without one merges chainless")
+    @MainActor
+    func mergingAdoptsAuthoredChain() {
+        let chain = [EffectConfiguration(effect: EffectID(rawValue: "gain"), parameters: ["gainDecibels": .double(6)])]
+        let channels = [
+            AudioChannel(input: InputID(rawValue: "mic-1"), name: "Mic 1", effects: chain),
+            AudioChannel(input: InputID(rawValue: "mic-2"), name: "Mic 2"),
+        ]
+        let strips = MixerStrip.strips(
+            channels: channels, discovered: [Self.choice("mic-1"), Self.choice("mic-2")])
+
+        #expect(strips.count == 2)
+        #expect(strips[0].effects == chain)
+        #expect(strips[1].effects.isEmpty)
+    }
+
+    @Test("a discovered device with no authored channel appends chainless")
+    @MainActor
+    func appendedStripHasNoChain() {
+        let strips = MixerStrip.strips(
+            channels: [AudioChannel(input: InputID(rawValue: "mic-1"))], discovered: [Self.choice("mic-2")])
+        #expect(strips.count == 2)
+        #expect(strips[1].id.rawValue == "mic-2")
+        #expect(strips[1].effects.isEmpty)
+    }
+
+    @Test("strips differing only in their effect chain compare not equal")
+    @MainActor
+    func stripChainAffectsEquality() {
+        let plain = MixerStrip(id: InputID(rawValue: "mic-1"), name: "Mic", level: 1, pan: 0, isMuted: false)
+        let chained = MixerStrip(
+            id: InputID(rawValue: "mic-1"), name: "Mic", level: 1, pan: 0, isMuted: false,
+            effects: [EffectConfiguration(effect: EffectID(rawValue: "gain"))])
+        #expect(plain != chained)
+    }
 }

@@ -49,6 +49,13 @@ public struct PlugInContext: Sendable {
     /// ``PlugIn/activate(in:)``.
     public let outputs: any OutputRegistering
 
+    /// The effect registration seam: where the plug-in registers the
+    /// audio and video effect providers it contributes during
+    /// ``PlugIn/activate(in:)`` (see ARCHITECTURE.md, "The effect seam").
+    /// A pre-1.0 addition, like ``OutputRegistering``'s recording overload
+    /// (ARCHITECTURE.md, "Plug-in API stability and versioning").
+    public let effects: any EffectRegistering
+
     /// The tool registration seam: where the plug-in registers the MCP
     /// tools it contributes during ``PlugIn/activate(in:)`` (see MCP.md,
     /// "Tool surface").
@@ -60,12 +67,14 @@ public struct PlugInContext: Sendable {
         clock: any EngineClock,
         inputs: any InputRegistering,
         outputs: any OutputRegistering,
+        effects: any EffectRegistering,
         tools: any ToolRegistering
     ) {
         self.eventBus = eventBus
         self.clock = clock
         self.inputs = inputs
         self.outputs = outputs
+        self.effects = effects
         self.tools = tools
     }
 }

@@ -266,6 +266,7 @@ struct Stream: AsyncParsableCommand {
             clock: clock,
             inputs: registry,
             outputs: outputs,
+            effects: EffectRegistry(),
             tools: ToolRegistry()
         )
         await PlugInLoader().activate(

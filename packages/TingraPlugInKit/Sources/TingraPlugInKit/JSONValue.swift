@@ -117,6 +117,18 @@ extension JSONValue {
         return value
     }
 
+    /// The numeric value as a `Double` — a `.double` as-is, an `.int`
+    /// widened — or nil for any non-numeric value. The forgiving read for
+    /// numeric parameters (an effect payload's `6` means `6.0`); reads
+    /// that must distinguish integers keep using ``intValue``.
+    public var doubleValue: Double? {
+        switch self {
+        case .double(let value): return value
+        case .int(let value): return Double(value)
+        default: return nil
+        }
+    }
+
     /// The boolean value, or nil if this value is not a boolean.
     public var boolValue: Bool? {
         guard case .bool(let value) = self else { return nil }

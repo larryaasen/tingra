@@ -132,3 +132,154 @@ struct LayerTreeEditTests {
         }
     }
 }
+
+@Suite("LayerTreeEdit effect chains")
+struct LayerTreeEditEffectTests {
+    /// A shot with one layer, for chain edits.
+    private var shot: Shot {
+        Shot(id: ShotID(rawValue: "shot"), name: "Shot", layers: [Layer(input: InputID(rawValue: "camera"))])
+    }
+
+    /// A chained configuration for the given effect id.
+    private func configuration(_ id: String) -> EffectConfiguration {
+        EffectConfiguration(effect: EffectID(rawValue: id))
+    }
+
+    @Test("adding an effect appends it at its neutral settings, so the picture is unchanged until adjusted")
+    func addingEffectAppendsNeutral() {
+        let edited = LayerTreeEdit.addingEffect(EffectID(rawValue: "blur"), toLayerAt: 0, in: shot)
+        #expect(edited.layers[0].effects?.count == 1)
+        #expect(edited.layers[0].effects?.first?.effect == EffectID(rawValue: "blur"))
+        #expect(edited.layers[0].effects?.first?.parameters.isEmpty == true)
+    }
+
+    @Test("adding an effect appends after the existing chain — order is signal order")
+    func addingEffectAppendsInSignalOrder() {
+        var edited = LayerTreeEdit.addingEffect(EffectID(rawValue: "colorAdjust"), toLayerAt: 0, in: shot)
+        edited = LayerTreeEdit.addingEffect(EffectID(rawValue: "blur"), toLayerAt: 0, in: edited)
+        #expect(edited.layers[0].effects?.map(\.effect.rawValue) == ["colorAdjust", "blur"])
+    }
+
+    @Test("adding to an out-of-range layer leaves the shot unchanged")
+    func addingEffectToUnknownLayerIsANoOp() {
+        let original = shot
+        #expect(LayerTreeEdit.addingEffect(EffectID(rawValue: "blur"), toLayerAt: 5, in: original) == original)
+    }
+
+    @Test("removing an effect drops just that slot")
+    func removingEffectDropsTheSlot() {
+        let chained = Shot(
+            id: ShotID(rawValue: "shot"),
+            layers: [
+                Layer(
+                    input: InputID(rawValue: "camera"),
+                    effects: [configuration("colorAdjust"), configuration("blur")])
+            ]
+        )
+        let edited = LayerTreeEdit.removingEffect(at: 0, fromLayerAt: 0, in: chained)
+        #expect(edited.layers[0].effects?.map(\.effect.rawValue) == ["blur"])
+    }
+
+    @Test("removing the last effect leaves an authored-empty chain, not an unauthored one")
+    func removingLastEffectLeavesAuthoredEmpty() {
+        let chained = Shot(
+            id: ShotID(rawValue: "shot"),
+            layers: [Layer(input: InputID(rawValue: "camera"), effects: [configuration("blur")])]
+        )
+        let edited = LayerTreeEdit.removingEffect(at: 0, fromLayerAt: 0, in: chained)
+        #expect(edited.layers[0].effects?.isEmpty == true)
+    }
+
+    @Test("removing an out-of-range slot leaves the shot unchanged")
+    func removingUnknownEffectIsANoOp() {
+        let chained = Shot(
+            id: ShotID(rawValue: "shot"),
+            layers: [Layer(input: InputID(rawValue: "camera"), effects: [configuration("blur")])]
+        )
+        #expect(LayerTreeEdit.removingEffect(at: 4, fromLayerAt: 0, in: chained) == chained)
+    }
+
+    @Test("moving an effect reorders the chain, and a move to its own position is a no-op")
+    func movingEffectReorders() {
+        let chained = Shot(
+            id: ShotID(rawValue: "shot"),
+            layers: [
+                Layer(
+                    input: InputID(rawValue: "camera"),
+                    effects: [configuration("colorAdjust"), configuration("blur")])
+            ]
+        )
+        let moved = LayerTreeEdit.movingEffect(at: 1, to: 0, ofLayerAt: 0, in: chained)
+        #expect(moved.layers[0].effects?.map(\.effect.rawValue) == ["blur", "colorAdjust"])
+        #expect(LayerTreeEdit.movingEffect(at: 0, to: 0, ofLayerAt: 0, in: chained) == chained)
+    }
+
+    @Test("a move destination beyond the chain is clamped to its bounds")
+    func movingEffectClampsDestination() {
+        let chained = Shot(
+            id: ShotID(rawValue: "shot"),
+            layers: [
+                Layer(
+                    input: InputID(rawValue: "camera"),
+                    effects: [configuration("colorAdjust"), configuration("blur")])
+            ]
+        )
+        let moved = LayerTreeEdit.movingEffect(at: 0, to: 99, ofLayerAt: 0, in: chained)
+        #expect(moved.layers[0].effects?.map(\.effect.rawValue) == ["blur", "colorAdjust"])
+    }
+
+    @Test("setting a parameter keeps the slot's other parameters and the chain's order")
+    func settingParameterKeepsTheRest() {
+        let chained = Shot(
+            id: ShotID(rawValue: "shot"),
+            layers: [
+                Layer(
+                    input: InputID(rawValue: "camera"),
+                    effects: [
+                        EffectConfiguration(
+                            effect: EffectID(rawValue: "colorAdjust"),
+                            parameters: ["brightness": .double(0.2)]),
+                        configuration("blur"),
+                    ])
+            ]
+        )
+        let edited = LayerTreeEdit.settingEffectParameter(
+            0.5, forKey: "saturation", ofEffectAt: 0, ofLayerAt: 0, in: chained)
+        let parameters = edited.layers[0].effects?[0].parameters
+        #expect(parameters?["brightness"]?.doubleValue == 0.2)
+        #expect(parameters?["saturation"]?.doubleValue == 0.5)
+        #expect(edited.layers[0].effects?.map(\.effect.rawValue) == ["colorAdjust", "blur"])
+    }
+
+    @Test("setting a parameter on an out-of-range slot or layer leaves the shot unchanged")
+    func settingParameterOutOfRangeIsANoOp() {
+        let original = shot
+        #expect(
+            LayerTreeEdit.settingEffectParameter(1, forKey: "k", ofEffectAt: 0, ofLayerAt: 0, in: original)
+                == original)
+        #expect(
+            LayerTreeEdit.settingEffectParameter(1, forKey: "k", ofEffectAt: 0, ofLayerAt: 9, in: original)
+                == original)
+    }
+
+    @Test("the frame, opacity, and rebind edits all preserve a layer's effect chain")
+    func otherEditsPreserveTheChain() {
+        let chain = [configuration("blur")]
+        let chained = Shot(
+            id: ShotID(rawValue: "shot"),
+            layers: [Layer(input: InputID(rawValue: "camera"), effects: chain)]
+        )
+
+        let framed = LayerTreeEdit.settingFrame(
+            CGRect(x: 0.1, y: 0.1, width: 0.5, height: 0.5), ofLayerAt: 0, in: chained)
+        #expect(framed.layers[0].effects == chain)
+
+        let faded = LayerTreeEdit.settingOpacity(0.4, ofLayerAt: 0, in: chained)
+        #expect(faded.layers[0].effects == chain)
+
+        let rebound = LayerTreeEdit.rebindingLayers(
+            boundTo: InputID(rawValue: "camera"), to: InputID(rawValue: "camera-2"), in: chained)
+        #expect(rebound.layers[0].effects == chain)
+        #expect(rebound.layers[0].input == InputID(rawValue: "camera-2"))
+    }
+}

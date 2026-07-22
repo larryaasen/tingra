@@ -61,6 +61,7 @@ struct PlugInLoaderTests {
             clock: HostClock(),
             inputs: registry,
             outputs: OutputRegistry(),
+            effects: EffectRegistry(),
             tools: ToolRegistry()
         )
         let plugIns: [any PlugIn] = [
@@ -93,6 +94,7 @@ struct PlugInLoaderTests {
             clock: HostClock(),
             inputs: registry,
             outputs: OutputRegistry(),
+            effects: EffectRegistry(),
             tools: ToolRegistry()
         )
         let plugIns: [any PlugIn] = [
@@ -126,6 +128,7 @@ struct PlugInLoaderTests {
             clock: HostClock(),
             inputs: InputRegistry(),
             outputs: OutputRegistry(),
+            effects: EffectRegistry(),
             tools: ToolRegistry()
         )
 

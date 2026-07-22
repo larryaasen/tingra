@@ -34,6 +34,10 @@ packages/                       # Engine libraries
   TingraGeneratorPlugIns/       # First-party generator plug-ins (bars, tone): the permanent CI
                                 #   test surface; further feature plug-in packages (effects,
                                 #   recording) land alongside
+  TingraEffectPlugIns/          # First-party effect plug-ins: the audio staples (gain, high-/
+                                #   low-pass) behind the shared effect seam (AudioEffect/
+                                #   VideoEffect through EffectRegistering); per-layer video
+                                #   effects follow
   TingraOutputPlugIns/          # First-party streaming output plug-in: the HaishinKit-backed
                                 #   StreamingService (RTMP/RTMPS); the only package importing HaishinKit
   TingraRecordingPlugIns/       # First-party local recording plug-in: the AVAssetWriter-backed
@@ -172,6 +176,9 @@ packages/  TingraHost             →  TingraPlugInKit + TingraEventBus
 packages/  TingraCapturePlugIns   →  TingraPlugInKit + TingraEventBus (registers through the
                                      `InputRegistering` seam, so no TingraHost dependency)
 packages/  TingraGeneratorPlugIns →  TingraPlugInKit + TingraEventBus (same seam-only design)
+packages/  TingraEffectPlugIns    →  TingraPlugInKit + TingraEventBus (same seam-only design;
+                                     registers through the `EffectRegistering` seam; pure DSP
+                                     and Core Image, no third-party dependency)
 packages/  TingraComposition      →  TingraPlugInKit + TingraEventBus (the compositor: a host-side
                                      engine library, not a plug-in and not folded into TingraHost;
                                      protocol-package-only, so testable with a synthetic clock and a
@@ -194,10 +201,12 @@ apps/      tingra-cli             →  TingraHost + TingraCapturePlugIns + Tingr
                                      (+ swift-argument-parser)
 apps/      tingra (phase 3)       →  TingraHost + TingraComposition + TingraAudio
                                      + TingraCapturePlugIns + TingraGeneratorPlugIns
-                                     + TingraOutputPlugIns + TingraPlugInKit + TingraEventBus
+                                     + TingraOutputPlugIns + TingraEffectPlugIns
+                                     + TingraPlugInKit + TingraEventBus
                                      (scaffolded at step 6; gained TingraOutputPlugIns at the
-                                     step-7 streaming iteration and TingraAudio at the mixer
-                                     iteration; more feature plug-ins + UI packages later)
+                                     step-7 streaming iteration, TingraAudio at the mixer
+                                     iteration, and TingraEffectPlugIns at the audio effect
+                                     chain iteration; more feature plug-ins + UI packages later)
 apps/      ingest-simulator       →  none of the above (wraps MediaMTX; see SIMULATOR.md)
 ```
 
@@ -206,7 +215,7 @@ The engine is organized as services, each exposing its capabilities through plug
 
 1. **Capture** – inputs, generators, input discovery, device connection/disconnection
 2. **Composition** – presets, shots, layer tree, transitions, Metal renderer, effects, program/preview buses (in `TingraComposition`: the tick-paced compositor, shots/layers, and the Core Image `ShotRenderer` landed at step 6; transitions, effects, and presets follow at step 7)
-3. **Audio** – mixer, channel strips, routing, audio effects (in `TingraAudio`: the clock-paced `AudioMixer` with per-strip level/mute/pan landed at step 7, with routing v1 — strip settings persisted per preset as authored channels feeding the program mix, v1's only bus — landed as document plus app policy; audio effects follow)
+3. **Audio** – mixer, channel strips, routing, audio effects (in `TingraAudio`: the clock-paced `AudioMixer` with per-strip level/mute/pan landed at step 7, with routing v1 — strip settings persisted per preset as authored channels feeding the program mix, v1's only bus — landed as document plus app policy, and per-strip audio effect chains landed post-intake/pre-fader against the `TingraPlugInKit` effect seam, with the first-party effects in `TingraEffectPlugIns`; the GLOSSARY.md channel strip is complete)
 4. **Compression** – VideoToolbox compression sessions, rate control, local recording
 5. **Output** – the `StreamingService` seam, with HaishinKit-backed RTMP/SRT implementations
 6. **Plug-in** – discovery, lifecycle, isolation

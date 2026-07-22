@@ -41,6 +41,10 @@ final class CaptureEngine {
     /// plug-in context; this app streams nothing.
     private let outputs = OutputRegistry()
 
+    /// The effect registration seam, unused here but required to build the
+    /// plug-in context; this app hosts no effect chains.
+    private let effects = EffectRegistry()
+
     /// The tool registration seam, unused here but required to build the
     /// plug-in context; this app hosts no MCP tools.
     private let tools = ToolRegistry()
@@ -100,6 +104,7 @@ final class CaptureEngine {
             clock: clock,
             inputs: inputs,
             outputs: outputs,
+            effects: effects,
             tools: tools
         )
         await loader.activate([AVFoundationCapturePlugIn()], in: context)

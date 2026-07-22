@@ -12,9 +12,11 @@ import TingraPlugInKit
 
 /// One channel strip's meter measurement over one mix block (GLOSSARY.md,
 /// "Meter"): the strip's signal as delivered, measured **pre-fader** — after
-/// intake normalization but before level, pan, and mute — so the reading
-/// answers "what is this input delivering" and holds steady while the
-/// operator rides the fader (ARCHITECTURE.md, "Per-strip meters").
+/// intake normalization and the strip's effect chain but before level, pan,
+/// and mute — so the reading answers "what is this strip delivering to the
+/// fader" (the console's insert-metering point: an effect's gain is visible
+/// on the meter) and holds steady while the operator rides the fader
+/// (ARCHITECTURE.md, "Per-strip meters", "Audio effect chains").
 ///
 /// Values are linear sample magnitudes (`0` is silence, `1` is full scale; a
 /// hot signal can exceed `1`). The dBFS scale, the ballistics, and any color

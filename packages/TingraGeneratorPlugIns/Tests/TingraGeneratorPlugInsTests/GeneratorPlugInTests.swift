@@ -38,6 +38,16 @@ private struct UnusedOutputRegistrar: OutputRegistering {
     func register(_ provider: any RecordingServiceProvider) async throws {}
 }
 
+/// A no-op effect registration seam — the generator plug-in never registers
+/// effects.
+private struct UnusedEffectRegistrar: EffectRegistering {
+    /// Never called by this plug-in.
+    func register(_ provider: any AudioEffectProvider) async throws {}
+
+    /// Never called by this plug-in.
+    func register(_ provider: any VideoEffectProvider) async throws {}
+}
+
 /// A no-op tool registration seam — the generator plug-in never registers
 /// tools.
 private struct UnusedToolRegistrar: ToolRegistering {
@@ -56,6 +66,7 @@ struct GeneratorPlugInTests {
             clock: SyntheticClock(),
             inputs: registrar,
             outputs: UnusedOutputRegistrar(),
+            effects: UnusedEffectRegistrar(),
             tools: UnusedToolRegistrar()
         )
 
@@ -85,6 +96,7 @@ struct GeneratorPlugInTests {
             clock: SyntheticClock(),
             inputs: MockInputRegistrar(),
             outputs: UnusedOutputRegistrar(),
+            effects: UnusedEffectRegistrar(),
             tools: UnusedToolRegistrar()
         )
 

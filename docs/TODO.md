@@ -217,8 +217,9 @@ or two in the doc that owns them — none need a rewrite.
     `TingraComposition` and `tingra` added to the ci.yml matrix.
 
 - [ ] **Steps 7–8** — app era: production features (presets, shots, layers,
-  transitions, audio mixer), SRT/multiple destinations.
-  - [ ] **Step 7 remaining (exit criteria)** *(drawn 2026-07-19)* — the
+  transitions, audio mixer) *(step 7 complete 2026-07-20)*, SRT/multiple
+  destinations *(step 8, open)*.
+  - [x] **Step 7 exit criteria — met 2026-07-20** *(drawn 2026-07-19)* — the
     iterations that must land before step 8 opens, collected from the
     deferrals the fourteen records above carried. When this sub-list is
     empty, step 7 is done; nothing joins it silently — widening the list is
@@ -249,12 +250,21 @@ or two in the doc that owns them — none need a rewrite.
       media protocols** (`AudioEffect`/`VideoEffect` under one
       `EffectRegistering`/identity/parameter surface). Never rushed — a
       half-designed stability contract is worse than an unfinished step.
-    - [ ] **Effect chains** — against the recorded seam, as thin
-      conformances in a first-party effect plug-in package: **audio effect
-      chains** (the last GLOSSARY.md channel-strip slot, after routing)
-      and **per-layer video effects** (the "later 'Effect' iteration"
-      deferred since the layer-tree editor). May land as one iteration or
-      two, per the seam decision.
+    - [x] **Audio effect chains** *(landed 2026-07-20 — see the sixteenth
+      iteration record below)* — the seam built and its first
+      conformances shipped, completing the GLOSSARY.md **channel strip**:
+      `TingraPlugInKit` gained the whole effect seam (`EffectID`,
+      `EffectConfiguration`, `EffectParameter`, `AudioEffect`/`VideoEffect`,
+      their providers, `EffectRegistering`, `PlugInContext.effects`), the
+      host an `EffectRegistry`, and the new `TingraEffectPlugIns` package
+      the audio staples (gain, high-pass, low-pass).
+    - [x] **Per-layer video effects** *(landed 2026-07-20 — see the
+      seventeenth iteration record below)* — the seam's second iteration
+      and step 7's last exit criterion: `Layer.effects` within v1, chain
+      application in `CoreImageShotRenderer` through an injected
+      `VideoEffectFactory` (fused into the one render pass), the
+      first-party color adjustment and blur, and the layer-tree editor's
+      chain UI. **With this the sub-list is empty and step 7 is done.**
     - [x] **Monitoring is ruled out of step 7** *(decided 2026-07-19)* —
       the monitoring slice the docs point at from three places (the app's
       "no audio preview yet" drain note, the mixer record's "a future
@@ -267,6 +277,128 @@ or two in the doc that owns them — none need a rewrite.
       multiview) — an app-era slice sequenced after step 8, alongside the
       video preview bus it parallels. Recorded here so it cannot silently
       expand the bucket.
+  - [x] **Step 7, per-layer video effects** *(code complete 2026-07-20)* —
+    the seventeenth production-feature iteration and **the one that closes
+    step 7**: the effect seam's second media protocol becomes code,
+    landing the "later 'Effect' iteration" deferred since the layer-tree
+    editor. With it the step-7 exit checklist above is **empty** and step
+    8 (SRT/multiple destinations) opens. `TingraComposition`'s `Layer`
+    gained an optional **`effects`** chain — **no version bump** (the
+    pre-release rule): absent = no chain, so pre-effects documents decode
+    unchanged and a chainless layer authors no key. The pixel work needed
+    the providers without letting `TingraComposition` depend on the host's
+    registry, so the seam is a new **`VideoEffectFactory`**
+    (`@Sendable (EffectConfiguration) -> (any VideoEffect)?`) injected into
+    `CoreImageShotRenderer`; the `Compositor` is **untouched** — it already
+    takes a renderer factory, so the resolver rides the renderer the app
+    was already injecting (the app builds it from a boot-time snapshot of
+    `EffectRegistry.allVideoProviders`). The chain runs **before
+    placement** (an effect sees the layer's own image at its own scale, so
+    a blur radius means the same thing wherever the layer sits) with its
+    output **cropped back to the source extent** (a blur bleeds past the
+    edges; a layer occupies its frame, never more), composing lazily
+    `CIImage`→`CIImage` so a whole chain **fuses into the one render
+    pass**. Instances are **cached per layer** (keyed by shot id and layer
+    index) and rebuilt only when the configurations change — a live edit
+    lands at the next tick, a steady chain never rebuilds — and an entry
+    with no resolvable provider is **skipped as pass-through**, never a
+    black layer. `TingraEffectPlugIns` gained **color adjustment**
+    (`CIColorControls`: brightness/contrast/saturation) and **blur**
+    (`CIGaussianBlur`), the first two GLOSSARY.md video effect names, with
+    **every parameter neutral at its default** so adding an effect never
+    changes the picture until it is adjusted. `apps/tingra`: the
+    layer-tree inspector gained `LayerEffectChainView` — the audio chain
+    editor's shape one service over (signal-order slots with Move Up /
+    Move Down / Remove, an Add Effect menu, generically drawn parameter
+    sliders) — with `LayerTreeEdit` gaining the pure chain operations, all
+    flowing through the existing `updateShot` path and debounced autosave;
+    the **existing layer edits were audited to preserve the chain** (a
+    `Layer` rebuild dropping `effects` would have silently discarded the
+    operator's work). Every control reports its `tap` first; the chain UI
+    reuses the audio iteration's already-localized strings. Decisions
+    recorded in ARCHITECTURE.md, "Per-layer video effects"; README gained
+    the new types. Tests: `TingraCompositionTests` (now 136 — chain
+    applied before placement, signal order, unresolved entry passing
+    through, a resolver-less renderer ignoring chains, a chain edit
+    rebuilding the cached instances; `Layer` chain round-trip,
+    omitted-when-nil, authored-empty, defaults, equality),
+    `TingraEffectPlugInsTests` (now 21 — video provider registration and
+    identifiers, neutral defaults, brightness lightening, zero saturation
+    going grayscale, range clamping, zero-radius identity, a blur
+    softening a hard edge, provider payload at creation), and the app's
+    `TingraTests` (now 87 — the chain edit operations: neutral append,
+    signal-order append, out-of-range no-ops, removal leaving
+    authored-empty, reorder with clamping, parameter set preserving the
+    rest, and frame/opacity/rebind all preserving the chain).
+  - [x] **Step 7, audio effect chains** *(code complete 2026-07-20)* — the
+    sixteenth production-feature iteration, turning the recorded effect
+    seam into code and landing the **last slot of the GLOSSARY.md channel
+    strip**: the per-strip **audio effect chain**, closing the deferral
+    every mixer record has carried since the mixer itself (per-layer video
+    effects — the seam's second iteration — are now step 7's one remaining
+    exit criterion; SRT/multiple destinations remain step 8).
+    `TingraPlugInKit` gained the seam exactly as recorded — `EffectID`,
+    `EffectConfiguration` (the persisted `{effect, parameters}` shape),
+    `AudioEffect`/`VideoEffect`, `AudioEffectProvider`/`VideoEffectProvider`,
+    `EffectRegistering`, plus `PlugInContext.effects` (a pre-1.0 addition
+    like `OutputRegistering`'s recording overload) and a forgiving
+    `JSONValue.doubleValue` — with **one addition the build surfaced:
+    `EffectParameter`**, the descriptor (key, name, range, default, unit,
+    linear/logarithmic scale) a provider declares so **a third-party
+    effect gets parameter UI for free** instead of needing bespoke app
+    code, the exact coupling the seam exists to prevent. `TingraHost`
+    gained `EffectRegistry` (one registry, **separate tables per media
+    kind** — one provider per id within a kind — in registration order for
+    stable menus). The chain sits **post-intake, pre-fader**:
+    `AudioMixer` processes each strip's consumed samples through its chain
+    before level, pan, and mute, so the meter — unchanged in wording —
+    now reads the chain's **output** (the console's insert-metering point:
+    an effect's gain shows on the meter, a fader ride still does not), and
+    a strip with no chain mixes byte-for-byte as before (the pan record's
+    proof rule). Two entry points split by gesture rate:
+    `setEffects(_:forInput:)` replaces instances (structural edits),
+    `setEffectParameters(_:forEffectAt:forInput:)` retunes a slot **in
+    place** so a dragging slider never resets filter memory into a click;
+    both report **no events** (the `updateShot` rule), and an effect that
+    breaks the block-shape contract is **clamped, never trapped**.
+    `TingraComposition`'s `AudioChannel` gained an optional **`effects`**
+    chain — **no version bump** (the pre-release rule): absent = no chain,
+    so pre-effects documents decode unchanged and a chainless strip
+    authors no key; an entry naming an effect this build has no provider
+    for round-trips untouched and instantiates as a **pass-through
+    holding its slot** (one `effect.resolve` error), the
+    layer-bound-to-an-undiscovered-input semantic one service over. New
+    package `packages/TingraEffectPlugIns` (protocol-seam dependencies
+    only, added to the ci.yml matrix): `EffectPlugIn` registering
+    **gain, high-pass, and low-pass** over a shared `BiquadFilter`
+    (audio-EQ-cookbook coefficients at Butterworth Q; per-channel memory
+    kept across a cutoff sweep). `apps/tingra`: a per-strip **Effects
+    button** badged with the chain's length opening `EffectChainView` —
+    slots in signal order with Move Up / Move Down / Remove, an Add Effect
+    menu over the registry, and **sliders drawn generically from the
+    declared parameters**; structural edits re-instantiate the chain,
+    parameter drags take the in-place path, both autosaved debounced;
+    every control reports its `tap` first; new strings localized
+    `de`/`es`. Decisions recorded in ARCHITECTURE.md, "Audio effect
+    chains"; GLOSSARY.md's Effect entry now covers both media and gained
+    **Effect chain**; README gained the package and every new public type.
+    Tests: `TingraPlugInKitTests` (now 26 — configuration round-trip,
+    stable keys, missing-id throws, forgiving parameters, unknown-effect
+    survival, equality, `doubleValue`), `TingraHostTests` (now 80 —
+    registry resolution, duplicate-id rejection per kind, shared ids
+    across kinds, listing order), `TingraAudioTests` (now 31 — chain
+    before fader, signal order, in-place retune with stale-gesture
+    ignores, post-chain metering, chain kept across a reconfigure,
+    shape-breaking effect clamped, chainless strip untouched),
+    `TingraEffectPlugInsTests` (13 — registration order and identifiers,
+    declared parameters, gain unity/+6 dB/clamping/integer payload,
+    high-pass DC removal and passband, low-pass DC passband and stopband,
+    per-channel memory, cutoff clamping, provider payload at creation),
+    `TingraCompositionTests` (now 127 — chain round-trip in signal order,
+    omitted-when-nil, authored-empty distinct, equality), and the app's
+    `TingraTests` (now 76 — chainless strip authors no key, chain
+    conversion, merge adopting an authored chain, appended strips
+    chainless, chain equality).
   - [x] **Step 7, custom-shader transitions** *(code complete 2026-07-19)* —
     the fifteenth production-feature iteration, landing the fourth and last
     GLOSSARY.md **transition** kind — **shader**, a custom Metal-shader

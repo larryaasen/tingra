@@ -51,6 +51,13 @@ public struct AudioChannel: Sendable, Equatable, Codable {
     /// Whether the strip is muted.
     public let isMuted: Bool
 
+    /// The strip's authored effect chain, in signal order (the chain *is*
+    /// its array — ARCHITECTURE.md, "The effect seam"), or nil for no
+    /// chain. An **optional key within v1** (the pre-release rule, no
+    /// version bump): absent means no chain, so every pre-effects document
+    /// decodes unchanged.
+    public let effects: [EffectConfiguration]?
+
     /// Creates an authored channel.
     ///
     /// - Parameters:
@@ -60,12 +67,22 @@ public struct AudioChannel: Sendable, Equatable, Codable {
     ///   - level: The strip's linear gain (default unity).
     ///   - pan: The strip's pan position (default center).
     ///   - isMuted: Whether the strip is muted (default no).
-    public init(input: InputID, name: String = "", level: Double = 1, pan: Double = 0, isMuted: Bool = false) {
+    ///   - effects: The strip's authored effect chain, in signal order, or
+    ///     nil (default) for no chain.
+    public init(
+        input: InputID,
+        name: String = "",
+        level: Double = 1,
+        pan: Double = 0,
+        isMuted: Bool = false,
+        effects: [EffectConfiguration]? = nil
+    ) {
         self.input = input
         self.name = name
         self.level = level
         self.pan = pan
         self.isMuted = isMuted
+        self.effects = effects
     }
 
     /// The coding keys — stable camelCase names for the project document.
@@ -75,11 +92,13 @@ public struct AudioChannel: Sendable, Equatable, Codable {
         case level
         case pan
         case isMuted
+        case effects
     }
 
     /// Decodes a channel. `input` is required — a channel without its device
     /// identity is meaningless; every setting decodes forgivingly to the
-    /// strip defaults (empty name, unity level, centered pan, unmuted).
+    /// strip defaults (empty name, unity level, centered pan, unmuted, no
+    /// effect chain).
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         input = try container.decode(InputID.self, forKey: .input)
@@ -87,10 +106,13 @@ public struct AudioChannel: Sendable, Equatable, Codable {
         level = try container.decodeIfPresent(Double.self, forKey: .level) ?? 1
         pan = try container.decodeIfPresent(Double.self, forKey: .pan) ?? 0
         isMuted = try container.decodeIfPresent(Bool.self, forKey: .isMuted) ?? false
+        effects = try container.decodeIfPresent([EffectConfiguration].self, forKey: .effects)
     }
 
-    /// Encodes a channel, always writing every field so the document
-    /// round-trips exactly.
+    /// Encodes a channel, always writing every settled field so the
+    /// document round-trips exactly; the optional effect chain is written
+    /// only when authored, so a chainless channel encodes as it did before
+    /// effects existed.
     public func encode(to encoder: any Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(input, forKey: .input)
@@ -98,5 +120,6 @@ public struct AudioChannel: Sendable, Equatable, Codable {
         try container.encode(level, forKey: .level)
         try container.encode(pan, forKey: .pan)
         try container.encode(isMuted, forKey: .isMuted)
+        try container.encodeIfPresent(effects, forKey: .effects)
     }
 }

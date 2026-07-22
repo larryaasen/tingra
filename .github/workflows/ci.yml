@@ -46,6 +46,7 @@ jobs:
           - packages/TingraCapturePlugIns
           - packages/TingraGeneratorPlugIns
           - packages/TingraComposition
+          - packages/TingraEffectPlugIns
           - packages/TingraOutputPlugIns
           - packages/TingraRecordingPlugIns
           - packages/TingraMCP

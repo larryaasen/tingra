@@ -197,7 +197,9 @@ struct Serve: AsyncParsableCommand {
         // First-party plug-ins load through the same path a third party will
         // use, including the control tools that expose the CLI surface as MCP
         // tools (MCP.md, "Tool surface").
-        let context = PlugInContext(eventBus: eventBus, clock: clock, inputs: inputs, outputs: outputs, tools: tools)
+        let context = PlugInContext(
+            eventBus: eventBus, clock: clock, inputs: inputs, outputs: outputs, effects: EffectRegistry(),
+            tools: tools)
         await PlugInLoader().activate(
             [
                 AVFoundationCapturePlugIn(),

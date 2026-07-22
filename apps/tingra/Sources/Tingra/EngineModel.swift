@@ -10,9 +10,11 @@
 import CoreGraphics
 import CoreVideo
 import Observation
+import Synchronization
 import TingraAudio
 import TingraCapturePlugIns
 import TingraComposition
+import TingraEffectPlugIns
 import TingraEventBus
 import TingraGeneratorPlugIns
 import TingraHost
@@ -42,6 +44,36 @@ final class EngineModel {
 
         /// The user-facing name.
         let name: String
+    }
+
+    /// One registered audio effect as the strip's Add Effect menu offers
+    /// it: the provider's identity and declared parameters, snapshotted
+    /// from the effect registry at boot so the UI never awaits the actor
+    /// per draw.
+    struct AudioEffectChoice: Identifiable, Equatable {
+        /// The effect's stable identifier.
+        let id: EffectID
+
+        /// The user-facing effect name, as the provider declares it
+        /// (runtime data, shown verbatim like a device name).
+        let name: String
+
+        /// The parameters the effect declares, in display order — what
+        /// the chain editor draws sliders from.
+        let parameters: [EffectParameter]
+    }
+
+    /// One registered video effect as the layer editor's Add Effect menu
+    /// offers it — the video mirror of ``AudioEffectChoice``.
+    struct VideoEffectChoice: Identifiable, Equatable {
+        /// The effect's stable identifier.
+        let id: EffectID
+
+        /// The user-facing effect name, as the provider declares it.
+        let name: String
+
+        /// The parameters the effect declares, in display order.
+        let parameters: [EffectParameter]
     }
 
     /// The live state of the app's one stream (v1's one-active-session rule),
@@ -105,6 +137,17 @@ final class EngineModel {
     /// dormant, until the device returns (ARCHITECTURE.md, "Per-strip
     /// routing").
     private(set) var mixerStrips: [MixerStrip] = []
+
+    /// The registered audio effects the strips' Add Effect menus offer,
+    /// in the registry's stable listing order — snapshotted at boot
+    /// (ARCHITECTURE.md, "Audio effect chains").
+    private(set) var audioEffectChoices: [AudioEffectChoice] = []
+
+    /// The registered video effects the layer editor's Add Effect menu
+    /// offers, in the registry's stable listing order — the video mirror
+    /// of ``audioEffectChoices`` (ARCHITECTURE.md, "Per-layer video
+    /// effects").
+    private(set) var videoEffectChoices: [VideoEffectChoice] = []
 
     /// The RTMP(S) destination URL the streaming panel edits, persisted in the
     /// project document (the stream key is not — it lives in secure storage;
@@ -218,6 +261,11 @@ final class EngineModel {
     /// (`OutputRegistry.provider(forScheme:)`).
     @ObservationIgnored private let outputs = OutputRegistry()
 
+    /// The effect registry the effect plug-in registers into — where a
+    /// strip's persisted chain resolves each `EffectID` to its provider
+    /// (ARCHITECTURE.md, "The effect seam").
+    @ObservationIgnored private let effects = EffectRegistry()
+
     /// The host's Keychain-backed secret store: the stream key lives only
     /// here, keyed by the destination URL — never the project document, never
     /// an event, never a log (CLAUDE.md, "Error Handling").
@@ -272,11 +320,25 @@ final class EngineModel {
     /// ``boundCameraID``).
     @ObservationIgnored private var boundDisplayID: InputID?
 
-    /// The compositor producing the program frames.
+    /// The video effect providers the renderer resolves layer chains
+    /// against — filled at boot from the effect registry, before the
+    /// compositor starts.
+    @ObservationIgnored private let videoEffectProviders = VideoEffectProviderBox()
+
+    /// The compositor producing the program frames. Its renderer resolves
+    /// each layer's authored chain through ``videoEffectProviders``, so
+    /// `TingraComposition` never depends on the host's effect registry
+    /// (ARCHITECTURE.md, "Per-layer video effects").
     @ObservationIgnored private lazy var compositor = Compositor(
         clock: clock,
         format: format,
-        eventBus: eventBus
+        eventBus: eventBus,
+        makeRenderer: { [videoEffectProviders] in
+            CoreImageShotRenderer { configuration in
+                videoEffectProviders.provider(for: configuration.effect)?
+                    .makeEffect(parameters: configuration.parameters)
+            }
+        }
     )
 
     /// The mixer producing the program audio — every unmuted strip's device
@@ -373,15 +435,26 @@ final class EngineModel {
             clock: clock,
             inputs: registry,
             outputs: outputs,
+            effects: effects,
             tools: UnusedToolRegistering()
         )
         await PlugInLoader().activate(
             [
                 AVFoundationCapturePlugIn(), ScreenCaptureKitCapturePlugIn(), GeneratorPlugIn(),
-                HaishinKitOutputPlugIn(),
+                HaishinKitOutputPlugIn(), EffectPlugIn(),
             ],
             in: context
         )
+        audioEffectChoices = await effects.allAudioProviders.map {
+            AudioEffectChoice(id: $0.id, name: $0.name, parameters: $0.parameters)
+        }
+        let videoProviders = await effects.allVideoProviders
+        videoEffectChoices = videoProviders.map {
+            VideoEffectChoice(id: $0.id, name: $0.name, parameters: $0.parameters)
+        }
+        // The renderer resolves layer chains against this snapshot; it is
+        // filled before the compositor starts below.
+        videoEffectProviders.fill(with: videoProviders)
 
         let inputs = await registry.allInputs
         cameras = inputs.filter { $0.kind == .camera }.map { InputChoice(id: $0.id, name: $0.name) }
@@ -681,11 +754,159 @@ final class EngineModel {
             return ChannelStrip(input: input, level: strip.level, pan: strip.pan, isMuted: strip.isMuted)
         }
         mixer.setChannelStrips(strips)
+        // Each running strip's authored chain is instantiated fresh and
+        // handed to its mixer channel (a reconfigure is rare — a mute
+        // toggle, a preset switch — so re-instantiating the chain's few
+        // milliseconds of filter memory is inaudible; parameter drags go
+        // through the in-place path instead).
+        for strip in mixerStrips where activeAudioInputs[strip.id] != nil && !strip.effects.isEmpty {
+            mixer.setEffects(await makeEffectChain(strip.effects), forInput: strip.id)
+        }
         eventBus.event(
             "mixer.channels",
             domain: .audio,
             params: ["ids": .string(activeAudioInputs.keys.map(\.rawValue).sorted().joined(separator: ","))]
         )
+    }
+
+    // MARK: Effect chains
+
+    /// Appends an effect to a strip's chain at its neutral settings (an
+    /// empty payload — every parameter at its declared default). A
+    /// document edit like a layer add: the chain re-instantiates into the
+    /// mixer, the debounced autosave carries it to the project file, and
+    /// the Add Effect menu's `tap` event carries the observability
+    /// (EVENTS.md).
+    ///
+    /// - Parameters:
+    ///   - effectID: The effect to append.
+    ///   - id: The strip's input id.
+    func addEffect(_ effectID: EffectID, toStrip id: InputID) async {
+        guard let index = mixerStrips.firstIndex(where: { $0.id == id }) else { return }
+        mixerStrips[index].effects.append(EffectConfiguration(effect: effectID))
+        await pushEffectChain(forStrip: id)
+        scheduleAutosave()
+    }
+
+    /// Removes one slot from a strip's chain. An out-of-range slot is a
+    /// stale gesture, ignored.
+    ///
+    /// - Parameters:
+    ///   - effectIndex: The slot to remove.
+    ///   - id: The strip's input id.
+    func removeEffect(at effectIndex: Int, fromStrip id: InputID) async {
+        guard
+            let index = mixerStrips.firstIndex(where: { $0.id == id }),
+            mixerStrips[index].effects.indices.contains(effectIndex)
+        else { return }
+        mixerStrips[index].effects.remove(at: effectIndex)
+        await pushEffectChain(forStrip: id)
+        scheduleAutosave()
+    }
+
+    /// Moves one slot of a strip's chain to a new position — order is
+    /// signal order, so a move is an audible routing change. The
+    /// destination is clamped to the chain's bounds; a move to the slot's
+    /// current position, or of an unknown slot, is a no-op.
+    ///
+    /// - Parameters:
+    ///   - effectIndex: The slot to move.
+    ///   - destination: The destination position in the chain.
+    ///   - id: The strip's input id.
+    func moveEffect(at effectIndex: Int, to destination: Int, onStrip id: InputID) async {
+        guard
+            let index = mixerStrips.firstIndex(where: { $0.id == id }),
+            mixerStrips[index].effects.indices.contains(effectIndex)
+        else { return }
+        let to = min(max(destination, 0), mixerStrips[index].effects.count - 1)
+        guard to != effectIndex else { return }
+        let configuration = mixerStrips[index].effects.remove(at: effectIndex)
+        mixerStrips[index].effects.insert(configuration, at: to)
+        await pushEffectChain(forStrip: id)
+        scheduleAutosave()
+    }
+
+    /// Sets one parameter of one slot in a strip's chain, applied to the
+    /// mixer's live instance in place — the gesture-rate path (a slider
+    /// drag calls it many times a second), so the instance keeps its
+    /// processing state, this reports nothing itself (the slider's
+    /// drag-end `tap` carries the observability — EVENTS.md), and the
+    /// autosave is debounced like the level's.
+    ///
+    /// - Parameters:
+    ///   - value: The parameter's new value.
+    ///   - key: The parameter's persisted key.
+    ///   - effectIndex: The slot whose parameter changes.
+    ///   - id: The strip's input id.
+    func setEffectParameter(_ value: Double, forKey key: String, ofEffectAt effectIndex: Int, onStrip id: InputID) {
+        guard
+            let index = mixerStrips.firstIndex(where: { $0.id == id }),
+            mixerStrips[index].effects.indices.contains(effectIndex)
+        else { return }
+        let existing = mixerStrips[index].effects[effectIndex]
+        var parameters = existing.parameters
+        parameters[key] = .double(value)
+        mixerStrips[index].effects[effectIndex] = EffectConfiguration(effect: existing.effect, parameters: parameters)
+        mixer.setEffectParameters(parameters, forEffectAt: effectIndex, forInput: id)
+        scheduleAutosave()
+    }
+
+    /// The user-facing name of a registered audio effect, for the chain
+    /// editor's rows — falls back to the raw identifier for an effect this
+    /// build has no provider for (a document can name effects from a
+    /// missing plug-in; the chain entry survives untouched).
+    ///
+    /// - Parameter id: The effect's stable identifier.
+    func effectName(for id: EffectID) -> String {
+        audioEffectChoices.first { $0.id == id }?.name ?? id.rawValue
+    }
+
+    /// The declared parameters of a registered audio effect, for the chain
+    /// editor's sliders — empty for an effect with no provider (its
+    /// settings persist but cannot be edited until the provider returns).
+    ///
+    /// - Parameter id: The effect's stable identifier.
+    func effectParameters(for id: EffectID) -> [EffectParameter] {
+        audioEffectChoices.first { $0.id == id }?.parameters ?? []
+    }
+
+    /// Instantiates a strip's authored chain through the effect registry,
+    /// one instance per slot in signal order. A configuration whose effect
+    /// has no registered provider is reported once and instantiated as a
+    /// pass-through — never dropped, so the chain's slot indices stay
+    /// aligned with the strip's configurations (the in-place parameter
+    /// path addresses slots by index) and the authored entry keeps its
+    /// place for the provider's return.
+    ///
+    /// - Parameter configurations: The strip's authored chain.
+    /// - Returns: The live effect instances, in signal order.
+    private func makeEffectChain(_ configurations: [EffectConfiguration]) async -> [any AudioEffect] {
+        var chain: [any AudioEffect] = []
+        for configuration in configurations {
+            if let provider = await effects.audioProvider(withID: configuration.effect) {
+                chain.append(provider.makeEffect(parameters: configuration.parameters))
+            } else {
+                eventBus.error(
+                    "effect.resolve",
+                    domain: .audio,
+                    params: ["effect": .string(configuration.effect.rawValue)]
+                )
+                chain.append(PassthroughAudioEffect())
+            }
+        }
+        return chain
+    }
+
+    /// Re-instantiates one strip's chain into its mixer channel after a
+    /// structural chain edit (add, remove, move). A strip whose device is
+    /// not running is skipped by the mixer (unknown ids are ignored); its
+    /// chain lands on the next audio reconfigure pass when the device
+    /// starts.
+    ///
+    /// - Parameter id: The strip's input id.
+    private func pushEffectChain(forStrip id: InputID) async {
+        guard let strip = mixerStrips.first(where: { $0.id == id }) else { return }
+        mixer.setEffects(await makeEffectChain(strip.effects), forInput: id)
     }
 
     /// Takes the shot with the given id to program with the transition the
@@ -1071,6 +1292,74 @@ final class EngineModel {
     ///   - index: The layer's index in the shot's `layers` array.
     func setLayerOpacity(_ opacity: Double, at index: Int) {
         applyShotEdit { LayerTreeEdit.settingOpacity(opacity, ofLayerAt: index, in: $0) }
+    }
+
+    /// Appends a video effect to the active shot's layer at the given
+    /// index, at its neutral settings. A layer-tree edit like any other:
+    /// live on program at the next tick and autosaved debounced; the Add
+    /// Effect menu's `tap` carries the observability (EVENTS.md).
+    ///
+    /// - Parameters:
+    ///   - effect: The effect to append.
+    ///   - index: The layer's index in the shot's `layers` array.
+    func addLayerEffect(_ effect: EffectID, toLayerAt index: Int) {
+        applyShotEdit { LayerTreeEdit.addingEffect(effect, toLayerAt: index, in: $0) }
+    }
+
+    /// Removes one slot from the active shot's layer's effect chain.
+    ///
+    /// - Parameters:
+    ///   - effectIndex: The chain slot to remove.
+    ///   - index: The layer's index in the shot's `layers` array.
+    func removeLayerEffect(at effectIndex: Int, fromLayerAt index: Int) {
+        applyShotEdit { LayerTreeEdit.removingEffect(at: effectIndex, fromLayerAt: index, in: $0) }
+    }
+
+    /// Moves one slot of the active shot's layer's effect chain — order is
+    /// signal order, so a move is a visible processing change.
+    ///
+    /// - Parameters:
+    ///   - effectIndex: The chain slot to move.
+    ///   - destination: The destination position in the chain.
+    ///   - index: The layer's index in the shot's `layers` array.
+    func moveLayerEffect(at effectIndex: Int, to destination: Int, ofLayerAt index: Int) {
+        applyShotEdit {
+            LayerTreeEdit.movingEffect(at: effectIndex, to: destination, ofLayerAt: index, in: $0)
+        }
+    }
+
+    /// Sets one parameter of one slot in the active shot's layer's effect
+    /// chain, applied live tick by tick like the frame and opacity
+    /// sliders. Gesture-rate, so it reports nothing itself — the slider's
+    /// drag-end `tap` carries the observability (EVENTS.md).
+    ///
+    /// - Parameters:
+    ///   - value: The parameter's new value.
+    ///   - key: The parameter's persisted key.
+    ///   - effectIndex: The chain slot whose parameter changes.
+    ///   - index: The layer's index in the shot's `layers` array.
+    func setLayerEffectParameter(_ value: Double, forKey key: String, ofEffectAt effectIndex: Int, atLayer index: Int) {
+        applyShotEdit {
+            LayerTreeEdit.settingEffectParameter(
+                value, forKey: key, ofEffectAt: effectIndex, ofLayerAt: index, in: $0)
+        }
+    }
+
+    /// The user-facing name of a registered video effect, for the layer
+    /// chain editor's rows — falls back to the raw identifier for an
+    /// effect this build has no provider for.
+    ///
+    /// - Parameter id: The effect's stable identifier.
+    func videoEffectName(for id: EffectID) -> String {
+        videoEffectChoices.first { $0.id == id }?.name ?? id.rawValue
+    }
+
+    /// The declared parameters of a registered video effect, for the layer
+    /// chain editor's sliders — empty for an effect with no provider.
+    ///
+    /// - Parameter id: The effect's stable identifier.
+    func videoEffectParameters(for id: EffectID) -> [EffectParameter] {
+        videoEffectChoices.first { $0.id == id }?.parameters ?? []
     }
 
     /// The user-facing name of a discovered input, for the editor's layer
@@ -1598,4 +1887,51 @@ final class ProgramFrameRelay {
 /// (the daemon does), but the shared `PlugInContext` still requires the seam.
 private struct UnusedToolRegistering: ToolRegistering {
     func register(_ tool: any Tool) async throws {}
+}
+
+/// The video effect providers the compositor's renderer resolves layer
+/// chains against, shared between the main actor (which fills it at boot
+/// from the effect registry) and the compositor's tick task (which reads
+/// it per chain rebuild).
+///
+/// A reference box because the renderer factory is `@Sendable` and a
+/// `Mutex` is non-copyable, so the lock cannot be captured directly; the
+/// box is filled once, before the compositor starts.
+private final class VideoEffectProviderBox: Sendable {
+    /// The providers, keyed by effect id.
+    private let providers = Mutex<[EffectID: any VideoEffectProvider]>([:])
+
+    /// Creates an empty box.
+    init() {}
+
+    /// Stores the registry's video providers, keyed by id.
+    ///
+    /// - Parameter registered: The registered video effect providers.
+    func fill(with registered: [any VideoEffectProvider]) {
+        providers.withLock { providers in
+            for provider in registered {
+                providers[provider.id] = provider
+            }
+        }
+    }
+
+    /// The provider for an effect id, or nil when this build has none —
+    /// the chain slot then renders as pass-through.
+    ///
+    /// - Parameter id: The effect's stable identifier.
+    func provider(for id: EffectID) -> (any VideoEffectProvider)? {
+        providers.withLock { $0[id] }
+    }
+}
+
+/// The stand-in for a chain slot whose effect has no registered provider:
+/// passes the block through unchanged, holding the slot's index so the
+/// chain stays aligned with its authored configurations (see
+/// `EngineModel.makeEffectChain(_:)`).
+private struct PassthroughAudioEffect: AudioEffect {
+    /// Ignores every payload — there is nothing to configure.
+    func setParameters(_ parameters: [String: JSONValue]) {}
+
+    /// Leaves the block unchanged.
+    func process(_ channels: inout [[Float]], sampleRate: Double) {}
 }

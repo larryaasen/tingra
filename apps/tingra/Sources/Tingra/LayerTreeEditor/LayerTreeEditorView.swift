@@ -234,6 +234,10 @@ struct LayerTreeEditorView: View {
                 }
                 .gridCellColumns(FrameComponent.allCases.count)
             }
+            GridRow {
+                LayerEffectChainView(model: model, layerIndex: index, effects: layer.effects ?? [])
+                    .gridCellColumns(FrameComponent.allCases.count)
+            }
         }
         .controlSize(.small)
     }

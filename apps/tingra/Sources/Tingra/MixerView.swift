@@ -12,14 +12,13 @@ import TingraPlugInKit
 
 /// The mixer panel: one channel strip per authored audio channel and per
 /// discovered audio input, each with a mute toggle, a meter, a level slider,
-/// and a pan slider (GLOSSARY.md, "Mixer", "Channel strip"). Every strip
-/// mixes into the program audio the stream carries, and muting a strip also
-/// stops its device so the microphone indicator stays honest
-/// (ARCHITECTURE.md, "The audio mixer"). Strip settings persist in the
-/// active preset; a strip whose device is absent stays on the panel, marked
-/// not connected, its settings editable and kept for the device's return
-/// (ARCHITECTURE.md, "Per-strip routing"). Audio effect chains are a later
-/// iteration.
+/// a pan slider, and an effect chain (GLOSSARY.md, "Mixer", "Channel
+/// strip"). Every strip mixes into the program audio the stream carries,
+/// and muting a strip also stops its device so the microphone indicator
+/// stays honest (ARCHITECTURE.md, "The audio mixer"). Strip settings
+/// persist in the active preset; a strip whose device is absent stays on
+/// the panel, marked not connected, its settings editable and kept for the
+/// device's return (ARCHITECTURE.md, "Per-strip routing").
 ///
 /// Level and pan edits apply live, tick by tick, like the layer sliders;
 /// each control reports its own `tap` event right where it executes — the
@@ -29,6 +28,10 @@ import TingraPlugInKit
 struct MixerView: View {
     /// The engine model whose strips the panel edits.
     @Bindable var model: EngineModel
+
+    /// The strip whose effect chain popover is open, if any — view-local
+    /// session state, like any other popover presentation.
+    @State private var chainStripID: InputID?
 
     /// The panel body: the heading, then a strip per audio input (or a
     /// placeholder when none is discovered).
@@ -49,7 +52,7 @@ struct MixerView: View {
     }
 
     /// One channel strip's row: mute, name (marked when the strip's device
-    /// is absent), meter, level, pan.
+    /// is absent), meter, level, pan, effects.
     private func stripRow(_ strip: MixerStrip) -> some View {
         HStack(spacing: 8) {
             Toggle(isOn: muteBinding(for: strip.id)) {
@@ -94,8 +97,49 @@ struct MixerView: View {
                 .frame(width: 44, alignment: .trailing)
 
             panSlider(for: strip)
+
+            effectsButton(for: strip)
         }
         .controlSize(.small)
+    }
+
+    /// One strip's Effects button: opens the chain popover, badged with
+    /// the chain's length so a strip's processing is visible at a glance
+    /// on the panel (a console's insert indicator).
+    private func effectsButton(for strip: MixerStrip) -> some View {
+        Button {
+            model.eventBus.tap(
+                "effects.button",
+                domain: .audio,
+                params: ["id": .string(strip.id.rawValue), "count": .int(strip.effects.count)]
+            )
+            chainStripID = strip.id
+        } label: {
+            HStack(spacing: 2) {
+                Image(
+                    systemName: strip.effects.isEmpty
+                        ? "slider.horizontal.3" : "slider.horizontal.below.square.filled.and.square")
+                if !strip.effects.isEmpty {
+                    Text(strip.effects.count.formatted())
+                        .monospacedDigit()
+                }
+            }
+        }
+        .help(Text("Effects", comment: "Heading of a channel strip's audio effect chain popover"))
+        .accessibilityLabel(Text("Effects", comment: "Heading of a channel strip's audio effect chain popover"))
+        .popover(isPresented: chainPopoverBinding(for: strip.id)) {
+            EffectChainView(model: model, stripID: strip.id)
+        }
+    }
+
+    /// A binding presenting the chain popover for one strip — the shared
+    /// ``chainStripID`` expressed per strip, so only one popover is open.
+    private func chainPopoverBinding(for id: InputID) -> Binding<Bool> {
+        Binding {
+            chainStripID == id
+        } set: { isPresented in
+            chainStripID = isPresented ? id : nil
+        }
     }
 
     /// One strip's pan slider: hard left to hard right around a centered

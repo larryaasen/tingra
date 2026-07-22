@@ -15,6 +15,16 @@ import TingraPlugInKit
 /// *when* to render (the program tick) and *what* is current (the shot and
 /// the latest frame per input); a renderer turns that into a program frame.
 ///
+/// Resolves one persisted chain entry into a live video effect instance —
+/// how a renderer turns a `Layer`'s authored chain into pixel work without
+/// depending on the host's effect registry (ARCHITECTURE.md, "The effect
+/// seam"). The app builds one by snapshotting the registry's providers at
+/// boot and passes it to the renderer it injects into the compositor, so
+/// `TingraComposition` keeps its protocol-package-only dependency rule.
+/// Returning nil for an entry this build has no provider for leaves that
+/// slot a pass-through, never a dropped layer.
+public typealias VideoEffectFactory = @Sendable (EffectConfiguration) -> (any VideoEffect)?
+
 /// A renderer is created and used entirely inside the compositor's tick
 /// task and never shared across tasks (mirroring `BarsRenderer` in the
 /// generator plug-in), so it is deliberately **not** `Sendable` — the

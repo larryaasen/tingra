@@ -11,9 +11,9 @@ import CoreGraphics
 import TingraPlugInKit
 
 /// One positioned element inside a shot: an input placed into a rectangle of
-/// the program frame, with an opacity (GLOSSARY.md, "Layer"). Titles,
-/// overlays, and per-layer effects are later additions; a step-6 layer is an
-/// input reference plus its placement.
+/// the program frame, with an opacity and an optional effect chain
+/// (GLOSSARY.md, "Layer", "Effect chain"). Titles and overlays are later
+/// additions.
 ///
 /// A layer names its input by ``InputID`` rather than holding the input
 /// itself, so a shot is a plain value the app can build, compare, and switch
@@ -42,6 +42,15 @@ public struct Layer: Sendable, Equatable, Codable {
     /// outside the range are clamped by the renderer.
     public let opacity: Double
 
+    /// The layer's video effect chain, in signal order (the chain *is* its
+    /// array — ARCHITECTURE.md, "The effect seam"), or nil for no chain.
+    /// The renderer applies it to the layer's frame **before** placement
+    /// and opacity, so an effect sees the input's own image and the chain
+    /// composes lazily into the one render pass. An **optional key within
+    /// v1** (the pre-release rule, no version bump): absent means no
+    /// chain, so every pre-effects document decodes unchanged.
+    public let effects: [EffectConfiguration]?
+
     /// Creates a layer.
     ///
     /// - Parameters:
@@ -49,10 +58,18 @@ public struct Layer: Sendable, Equatable, Codable {
     ///   - frame: The normalized, top-left-origin destination rect within
     ///     the program frame (default: the whole program).
     ///   - opacity: The layer opacity, `0`...`1` (default `1`).
-    public init(input: InputID, frame: CGRect = CGRect(x: 0, y: 0, width: 1, height: 1), opacity: Double = 1) {
+    ///   - effects: The layer's video effect chain, in signal order, or
+    ///     nil (default) for no chain.
+    public init(
+        input: InputID,
+        frame: CGRect = CGRect(x: 0, y: 0, width: 1, height: 1),
+        opacity: Double = 1,
+        effects: [EffectConfiguration]? = nil
+    ) {
         self.input = input
         self.frame = frame
         self.opacity = opacity
+        self.effects = effects
     }
 
     /// The coding keys — the `frame` flattened to explicit components so the
@@ -64,12 +81,14 @@ public struct Layer: Sendable, Equatable, Codable {
         case width
         case height
         case opacity
+        case effects
     }
 
-    /// Decodes a layer. `input` is required; the `frame` components and
-    /// `opacity` are optional and fall back to the same defaults as the
-    /// memberwise initializer (fill the whole program, full opacity), so a
-    /// minimal hand-written layer needs only its input.
+    /// Decodes a layer. `input` is required; the `frame` components,
+    /// `opacity`, and the effect chain are optional and fall back to the
+    /// same defaults as the memberwise initializer (fill the whole
+    /// program, full opacity, no chain), so a minimal hand-written layer
+    /// needs only its input.
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         input = try container.decode(InputID.self, forKey: .input)
@@ -79,10 +98,13 @@ public struct Layer: Sendable, Equatable, Codable {
         let height = try container.decodeIfPresent(Double.self, forKey: .height) ?? 1
         frame = CGRect(x: x, y: y, width: width, height: height)
         opacity = try container.decodeIfPresent(Double.self, forKey: .opacity) ?? 1
+        effects = try container.decodeIfPresent([EffectConfiguration].self, forKey: .effects)
     }
 
-    /// Encodes a layer, always writing every field so the document round-trips
-    /// exactly.
+    /// Encodes a layer, always writing every settled field so the document
+    /// round-trips exactly; the optional effect chain is written only when
+    /// authored, so a chainless layer encodes as it did before effects
+    /// existed.
     public func encode(to encoder: any Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(input, forKey: .input)
@@ -91,5 +113,6 @@ public struct Layer: Sendable, Equatable, Codable {
         try container.encode(Double(frame.size.width), forKey: .width)
         try container.encode(Double(frame.size.height), forKey: .height)
         try container.encode(opacity, forKey: .opacity)
+        try container.encodeIfPresent(effects, forKey: .effects)
     }
 }

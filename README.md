@@ -252,6 +252,27 @@ plug-ins build against, importable without the engine (see
 - `RecordingFile` — where a recording is written: a local file URL plus its
   container format (`mov`/`mp4`); the recording counterpart to `Destination`,
   carrying no secret.
+- `EffectID` — the stable identifier for a registered effect, shared by the
+  audio and video sides; what a persisted chain entry names.
+- `EffectConfiguration` — one effect as a document persists it: its `EffectID`
+  plus its parameter payload. A chain persists as an ordered list of these
+  (order is signal order); an entry naming an effect this build has no
+  provider for survives the round trip untouched.
+- `EffectParameter` — one adjustable parameter an effect declares (key, name,
+  range, default, unit, linear/logarithmic scale), so a host draws a control
+  for a third-party effect without knowing it exists.
+- `AudioEffect` — one audio processing step in a channel strip's chain,
+  processing the mixer's native currency (deinterleaved float32 blocks at the
+  mix rate) in place at the mix tick.
+- `AudioEffectProvider` — what an effect plug-in registers for an audio
+  effect: identity, declared parameters, and a factory creating one
+  `AudioEffect` instance per chain slot.
+- `VideoEffect` — one video processing step in a layer's chain, processing the
+  renderer's native currency (`CIImage → CIImage`) so a whole chain fuses into
+  one render pass.
+- `VideoEffectProvider` — the video counterpart of `AudioEffectProvider`.
+- `EffectRegistering` — the registration seam where effect plug-ins attach —
+  one seam, two media protocols; the host's `EffectRegistry` conforms.
 - `IdentifiedError` — the protocol the engine's error enums
   (`StreamingServiceError`, `RecordingServiceError`, `CaptureInputError`,
   `InputSelectorError`) conform to, so a front end maps any of them to its
@@ -273,8 +294,8 @@ plug-ins build against, importable without the engine (see
 - `PlugInID` — the stable reverse-DNS identifier for a plug-in; doubles as its
   event domain.
 - `PlugInContext` — the host infrastructure handed to a plug-in at activation:
-  the event bus, the clock, and the input, output, and tool registration
-  seams.
+  the event bus, the clock, and the input, output, effect, and tool
+  registration seams.
 
 ### `packages/TingraHost`
 
@@ -313,6 +334,13 @@ and plug-ins").
   file extension) — in one registry; the host's concrete `OutputRegistering`.
 - `OutputRegistryError` — errors thrown by the output registry (a scheme, or a
   recording file extension, already served by another provider).
+- `EffectRegistry` — the actor where effect plug-ins register their audio and
+  video effect providers and the engine resolves a persisted chain entry's
+  `EffectID` from; one registry, separate tables per media kind, registration
+  order preserved for stable effect menus. The host's concrete
+  `EffectRegistering`.
+- `EffectRegistryError` — errors thrown by the effect registry (an audio or
+  video effect id already registered).
 - `ProgramPacer` — the tick-paced latest-wins video pacing for the CLI era:
   one frame per program tick, restamped with the tick's time, re-sending the
   held frame across an input stall (see CLOCK.md, "The tick before composition
@@ -441,11 +469,13 @@ so it stays testable with a synthetic clock and a mock renderer (see
   too, never a field of the saved document.
 - `AudioChannel` — one authored channel of a preset's audio configuration: a
   channel strip as the document persists it — the input's device-stable
-  `InputID`, a cached display `name`, and the authored `level`, `pan`, and
-  `isMuted`. Routed to the program mix, v1's only bus: membership is routing
-  (sends and further buses are later). Lives beside `Preset` because the
-  document types live together; the live strip stays `TingraAudio`'s
-  deliberately non-`Codable` `ChannelStrip`.
+  `InputID`, a cached display `name`, the authored `level`, `pan`, and
+  `isMuted`, and an optional `effects` chain (an ordered list of
+  `EffectConfiguration`s in signal order; absent means no chain, so a
+  pre-effects document decodes unchanged). Routed to the program mix, v1's
+  only bus: membership is routing (sends and further buses are later). Lives
+  beside `Preset` because the document types live together; the live strip
+  stays `TingraAudio`'s deliberately non-`Codable` `ChannelStrip`.
 - `PresetID` — a stable, string-backed identifier for a preset (a fresh UUID by
   default).
 - `Shot` — a short-term composition with a stable `id` and user-facing `name`:
@@ -455,8 +485,11 @@ so it stays testable with a synthetic clock and a mock renderer (see
 - `ShotID` — a stable, string-backed identifier for a shot, used to take it to
   program (a fresh UUID by default, or a fixed token for a built-in shot).
 - `Layer` — one positioned element: an input referenced by `InputID`, placed in
-  a normalized top-left-origin destination `frame` with an `opacity`. `Codable`
-  with the `frame` flattened to `x`/`y`/`width`/`height` keys.
+  a normalized top-left-origin destination `frame` with an `opacity` and an
+  optional `effects` chain (an ordered list of `EffectConfiguration`s in signal
+  order, applied before placement; absent means no chain, so a pre-effects
+  document decodes unchanged). `Codable` with the `frame` flattened to
+  `x`/`y`/`width`/`height` keys.
 - `BackgroundColor` — a straight RGBA background the layers composite over
   (defaults to opaque black).
 - `ProgramFormat` — the program's output geometry and rate (width, height, frame
@@ -479,13 +512,21 @@ so it stays testable with a synthetic clock and a mock renderer (see
   flow and the pixel work (a plain render, a dissolve's crossfade, a wipe's
   directional reveal, a shader transition's kernel blend); task-confined, so it
   needs no `Sendable`, and swappable for a mock in tests.
+- `VideoEffectFactory` — how a renderer resolves a layer's persisted chain
+  entries into live `VideoEffect`s without depending on the host's effect
+  registry: the app builds one from a boot-time snapshot of the registry and
+  passes it to the renderer it injects. Returning nil for an unavailable
+  effect leaves that slot a pass-through.
 - `CoreImageShotRenderer` — the default renderer: composites the layer tree with
   a Metal-backed `CIContext`, GPU-resident, into an IOSurface-backed 32BGRA
   program buffer tagged BT.709 (a software `CIContext` makes the compositing
   math unit-testable with no GPU); dissolves alpha-blend the two layer trees,
   wipes blend them behind a soft-edged swept gradient mask, and shader
   transitions blend through the first-party stitchable Metal kernels, compiled
-  once at first use from compiled-in source.
+  once at first use from compiled-in source. A layer's effect chain is applied
+  to its own image before placement (and cropped back to its extent), composing
+  lazily so the whole chain fuses into the one render pass; instances are cached
+  per layer and rebuilt only when the layer's configurations change.
 
 ### `packages/TingraAudio`
 
@@ -506,18 +547,23 @@ with a synthetic clock and scripted inputs (see [ARCHITECTURE.md](docs/ARCHITECT
   strip contributes silence and never stalls the mix.
   `setChannelStrips(_:)` attaches and detaches strips live;
   `setLevel(_:forInput:)`/`setPan(_:forInput:)`/`setMuted(_:forInput:)` apply
-  from the next tick; `programAudio()` is the single-consumer mixed stream, and
-  `meterReadings()` its meter sibling — one `MeterBlock` per tick, measured
-  pre-fader as a byproduct of the same walk, only while a consumer is attached,
-  and never on the event bus.
+  from the next tick; `setEffects(_:forInput:)` replaces a strip's effect
+  chain (a structural edit) and `setEffectParameters(_:forEffectAt:forInput:)`
+  retunes one slot in place, keeping its processing state so a dragging
+  control never clicks; `programAudio()` is the single-consumer mixed stream,
+  and `meterReadings()` its meter sibling — one `MeterBlock` per tick,
+  measured pre-fader as a byproduct of the same walk, only while a consumer is
+  attached, and never on the event bus.
 - `ChannelStrip` — one input's slot in the mixer: the input and its level, pan,
-  and mute (the audio effect chain is a later iteration; routing needs no
-  surface here — the program mix is v1's only bus, and the strip's persisted
-  form is `TingraComposition`'s `AudioChannel`). Engine mute is independent of
-  device lifecycle — whether a muted strip's device keeps capturing is the
-  caller's policy.
+  and mute (the effect chain is mixer channel state, set through
+  `AudioMixer.setEffects(_:forInput:)`, since effect instances hold live
+  processing state; routing needs no surface here — the program mix is v1's
+  only bus, and the strip's persisted form is `TingraComposition`'s
+  `AudioChannel`). Engine mute is independent of device lifecycle — whether a
+  muted strip's device keeps capturing is the caller's policy.
 - `MeterReading` — one strip's meter measurement over one mix block, pre-fader
-  (after intake normalization, before level, pan, and mute): the block's peak
+  (after intake normalization and the strip's effect chain, before level, pan,
+  and mute): the block's peak
   and its RMS (the hotter channel's, for stereo), as linear magnitudes;
   `floor` is what silence meters as.
 - `MeterBlock` — one mix tick's readings: every live strip's `MeterReading`
@@ -526,6 +572,34 @@ with a synthetic clock and scripted inputs (see [ARCHITECTURE.md](docs/ARCHITECT
 - `MixFormat` — the program mix's audio geometry: the sample rate and the block
   size each mix tick produces (48 kHz, 1024-frame blocks by default; the mix is
   always stereo float32).
+
+### `packages/TingraEffectPlugIns`
+
+The first party effect plug-ins: the audio and video staples behind the
+shared effect seam (see [ARCHITECTURE.md](docs/ARCHITECTURE.md), "The effect
+seam", "Audio effect chains", "Per-layer video effects"). Pure DSP and Core
+Image over the seam's native currencies, so the package depends on the
+protocol package alone and is fully deterministic in tests — no hardware,
+no TCC.
+
+- `EffectPlugIn` — contributes the built-in audio effects through the effect
+  registration seam.
+- `GainEffectProvider` / `GainEffect` — a clean decibel trim on a channel
+  strip (`gainDecibels`, −24…24 dB, unity by default); the seam's reference
+  conformance.
+- `HighPassEffectProvider` / `HighPassEffect` — a second-order Butterworth
+  high-pass, the broadcast rumble filter (`cutoffHertz`, 20…1000 Hz, 80 Hz by
+  default).
+- `LowPassEffectProvider` / `LowPassEffect` — a second-order Butterworth
+  low-pass for hiss and harshness (`cutoffHertz`, 200…20000 Hz, 12 kHz by
+  default).
+- `ColorAdjustEffectProvider` / `ColorAdjustEffect` — a layer's
+  brightness, contrast, and saturation trim over `CIColorControls`; every
+  parameter neutral at its default, so adding it changes nothing until it
+  is adjusted.
+- `BlurEffectProvider` / `BlurEffect` — a layer's Gaussian blur over
+  `CIGaussianBlur` (`radiusPixels`, 0…100 px in the layer's own image
+  scale, no blur by default).
 
 ### `packages/TingraOutputPlugIns`
 
@@ -665,9 +739,15 @@ picker — Default (each shot's own default transition, the initial selection),
 or an explicit Cut, Dissolve, or Wipe, with an edge pop-up while Wipe is
 selected — choosing how the next take reaches program), `MixerView` (the mixer
 panel: one channel strip per authored audio channel and per discovered audio
-input, each with a mute toggle, a meter, a live level slider, and a pan slider
-that recenters on double-click; a strip whose device is absent stays on the
-panel, marked not connected, its settings kept for the device's return),
+input, each with a mute toggle, a meter, a live level slider, a pan slider
+that recenters on double-click, and an Effects button badged with the chain's
+length; a strip whose device is absent stays on the panel, marked not
+connected, its settings kept for the device's return),
+`EffectChainView` (one strip's audio effect chain, in a popover: slots in
+signal order with Move Up / Move Down / Remove, an Add Effect menu over every
+registered audio effect, and a slider per parameter the effect declares —
+drawn generically from its `EffectParameter` descriptors, so a third-party
+effect gets parameter UI without the app knowing it exists),
 `MixerStrip` (the pure, unit-tested strip state: the merge of the active
 preset's authored `AudioChannel`s with live discovery — authored channels
 first in document order, new devices appended muted — falling back to the

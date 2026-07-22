@@ -90,7 +90,9 @@ enum LayerTreeEdit {
     static func settingFrame(_ frame: CGRect, ofLayerAt index: Int, in shot: Shot) -> Shot {
         guard shot.layers.indices.contains(index) else { return shot }
         var layers = shot.layers
-        layers[index] = Layer(input: layers[index].input, frame: frame, opacity: layers[index].opacity)
+        layers[index] = Layer(
+            input: layers[index].input, frame: frame, opacity: layers[index].opacity,
+            effects: layers[index].effects)
         return replacingLayers(of: shot, with: layers)
     }
 
@@ -105,7 +107,9 @@ enum LayerTreeEdit {
     static func settingOpacity(_ opacity: Double, ofLayerAt index: Int, in shot: Shot) -> Shot {
         guard shot.layers.indices.contains(index) else { return shot }
         var layers = shot.layers
-        layers[index] = Layer(input: layers[index].input, frame: layers[index].frame, opacity: opacity)
+        layers[index] = Layer(
+            input: layers[index].input, frame: layers[index].frame, opacity: opacity,
+            effects: layers[index].effects)
         return replacingLayers(of: shot, with: layers)
     }
 
@@ -122,9 +126,111 @@ enum LayerTreeEdit {
     ///   when no layer is bound to `previous`.
     static func rebindingLayers(boundTo previous: InputID, to input: InputID, in shot: Shot) -> Shot {
         let layers = shot.layers.map { layer in
-            layer.input == previous ? Layer(input: input, frame: layer.frame, opacity: layer.opacity) : layer
+            layer.input == previous
+                ? Layer(input: input, frame: layer.frame, opacity: layer.opacity, effects: layer.effects) : layer
         }
         return replacingLayers(of: shot, with: layers)
+    }
+
+    /// Appends an effect to a layer's chain at its neutral settings (an
+    /// empty payload — every parameter at its declared default), so a
+    /// freshly added effect never changes the picture until it is
+    /// adjusted (ARCHITECTURE.md, "Per-layer video effects").
+    ///
+    /// - Parameters:
+    ///   - effect: The effect to append.
+    ///   - index: The layer's index in the shot's `layers` array.
+    ///   - shot: The shot to edit.
+    /// - Returns: The shot with the effect appended to that layer's chain,
+    ///   or unchanged if the index is out of range.
+    static func addingEffect(_ effect: EffectID, toLayerAt index: Int, in shot: Shot) -> Shot {
+        guard shot.layers.indices.contains(index) else { return shot }
+        var layers = shot.layers
+        var chain = layers[index].effects ?? []
+        chain.append(EffectConfiguration(effect: effect))
+        layers[index] = replacingChain(of: layers[index], with: chain)
+        return replacingLayers(of: shot, with: layers)
+    }
+
+    /// Removes one slot from a layer's chain. A chain emptied this way
+    /// stays authored-empty rather than reverting to unauthored — the
+    /// operator removed the effects, which is not the same as never
+    /// having had any.
+    ///
+    /// - Parameters:
+    ///   - effectIndex: The chain slot to remove.
+    ///   - index: The layer's index in the shot's `layers` array.
+    ///   - shot: The shot to edit.
+    /// - Returns: The shot with that slot removed, or unchanged if either
+    ///   index is out of range.
+    static func removingEffect(at effectIndex: Int, fromLayerAt index: Int, in shot: Shot) -> Shot {
+        guard shot.layers.indices.contains(index) else { return shot }
+        var chain = shot.layers[index].effects ?? []
+        guard chain.indices.contains(effectIndex) else { return shot }
+        chain.remove(at: effectIndex)
+        var layers = shot.layers
+        layers[index] = replacingChain(of: layers[index], with: chain)
+        return replacingLayers(of: shot, with: layers)
+    }
+
+    /// Moves one slot of a layer's chain. Order is signal order, so a move
+    /// is a visible processing change. The destination is clamped to the
+    /// chain's bounds; a move to the slot's current position is a no-op.
+    ///
+    /// - Parameters:
+    ///   - effectIndex: The chain slot to move.
+    ///   - destination: The destination position in the chain.
+    ///   - index: The layer's index in the shot's `layers` array.
+    ///   - shot: The shot to edit.
+    /// - Returns: The shot with that slot moved, or unchanged if either
+    ///   index is out of range or the move is a no-op.
+    static func movingEffect(at effectIndex: Int, to destination: Int, ofLayerAt index: Int, in shot: Shot) -> Shot {
+        guard shot.layers.indices.contains(index) else { return shot }
+        var chain = shot.layers[index].effects ?? []
+        guard chain.indices.contains(effectIndex) else { return shot }
+        let to = min(max(destination, 0), chain.count - 1)
+        guard to != effectIndex else { return shot }
+        let configuration = chain.remove(at: effectIndex)
+        chain.insert(configuration, at: to)
+        var layers = shot.layers
+        layers[index] = replacingChain(of: layers[index], with: chain)
+        return replacingLayers(of: shot, with: layers)
+    }
+
+    /// Sets one parameter of one slot in a layer's chain, keeping the
+    /// slot's other parameters — the gesture-rate edit a chain slider
+    /// makes.
+    ///
+    /// - Parameters:
+    ///   - value: The parameter's new value.
+    ///   - key: The parameter's persisted key.
+    ///   - effectIndex: The chain slot whose parameter changes.
+    ///   - index: The layer's index in the shot's `layers` array.
+    ///   - shot: The shot to edit.
+    /// - Returns: The shot with that parameter set, or unchanged if either
+    ///   index is out of range.
+    static func settingEffectParameter(
+        _ value: Double,
+        forKey key: String,
+        ofEffectAt effectIndex: Int,
+        ofLayerAt index: Int,
+        in shot: Shot
+    ) -> Shot {
+        guard shot.layers.indices.contains(index) else { return shot }
+        var chain = shot.layers[index].effects ?? []
+        guard chain.indices.contains(effectIndex) else { return shot }
+        var parameters = chain[effectIndex].parameters
+        parameters[key] = .double(value)
+        chain[effectIndex] = EffectConfiguration(effect: chain[effectIndex].effect, parameters: parameters)
+        var layers = shot.layers
+        layers[index] = replacingChain(of: layers[index], with: chain)
+        return replacingLayers(of: shot, with: layers)
+    }
+
+    /// Rebuilds a layer with an edited effect chain, preserving its input,
+    /// frame, and opacity.
+    private static func replacingChain(of layer: Layer, with chain: [EffectConfiguration]) -> Layer {
+        Layer(input: layer.input, frame: layer.frame, opacity: layer.opacity, effects: chain)
     }
 
     /// Rebuilds the shot with an edited layer tree, preserving its identity —

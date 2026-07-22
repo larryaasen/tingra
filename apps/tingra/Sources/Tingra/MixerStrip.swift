@@ -11,8 +11,8 @@ import TingraComposition
 import TingraPlugInKit
 
 /// One channel strip as the mixer panel shows it: an audio input's level,
-/// pan, and mute (GLOSSARY.md, "Channel strip" — the audio effect chain is a
-/// later iteration). The engine-side strip lives in the mixer
+/// pan, mute, and effect chain (GLOSSARY.md, "Channel strip"). The
+/// engine-side strip lives in the mixer
 /// (`TingraAudio.ChannelStrip`, which carries the running input); this is
 /// the app's observable session state for it, kept even while the strip's
 /// device is muted (and therefore stopped) or absent.
@@ -44,6 +44,13 @@ struct MixerStrip: Identifiable, Equatable {
     /// strip's device (the microphone indicator goes dark); the strip keeps
     /// its settings for unmute.
     var isMuted: Bool
+
+    /// The strip's effect chain, in signal order — what the strip's
+    /// effects popover edits (GLOSSARY.md, "Channel strip";
+    /// ARCHITECTURE.md, "Audio effect chains"). Configurations only: the
+    /// live effect instances belong to the mixer, instantiated from these
+    /// through the effect registry. Empty for no chain.
+    var effects: [EffectConfiguration] = []
 
     /// Seeds the session's strips from the discovered audio inputs — the
     /// no-authored-audio fallback of ``strips(channels:discovered:)``: the
@@ -92,7 +99,8 @@ struct MixerStrip: Identifiable, Equatable {
                 name: discoveredName ?? cachedName,
                 level: channel.level,
                 pan: channel.pan,
-                isMuted: channel.isMuted
+                isMuted: channel.isMuted,
+                effects: channel.effects ?? []
             )
         }
         let authoredIDs = Set(channels.map(\.input))
@@ -103,10 +111,15 @@ struct MixerStrip: Identifiable, Equatable {
     }
 
     /// The strip as the project document persists it — one authored channel
-    /// of the active preset's audio configuration.
+    /// of the active preset's audio configuration. A chainless strip
+    /// authors no `effects` key (nil, not an empty list), so a document
+    /// that never touched effects encodes exactly as it did before the
+    /// chain existed.
     ///
     /// - Returns: The strip's `AudioChannel`.
     var audioChannel: AudioChannel {
-        AudioChannel(input: id, name: name, level: level, pan: pan, isMuted: isMuted)
+        AudioChannel(
+            input: id, name: name, level: level, pan: pan, isMuted: isMuted,
+            effects: effects.isEmpty ? nil : effects)
     }
 }

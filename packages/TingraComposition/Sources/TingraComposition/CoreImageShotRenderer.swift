@@ -58,24 +58,64 @@ public final class CoreImageShotRenderer: ShotRenderer {
     /// The size the current ``pool`` produces, so a format change rebuilds it.
     private var poolSize: (width: Int, height: Int)?
 
+    /// Resolves a layer's persisted chain entries into live video effect
+    /// instances, or nil when no effect providers are available (every
+    /// chain then renders as pass-through — the CLI and the tests).
+    private let makeVideoEffect: VideoEffectFactory?
+
+    /// The live effect instances per layer, keyed by shot and layer index,
+    /// so a chain is instantiated once rather than per tick. An entry is
+    /// rebuilt when its layer's configurations change (a live chain edit)
+    /// and dropped when the shot stops being rendered.
+    private var effectChains: [ChainKey: CachedChain] = [:]
+
+    /// Identifies one layer's chain slot in the cache.
+    private struct ChainKey: Hashable {
+        /// The shot the layer belongs to.
+        let shot: ShotID
+
+        /// The layer's bottom-to-top index within that shot.
+        let layer: Int
+    }
+
+    /// One cached chain: the configurations it was built from (so a live
+    /// edit is detected) and the live instances.
+    private struct CachedChain {
+        /// The configurations these instances were built from.
+        var configurations: [EffectConfiguration]
+
+        /// The live effect instances, in signal order.
+        var effects: [any VideoEffect]
+    }
+
     /// Creates the production renderer, Metal-backed where a GPU is present.
-    public init() {
+    ///
+    /// - Parameter makeVideoEffect: Resolves a layer's persisted chain
+    ///   entries into live effects; nil (the default) renders every chain
+    ///   as pass-through, which is what a front end with no effect
+    ///   registry wants.
+    public init(makeVideoEffect: VideoEffectFactory? = nil) {
         if let device = MTLCreateSystemDefaultDevice() {
             self.context = CIContext(mtlDevice: device)
         } else {
             self.context = CIContext()
         }
         self.outputColorSpace = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
+        self.makeVideoEffect = makeVideoEffect
     }
 
     /// Creates a renderer over an injected Core Image context (the test
     /// seam): a software `CIContext` makes compositing deterministic and
     /// GPU-free for unit tests.
     ///
-    /// - Parameter context: The Core Image context to render with.
-    init(context: CIContext) {
+    /// - Parameters:
+    ///   - context: The Core Image context to render with.
+    ///   - makeVideoEffect: The effect resolver (see the public
+    ///     initializer); nil renders every chain as pass-through.
+    init(context: CIContext, makeVideoEffect: VideoEffectFactory? = nil) {
         self.context = context
         self.outputColorSpace = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
+        self.makeVideoEffect = makeVideoEffect
     }
 
     /// Composites the shot's layer tree into one program frame.
@@ -345,13 +385,53 @@ public final class CoreImageShotRenderer: ShotRenderer {
     private func layerTreeImage(shot: Shot, frames: [InputID: CapturedFrame], format: ProgramFormat) -> CIImage {
         let programRect = CGRect(x: 0, y: 0, width: format.width, height: format.height)
         var image = backgroundImage(shot.background, in: programRect)
-        for layer in shot.layers {
+        for (index, layer) in shot.layers.enumerated() {
             guard let frame = frames[layer.input] else { continue }
-            if let placed = placedImage(for: frame, layer: layer, format: format) {
+            let key = ChainKey(shot: shot.id, layer: index)
+            if let placed = placedImage(for: frame, layer: layer, format: format, chain: key) {
                 image = placed.composited(over: image)
             }
         }
         return image
+    }
+
+    /// Applies one layer's effect chain to its source image, in signal
+    /// order — lazily, so the whole chain composes into the one render
+    /// pass rather than materializing a buffer per effect (the
+    /// GPU-resident rule; ARCHITECTURE.md, "The effect seam").
+    ///
+    /// Instances are cached per layer and rebuilt only when the layer's
+    /// configurations change, so a live chain edit takes effect at the
+    /// next tick while a steady chain keeps whatever state its effects
+    /// hold. A chain entry with no resolvable provider is skipped —
+    /// pass-through, never a black layer.
+    ///
+    /// - Parameters:
+    ///   - image: The layer's source image, before placement.
+    ///   - layer: The layer whose chain applies.
+    ///   - key: The layer's cache key.
+    /// - Returns: The image after the chain.
+    private func applyingEffects(to image: CIImage, layer: Layer, key: ChainKey) -> CIImage {
+        guard let configurations = layer.effects, !configurations.isEmpty else {
+            effectChains[key] = nil
+            return image
+        }
+        guard let makeVideoEffect else { return image }
+        if effectChains[key]?.configurations != configurations {
+            effectChains[key] = CachedChain(
+                configurations: configurations,
+                effects: configurations.compactMap(makeVideoEffect)
+            )
+        }
+        guard var cached = effectChains[key] else { return image }
+        var output = image
+        for index in cached.effects.indices {
+            output = cached.effects[index].process(output)
+        }
+        // The instances are value types whose `process` may advance their
+        // own state, so the mutated chain goes back into the cache.
+        effectChains[key] = cached
+        return output
     }
 
     /// Renders a composited image into a fresh output buffer, tags it
@@ -371,14 +451,27 @@ public final class CoreImageShotRenderer: ShotRenderer {
         return CIImage(color: ciColor).cropped(to: rect)
     }
 
-    /// One layer's frame, scaled into its destination rect (converting the
-    /// layer's top-left-origin normalized frame into Core Image's
-    /// bottom-left pixel space) and faded to its opacity. Returns nil when
-    /// the destination is empty (a zero-size layer draws nothing).
-    private func placedImage(for frame: CapturedFrame, layer: Layer, format: ProgramFormat) -> CIImage? {
-        let source = CIImage(cvPixelBuffer: frame.pixelBuffer)
-        let sourceExtent = source.extent
+    /// One layer's frame, passed through the layer's effect chain, then
+    /// scaled into its destination rect (converting the layer's
+    /// top-left-origin normalized frame into Core Image's bottom-left
+    /// pixel space) and faded to its opacity. The chain runs **before**
+    /// placement, so an effect sees the input's own image at its own
+    /// scale — a blur radius means the same thing wherever the layer sits
+    /// in the program. Returns nil when the destination is empty (a
+    /// zero-size layer draws nothing).
+    private func placedImage(
+        for frame: CapturedFrame,
+        layer: Layer,
+        format: ProgramFormat,
+        chain: ChainKey
+    ) -> CIImage? {
+        let captured = CIImage(cvPixelBuffer: frame.pixelBuffer)
+        let sourceExtent = captured.extent
         guard sourceExtent.width > 0, sourceExtent.height > 0 else { return nil }
+        // An effect may grow the image's extent (a blur bleeds past the
+        // edges), so the chain's output is cropped back to the input's own
+        // extent before placement — a layer occupies its frame, never more.
+        let source = applyingEffects(to: captured, layer: layer, key: chain).cropped(to: sourceExtent)
 
         let width = Double(format.width)
         let height = Double(format.height)

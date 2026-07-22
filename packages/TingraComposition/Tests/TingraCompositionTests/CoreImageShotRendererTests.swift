@@ -10,6 +10,7 @@
 import CoreImage
 import CoreMedia
 import CoreVideo
+import Synchronization
 import Testing
 import TingraPlugInKit
 
@@ -634,5 +635,198 @@ struct CoreImageShotRendererTests {
         )
 
         #expect(program.presentationTime == CMTime(value: 7, timescale: 30))
+    }
+
+    // MARK: Per-layer video effect chains
+
+    @Test("a layer's effect chain is applied to its image before placement")
+    func layerChainAppliesBeforePlacement() throws {
+        // A resolver whose one effect forces every pixel green, so the
+        // chain's application is unmistakable in the output.
+        let renderer = CoreImageShotRenderer(
+            context: CIContext(options: [.useSoftwareRenderer: true]),
+            makeVideoEffect: { _ in ForcedColorEffect(color: CIColor(red: 0, green: 1, blue: 0)) }
+        )
+        let format = ProgramFormat(width: 4, height: 4, frameRate: 30)
+        let camera = InputID(rawValue: "camera")
+        let shot = Shot(
+            layers: [
+                Layer(input: camera, effects: [EffectConfiguration(effect: EffectID(rawValue: "force"))])
+            ]
+        )
+
+        let program = try #require(
+            renderer.render(
+                shot: shot,
+                frames: [camera: solidFrame(red: 255, green: 0, blue: 0)],
+                format: format,
+                time: .zero
+            )
+        )
+
+        let pixel = readPixel(program.pixelBuffer, x: 2, y: 2)
+        #expect(pixel.green > 200)
+        #expect(pixel.red < 60)
+    }
+
+    @Test("effects apply in signal order — the chain is its array")
+    func layerChainAppliesInSignalOrder() throws {
+        // Green then blue: the last effect in the array wins, proving the
+        // chain runs front to back.
+        let colors = [CIColor(red: 0, green: 1, blue: 0), CIColor(red: 0, green: 0, blue: 1)]
+        // The factory is `@Sendable`, so the "which color next" counter is
+        // locked rather than a captured var.
+        let next = Mutex(0)
+        let renderer = CoreImageShotRenderer(
+            context: CIContext(options: [.useSoftwareRenderer: true]),
+            makeVideoEffect: { _ in
+                let index = next.withLock { value -> Int in
+                    defer { value += 1 }
+                    return value
+                }
+                return ForcedColorEffect(color: colors[min(index, colors.count - 1)])
+            }
+        )
+        let format = ProgramFormat(width: 4, height: 4, frameRate: 30)
+        let camera = InputID(rawValue: "camera")
+        let shot = Shot(
+            layers: [
+                Layer(
+                    input: camera,
+                    effects: [
+                        EffectConfiguration(effect: EffectID(rawValue: "first")),
+                        EffectConfiguration(effect: EffectID(rawValue: "second")),
+                    ]
+                )
+            ]
+        )
+
+        let program = try #require(
+            renderer.render(
+                shot: shot,
+                frames: [camera: solidFrame(red: 255, green: 0, blue: 0)],
+                format: format,
+                time: .zero
+            )
+        )
+
+        let pixel = readPixel(program.pixelBuffer, x: 2, y: 2)
+        #expect(pixel.blue > 200)
+        #expect(pixel.green < 60)
+    }
+
+    @Test("a chain entry with no resolvable provider renders as pass-through, never a lost layer")
+    func unresolvedChainEntryPassesThrough() throws {
+        let renderer = CoreImageShotRenderer(
+            context: CIContext(options: [.useSoftwareRenderer: true]),
+            makeVideoEffect: { _ in nil }
+        )
+        let format = ProgramFormat(width: 4, height: 4, frameRate: 30)
+        let camera = InputID(rawValue: "camera")
+        let shot = Shot(
+            layers: [
+                Layer(input: camera, effects: [EffectConfiguration(effect: EffectID(rawValue: "missing"))])
+            ]
+        )
+
+        let program = try #require(
+            renderer.render(
+                shot: shot,
+                frames: [camera: solidFrame(red: 255, green: 0, blue: 0)],
+                format: format,
+                time: .zero
+            )
+        )
+
+        let pixel = readPixel(program.pixelBuffer, x: 2, y: 2)
+        #expect(pixel.red > 200)
+    }
+
+    @Test("a renderer with no effect resolver renders a chained layer unchanged")
+    func rendererWithoutResolverIgnoresChains() throws {
+        let renderer = makeRenderer()
+        let format = ProgramFormat(width: 4, height: 4, frameRate: 30)
+        let camera = InputID(rawValue: "camera")
+        let shot = Shot(
+            layers: [
+                Layer(input: camera, effects: [EffectConfiguration(effect: EffectID(rawValue: "colorAdjust"))])
+            ]
+        )
+
+        let program = try #require(
+            renderer.render(
+                shot: shot,
+                frames: [camera: solidFrame(red: 255, green: 0, blue: 0)],
+                format: format,
+                time: .zero
+            )
+        )
+
+        let pixel = readPixel(program.pixelBuffer, x: 2, y: 2)
+        #expect(pixel.red > 200)
+    }
+
+    @Test("editing a layer's chain rebuilds it, so the next tick renders the edit")
+    func editingChainRebuildsIt() throws {
+        let colors = [CIColor(red: 0, green: 1, blue: 0), CIColor(red: 0, green: 0, blue: 1)]
+        // The factory is `@Sendable`, so the "which color next" counter is
+        // locked rather than a captured var.
+        let next = Mutex(0)
+        let renderer = CoreImageShotRenderer(
+            context: CIContext(options: [.useSoftwareRenderer: true]),
+            makeVideoEffect: { _ in
+                let index = next.withLock { value -> Int in
+                    defer { value += 1 }
+                    return value
+                }
+                return ForcedColorEffect(color: colors[min(index, colors.count - 1)])
+            }
+        )
+        let format = ProgramFormat(width: 4, height: 4, frameRate: 30)
+        let camera = InputID(rawValue: "camera")
+        let shotID = ShotID(rawValue: "shot")
+        let frames = [camera: solidFrame(red: 255, green: 0, blue: 0)]
+
+        let green = Shot(
+            id: shotID,
+            layers: [Layer(input: camera, effects: [EffectConfiguration(effect: EffectID(rawValue: "a"))])]
+        )
+        let first = try #require(renderer.render(shot: green, frames: frames, format: format, time: .zero))
+        #expect(readPixel(first.pixelBuffer, x: 2, y: 2).green > 200)
+
+        // Re-rendering the same shot reuses the cached instance (still green).
+        let cached = try #require(renderer.render(shot: green, frames: frames, format: format, time: .zero))
+        #expect(readPixel(cached.pixelBuffer, x: 2, y: 2).green > 200)
+
+        // A changed configuration rebuilds the chain — now the blue effect.
+        let edited = Shot(
+            id: shotID,
+            layers: [
+                Layer(
+                    input: camera,
+                    effects: [
+                        EffectConfiguration(
+                            effect: EffectID(rawValue: "a"), parameters: ["amount": .double(1)])
+                    ]
+                )
+            ]
+        )
+        let after = try #require(renderer.render(shot: edited, frames: frames, format: format, time: .zero))
+        #expect(readPixel(after.pixelBuffer, x: 2, y: 2).blue > 200)
+    }
+}
+
+/// A test video effect that replaces the image with a flat color, so a
+/// chain's application and ordering are unmistakable in the output pixels.
+private struct ForcedColorEffect: VideoEffect {
+    /// The color every pixel becomes.
+    let color: CIColor
+
+    /// Ignores every payload.
+    func setParameters(_ parameters: [String: JSONValue]) {}
+
+    /// Returns a flat color image over the input's extent.
+    func process(_ image: CIImage) -> CIImage {
+        CIImage(color: color).cropped(to: image.extent)
     }
 }

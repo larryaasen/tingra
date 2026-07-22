@@ -75,6 +75,16 @@ private struct UnusedOutputRegistrar: OutputRegistering {
     func register(_ provider: any RecordingServiceProvider) async throws {}
 }
 
+/// A no-op effect registration seam — the capture plug-in never registers
+/// effects.
+private struct UnusedEffectRegistrar: EffectRegistering {
+    /// Never called by this plug-in.
+    func register(_ provider: any AudioEffectProvider) async throws {}
+
+    /// Never called by this plug-in.
+    func register(_ provider: any VideoEffectProvider) async throws {}
+}
+
 /// A no-op tool registration seam — the capture plug-in never registers
 /// tools.
 private struct UnusedToolRegistrar: ToolRegistering {
@@ -89,6 +99,7 @@ private func makeContext(registrar: MockInputRegistrar, eventBus: EventBus = Eve
         clock: SyntheticClock(),
         inputs: registrar,
         outputs: UnusedOutputRegistrar(),
+        effects: UnusedEffectRegistrar(),
         tools: UnusedToolRegistrar()
     )
 }
