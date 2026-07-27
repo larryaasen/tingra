@@ -236,6 +236,13 @@ final class EngineModel {
     /// it. `nil` when there are no shots (no input selected).
     private(set) var activeShotID: ShotID?
 
+    /// The id of the shot staged on preview, or `nil` when nothing is staged
+    /// — the staging bus's selection, mirrored from the compositor so the
+    /// preview row can highlight it. Session state: what is staged when the
+    /// app quits is not part of the show, so it never enters the project
+    /// document (ARCHITECTURE.md, "The preview bus").
+    private(set) var previewShotID: ShotID?
+
     /// The shot currently selected in the switcher — the one the layer-tree
     /// editor edits. `nil` when there are no shots.
     var activeShot: Shot? {
@@ -274,6 +281,11 @@ final class EngineModel {
     /// in a plain relay (not observed) so the ~30 fps program does not churn
     /// SwiftUI — the `MTKView` samples it at display rate (CLOCK.md).
     @ObservationIgnored let programRelay = ProgramFrameRelay()
+
+    /// The latest preview frame, for the preview monitor to sample at display
+    /// cadence — the program relay's twin, one bus over (GLOSSARY.md,
+    /// "Preview").
+    @ObservationIgnored let previewRelay = ProgramFrameRelay()
 
     /// The latest mix tick's meter readings, handed to the strip meters to
     /// draw — the audio mirror of ``programRelay``: the meter drain writes
@@ -405,6 +417,12 @@ final class EngineModel {
     /// The task draining the compositor's program stream into the relay.
     @ObservationIgnored private var programTask: Task<Void, Never>?
 
+    /// The task draining the compositor's preview frames into the preview
+    /// relay. Unlike the program drain it tees nowhere: nothing on preview is
+    /// visible to viewers (GLOSSARY.md, "Preview"), so it never reaches a
+    /// stream or recording sink.
+    @ObservationIgnored private var previewTask: Task<Void, Never>?
+
     /// The task draining the mixer's program-audio stream, teeing each mixed
     /// block into the active session while a stream is live (there is no
     /// audio preview yet — that monitoring slice is a later iteration).
@@ -514,7 +532,16 @@ final class EngineModel {
         )
 
         let program = compositor.programFrames()
+        // The preview consumer is attached from boot; the compositor renders
+        // the second pass only once a shot is actually staged, so an idle
+        // preview costs nothing (ARCHITECTURE.md, "The preview bus").
+        let preview = compositor.previewFrames()
         compositor.start()
+        previewTask = Task { [weak self] in
+            for await frame in preview {
+                self?.previewRelay.latest = frame.pixelBuffer
+            }
+        }
         programTask = Task { [weak self] in
             var sawFrame = false
             for await frame in program {
@@ -976,6 +1003,53 @@ final class EngineModel {
         }
     }
 
+    /// Stages a shot on preview — the staging bus, where the next shot is
+    /// composed and checked before being taken to program (GLOSSARY.md,
+    /// "Preview"). Staging is **not** taking: the program is untouched.
+    /// Staging the shot already staged clears preview, so the preview row's
+    /// button toggles.
+    ///
+    /// Nothing to reconfigure or autosave: every shot of the active preset
+    /// already has its inputs running (``applyConfiguration()`` references
+    /// the whole pool), and what is staged is session state that never
+    /// enters the project document.
+    ///
+    /// Reports no `tap` event itself — the preview button's action closure in
+    /// `ContentView` reports it (EVENTS.md, "The `tap` convention").
+    ///
+    /// - Parameter shotID: The id of the shot to stage.
+    func setPreview(_ shotID: ShotID) {
+        let staged = shotID == previewShotID ? nil : shotID
+        compositor.setPreview(shotID: staged)
+        previewShotID = compositor.previewShotID
+    }
+
+    /// Takes the staged shot to program, swapping the buses: what was on
+    /// program lands on preview, ready to be taken back (ARCHITECTURE.md,
+    /// "The preview bus"). Uses the same transition the switcher selects as a
+    /// direct take does — ``takeTransitionKind``, resolving Default to the
+    /// taken shot's own ``Shot/defaultTransition``.
+    ///
+    /// Does nothing while nothing is staged; the Take button is disabled
+    /// then, and the compositor reports the miss as a recoverable error if it
+    /// is called anyway.
+    ///
+    /// Reports no `tap` event itself — the Take button's action closure
+    /// reports it; the compositor's `program.take` event carries the resolved
+    /// transition and names preview as its source.
+    func takePreview() {
+        guard let staged = previewShotID else { return }
+        // The same held-snapshot bookkeeping a direct take does: a snapshot
+        // from outside the pool can stop its inputs once this take replaces it.
+        let wasHoldingSnapshot = activeShotID == nil && hasSessionPreset
+        compositor.takePreview(transition: resolvedTransition(for: staged))
+        activeShotID = compositor.activeShotID
+        previewShotID = compositor.previewShotID
+        if wasHoldingSnapshot {
+            Task { await reconfigure() }
+        }
+    }
+
     /// Sets — or, passed nil, clears — a shot's default transition: the
     /// transition the shot is taken with while the switcher's transition
     /// picker is on Default (ARCHITECTURE.md, "Per-shot default
@@ -1055,6 +1129,9 @@ final class EngineModel {
         shots.remove(at: index)
         compositor.removeShot(shotID: shotID)
         activeShotID = compositor.activeShotID
+        // A removed shot cannot stay staged — re-read rather than second-guess
+        // which shot preview is left holding.
+        previewShotID = compositor.previewShotID
         scheduleAutosave()
         await reconfigure()
     }
@@ -1105,6 +1182,9 @@ final class EngineModel {
         shots = target.shots
         compositor.loadPreset(target)
         activeShotID = compositor.activeShotID
+        // Preview follows the same by-id rule the program does across a preset
+        // switch: it survives only when the incoming preset holds the shot.
+        previewShotID = compositor.previewShotID
         await reconfigure()
         await adoptAudioChannels(of: target)
     }
@@ -1812,8 +1892,8 @@ final class EngineModel {
 
     // MARK: Lifecycle
 
-    /// Stops the compositor, the program drain, and every active input,
-    /// flushing any pending autosave first so the last edits reach disk.
+    /// Stops the compositor, the program and preview drains, and every active
+    /// input, flushing any pending autosave first so the last edits reach disk.
     func stop() async {
         await stopStreaming()
         streamStatusTask?.cancel()
@@ -1821,6 +1901,8 @@ final class EngineModel {
         if autosaveTask != nil { saveProject() }
         programTask?.cancel()
         programTask = nil
+        previewTask?.cancel()
+        previewTask = nil
         programAudioTask?.cancel()
         programAudioTask = nil
         meterTask?.cancel()

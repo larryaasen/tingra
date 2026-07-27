@@ -1,5 +1,5 @@
 //
-//  ProgramPreviewView.swift
+//  MonitorView.swift
 //  tingra
 //
 //  Created by Larry Aasen on 2026-07-06.
@@ -12,18 +12,26 @@ import CoreVideo
 @preconcurrency import MetalKit
 import SwiftUI
 
-/// The on-screen program monitor: an `MTKView` that samples the latest
-/// program frame from the shared relay and draws it, aspect-fit and centered,
-/// at the display's rate.
+/// An on-screen monitor over one of the compositor's buses: an `MTKView`
+/// that samples the latest frame from the given relay and draws it,
+/// aspect-fit and centered, at the display's rate. One instance monitors
+/// **program**, another monitors **preview** — the view is the bus-agnostic
+/// half, and the relay it is handed decides which bus it shows.
+///
+/// Named for what it is rather than for program alone (it was
+/// `ProgramPreviewView` while program was the only bus): with the preview bus
+/// landed, "preview" names the staging bus in this codebase (GLOSSARY.md,
+/// "Preview"), so a type called `…PreviewView` that renders *program* would
+/// read as exactly the wrong thing.
 ///
 /// This is the ARCHITECTURE.md "UI layer" plan realized — Metal preview
 /// content hosted in an `MTKView` — and CLOCK.md's preview-sampling rule:
-/// the preview draws whatever program frame is current at display rate and
-/// never drives the program tick itself (the compositor does). Core Image
+/// the monitor draws whatever frame is current at display rate and never
+/// drives the program tick itself (the compositor does). Core Image
 /// composites the frame into the drawable, so the path stays GPU-resident.
-struct ProgramPreviewView: NSViewRepresentable {
-    /// The shared relay holding the latest program frame the compositor
-    /// produced.
+struct MonitorView: NSViewRepresentable {
+    /// The shared relay holding the latest frame of the bus this monitor
+    /// shows.
     let relay: ProgramFrameRelay
 
     /// Builds the drawing coordinator.
@@ -42,8 +50,8 @@ struct ProgramPreviewView: NSViewRepresentable {
         view.framebufferOnly = false
         view.colorPixelFormat = .bgra8Unorm
         view.clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
-        // Draw continuously at display rate, sampling the latest program
-        // frame — the program tick, not the view, paces the program.
+        // Draw continuously at display rate, sampling the latest frame —
+        // the program tick, not the view, paces the compositor.
         view.isPaused = false
         view.enableSetNeedsDisplay = false
         return view
@@ -53,7 +61,7 @@ struct ProgramPreviewView: NSViewRepresentable {
     /// frame from the relay each draw.
     func updateNSView(_ nsView: MTKView, context: Context) {}
 
-    /// Draws the latest program frame into the `MTKView`'s drawable with
+    /// Draws the bus's latest frame into the `MTKView`'s drawable with
     /// Core Image, GPU-resident. `@MainActor`: `MTKView` calls the delegate
     /// on the main run loop.
     @MainActor
@@ -75,7 +83,7 @@ struct ProgramPreviewView: NSViewRepresentable {
         /// the pipeline's SDR BT.709 delivery convention).
         private let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
 
-        /// Creates a coordinator sharing the given program relay.
+        /// Creates a coordinator sampling the given bus relay.
         init(relay: ProgramFrameRelay) {
             self.relay = relay
             let device = MTLCreateSystemDefaultDevice()
@@ -87,9 +95,10 @@ struct ProgramPreviewView: NSViewRepresentable {
         /// No per-size state to update; drawing recomputes the fit each frame.
         func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
 
-        /// Renders the current program frame, aspect-fit and centered, into
+        /// Renders the bus's current frame, aspect-fit and centered, into
         /// the drawable. Draws nothing (leaving the black clear color) until
-        /// the first program frame arrives.
+        /// the first frame arrives — which for preview means until a shot is
+        /// staged.
         func draw(in view: MTKView) {
             guard
                 let commandQueue,

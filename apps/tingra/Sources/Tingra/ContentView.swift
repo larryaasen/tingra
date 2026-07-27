@@ -12,8 +12,8 @@ import TingraComposition
 import TingraEventBus
 import TingraPlugInKit
 
-/// The main window: the program preview above the preset switcher, the shot
-/// switcher, the layer-tree editor, and the input pickers.
+/// The main window: the preview and program monitors above the preset
+/// switcher, the shot switcher, the layer-tree editor, and the input pickers.
 ///
 /// The preset switcher switches among — and manages — the project's presets
 /// (ARCHITECTURE.md, "Multiple presets in the UI"): switching never
@@ -25,7 +25,10 @@ import TingraPlugInKit
 /// transition picker is on Default, or an explicit cut, dissolve, or wipe
 /// (with its edge picker) as the override (GLOSSARY.md, "Transition") — and
 /// manages the active preset's shots the same way, one level down
-/// (ARCHITECTURE.md, "Shot management", "Shot and preset reordering"); the
+/// (ARCHITECTURE.md, "Shot management", "Shot and preset reordering"). A
+/// second row of the same shots stages one on **preview** — the staging bus,
+/// monitored beside program — and the Take button promotes it, swapping the
+/// buses (ARCHITECTURE.md, "The preview bus"); the
 /// editor (``LayerTreeEditorView``) edits the selected shot's layer tree
 /// live; the mixer panel (``MixerView``) mixes the audio inputs into the
 /// program mix the streaming panel puts on air. This is the step-7 shape —
@@ -69,19 +72,12 @@ struct ContentView: View {
     /// The window body: preview on top, controls beneath.
     var body: some View {
         VStack(spacing: 12) {
-            ProgramPreviewView(relay: model.programRelay)
-                .aspectRatio(16.0 / 9.0, contentMode: .fit)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(.black)
-                .clipShape(.rect(cornerRadius: 8))
-                .overlay(alignment: .topLeading) {
-                    Text("Program", comment: "Label over the live program preview")
-                        .font(.caption.weight(.semibold))
-                        .padding(6)
-                        .background(.black.opacity(0.4), in: .capsule)
-                        .foregroundStyle(.white)
-                        .padding(8)
-                }
+            HStack(spacing: 12) {
+                // Preview left of program, the switcher convention: the
+                // operator reads left to right, staging then taking.
+                monitor(relay: model.previewRelay, label: previewLabel, tint: .green)
+                monitor(relay: model.programRelay, label: programLabel, tint: .red)
+            }
 
             presetSwitcher
 
@@ -114,6 +110,45 @@ struct ContentView: View {
             )
             Task { await model.reconfigure() }
         }
+    }
+
+    /// The localized name of the program bus, shared by its monitor's badge
+    /// and its switcher row's label. Held in one place so both call sites
+    /// carry the identical comment, which is what keeps string extraction
+    /// from splitting one key in two.
+    private var programLabel: Text {
+        Text("Program", comment: "Name of the program bus — labels its monitor and its switcher row")
+    }
+
+    /// The localized name of the preview bus (see ``programLabel``).
+    private var previewLabel: Text {
+        Text("Preview", comment: "Name of the preview bus — labels its monitor and its switcher row")
+    }
+
+    /// One bus monitor: the `MTKView` over the given relay, badged with the
+    /// bus's name in its tint. Program and preview differ only by which relay
+    /// they sample, so they are the same view twice (ARCHITECTURE.md, "The
+    /// preview bus").
+    ///
+    /// - Parameters:
+    ///   - relay: The bus's frame relay, sampled at display cadence.
+    ///   - label: The bus's localized name.
+    ///   - tint: The badge's tint — the broadcast convention, red for what is
+    ///     on air and green for what is staged.
+    private func monitor(relay: ProgramFrameRelay, label: Text, tint: Color) -> some View {
+        MonitorView(relay: relay)
+            .aspectRatio(16.0 / 9.0, contentMode: .fit)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(.black)
+            .clipShape(.rect(cornerRadius: 8))
+            .overlay(alignment: .topLeading) {
+                label
+                    .font(.caption.weight(.semibold))
+                    .padding(6)
+                    .background(tint.opacity(0.85), in: .capsule)
+                    .foregroundStyle(.white)
+                    .padding(8)
+            }
     }
 
     /// The preset switcher: one button per preset in the project, switching
@@ -288,6 +323,10 @@ struct ContentView: View {
     private var shotSwitcher: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
+                programLabel
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+
                 ForEach(model.shots) { shot in
                     let isOnProgram = shot.id == model.activeShotID
                     Button(shot.name) {
@@ -316,6 +355,8 @@ struct ContentView: View {
                     }
                 }
             }
+
+            previewRow
 
             if !model.shots.isEmpty {
                 HStack(spacing: 12) {
@@ -438,6 +479,55 @@ struct ContentView: View {
                 )
             } label: {
                 Text("Cancel", comment: "Rename dialog cancel button, for a shot or a preset")
+            }
+        }
+    }
+
+    /// The preview row: the same shots again, one row down, staging rather
+    /// than taking (ARCHITECTURE.md, "The preview bus"). A second row rather
+    /// than a modifier-click on the program row, because the program row's
+    /// single click is the live on-air take — the reasoning that kept
+    /// drag-and-drop off those buttons: a mis-modified click must never put
+    /// the wrong shot to air. Clicking the staged shot again clears preview,
+    /// so the row toggles.
+    ///
+    /// The trailing Take button promotes what is staged, swapping the buses,
+    /// with the transition the picker below selects. It is disabled while
+    /// nothing is staged — there is nothing to take.
+    @ViewBuilder private var previewRow: some View {
+        if !model.shots.isEmpty {
+            HStack(spacing: 8) {
+                previewLabel
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+
+                ForEach(model.shots) { shot in
+                    let isStaged = shot.id == model.previewShotID
+                    Button(shot.name) {
+                        model.eventBus.tap(
+                            ProgramLayout.previewTapName(forShotID: shot.id),
+                            domain: .composition,
+                            params: ["shot": .string(shot.id.rawValue), "name": .string(shot.name)]
+                        )
+                        model.setPreview(shot.id)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(isStaged ? .green : nil)
+                }
+
+                Button {
+                    model.eventBus.tap(
+                        "take.button",
+                        domain: .composition,
+                        params: ["shot": .string(model.previewShotID?.rawValue ?? "none")]
+                    )
+                    model.takePreview()
+                } label: {
+                    Text("Take", comment: "Button taking the shot staged on preview to program")
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.red)
+                .disabled(model.previewShotID == nil)
             }
         }
     }

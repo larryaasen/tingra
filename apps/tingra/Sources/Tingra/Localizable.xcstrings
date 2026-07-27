@@ -1004,8 +1004,25 @@
         }
       }
     },
+    "Preview": {
+      "comment": "Name of the preview bus — labels its monitor and its switcher row",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vorschau"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Previo"
+          }
+        }
+      }
+    },
     "Program": {
-      "comment": "Label over the live program preview",
+      "comment": "Name of the program bus — labels its monitor and its switcher row",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -1374,6 +1391,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "Transmisión"
+          }
+        }
+      }
+    },
+    "Take": {
+      "comment": "Button taking the shot staged on preview to program",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Übernehmen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tomar"
           }
         }
       }

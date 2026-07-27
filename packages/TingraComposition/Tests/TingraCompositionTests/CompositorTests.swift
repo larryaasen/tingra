@@ -1049,4 +1049,290 @@ struct CompositorTests {
         }
         #expect(count <= 100)
     }
+
+    // MARK: The preview bus
+
+    /// A two-shot preset for the preview tests: `a` goes to program, `b` is
+    /// staged on preview.
+    private var previewPreset: Preset {
+        Preset(
+            id: PresetID(rawValue: "p"),
+            name: "P",
+            shots: [
+                Shot(id: ShotID(rawValue: "a"), name: "A"),
+                Shot(id: ShotID(rawValue: "b"), name: "B"),
+            ]
+        )
+    }
+
+    @Test("preview renders the staged shot once per tick, stamped with the tick's time")
+    func previewRendersStagedShotEachTick() async {
+        let ticks = [CMTime(value: 0, timescale: 30), CMTime(value: 1, timescale: 30)]
+        let recorder = RenderRecorder()
+        let compositor = makeCompositor(recorder: recorder, tickTimes: ticks)
+        compositor.loadPreset(previewPreset)
+        compositor.setPreview(shotID: ShotID(rawValue: "b"))
+
+        let program = compositor.programFrames()
+        let preview = compositor.previewFrames()
+        compositor.start()
+
+        #expect(await collect(program, limit: 2) == ticks)
+        #expect(await collect(preview, limit: 2) == ticks)
+        // Two buses, one tick each: the staged shot rendered as often as the
+        // program shot did, from the same snapshot.
+        let previewCalls = recorder.recorded.filter { $0.shot.id == ShotID(rawValue: "b") }
+        #expect(previewCalls.count == 2)
+        #expect(previewCalls.map(\.time) == ticks)
+    }
+
+    @Test("preview renders nothing while no shot is staged")
+    func previewRendersNothingUntilAShotIsStaged() async {
+        let ticks = [CMTime(value: 0, timescale: 30), CMTime(value: 1, timescale: 30)]
+        let recorder = RenderRecorder()
+        let compositor = makeCompositor(recorder: recorder, tickTimes: ticks)
+        compositor.loadPreset(previewPreset)
+
+        let program = compositor.programFrames()
+        _ = compositor.previewFrames()
+        compositor.start()
+
+        _ = await collect(program, limit: 2)
+        // Only the program shot rendered — preview is a monitor, not a live
+        // canvas, so an empty preview stays empty.
+        #expect(recorder.recorded.allSatisfy { $0.shot.id == ShotID(rawValue: "a") })
+        #expect(recorder.recorded.count == 2)
+        #expect(compositor.previewShotID == nil)
+        #expect(compositor.previewShot == nil)
+    }
+
+    @Test("a staged shot costs no render while no preview consumer is attached")
+    func previewIsNotRenderedWithoutAConsumer() async {
+        let ticks = [CMTime(value: 0, timescale: 30), CMTime(value: 1, timescale: 30)]
+        let recorder = RenderRecorder()
+        let compositor = makeCompositor(recorder: recorder, tickTimes: ticks)
+        compositor.loadPreset(previewPreset)
+        compositor.setPreview(shotID: ShotID(rawValue: "b"))
+
+        let program = compositor.programFrames()
+        compositor.start()
+
+        _ = await collect(program, limit: 2)
+        // Staged, but nobody is watching: the second pass never runs.
+        #expect(recorder.recorded.allSatisfy { $0.shot.id == ShotID(rawValue: "a") })
+        #expect(recorder.recorded.count == 2)
+    }
+
+    @Test("preview renders even when no program consumer is attached")
+    func previewRendersWithoutAProgramConsumer() async {
+        let ticks = [CMTime(value: 0, timescale: 30), CMTime(value: 1, timescale: 30)]
+        let recorder = RenderRecorder()
+        let compositor = makeCompositor(recorder: recorder, tickTimes: ticks)
+        compositor.loadPreset(previewPreset)
+        compositor.setPreview(shotID: ShotID(rawValue: "b"))
+
+        let preview = compositor.previewFrames()
+        compositor.start()
+
+        #expect(await collect(preview, limit: 2) == ticks)
+    }
+
+    @Test("staging a shot leaves the program untouched — staging is not taking")
+    func stagingDoesNotChangeProgram() async {
+        let recorder = RenderRecorder()
+        let compositor = makeCompositor(recorder: recorder, tickTimes: [])
+        compositor.loadPreset(previewPreset)
+
+        compositor.setPreview(shotID: ShotID(rawValue: "b"))
+
+        #expect(compositor.activeShotID == ShotID(rawValue: "a"))
+        #expect(compositor.programShot.id == ShotID(rawValue: "a"))
+        #expect(compositor.previewShotID == ShotID(rawValue: "b"))
+        #expect(compositor.previewShot?.id == ShotID(rawValue: "b"))
+    }
+
+    @Test("staging nil clears preview — the mechanism the app's toggle uses")
+    func stagingNilClearsPreview() async {
+        let recorder = RenderRecorder()
+        let compositor = makeCompositor(recorder: recorder, tickTimes: [])
+        compositor.loadPreset(previewPreset)
+        compositor.setPreview(shotID: ShotID(rawValue: "b"))
+        #expect(compositor.previewShotID == ShotID(rawValue: "b"))
+
+        compositor.setPreview(shotID: nil)
+
+        #expect(compositor.previewShotID == nil)
+        #expect(compositor.previewShot == nil)
+        // Clearing preview is not a program change.
+        #expect(compositor.activeShotID == ShotID(rawValue: "a"))
+    }
+
+    @Test("takePreview swaps the buses: preview goes to program, program lands on preview")
+    func takePreviewSwapsBuses() async {
+        let recorder = RenderRecorder()
+        let compositor = makeCompositor(recorder: recorder, tickTimes: [])
+        compositor.loadPreset(previewPreset)
+        compositor.setPreview(shotID: ShotID(rawValue: "b"))
+
+        compositor.takePreview()
+
+        #expect(compositor.activeShotID == ShotID(rawValue: "b"))
+        #expect(compositor.programShot.id == ShotID(rawValue: "b"))
+        // The swap — what was on program is now staged, ready to be taken back.
+        #expect(compositor.previewShotID == ShotID(rawValue: "a"))
+    }
+
+    @Test("takePreview empties preview when the outgoing program shot came from outside the pool")
+    func takePreviewEmptiesPreviewWhenProgramWasNotFromThePool() async {
+        let recorder = RenderRecorder()
+        let compositor = makeCompositor(recorder: recorder, tickTimes: [])
+        compositor.loadPreset(previewPreset)
+        // A direct setShot bypasses the preset, clearing activeShotID — there
+        // is no id to swap back onto preview.
+        compositor.setShot(Shot(id: ShotID(rawValue: "outside"), name: "Outside"))
+        compositor.setPreview(shotID: ShotID(rawValue: "b"))
+
+        compositor.takePreview()
+
+        #expect(compositor.activeShotID == ShotID(rawValue: "b"))
+        #expect(compositor.previewShotID == nil)
+    }
+
+    @Test("takePreview blends on program only — the staged shot renders plain")
+    func takePreviewBlendsOnProgramOnly() async {
+        let ticks = (0..<4).map { CMTime(value: CMTimeValue($0), timescale: 30) }
+        let recorder = RenderRecorder()
+        let compositor = makeCompositor(recorder: recorder, tickTimes: ticks)
+        compositor.loadPreset(previewPreset)
+        compositor.setPreview(shotID: ShotID(rawValue: "b"))
+        // Take before starting: the synthetic clock yields every tick at once,
+        // so the transition must already be pending when the ticks run.
+        compositor.takePreview(transition: .dissolve(duration: 4.0 / 30.0))
+
+        let program = compositor.programFrames()
+        let preview = compositor.previewFrames()
+        compositor.start()
+
+        _ = await collect(program, limit: 4)
+        _ = await collect(preview, limit: 4)
+        // Program dissolves from A toward B; preview renders A (swapped onto
+        // it) plainly — a transition is the move to air, never a preview effect.
+        let blended = recorder.recorded.filter { $0.blendProgress != nil }
+        #expect(blended.count == 4)
+        #expect(blended.allSatisfy { $0.blendOutgoing?.id == ShotID(rawValue: "a") })
+        let previewCalls = recorder.recorded.filter { $0.blendProgress == nil }
+        #expect(previewCalls.count == 4)
+        #expect(previewCalls.allSatisfy { $0.shot.id == ShotID(rawValue: "a") })
+    }
+
+    @Test("staging a shot outside the loaded preset returns an error and leaves preview unchanged")
+    func stagingAnUnknownShotReturnsAnError() async {
+        let bus = EventBus()
+        let events = bus.events()
+        let compositor = Compositor(
+            clock: SyntheticClock(tickTimes: []),
+            format: ProgramFormat(width: 2, height: 2, frameRate: 30),
+            eventBus: bus,
+            makeRenderer: { MockShotRenderer(recorder: RenderRecorder()) }
+        )
+        compositor.loadPreset(previewPreset)
+        compositor.setPreview(shotID: ShotID(rawValue: "b"))
+
+        compositor.setPreview(shotID: ShotID(rawValue: "ghost"))
+
+        #expect(compositor.previewShotID == ShotID(rawValue: "b"))
+        var sawError = false
+        for await event in events where event.name == "preview.select" {
+            sawError = event.group == .error
+            break
+        }
+        #expect(sawError)
+    }
+
+    @Test("takePreview with nothing staged returns an error and leaves the program unchanged")
+    func takePreviewWithNothingStagedReturnsAnError() async {
+        let bus = EventBus()
+        let events = bus.events()
+        let compositor = Compositor(
+            clock: SyntheticClock(tickTimes: []),
+            format: ProgramFormat(width: 2, height: 2, frameRate: 30),
+            eventBus: bus,
+            makeRenderer: { MockShotRenderer(recorder: RenderRecorder()) }
+        )
+        compositor.loadPreset(previewPreset)
+
+        compositor.takePreview()
+
+        #expect(compositor.activeShotID == ShotID(rawValue: "a"))
+        var reason: String?
+        for await event in events where event.name == "program.take" && event.group == .error {
+            reason = event.params?["reason"]?.description
+            break
+        }
+        #expect(reason == "nothingOnPreview")
+    }
+
+    @Test("removing the staged shot empties preview")
+    func removingTheStagedShotEmptiesPreview() async {
+        let recorder = RenderRecorder()
+        let compositor = makeCompositor(recorder: recorder, tickTimes: [])
+        compositor.loadPreset(previewPreset)
+        compositor.setPreview(shotID: ShotID(rawValue: "b"))
+
+        compositor.removeShot(shotID: ShotID(rawValue: "b"))
+
+        #expect(compositor.previewShotID == nil)
+        // The program never moved — the removed shot was only staged.
+        #expect(compositor.activeShotID == ShotID(rawValue: "a"))
+    }
+
+    @Test("a preset switch keeps a staged shot the incoming preset also has, and empties preview otherwise")
+    func presetSwitchKeepsAStagedShotOnlyByIDMatch() async {
+        let recorder = RenderRecorder()
+        let compositor = makeCompositor(recorder: recorder, tickTimes: [])
+        compositor.loadPreset(previewPreset)
+        compositor.setPreview(shotID: ShotID(rawValue: "b"))
+
+        // An incoming preset that also holds "b": the staging survives.
+        compositor.loadPreset(
+            Preset(
+                id: PresetID(rawValue: "q"),
+                name: "Q",
+                shots: [Shot(id: ShotID(rawValue: "b"), name: "B2")]
+            )
+        )
+        #expect(compositor.previewShotID == ShotID(rawValue: "b"))
+        // It adopts the incoming preset's version of the shot.
+        #expect(compositor.previewShot?.name == "B2")
+
+        // One that does not: preview empties rather than dangling.
+        compositor.loadPreset(
+            Preset(
+                id: PresetID(rawValue: "r"),
+                name: "R",
+                shots: [Shot(id: ShotID(rawValue: "z"), name: "Z")]
+            )
+        )
+        #expect(compositor.previewShotID == nil)
+    }
+
+    @Test("stop() finishes the preview stream")
+    func stopFinishesPreviewStream() async {
+        let ticks = (0..<100).map { CMTime(value: CMTimeValue($0), timescale: 30) }
+        let recorder = RenderRecorder()
+        let compositor = makeCompositor(recorder: recorder, tickTimes: ticks)
+        compositor.loadPreset(previewPreset)
+        compositor.setPreview(shotID: ShotID(rawValue: "b"))
+
+        let preview = compositor.previewFrames()
+        compositor.start()
+        compositor.stop()
+
+        var count = 0
+        for await _ in preview {
+            count += 1
+            if count > 200 { break }
+        }
+        #expect(count <= 100)
+    }
 }

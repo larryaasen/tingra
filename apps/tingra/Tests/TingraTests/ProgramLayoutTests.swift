@@ -101,4 +101,20 @@ struct ProgramLayoutTests {
     func tapNameFallsBackForUnknownShot() {
         #expect(ProgramLayout.tapName(forShotID: ShotID(rawValue: "future-user-shot")) == "shot.button")
     }
+
+    @Test("each built-in shot's preview button gets its own tap event name, distinct from its take")
+    func previewTapNamesAreDistinctPerShotAndFromTheProgramRow() {
+        #expect(ProgramLayout.previewTapName(forShotID: ProgramLayout.cameraShotID) == "previewCamera.button")
+        #expect(ProgramLayout.previewTapName(forShotID: ProgramLayout.displayShotID) == "previewDisplay.button")
+        #expect(ProgramLayout.previewTapName(forShotID: ProgramLayout.pictureInPictureShotID) == "previewPip.button")
+        // Staging a shot must be traceable separately from taking it to air.
+        for id in [ProgramLayout.cameraShotID, ProgramLayout.displayShotID, ProgramLayout.pictureInPictureShotID] {
+            #expect(ProgramLayout.previewTapName(forShotID: id) != ProgramLayout.tapName(forShotID: id))
+        }
+    }
+
+    @Test("an unrecognized shot id falls back to a generic preview tap event name")
+    func previewTapNameFallsBackForUnknownShot() {
+        #expect(ProgramLayout.previewTapName(forShotID: ShotID(rawValue: "future-user-shot")) == "preview.button")
+    }
 }

@@ -63,9 +63,25 @@ import TingraPlugInKit
 /// ever changing the program (reordering is not taking — ARCHITECTURE.md,
 /// "Shot management", "Shot and preset reordering").
 ///
+/// Beside the program it renders a second bus, **preview** — the staging
+/// bus where the next shot is composed and checked before being taken to
+/// program (GLOSSARY.md, "Preview"). ``setPreview(shotID:)`` stages a shot
+/// of the loaded preset, ``previewFrames()`` is its own frame stream, and
+/// ``takePreview(transition:)`` promotes it, **swapping** what was on
+/// program onto preview. Preview is a second ``ShotRenderer`` pass over the
+/// same tick's snapshot — one clock, two buses, so CLOCK.md's rule that
+/// output pacing is independent of any input holds unchanged and preview
+/// reads the very frames program renders from rather than racing it for
+/// them. The pass runs only while a shot is staged *and* a consumer is
+/// attached, so a session nobody previews costs exactly what it did before
+/// preview existed. Nothing on preview reaches viewers: it is never fed to
+/// a sink, and transitions stay program-only (a transition is the move *to
+/// air*).
+///
 /// The mutating controls (``setInputs(_:)``, ``setShot(_:)``,
 /// ``loadPreset(_:)``, ``take(shotID:)``, ``updateShot(_:)``,
 /// ``addShot(_:at:)``, ``removeShot(shotID:)``, ``moveShot(shotID:to:)``,
+/// ``setPreview(shotID:)``, ``takePreview(transition:)``,
 /// ``start()``, ``stop()``)
 /// are meant to be driven from one context (the app's main actor); they are
 /// internally locked but not designed for concurrent callers racing each
@@ -124,6 +140,15 @@ public final class Compositor: Sendable {
 
         /// The single active program-frame consumer, while attached.
         var programContinuation: AsyncStream<CapturedFrame>.Continuation?
+
+        /// The id of the loaded preset's shot staged on preview, or `nil`
+        /// when nothing is staged. Resolved against `shots` on each tick, so
+        /// a staged shot that later leaves the pool simply stops rendering
+        /// rather than dangling.
+        var previewShotID: ShotID?
+
+        /// The single active preview-frame consumer, while attached.
+        var previewContinuation: AsyncStream<CapturedFrame>.Continuation?
 
         /// The running tick task, while started.
         var tickTask: Task<Void, Never>?
@@ -184,6 +209,126 @@ public final class Compositor: Sendable {
             }
             previous?.finish()
         }
+    }
+
+    /// The preview-frame stream: one rendered frame per program tick of the
+    /// shot staged with ``setPreview(shotID:)`` — the staging bus
+    /// (GLOSSARY.md, "Preview"). Like ``programFrames()``, a new call
+    /// replaces the previous consumer (finishing its stream).
+    ///
+    /// Nothing is yielded while no shot is staged: preview is a monitor, not
+    /// a live canvas, so an empty preview stays empty rather than rendering
+    /// a background nobody staged. Frames arrive again as soon as a shot is
+    /// staged.
+    public func previewFrames() -> AsyncStream<CapturedFrame> {
+        AsyncStream { continuation in
+            let previous = state.withLock { state in
+                let previous = state.previewContinuation
+                state.previewContinuation = continuation
+                return previous
+            }
+            previous?.finish()
+        }
+    }
+
+    /// Stages one of the loaded preset's shots on preview, or clears preview
+    /// when passed `nil`. Takes effect on the next tick.
+    ///
+    /// Staging is **not** taking: the program, ``activeShotID``, and any
+    /// in-progress transition are untouched — that is the point of a staging
+    /// bus. Staging the shot already on program is allowed (a desk lets an
+    /// operator line up what is already on air).
+    ///
+    /// Staging an id that is not in the loaded preset leaves preview
+    /// unchanged and reports a `preview.select` error event (a stale
+    /// switcher selection is recoverable, never a crash). A successful stage
+    /// deliberately reports **no** event: selecting into preview is a
+    /// gesture-rate operator action, the rule ``updateShot(_:)`` follows, and
+    /// user-action observability comes from the app's `tap` events (EVENTS.md).
+    ///
+    /// - Parameter shotID: The id of the shot to stage, or `nil` to clear
+    ///   preview.
+    public func setPreview(shotID: ShotID?) {
+        guard let shotID else {
+            state.withLock { $0.previewShotID = nil }
+            return
+        }
+        let staged = state.withLock { state -> Bool in
+            guard state.shots.contains(where: { $0.id == shotID }) else { return false }
+            state.previewShotID = shotID
+            return true
+        }
+        guard staged else {
+            eventBus.error(
+                "preview.select",
+                domain: .composition,
+                params: [
+                    "shot": .string(shotID.rawValue),
+                    "reason": .string("unknownShot"),
+                ]
+            )
+            return
+        }
+    }
+
+    /// Takes the shot staged on preview to program, **swapping** the buses:
+    /// what was on program lands on preview, ready to be taken back — the
+    /// switcher convention that makes a staging bus worth having. Effective
+    /// on the next tick, with the same transition semantics as
+    /// ``take(shotID:transition:)`` (a cut by default).
+    ///
+    /// When the outgoing program shot did not come from the loaded preset —
+    /// before any take, after a direct ``setShot(_:)``, or while a preset
+    /// switch holds a snapshot (see ``loadPreset(_:)``) — there is no id to
+    /// swap back, so preview is left **empty** rather than staging something
+    /// the pool does not contain.
+    ///
+    /// Taking with nothing staged leaves the program unchanged and reports a
+    /// `program.take` error event, matching ``take(shotID:transition:)``'s
+    /// recoverable-miss contract; a successful take reports the same
+    /// `program.take` event that a switcher take does, with an additional
+    /// `source` param naming preview as its origin.
+    ///
+    /// - Parameter transition: The transition to take it with (default: a cut).
+    public func takePreview(transition: Transition = .cut) {
+        let frameRate = format.frameRate
+        let taken: Shot? = state.withLock { state in
+            guard
+                let previewID = state.previewShotID,
+                let shot = state.shots.first(where: { $0.id == previewID })
+            else { return nil }
+            let outgoing = state.shot
+            let outgoingID = state.activeShotID
+            state.activeShotID = previewID
+            state.shot = shot
+            // The swap: the outgoing shot takes preview's place, but only
+            // when it came from the pool — otherwise preview clears.
+            state.previewShotID = outgoingID
+            state.pendingTransition = Self.pendingTransition(
+                for: transition, outgoing: outgoing, frameRate: frameRate)
+            return shot
+        }
+        guard let taken else {
+            eventBus.error(
+                "program.take",
+                domain: .composition,
+                params: [
+                    "shot": .string("none"),
+                    "reason": .string("nothingOnPreview"),
+                ]
+            )
+            return
+        }
+        eventBus.event(
+            "program.take",
+            domain: .composition,
+            params: [
+                "shot": .string(taken.id.rawValue),
+                "name": .string(taken.name),
+                "transition": .string(transition.eventName),
+                "source": .string("preview"),
+            ]
+        )
     }
 
     /// Sets the inputs whose frames feed the shot's layers. Inputs must
@@ -261,6 +406,14 @@ public final class Compositor: Sendable {
     public func loadPreset(_ preset: Preset) {
         let programOutcome: String = state.withLock { state in
             state.shots = preset.shots
+            // Preview follows the same by-id rule the program does: a staged
+            // shot the incoming preset also has stays staged (adopting that
+            // preset's version), otherwise preview empties.
+            if let previewID = state.previewShotID,
+                !preset.shots.contains(where: { $0.id == previewID })
+            {
+                state.previewShotID = nil
+            }
             if let activeID = state.activeShotID {
                 guard let match = preset.shots.first(where: { $0.id == activeID }) else {
                     state.activeShotID = nil
@@ -311,28 +464,8 @@ public final class Compositor: Sendable {
             let outgoing = state.shot
             state.activeShotID = shotID
             state.shot = shot
-            switch transition {
-            case .cut:
-                state.pendingTransition = nil
-            case .dissolve(let duration):
-                state.pendingTransition = PendingTransition(
-                    outgoing: outgoing,
-                    kind: .dissolve,
-                    totalTicks: Self.tickCount(for: duration, frameRate: frameRate)
-                )
-            case .wipe(let edge, let duration):
-                state.pendingTransition = PendingTransition(
-                    outgoing: outgoing,
-                    kind: .wipe(edge: edge),
-                    totalTicks: Self.tickCount(for: duration, frameRate: frameRate)
-                )
-            case .shader(let name, let duration):
-                state.pendingTransition = PendingTransition(
-                    outgoing: outgoing,
-                    kind: .shader(name: name),
-                    totalTicks: Self.tickCount(for: duration, frameRate: frameRate)
-                )
-            }
+            state.pendingTransition = Self.pendingTransition(
+                for: transition, outgoing: outgoing, frameRate: frameRate)
             return shot
         }
         guard let taken else {
@@ -469,6 +602,9 @@ public final class Compositor: Sendable {
         let outcome: (removed: Shot, wasOnProgram: Bool, cutTo: Shot?)? = state.withLock { state in
             guard let index = state.shots.firstIndex(where: { $0.id == shotID }) else { return nil }
             let removed = state.shots.remove(at: index)
+            // A removed shot cannot stay staged: preview empties rather than
+            // holding an id the pool no longer contains.
+            if state.previewShotID == shotID { state.previewShotID = nil }
             guard state.activeShotID == shotID else { return (removed, false, nil) }
             state.pendingTransition = nil
             let adjacentIndex = min(index, state.shots.count - 1)
@@ -582,6 +718,22 @@ public final class Compositor: Sendable {
         state.withLock { $0.shot }
     }
 
+    /// The id of the shot staged on preview, or `nil` when nothing is staged
+    /// (see ``setPreview(shotID:)``).
+    public var previewShotID: ShotID? {
+        state.withLock { $0.previewShotID }
+    }
+
+    /// The shot staged on preview — resolved against the loaded preset's pool
+    /// — or `nil` when nothing is staged. Callers use it to keep a staged
+    /// shot's inputs running so preview shows live video rather than a black
+    /// layer (the ``programShot`` rule, one bus over).
+    public var previewShot: Shot? {
+        state.withLock { state in
+            state.previewShotID.flatMap { id in state.shots.first { $0.id == id } }
+        }
+    }
+
     /// Starts the program tick: the compositor renders and yields one frame
     /// per tick until ``stop()``. Idempotent — a second call while running
     /// does nothing.
@@ -612,8 +764,22 @@ public final class Compositor: Sendable {
                             shot: state.shot,
                             frames: state.slots,
                             continuation: state.programContinuation,
-                            blend: blend
+                            blend: blend,
+                            previewShot: state.previewShotID.flatMap { id in
+                                state.shots.first { $0.id == id }
+                            },
+                            previewContinuation: state.previewContinuation
                         )
+                    }
+                    // Preview is a second pass over this same snapshot, so it
+                    // renders the very frames program does — and only when a
+                    // shot is staged and someone is watching.
+                    if let previewContinuation = snapshot.previewContinuation,
+                        let previewShot = snapshot.previewShot,
+                        let preview = renderer.render(
+                            shot: previewShot, frames: snapshot.frames, format: format, time: tickTime)
+                    {
+                        previewContinuation.yield(preview)
                     }
                     guard let continuation = snapshot.continuation else { continue }
                     let program: CapturedFrame? =
@@ -672,12 +838,16 @@ public final class Compositor: Sendable {
     /// Stops the program tick, cancels every fill task, finishes the program
     /// stream, and clears the slots. Safe to call more than once.
     public func stop() {
-        let (tickTask, fillTasks, continuation) = state.withLock { state in
-            let taken = (state.tickTask, Array(state.fillTasks.values), state.programContinuation)
+        let (tickTask, fillTasks, continuation, previewContinuation) = state.withLock { state in
+            let taken = (
+                state.tickTask, Array(state.fillTasks.values), state.programContinuation,
+                state.previewContinuation
+            )
             state.tickTask = nil
             state.fillTasks.removeAll()
             state.slots.removeAll()
             state.programContinuation = nil
+            state.previewContinuation = nil
             state.pendingTransition = nil
             return taken
         }
@@ -686,6 +856,7 @@ public final class Compositor: Sendable {
             task.cancel()
         }
         continuation?.finish()
+        previewContinuation?.finish()
         eventBus.event("program.stopped", domain: .composition)
     }
 
@@ -699,6 +870,45 @@ public final class Compositor: Sendable {
     /// still completes on its first tick rather than never finishing.
     private static func tickCount(for duration: TimeInterval, frameRate: Int) -> Int {
         max(1, Int((duration * Double(frameRate)).rounded()))
+    }
+
+    /// Builds the tick-counted transition a take starts, or `nil` for a cut
+    /// (which has already replaced the shot outright and needs no blending).
+    /// Shared by ``take(shotID:transition:)`` and ``takePreview(transition:)``
+    /// so both take paths map a ``Transition`` to the renderer the same way.
+    ///
+    /// - Parameters:
+    ///   - transition: The transition the take was requested with.
+    ///   - outgoing: The shot being transitioned away from.
+    ///   - frameRate: The program frame rate the duration is counted in.
+    /// - Returns: The transition to run tick by tick, or `nil` for a cut.
+    private static func pendingTransition(
+        for transition: Transition,
+        outgoing: Shot,
+        frameRate: Int
+    ) -> PendingTransition? {
+        switch transition {
+        case .cut:
+            nil
+        case .dissolve(let duration):
+            PendingTransition(
+                outgoing: outgoing,
+                kind: .dissolve,
+                totalTicks: tickCount(for: duration, frameRate: frameRate)
+            )
+        case .wipe(let edge, let duration):
+            PendingTransition(
+                outgoing: outgoing,
+                kind: .wipe(edge: edge),
+                totalTicks: tickCount(for: duration, frameRate: frameRate)
+            )
+        case .shader(let name, let duration):
+            PendingTransition(
+                outgoing: outgoing,
+                kind: .shader(name: name),
+                totalTicks: tickCount(for: duration, frameRate: frameRate)
+            )
+        }
     }
 }
 
@@ -751,6 +961,13 @@ private struct TickSnapshot {
     /// The blend to render this tick, or `nil` for a plain render of
     /// `shot`.
     let blend: Blend?
+
+    /// The shot staged on preview, already resolved against the pool, or
+    /// `nil` when nothing is staged (so preview renders nothing this tick).
+    let previewShot: Shot?
+
+    /// The active preview-frame consumer, or `nil` if none is attached.
+    let previewContinuation: AsyncStream<CapturedFrame>.Continuation?
 }
 
 extension Transition {

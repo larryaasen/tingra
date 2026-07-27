@@ -119,6 +119,25 @@ enum ProgramLayout {
         }
     }
 
+    /// The tap event name for one of the **preview** row's shot buttons — the
+    /// same per-control rule as ``tapName(forShotID:)`` one row down, so a
+    /// staging click is traceable separately from the on-air take of the same
+    /// shot (EVENTS.md, "The `tap` convention"; ARCHITECTURE.md, "The preview
+    /// bus").
+    ///
+    /// - Parameter shotID: The id of the staged shot.
+    /// - Returns: `previewCamera.button`, `previewDisplay.button`, or
+    ///   `previewPip.button` for the three seeded shots; `preview.button` for
+    ///   any other id (a user-authored shot).
+    static func previewTapName(forShotID shotID: ShotID) -> String {
+        switch shotID {
+        case cameraShotID: return "previewCamera.button"
+        case displayShotID: return "previewDisplay.button"
+        case pictureInPictureShotID: return "previewPip.button"
+        default: return "preview.button"
+        }
+    }
+
     /// Builds the layer tree, bottom to top, for the active inputs.
     ///
     /// - Parameters:

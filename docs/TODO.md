@@ -1046,6 +1046,166 @@ or two in the doc that owns them — none need a rewrite.
 
 ## Decisions to settle
 
+- [ ] **Fade to black (FTB): the program master stage.** Raised 2026-07-26;
+  nothing exists today — no `Transition` case, no compositor or mixer stage, no
+  GLOSSARY.md term. Every switcher has it and Tingra has no way to take the
+  program off air short of stopping the stream, so it is a real gap, but it is
+  **not** a queued step-8 item: it needs a decision record first (the effect
+  seam's decide-then-build rule), and it should be scoped against the preview
+  bus slice above rather than bolted onto it.
+
+  **Where it fits: a master stage on the program bus, not a transition.** A
+  transition is the move from one shot to the next; FTB is a latching master
+  state that holds the program black *across* shot switches, and it covers what
+  viewers hear as well as what they see (GLOSSARY.md, "Program" — "what viewers
+  see and hear"). Concretely, two insertion points on the same tick:
+  - **Video** — the last stage in `Compositor`'s tick, downstream of the layer
+    tree, the transition renderers, and any future program-level video effect,
+    applied to the composited frame just before it is stamped and yielded on
+    `programFrames()`. A `ShotRenderer` seam requirement (the `renderWipe`/
+    `renderShader` precedent) keeps the compositor pixel-agnostic; the ramp
+    itself rides the existing tick-counted `PendingTransition` spine, which
+    already knows how to count a duration in ticks.
+  - **Audio** — a master gain applied in `AudioMixer.mixBlock` after the mix
+    walk, downstream of every channel strip's level/pan/mute, so it is the
+    first thing that exists at Tingra's **master** (v1 has one bus, the program
+    mix — GLOSSARY.md, "Routing"). It therefore lands adjacent to the deferred
+    master-bus work (post-fader master metering, the monitoring path) and
+    should be designed so that slice inherits the stage rather than replacing it.
+
+  Both ramps are paced off the master clock (CLOCK.md), so video and audio
+  reach black and silence together. Everything fed from program inherits it by
+  construction — streaming legs and recording. Preview is untouched. Whether
+  the *app's own program monitor* also goes black is an open question, not a
+  given — see the prior art below.
+
+  **Prior art (checked 2026-07-26 — vMix, TriCaster, ATEM).** All three
+  implement FTB as a master stage, not a transition, which settles the shape:
+  - **TriCaster** calls FTB "a final overlay layer – one that obscures all
+    other layers when applied," composed above its DSK 1/DSK 2 overlay layers;
+    the button *pulses while active*, confirming the latching model. Unlike
+    DSK 1–4 it gets no local Take/Auto.
+  - **ATEM** puts fade to black "at the extreme end of the processing chain,"
+    explicitly so an operator "doesn't miss a layer."
+  - **vMix** fades its output destinations (recordings, external output,
+    fullscreen) rather than compositing a layer, and diverges from the
+    recommendation below on three points worth deciding deliberately:
+    audio fades only if a **"Fade To Black includes Audio"** setting is
+    ticked (opt-in, not coupled); the duration is **not adjustable at all**
+    (a standing user request — the one place to stay ahead of it); and the
+    operator's own Output window is **deliberately not faded**, "in order to
+    make it easier to queue up a source for later."
+
+  **The recommendation, for the veto:**
+  - **One control fades video and audio together**, defaulting to both, with
+    video-only available as a per-invocation choice later — not two independent
+    controls in v1. (The broadcast console splits FTB from the audio master,
+    and vMix makes the coupling an opt-in tick-box; the argument for coupling
+    by default is that Tingra's operator is one person and its program is
+    defined as picture *and* sound — dead air with a black picture is the
+    thing the operator actually wants. This is the recommendation most likely
+    to draw a veto, and the cheapest to reverse: it is a default, not a shape.)
+  - **Latching state, not a one-shot** — `Compositor`/`AudioMixer` hold a
+    "faded to black" flag with a ramp in progress; taking a shot while black
+    changes what is *behind* the fade and nothing visible, and fading back up
+    reveals whatever is on program then.
+  - **Session state, not persisted** — nothing enters `Preset`/`Project`, no
+    document version bump (the pre-release rule, the same call the preview bus
+    and the mixer's pre-routing level/mute made). A show must never reopen black.
+  - **A ramp duration with a broadcast-typical 0.5 s default**, matching
+    `Transition.defaultDissolveDuration` rather than inventing a second
+    convention.
+  - **This one *does* get an engine event** (unlike preview selection): going to
+    and from black is a discrete on-air state change, not a gesture-rate edit —
+    the `shot.added`/`shot.removed` line, not the `updateShot` line.
+  - **Rejected as the *implementation*: modeling black as a special shot**
+    taken with a dissolve. It clobbers `activeShotID` (the operator loses what
+    they were on), covers no audio, and does not survive a shot switch
+    underneath — three symptoms of a master stage wearing a shot's clothes.
+
+  **A black *source* is a separate, complementary feature — not the rejected
+  alternative.** TriCaster carries **BLACK** as a selectable source on its
+  Program/Preview rows (beside the cameras, NET 1/2, DDR 1/2, GFX 1/2, FRM BFR,
+  and M/E 1–8), and ATEM the same on its M/E bus — *while also* shipping FTB.
+  The two are not redundant: a black source is **upstream**, so overlays and
+  keys still composite over it (cut the background to black and keep a title
+  up), whereas FTB is downstream and obscures everything. Tingra has neither
+  today; a black source is a smaller, independent item — arguably just a
+  first-party solid-colour **generator** in `TingraGeneratorPlugIns` beside
+  bars and tone, bound into a layer like any other input, needing no new seam.
+  Worth queuing separately; it is not a prerequisite for FTB and FTB is not a
+  substitute for it.
+
+  When decided, the record lands in ARCHITECTURE.md ("Fade to black") with a
+  GLOSSARY.md term beside **Transition**/**Program**; the CLI/MCP surface
+  (a `fade_to_black` tool, `tingra-cli` verb) is a separate later call, as is
+  a keyboard-accessible app control and its `de`/`es` strings.
+
+- [x] **The preview bus: the buses-and-monitoring slice, first iteration.**
+  Decided 2026-07-26 (recorded in ARCHITECTURE.md, "The preview bus"),
+  **go-ahead given and built the same day** — the decide-then-build rule the
+  effect seam set. Step 8's two named deliverables are done and
+  WHIP/WHEP is ungated on `RTCHaishinKit` leaving alpha, so the next slice is
+  the one the 2026-07-19 monitoring ruling sequenced "after step 8": **buses and
+  monitoring** (GLOSSARY.md). It closes the largest gap left — `Compositor` has
+  exactly one bus (`programFrames()`) and `take(shotID:)` cuts straight to air,
+  so the only way to check a shot today is to broadcast it, while GLOSSARY.md
+  defines **preview** as core vocabulary ("the staging bus… Nothing on preview
+  is visible to viewers") and ARCHITECTURE.md's "UI layer" already promises
+  program/preview monitoring. This is closing a claim the docs already make.
+
+  **The slice splits into three iterations; this decision covers only the first,
+  the video preview bus.** Audio preview is not a sibling — it needs the
+  engine's first audio *output* path (a monitoring device, headphone routing)
+  plus post-fader master metering, and the engine today only mixes, never
+  playing anything out. Multiview (tiling program, preview, and every input) is
+  a third concern again. Bundling them would make the slice unshippable; each
+  gets its own iteration and its own record.
+
+  The approved shape, five decisions:
+  - **A second render pass on the same tick, and free when unwatched.** Preview
+    is a second `ShotRenderer` walk over the same tick's input slots — one
+    clock, two buses, so CLOCK.md's "output pacing independent of inputs" holds
+    unchanged and preview shares program's latest-wins snapshot rather than
+    racing it. The pass runs **only when a preview shot is selected and a
+    consumer is attached**, so a session nobody is previewing pays nothing.
+  - **`take` promotes preview to program as a swap**, the console convention:
+    what was on program lands on preview, ready to be taken back. Today's
+    direct `take(shotID:transition:)` stays — the shot switcher's take-by-ID is
+    the working path and is not being replaced — so the two coexist: select a
+    shot into preview, then take it.
+  - **Preview selection is session state, not persisted.** Nothing enters
+    `Preset`/`Project`; **no document version bump** (the pre-release rule). It
+    is the same call the mixer made for level/mute before routing landed —
+    what is staged when the app quits is not part of the show.
+  - **Transitions stay program-only.** A transition is the move *to air*; there
+    is no such thing as transitioning on the staging bus, and the tick-counted
+    `PendingTransition` spine is untouched.
+  - **No engine event for preview selection** — it is a gesture-rate operator
+    action, the `updateShot` rule; the app's `tap` events carry the
+    observability. The bus keeps its existing control-plane vocabulary.
+
+  **Built as recorded, with two facts worth keeping.** (1) The preview bus
+  **added no `ShotRenderer` requirement** — it reuses the seam's existing
+  plain `render(shot:frames:format:time:)`, so no conformer changed and the
+  seam is no closer to a breaking edit than it was. (2) Staging needed **no
+  reconfigure work**: `applyConfiguration()` already references every shot of
+  the active preset, so a staged shot's inputs are running by construction.
+  Two operations keep the staged id honest against the pool — `removeShot`
+  empties preview when the removed shot was staged, and `loadPreset` keeps a
+  staged shot only on an id match with the incoming preset. `ProgramPreviewView`
+  became **`MonitorView`** (bus-agnostic over the relay it is handed): with
+  "preview" now naming the staging bus, a `…PreviewView` rendering *program*
+  read as exactly the wrong thing. Tests: TingraComposition 141 → 155 (a
+  `The preview bus` block covering the second pass from both sides — staged
+  but unwatched, watched but unstaged — the swap, the outside-the-pool empty,
+  program-only blending, and both recoverable misses), `apps/tingra` 99 → 101
+  (the per-control preview tap names) — **681 across 13 targets**,
+  warning-clean, `check-format` clean, and `integration-test.sh` re-run green
+  at **37 checks across 11 scenarios** (the streamed path is untouched: the
+  CLI paces with `ProgramPacer`, not the compositor).
+  **Audio preview and multiview remain** — the slice's other two iterations.
+
 - [x] **The effect seam shape: one seam, two media protocols.** Decided
   2026-07-19 (recorded in ARCHITECTURE.md, "The effect seam"; **flagged for
   Larry's veto before any conformance code lands** — the seam joins the
@@ -1345,9 +1505,14 @@ Each lists its trigger condition:
   running `scripts/integration-test.sh` on streaming/output path changes (plus
   `workflow_dispatch`), not blocking every PR.
 
-- [ ] **Packaging job** (Developer ID signing, hardened runtime, notarization,
-  zip + stapled `.pkg`) — add when the release tooling and signing secrets exist
-  (CLI.md "Distribution"; the last gate before `tingra-cli` v1 actually ships).
+- [x] **Packaging job** (Developer ID signing, hardened runtime, notarization,
+  zip + stapled `.pkg`) — added 2026-07-09 as `.github/workflows/packaging.yml`,
+  a tag-triggered release job that builds and verifies unsigned without secrets
+  and signs + notarizes + attaches to the release with them (CLI.md
+  "Distribution"). *(Checkbox corrected 2026-07-26: this had been left unticked
+  while the "Release mechanics" entry below recorded the same workflow as
+  landed, and `v0.1.0` shipped through it — signed, notarized, and installable
+  from the tap. It was never the outstanding gate it read as.)*
 
 - [ ] **API-diff job** (`swift package diagnose-api-breaking-changes` on
   `TingraPlugInKit` and `TingraEventBus`) — add when those packages get their

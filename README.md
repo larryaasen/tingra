@@ -460,7 +460,14 @@ so it stays testable with a synthetic clock and a mock renderer (see
   taking: the program is untouched). The step-6 realization of the model
   `ProgramPacer` stood in for — same tick, slots, and timestamps, "take the
   latest frame" replaced by "render the layer tree"; renders a live background
-  canvas from the first tick.
+  canvas from the first tick. It also renders the second bus, **preview** — the
+  staging bus where the next shot is checked before going to air:
+  `setPreview(shotID:)` stages one of the loaded preset's shots (`nil` clears;
+  `previewShotID`/`previewShot` read it back), `previewFrames()` is its own
+  frame stream, and `takePreview(transition:)` promotes it, swapping what was
+  on program onto preview. Preview is a second `ShotRenderer` pass over the
+  same tick's snapshot, run only while a shot is staged and a consumer is
+  attached, and never fed to a sink — nothing on preview reaches viewers.
 - `Project` — the saved document for a whole show: a versioned, plain `Codable`
   value type holding the presets, the stream `destination` (key excluded — it
   lives in secure storage), and each shot's optional default transition. The
@@ -811,10 +818,15 @@ under a fresh id with the source's shot ids preserved — so switching between
 original and copy holds the on-program shot — and a rename that ignores empty
 names), `ProjectStore` (loads and autosaves the `.tingraproject` document under
 `~/Library/Application Support/Tingra`, setting an unreadable file aside rather
-than overwriting it), `ProgramPreviewView` (the Core Image `MTKView` that samples
-the program at display rate), and `ProgramLayout` (the pure, unit-tested
-arrangement that seeds a fresh project's picture-in-picture, display, and camera
-shots). User-facing strings are localized (`Localizable.xcstrings`, en/de/es).
+than overwriting it), `MonitorView` (the Core Image `MTKView` that samples one
+bus at display rate — one instance over program, another over preview; it was
+`ProgramPreviewView` while program was the only bus), and `ProgramLayout` (the
+pure, unit-tested arrangement that seeds a fresh project's picture-in-picture,
+display, and camera shots). The window monitors preview beside program and
+carries a second switcher row that stages a shot on preview, with a Take button
+promoting it (`EngineModel.setPreview(_:)`/`takePreview()`); what is staged is
+session state and never enters the project document.
+User-facing strings are localized (`Localizable.xcstrings`, en/de/es).
 Bundling into a signed, notarized `.app` is deferred packaging, tracked alongside
 the CLI's distribution recipe.
 

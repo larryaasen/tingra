@@ -25,6 +25,7 @@ The compositor does not render when inputs deliver frames; it renders when the *
 - Each tick's deadline is computed as an **absolute position on the master clock** — `T0 + n × frameDuration` — never `previous tick + interval`, so scheduling error cannot accumulate.
 - On each tick, the compositor **pulls the most recent frame each input has produced** (double buffered, latest wins), renders the layer tree of the current shot, and stamps the resulting program frame with the tick's host clock PTS.
 - The program frame then fans out to the sinks (streaming output, recording), all sharing that PTS.
+- **One tick paces both buses.** Since the preview bus landed (ARCHITECTURE.md, "The preview bus"), the same tick also renders the shot staged on **preview** — a second renderer pass over the *same* snapshot of input slots, so preview shows the very frames program is composited from rather than racing it for them, and both carry the tick's PTS. There is still one clock and one pacing scheduler; a second bus is not a second timeline. The preview pass runs only while a shot is staged and a consumer is attached, so an unwatched preview costs nothing, and preview frames go to a monitor only — never to a sink.
 
 ### Why pull, not push
 
