@@ -186,7 +186,8 @@ packages/  TingraComposition      →  TingraPlugInKit + TingraEventBus (the com
 packages/  TingraAudio            →  TingraPlugInKit + TingraEventBus (the mixer: a host-side engine
                                      library beside TingraComposition, same protocol-package-only
                                      rule — testable with a synthetic clock and scripted inputs;
-                                     AVFoundation only for AVAudioConverter intake normalization)
+                                     AVFoundation for AVAudioConverter intake normalization and the
+                                     monitor's audio output; CoreAudio for output-device discovery)
 packages/  TingraOutputPlugIns    →  TingraPlugInKit + TingraEventBus (same seam-only design;
                                      + HaishinKit and its Logboard façade, imported nowhere else)
 packages/  TingraRecordingPlugIns →  TingraPlugInKit + TingraEventBus (same seam-only design;
@@ -215,7 +216,7 @@ The engine is organized as services, each exposing its capabilities through plug
 
 1. **Capture** – inputs, generators, input discovery, device connection/disconnection
 2. **Composition** – presets, shots, layer tree, transitions, Metal renderer, effects, program/preview buses (in `TingraComposition`: the tick-paced compositor, shots/layers, and the Core Image `ShotRenderer` landed at step 6; transitions, effects, and presets follow at step 7)
-3. **Audio** – mixer, channel strips, routing, audio effects (in `TingraAudio`: the clock-paced `AudioMixer` with per-strip level/mute/pan landed at step 7, with routing v1 — strip settings persisted per preset as authored channels feeding the program mix, v1's only bus — landed as document plus app policy, and per-strip audio effect chains landed post-intake/pre-fader against the `TingraPlugInKit` effect seam, with the first-party effects in `TingraEffectPlugIns`; the GLOSSARY.md channel strip is complete)
+3. **Audio** – mixer, channel strips, routing, audio effects (in `TingraAudio`: the clock-paced `AudioMixer` with per-strip level/mute/pan landed at step 7, with routing v1 — strip settings persisted per preset as authored channels feeding the program mix, v1's only bus — landed as document plus app policy, and per-strip audio effect chains landed post-intake/pre-fader against the `TingraPlugInKit` effect seam, with the first-party effects in `TingraEffectPlugIns`; the GLOSSARY.md channel strip is complete. The engine's audio **output** path is the `AudioMonitor` seam and its `AVAudioEngineMonitor` default — the program mix played to the operator's chosen device as a sink on the mixed blocks, never a second bus — with post-fader stereo master metering on the same meter stream)
 4. **Compression** – VideoToolbox compression sessions, rate control, local recording
 5. **Output** – the `StreamingService` seam, with HaishinKit-backed RTMP/SRT implementations
 6. **Plug-in** – discovery, lifecycle, isolation

@@ -596,6 +596,40 @@
         }
       }
     },
+    "Master": {
+      "comment": "Label of the mixer's master strip",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Summe"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Máster"
+          }
+        }
+      }
+    },
+    "Master meter": {
+      "comment": "Help tag and accessibility label of the master's meter",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Summenanzeige"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Medidor máster"
+          }
+        }
+      }
+    },
     "Meter": {
       "comment": "Help tag and accessibility label of a channel strip's meter",
       "localizations": {
@@ -643,6 +677,40 @@
           "stringUnit": {
             "state": "translated",
             "value": "Mezclador"
+          }
+        }
+      }
+    },
+    "Monitor": {
+      "comment": "Label of the master strip's monitor device picker",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Monitor"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Monitor"
+          }
+        }
+      }
+    },
+    "Monitor level": {
+      "comment": "Accessibility label of the master strip's monitor level slider",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Monitorpegel"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nivel de monitorización"
           }
         }
       }
@@ -881,6 +949,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "Sin efectos"
+          }
+        }
+      }
+    },
+    "No monitoring": {
+      "comment": "Monitor device picker entry for monitoring nothing",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kein Monitoring"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sin monitorización"
           }
         }
       }

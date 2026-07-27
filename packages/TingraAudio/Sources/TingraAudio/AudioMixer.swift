@@ -175,7 +175,9 @@ public final class AudioMixer: Sendable {
     /// strip's effect chain, before level, pan, and mute; see
     /// ``MeterReading`` — as a byproduct of the same walk
     /// the tick already makes over every channel's samples, never a second
-    /// pass. Readings are per-block data, so they ride this dedicated stream
+    /// pass. The same block carries the **post-fader** master reading
+    /// (``StereoMeterReading``), measured on the summed program block once
+    /// every strip has contributed. Readings are per-block data, so they ride this dedicated stream
     /// and never the event bus (EVENTS.md, control plane only). A new call
     /// replaces the previous consumer (finishing its stream) — the
     /// one-consumer contract of ``programAudio()``.
@@ -445,7 +447,20 @@ public final class AudioMixer: Sendable {
                         state.channels[id] = channel
                     }
                     let program = state.programContinuation.map { (left, right, $0) }
-                    let meters = state.meterContinuation.map { (MeterBlock(time: tickTime, strips: readings), $0) }
+                    // The master reading is taken here, on the summed block —
+                    // after every strip's chain, level, pan, and mute, which
+                    // is what makes it post-fader. Any master stage added
+                    // later sits upstream of this point by construction.
+                    let meters = state.meterContinuation.map { continuation in
+                        (
+                            MeterBlock(
+                                time: tickTime,
+                                strips: readings,
+                                master: Self.masterReading(left: left, right: right)
+                            ),
+                            continuation
+                        )
+                    }
                     return (program, meters)
                 }
         if let meters = output.meters {
@@ -484,6 +499,37 @@ public final class AudioMixer: Sendable {
             maxMeanSquare = max(maxMeanSquare, sumOfSquares / Float(frames))
         }
         return MeterReading(peak: peak, rms: maxMeanSquare.squareRoot())
+    }
+
+    /// Measures the master's reading over one tick's summed program block:
+    /// each program channel's peak and RMS, kept **separate** rather than
+    /// collapsed the way a strip's channels are — the master is where the
+    /// operator judges the stereo image (ARCHITECTURE.md, "The monitor
+    /// path"). Post-fader by construction: it measures the sum after every
+    /// strip's effect chain, level, pan, and mute.
+    ///
+    /// - Parameters:
+    ///   - left: The left program channel's samples.
+    ///   - right: The right program channel's samples (same length).
+    /// - Returns: The master's stereo reading.
+    static func masterReading(left: [Float], right: [Float]) -> StereoMeterReading {
+        StereoMeterReading(left: channelReading(over: left), right: channelReading(over: right))
+    }
+
+    /// Measures one program channel's peak and RMS over a whole block.
+    /// A block of exact silence reads ``MeterReading/floor``.
+    ///
+    /// - Parameter samples: The channel's samples.
+    /// - Returns: The channel's reading.
+    private static func channelReading(over samples: [Float]) -> MeterReading {
+        guard !samples.isEmpty else { return .floor }
+        var peak: Float = 0
+        var sumOfSquares: Float = 0
+        for sample in samples {
+            peak = max(peak, abs(sample))
+            sumOfSquares += sample * sample
+        }
+        return MeterReading(peak: peak, rms: (sumOfSquares / Float(samples.count)).squareRoot())
     }
 
     /// The per-program-channel gains of a pan position: the equal-power

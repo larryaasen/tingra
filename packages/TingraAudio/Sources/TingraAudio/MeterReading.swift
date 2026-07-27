@@ -45,11 +45,43 @@ public struct MeterReading: Sendable, Equatable {
     }
 }
 
-/// One mix tick's meter readings: every channel strip's ``MeterReading``,
-/// stamped with the tick's master clock time — tick-paced by construction
-/// (CLOCK.md). Delivered on the mixer's single-consumer meter stream
-/// (``AudioMixer/meterReadings()``) and never the event bus: per-block data
-/// is not control-plane traffic (EVENTS.md).
+/// The master's meter measurement over one mix block (GLOSSARY.md,
+/// "Master"): the program mix measured **post-fader** — after every channel
+/// strip's effect chain, level, pan, and mute — one ``MeterReading`` per
+/// program channel.
+///
+/// Stereo where ``MeterReading`` collapses a strip's channels to the hotter
+/// one, and deliberately so: the strip meter's max-across-channels rule
+/// answers "what is this input delivering", where the master is the one
+/// place the operator judges the **stereo image** — a hard-panned strip
+/// leaving one side dead is exactly what this reading must show
+/// (ARCHITECTURE.md, "The monitor path").
+public struct StereoMeterReading: Sendable, Equatable {
+    /// The left program channel's reading.
+    public let left: MeterReading
+
+    /// The right program channel's reading.
+    public let right: MeterReading
+
+    /// The floor: what a silent mix meters as on both channels.
+    public static let floor = StereoMeterReading(left: .floor, right: .floor)
+
+    /// Creates a master reading.
+    ///
+    /// - Parameters:
+    ///   - left: The left program channel's reading.
+    ///   - right: The right program channel's reading.
+    public init(left: MeterReading, right: MeterReading) {
+        self.left = left
+        self.right = right
+    }
+}
+
+/// One mix tick's meter readings: every channel strip's ``MeterReading``
+/// plus the master's, stamped with the tick's master clock time — tick-paced
+/// by construction (CLOCK.md). Delivered on the mixer's single-consumer
+/// meter stream (``AudioMixer/meterReadings()``) and never the event bus:
+/// per-block data is not control-plane traffic (EVENTS.md).
 public struct MeterBlock: Sendable, Equatable {
     /// The mix tick's time on the master clock.
     public let time: CMTime
@@ -59,13 +91,22 @@ public struct MeterBlock: Sendable, Equatable {
     /// ``MeterReading/floor``, so a consumer sees the floor, never a gap.
     public let strips: [InputID: MeterReading]
 
+    /// The program mix's own reading this tick, measured **post-fader** on
+    /// the summed block — the master meter's signal. A tick with nothing
+    /// audible reads ``StereoMeterReading/floor``.
+    public let master: StereoMeterReading
+
     /// Creates a meter block.
     ///
     /// - Parameters:
     ///   - time: The mix tick's time on the master clock.
     ///   - strips: Each strip's reading, keyed by input id.
-    public init(time: CMTime, strips: [InputID: MeterReading]) {
+    ///   - master: The program mix's post-fader reading (defaults to the
+    ///     floor, so a caller constructing a strips-only block — a test
+    ///     fixture — need not state a silent master).
+    public init(time: CMTime, strips: [InputID: MeterReading], master: StereoMeterReading = .floor) {
         self.time = time
         self.strips = strips
+        self.master = master
     }
 }

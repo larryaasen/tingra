@@ -1046,6 +1046,91 @@ or two in the doc that owns them — none need a rewrite.
 
 ## Decisions to settle
 
+- [x] **The monitor path: the buses-and-monitoring slice, second iteration.**
+  Decided and recorded 2026-07-27 (ARCHITECTURE.md, "The monitor path"),
+  **go-ahead given and built the same day** — the decide-then-build rule
+  the effect seam set, applied because this iteration is design-shaped rather
+  than queued plumbing. It is the slice's larger half and genuinely new
+  subsystem territory: `TingraAudio` today only **mixes** and never plays
+  anything out, so the engine's first audio *output* path is a new seam, not a
+  method on the mixer; and **post-fader master metering** belongs here, where
+  the per-strip meter record explicitly left it ("post-fader metering belongs
+  to the master bus, a later monitoring slice").
+
+  **The vocabulary call comes first, because it renames the item.** GLOSSARY.md's
+  **preview** is the staging bus, and Tingra's audio is **not shot-scoped** —
+  authored `AudioChannel`s live on the `Preset`, a `Shot` carries only layers —
+  so staging a shot changes nothing about audio and there is no "audio of the
+  staged shot" to preview. What the docs have called "audio preview" since the
+  2026-07-19 monitoring ruling is the operator hearing the program mix on their
+  own device: **monitoring**. Naming it preview would repeat exactly the error
+  the preview-bus iteration corrected when it renamed `ProgramPreviewView` →
+  `MonitorView`. GLOSSARY.md gains **Monitor** and **Master** (and a sentence
+  on **Meter** splitting the pre-fader strip meter from the post-fader master
+  meter) **with the build**, not before — the FTB record's own convention.
+
+  The eight approved decisions are in ARCHITECTURE.md; the shape in brief:
+  - **The seam is a `TingraAudio`-internal `AudioMonitor` protocol**, an
+    `AVAudioEngine`-backed default behind it — **not** a `TingraPlugInKit`
+    plug-in seam. `ShotRenderer` is the exact precedent, and the asymmetry
+    decides it: promoting a package-internal protocol later is an additive
+    *minor* on the stability contract, where a speculative seam shipped now and
+    found wrong costs a **major** after 1.0.
+  - **The monitor is a sink on the app's existing program-audio tee**, not a
+    second bus and no new `AudioMixer` surface — routing v1's single bus makes
+    a monitor-source selector a control with one entry. Two properties follow
+    by construction: monitoring cannot alter the program mix (pinned in the pan
+    record's byte-identical proof form), and nothing downstream of the monitor
+    exists to reach.
+  - **Bounded backlog, drop at the cap** — the mix tick and the output device
+    are different clocks and *will* diverge, so the monitor caps its scheduled
+    backlog at ≈85 ms and drops past it: the intake queue's one-second cap
+    mirrored at the output, so drift costs a bounded glitch, never unbounded
+    latency between what the operator sees and hears.
+  - **Master metering rides the existing `MeterBlock`** (a `master:
+    StereoMeterReading`), measured on the summed block — **stereo** where the
+    strips are max-across-channels, because the master is where the stereo
+    image is judged. Free interaction: any later master stage (FTB's gain) is
+    upstream of the reading by construction, so the meter reads black as
+    silence with no change — what the FTB record asked this slice to inherit.
+  - **Mute-stops-device is unchanged, and the three-record deferral is
+    *answered*.** The "future monitoring path may keep muted devices running"
+    note was always about **PFL/solo**; monitoring the program mix hears
+    nothing from a muted strip, so the honest-microphone posture stays. Solo is
+    out of this iteration (no GLOSSARY channel-strip slot, and it is the first
+    thing needing a second sum) and is what re-opens the question.
+  - **A master strip at the trailing end of the mixer panel** carries the
+    stereo master meter and the monitor controls. **No master fader** — no
+    master gain exists, and inventing one would pre-empt FTB's master stage.
+    `monitor.started`/`monitor.stopped` are the only events; the level is
+    gesture-rate (`tap`s only). No CLI or MCP surface: the CLI never builds a
+    mixer, and a headless daemon has no headphones.
+
+  **Three call-outs were raised for veto and all three cleared:** the rename
+  (it reclassifies a queued roadmap item), `UserDefaults` (a new mechanism in
+  this repo — there had been no use of it anywhere), and solo/PFL deferred.
+
+  **Built as recorded, with three facts worth keeping.** (1) The master meter
+  needed **no second stream and no second walk** — `MeterBlock` gained
+  `master: StereoMeterReading` with a `.floor` default, so every existing
+  construction site kept compiling, and the reading comes off the `left`/
+  `right` arrays the tick had already summed. (2) The seam's `play(_:)` takes
+  `CapturedAudio`, the pipeline's own currency, which is what lets the monitor
+  be a leaf on the existing tee instead of needing its own feed;
+  `AVAudioEngineMonitor` is an **actor** rather than a `Mutex`-guarded
+  `Sendable` class like `AudioMixer`, because `AVAudioEngine` and its nodes are
+  non-`Sendable` reference types — actor isolation is the seam's mutual
+  exclusion, so **no `@unchecked Sendable` escape was needed anywhere**.
+  (3) The app's two meters now share one `MeterCapsule` view, so the scale,
+  the zone boundaries, and the ballistics cannot drift between two meters an
+  operator reads side by side. `AVAudioEngineMonitor` is **seam-only** and not
+  unit-tested (the `CameraInput` policy); the tests drive a `RecordingMonitor`
+  double. Tests: TingraAudio 31 → 48, `apps/tingra` 101 → 107 — **704 across
+  13 targets**, warning-clean, `check-format` clean. `integration-test.sh` was
+  **not** re-run: the CLI never builds a mixer and `programAudio()` is
+  byte-for-byte what it was, so the streamed path is untouched.
+  **Multiview remains** — the slice's last iteration.
+
 - [ ] **Fade to black (FTB): the program master stage.** Raised 2026-07-26;
   nothing exists today — no `Transition` case, no compositor or mixer stage, no
   GLOSSARY.md term. Every switcher has it and Tingra has no way to take the
@@ -1205,6 +1290,9 @@ or two in the doc that owns them — none need a rewrite.
   at **37 checks across 11 scenarios** (the streamed path is untouched: the
   CLI paces with `ProgramPacer`, not the compositor).
   **Audio preview and multiview remain** — the slice's other two iterations.
+  *(The second was decided 2026-07-27 and renamed in the doing: it is **the
+  monitor path**, not "audio preview" — see the entry at the top of this
+  section and ARCHITECTURE.md, "The monitor path".)*
 
 - [x] **The effect seam shape: one seam, two media protocols.** Decided
   2026-07-19 (recorded in ARCHITECTURE.md, "The effect seam"; **flagged for

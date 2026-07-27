@@ -48,6 +48,94 @@ struct MixerView: View {
                     stripRow(strip)
                 }
             }
+
+            Divider()
+            masterRow
+        }
+    }
+
+    /// The master strip: the console's master section, after the input
+    /// strips (GLOSSARY.md, "Master"). It carries the **post-fader** stereo
+    /// master meter and the monitor controls — the device the operator
+    /// listens through and their own listening level.
+    ///
+    /// **There is deliberately no master fader**: the engine has no master
+    /// gain, and the monitor level is not one — it scales only what the
+    /// operator hears, never the program mix, the stream, or the recording
+    /// (ARCHITECTURE.md, "The monitor path").
+    private var masterRow: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "waveform")
+                .foregroundStyle(.secondary)
+
+            Text("Master", comment: "Label of the mixer's master strip")
+                .frame(width: 180, alignment: .leading)
+
+            MasterMeter(relay: model.meterRelay)
+
+            Divider().frame(height: 16)
+
+            Image(systemName: model.isMonitoring ? "headphones" : "headphones.slash")
+                .foregroundStyle(model.isMonitoring ? .primary : .secondary)
+
+            Picker(selection: monitorDeviceBinding) {
+                Text("No monitoring", comment: "Monitor device picker entry for monitoring nothing")
+                    .tag(String?.none)
+                ForEach(model.monitorDevices) { device in
+                    Text(device.name).tag(String?.some(device.uid))
+                }
+            } label: {
+                Text("Monitor", comment: "Label of the master strip's monitor device picker")
+            }
+            .labelsHidden()
+            .frame(width: 180)
+            .help(Text("Monitor", comment: "Label of the master strip's monitor device picker"))
+            .accessibilityLabel(
+                Text("Monitor", comment: "Label of the master strip's monitor device picker"))
+
+            Slider(value: monitorLevelBinding, in: 0...1) { editing in
+                guard !editing else { return }
+                model.eventBus.tap(
+                    "monitorLevel.slider",
+                    domain: .audio,
+                    params: ["value": .double(model.monitorLevel)]
+                )
+            }
+            .frame(width: 110)
+            .disabled(model.monitorDeviceUID == nil)
+            .accessibilityLabel(
+                Text("Monitor level", comment: "Accessibility label of the master strip's monitor level slider"))
+
+            Text(model.monitorLevel.formatted(.percent.precision(.fractionLength(0))))
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+                .frame(width: 44, alignment: .trailing)
+        }
+        .controlSize(.small)
+    }
+
+    /// A binding to the monitored device, reporting the picker's `tap` before
+    /// the model opens or closes the output path.
+    private var monitorDeviceBinding: Binding<String?> {
+        Binding {
+            model.monitorDeviceUID
+        } set: { newValue in
+            model.eventBus.tap(
+                "monitorDevice.picker",
+                domain: .audio,
+                params: ["device": .string(newValue ?? "none")]
+            )
+            Task { await model.setMonitorDevice(newValue) }
+        }
+    }
+
+    /// A binding to the monitor level, applied as it drags. Gesture-rate, so
+    /// the slider's drag-end `tap` carries the observability.
+    private var monitorLevelBinding: Binding<Double> {
+        Binding {
+            model.monitorLevel
+        } set: { newValue in
+            Task { await model.setMonitorLevel(newValue) }
         }
     }
 

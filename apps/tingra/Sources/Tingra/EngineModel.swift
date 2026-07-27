@@ -163,6 +163,28 @@ final class EngineModel {
     /// (ARCHITECTURE.md, "Audio effect chains").
     private(set) var audioEffectChoices: [AudioEffectChoice] = []
 
+    /// The audio output devices the monitor picker offers, refreshed from
+    /// the monitor's device-update stream as devices come and go — never
+    /// polled (CLAUDE.md).
+    private(set) var monitorDevices: [AudioMonitorDevice] = []
+
+    /// The device the operator monitors through, or nil for no monitoring —
+    /// the master strip's picker. Nil on a fresh install: monitoring the
+    /// program mix through speakers beside a live microphone is a feedback
+    /// howl, so it is opt-in (ARCHITECTURE.md, "The monitor path").
+    private(set) var monitorDeviceUID: String?
+
+    /// The monitor level — the operator's own listening volume. It scales
+    /// only what the monitor plays and never the program mix, so moving it
+    /// cannot change what viewers hear.
+    private(set) var monitorLevel: Double = MonitorPreferences.defaultLevel
+
+    /// Whether the monitor is currently playing. A selected device that is
+    /// not connected leaves this false while keeping the selection, so the
+    /// master strip can show the difference between "not monitoring" and
+    /// "monitoring through a device that has gone away".
+    private(set) var isMonitoring = false
+
     /// The registered video effects the layer editor's Add Effect menu
     /// offers, in the registry's stable listing order — the video mirror
     /// of ``audioEffectChoices`` (ARCHITECTURE.md, "Per-layer video
@@ -401,6 +423,24 @@ final class EngineModel {
     /// compositor (GLOSSARY.md, "Mixer"; ARCHITECTURE.md, "The audio mixer").
     @ObservationIgnored private lazy var mixer = AudioMixer(clock: clock, eventBus: eventBus)
 
+    /// The monitor: the engine's audio output path, playing the program mix
+    /// to the operator's chosen device (GLOSSARY.md, "Monitor"). A **sink**
+    /// on the program-audio drain's tee, never a second bus — so nothing it
+    /// does can change what viewers hear (ARCHITECTURE.md, "The monitor
+    /// path"). Nothing opens until a device is chosen.
+    @ObservationIgnored private let monitor: any AudioMonitor
+
+    /// Where the monitor's device and level persist: machine-local
+    /// preferences, not the project document (a project carried to another
+    /// Mac would name a device that does not exist) and not session state
+    /// (headphones do not change between launches).
+    @ObservationIgnored private let monitorPreferences: MonitorPreferences
+
+    /// The task draining the monitor's device-list updates, so a device
+    /// connected or disconnected reaches the picker as an event rather than
+    /// a poll (CLAUDE.md).
+    @ObservationIgnored private var monitorDeviceTask: Task<Void, Never>?
+
     /// The console sink's drain task, retained so the sink keeps consuming
     /// the bus for the app's lifetime.
     @ObservationIgnored private var logSinkTask: Task<Void, Never>?
@@ -471,7 +511,21 @@ final class EngineModel {
 
     /// Creates the model. The engine boots in ``start()`` when the window
     /// appears, not here.
-    init() {}
+    ///
+    /// - Parameters:
+    ///   - monitor: The audio output path the operator monitors through
+    ///     (the real `AVAudioEngine`-backed one by default; a double in
+    ///     tests, so no audio hardware is needed).
+    ///   - monitorPreferences: Where the monitor device and level persist.
+    init(
+        monitor: any AudioMonitor = AVAudioEngineMonitor(),
+        monitorPreferences: MonitorPreferences = MonitorPreferences()
+    ) {
+        self.monitor = monitor
+        self.monitorPreferences = monitorPreferences
+        self.monitorDeviceUID = monitorPreferences.deviceUID
+        self.monitorLevel = monitorPreferences.level
+    }
 
     /// Boots the engine: attaches the log sink, activates the capture and
     /// generator plug-ins, discovers inputs, starts the compositor, and
@@ -563,25 +617,33 @@ final class EngineModel {
 
         // The program mix runs from boot like the compositor — a live canvas
         // of silence until a strip's device delivers. Its one drain tees each
-        // mixed block into the session while a stream is live (the audio
-        // mirror of the program-frame drain above; no audio preview yet).
+        // mixed block into the session while a stream is live and into the
+        // monitor while the operator is listening (the audio mirror of the
+        // program-frame drain above). Both are leaves on the same tee, so
+        // neither can alter the mix the other receives.
         let programAudio = mixer.programAudio()
+        let monitor = self.monitor
         mixer.start()
         programAudioTask = Task { [weak self] in
             for await block in programAudio {
                 self?.streamAudioContinuation?.yield(block)
+                await monitor.play(block)
             }
         }
 
-        // The meters ride the same mix tick: one pre-fader reading per block
-        // into the relay the strip meters sample at display cadence —
-        // per-block data, never the event bus (EVENTS.md).
+        // The meters ride the same mix tick: one pre-fader reading per strip
+        // and the post-fader master reading per block, into the relay the
+        // meters sample at display cadence — per-block data, never the event
+        // bus (EVENTS.md).
         let meters = mixer.meterReadings()
         meterTask = Task { [weak self] in
             for await block in meters {
                 self?.meterRelay.latest = block.strips
+                self?.meterRelay.master = block.master
             }
         }
+
+        await startMonitorDeviceUpdates()
 
         await reconfigure()
         await reconfigureAudio()
@@ -760,6 +822,116 @@ final class EngineModel {
         mixer.setMuted(isMuted, forInput: id)
         scheduleAutosave()
         await reconfigureAudio()
+    }
+
+    // MARK: The monitor
+
+    /// Reads the current output devices and begins draining the monitor's
+    /// device-update stream, then opens the persisted device if one is
+    /// selected. Called once at boot.
+    private func startMonitorDeviceUpdates() async {
+        let updates = await monitor.deviceUpdates()
+        monitorDevices = await monitor.availableDevices()
+        monitorDeviceTask = Task { [weak self] in
+            for await devices in updates {
+                await self?.monitorDevicesChanged(devices)
+            }
+        }
+        await monitor.setLevel(monitorLevel)
+        if let monitorDeviceUID {
+            await openMonitor(deviceUID: monitorDeviceUID)
+        }
+    }
+
+    /// Applies a device-list change from Core Audio: the picker refreshes,
+    /// and if the device being monitored through has gone away, monitoring
+    /// stops while **keeping the selection** — the device reappearing
+    /// resumes it, the dormant-strip semantic one path over. A device coming
+    /// and going is a normal event, never an error (CLAUDE.md).
+    ///
+    /// - Parameter devices: The system's output devices now.
+    private func monitorDevicesChanged(_ devices: [AudioMonitorDevice]) async {
+        monitorDevices = devices
+        guard let uid = monitorDeviceUID else { return }
+        let present = devices.contains { $0.uid == uid }
+        if present, !isMonitoring {
+            await openMonitor(deviceUID: uid)
+        } else if !present, isMonitoring {
+            await monitor.stop()
+            isMonitoring = false
+            eventBus.event(
+                "monitor.stopped",
+                domain: .audio,
+                params: ["device": .string(uid), "reason": .string("deviceLost")]
+            )
+        }
+    }
+
+    /// Selects the device the operator monitors through, or nil to stop
+    /// monitoring. The choice persists in machine-local preferences, never
+    /// in the project document.
+    ///
+    /// - Parameter uid: The device's stable UID, or nil for no monitoring.
+    func setMonitorDevice(_ uid: String?) async {
+        guard uid != monitorDeviceUID else { return }
+        monitorDeviceUID = uid
+        monitorPreferences.deviceUID = uid
+        guard let uid else {
+            guard isMonitoring else { return }
+            await monitor.stop()
+            isMonitoring = false
+            eventBus.event("monitor.stopped", domain: .audio, params: ["reason": .string("deselected")])
+            return
+        }
+        await openMonitor(deviceUID: uid)
+    }
+
+    /// Opens the monitor on a device, reporting the outcome. A device that
+    /// will not open is a recoverable error: the selection is kept (the
+    /// operator may unblock it), and the program mix, the stream, and the
+    /// recording are untouched — nothing downstream of the mix is involved.
+    ///
+    /// - Parameter deviceUID: The device's stable UID.
+    private func openMonitor(deviceUID: String) async {
+        guard let device = monitorDevices.first(where: { $0.uid == deviceUID }) else {
+            // Not connected right now: keep the selection dormant and stay
+            // quiet — the device-update stream resumes monitoring if it
+            // returns.
+            isMonitoring = false
+            return
+        }
+        do {
+            try await monitor.start(device: device, format: MixFormat())
+            isMonitoring = true
+            eventBus.event(
+                "monitor.started",
+                domain: .audio,
+                params: ["device": .string(device.uid), "deviceName": .string(device.name)]
+            )
+        } catch {
+            isMonitoring = false
+            eventBus.error(
+                "monitor.start",
+                domain: .audio,
+                params: [
+                    "device": .string(device.uid),
+                    "error": .string(String(describing: error)),
+                ]
+            )
+        }
+    }
+
+    /// Sets the monitor level — the operator's listening volume. Gesture-rate
+    /// like the strip faders, so it reports no event (the `setLevel` rule);
+    /// the slider's drag-end `tap` carries the observability. It scales only
+    /// what the monitor plays: the program mix, the stream, and the
+    /// recording are provably unaffected.
+    ///
+    /// - Parameter level: The linear gain, `0`...`1`.
+    func setMonitorLevel(_ level: Double) async {
+        monitorLevel = level
+        monitorPreferences.level = level
+        await monitor.setLevel(level)
     }
 
     /// Applies the current strips to the audio engine: starts newly unmuted
@@ -1907,6 +2079,10 @@ final class EngineModel {
         programAudioTask = nil
         meterTask?.cancel()
         meterTask = nil
+        monitorDeviceTask?.cancel()
+        monitorDeviceTask = nil
+        await monitor.stop()
+        isMonitoring = false
         compositor.stop()
         mixer.stop()
         for input in activeInputs.values {

@@ -42,13 +42,17 @@ A project is the saved file for an entire show. A project contains presets. A pr
 
 **Multiview** — a single view that tiles program, preview, and all inputs at once for monitoring.
 
+**Monitor** — an operator-facing view or output of a bus: the on-screen program and preview monitors, and the **audio monitor** — the program mix played to an output device the operator chooses, at a monitor level, so they hear what viewers hear. Nothing a monitor shows or plays reaches viewers, and no monitor control changes what does: the monitor level is the operator's own listening volume, never a stage of the program.
+
+**Master** — the program mix's final stage: what leaves the mixer once every channel strip has contributed. V1 has one bus, so the master *is* the program mix; the master meter reads it post-fader.
+
 ## Audio
 
 **Mixer** — the audio surface of the engine: combines every audio input into the program mix.
 
 **Channel strip** — one input's slot in the mixer: its level, mute, pan, meter, routing, and audio effect chain.
 
-**Meter** — a channel strip's level display: the strip's signal measured at each mix tick — the block's peak and RMS — shown beside the strip's controls. Metering is pre-fader: the meter reads what the strip delivers to the fader — after intake and the strip's effect chain, before its level, pan, and mute.
+**Meter** — a level display measured at each mix tick: the block's peak and RMS. A **strip meter** is **pre-fader** — it reads what the strip delivers to the fader, after intake and the strip's effect chain but before its level, pan, and mute — so it answers "what is this input delivering" and holds steady while the operator rides the fader. The **master meter** is **post-fader** and stereo: it reads the program mix itself, after every strip's chain, level, pan, and mute, so it shows what is actually going out and reveals the stereo image a hard-panned strip leaves behind.
 
 **Routing** — where a channel strip's signal goes: the bus its audio feeds. V1 has exactly one bus — the program mix — so a strip's routing is its membership in the preset's audio configuration: the authored channels, persisted with their level, pan, and mute, that the mixer rebuilds its strips from. Sends and additional buses are later.
 

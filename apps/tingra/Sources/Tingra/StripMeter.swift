@@ -23,6 +23,11 @@ final class MeterRelay {
     /// the first tick.
     var latest: [InputID: MeterReading] = [:]
 
+    /// The most recent mix tick's **post-fader** master reading — what the
+    /// master meter draws (GLOSSARY.md, "Master"). At the floor before the
+    /// first tick.
+    var master: StereoMeterReading = .floor
+
     /// Creates an empty relay.
     init() {}
 }
@@ -46,6 +51,58 @@ struct StripMeter: View {
     /// The strip's input id — the relay key.
     let id: InputID
 
+    /// The meter body: one capsule over the strip's pre-fader reading.
+    var body: some View {
+        MeterCapsule(height: 6) { relay.latest[id] ?? .floor }
+            .frame(width: 72)
+            .help(Text("Meter", comment: "Help tag and accessibility label of a channel strip's meter"))
+            .accessibilityLabel(
+                Text("Meter", comment: "Help tag and accessibility label of a channel strip's meter"))
+    }
+}
+
+/// The master's meter (GLOSSARY.md, "Master"): two capsules showing the
+/// program mix **post-fader** — after every strip's effect chain, level,
+/// pan, and mute — one per program channel.
+///
+/// Stereo where ``StripMeter`` is a single bar, because the master is where
+/// the operator judges the stereo image: a hard-panned strip leaving one
+/// side dead is exactly what this meter exists to reveal (ARCHITECTURE.md,
+/// "The monitor path"). Display only, like the strip meter — no `tap`s,
+/// nothing to click.
+struct MasterMeter: View {
+    /// The relay the meter samples.
+    let relay: MeterRelay
+
+    /// The master meter body: the left channel above the right.
+    var body: some View {
+        VStack(spacing: 3) {
+            MeterCapsule(height: 5) { relay.master.left }
+            MeterCapsule(height: 5) { relay.master.right }
+        }
+        .frame(width: 72)
+        .help(Text("Master meter", comment: "Help tag and accessibility label of the master's meter"))
+        .accessibilityLabel(
+            Text("Master meter", comment: "Help tag and accessibility label of the master's meter"))
+    }
+}
+
+/// One meter capsule: an RMS bar over broadcast green/yellow/red zones with
+/// a decayed peak marker, drawn at display cadence.
+///
+/// Shared by ``StripMeter`` and ``MasterMeter`` so the scale, the zone
+/// boundaries, and the ballistics can never drift between the two meters an
+/// operator reads side by side. The reading arrives through a closure the
+/// capsule calls **inside** its `TimelineView`, so readings never pass
+/// through SwiftUI observation — the `MTKView` preview's rule applied to
+/// audio display (ARCHITECTURE.md, "Per-strip meters").
+struct MeterCapsule: View {
+    /// The capsule's height in points.
+    let height: CGFloat
+
+    /// The latest reading, sampled once per drawn frame.
+    let reading: @MainActor () -> MeterReading
+
     /// The draw-time ballistics state (a plain class held per view
     /// identity, deliberately unobserved).
     @State private var ballistics = MeterBallistics()
@@ -62,11 +119,10 @@ struct StripMeter: View {
         .init(color: .red, location: 1),
     ])
 
-    /// The meter body: the capsule, redrawn at display cadence off the
-    /// relay's latest reading.
+    /// The capsule, redrawn at display cadence off the latest reading.
     var body: some View {
         TimelineView(.animation) { timeline in
-            let smoothed = ballistics.smoothed(relay.latest[id] ?? .floor, at: timeline.date)
+            let smoothed = ballistics.smoothed(reading(), at: timeline.date)
             Canvas { context, size in
                 let track = Path(
                     roundedRect: CGRect(origin: .zero, size: size), cornerRadius: size.height / 2)
@@ -91,9 +147,7 @@ struct StripMeter: View {
                 }
             }
         }
-        .frame(width: 72, height: 6)
-        .help(Text("Meter", comment: "Help tag and accessibility label of a channel strip's meter"))
-        .accessibilityLabel(Text("Meter", comment: "Help tag and accessibility label of a channel strip's meter"))
+        .frame(height: height)
     }
 }
 

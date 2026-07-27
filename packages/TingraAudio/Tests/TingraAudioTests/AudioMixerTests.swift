@@ -208,6 +208,31 @@ private struct TruncatingEffect: AudioEffect {
     }
 }
 
+/// An ``AudioMonitor`` double recording what it was handed: the seam stands
+/// in for the real `AVAudioEngine` path so the tee can be tested with no
+/// audio hardware — exactly what the seam exists for.
+private actor RecordingMonitor: AudioMonitor {
+    /// Every block handed to ``play(_:)``, in order.
+    private(set) var played: [CapturedAudio] = []
+
+    /// The last level set.
+    private(set) var level: Double = 1
+
+    func availableDevices() async -> [AudioMonitorDevice] { [] }
+
+    func deviceUpdates() async -> AsyncStream<[AudioMonitorDevice]> {
+        AsyncStream { $0.finish() }
+    }
+
+    func start(device: AudioMonitorDevice, format: MixFormat) async throws {}
+
+    func stop() async {}
+
+    func play(_ audio: CapturedAudio) async { played.append(audio) }
+
+    func setLevel(_ level: Double) async { self.level = level }
+}
+
 @Suite("AudioMixer")
 struct AudioMixerTests {
     /// The mix format the tests run at: the production rate with the
@@ -794,5 +819,172 @@ struct AudioMixerTests {
         let channels = try #require(samples(of: block, sampleRate: format.sampleRate))
         #expect(abs((channels[0].first ?? 0) - 0.5) < 0.0001)
         #expect(channels[0] == channels[1])
+    }
+
+    // MARK: The master meter
+
+    @Test("the master meters the summed program block — a constant mix reads its known peak and RMS")
+    func masterMetersSummedBlock() async throws {
+        let audio = try #require(
+            makeAudio(channels: [[Float](repeating: 0.5, count: format.blockFrames)], sampleRate: format.sampleRate))
+        let mixer = makeMixer(tickTimes: ticks(1))
+        mixer.setChannelStrips([ChannelStrip(input: FakeAudioInput(id: "mic", buffers: [audio]))])
+        await letFillTasksDrain()
+
+        let meters = mixer.meterReadings()
+        mixer.start()
+        let block = try #require(await collectMeters(meters, limit: 1).first)
+
+        for reading in [block.master.left, block.master.right] {
+            #expect(abs(reading.peak - 0.5) < 0.0001)
+            #expect(abs(reading.rms - 0.5) < 0.0001)
+        }
+    }
+
+    @Test("master metering is post-fader where strip metering is pre-fader — the fader moves one and not the other")
+    func masterIsPostFaderWhereStripIsPreFader() async throws {
+        let audio = try #require(
+            makeAudio(channels: [[Float](repeating: 0.5, count: format.blockFrames)], sampleRate: format.sampleRate))
+        let input = FakeAudioInput(id: "mic", buffers: [audio])
+        let mixer = makeMixer(tickTimes: ticks(1))
+        // Half the fader: the strip meter must not notice, the master must.
+        mixer.setChannelStrips([ChannelStrip(input: input, level: 0.5)])
+        await letFillTasksDrain()
+
+        let meters = mixer.meterReadings()
+        mixer.start()
+        let block = try #require(await collectMeters(meters, limit: 1).first)
+
+        let strip = try #require(block.strips[input.id])
+        #expect(abs(strip.peak - 0.5) < 0.0001)
+        #expect(abs(block.master.left.peak - 0.25) < 0.0001)
+    }
+
+    @Test("a muted strip reads on its own meter but leaves the master at the floor")
+    func mutedStripLeavesMasterAtFloor() async throws {
+        let audio = try #require(
+            makeAudio(channels: [[Float](repeating: 0.5, count: format.blockFrames)], sampleRate: format.sampleRate))
+        let input = FakeAudioInput(id: "mic", buffers: [audio])
+        let mixer = makeMixer(tickTimes: ticks(1))
+        mixer.setChannelStrips([ChannelStrip(input: input, isMuted: true)])
+        await letFillTasksDrain()
+
+        let meters = mixer.meterReadings()
+        mixer.start()
+        let block = try #require(await collectMeters(meters, limit: 1).first)
+
+        let strip = try #require(block.strips[input.id])
+        #expect(abs(strip.peak - 0.5) < 0.0001)
+        #expect(block.master == .floor)
+    }
+
+    @Test("the master reading is stereo: a hard-panned strip leaves the far channel at the floor")
+    func masterReadingIsStereo() async throws {
+        let audio = try #require(
+            makeAudio(channels: [[Float](repeating: 0.5, count: format.blockFrames)], sampleRate: format.sampleRate))
+        let mixer = makeMixer(tickTimes: ticks(1))
+        mixer.setChannelStrips([ChannelStrip(input: FakeAudioInput(id: "mic", buffers: [audio]), pan: -1)])
+        await letFillTasksDrain()
+
+        let meters = mixer.meterReadings()
+        mixer.start()
+        let block = try #require(await collectMeters(meters, limit: 1).first)
+
+        // Hard left at the equal-power law's √2 gain; the right side is the
+        // dead channel the master meter exists to reveal.
+        #expect(abs(block.master.left.peak - Float(0.5 * 2.0.squareRoot())) < 0.0001)
+        #expect(block.master.right == .floor)
+    }
+
+    @Test("a silent mix meters the master at the floor, one block per tick stamped with the tick's time")
+    func silentMixMastersAtFloor() async throws {
+        let tickTimes = ticks(2)
+        let mixer = makeMixer(tickTimes: tickTimes)
+
+        let meters = mixer.meterReadings()
+        mixer.start()
+        let blocks = await collectMeters(meters, limit: 2)
+
+        #expect(blocks.map(\.time) == tickTimes)
+        #expect(blocks.allSatisfy { $0.master == .floor })
+    }
+
+    // MARK: The monitor as a leaf on the tee
+
+    @Test("a monitor on the tee hears exactly the blocks the program stream carried, in order")
+    func monitorHearsTheProgramBlocks() async throws {
+        let audio = try #require(
+            makeAudio(channels: [[Float](repeating: 0.5, count: format.blockFrames)], sampleRate: format.sampleRate))
+        let mixer = makeMixer(tickTimes: ticks(2))
+        mixer.setChannelStrips([ChannelStrip(input: FakeAudioInput(id: "mic", buffers: [audio]))])
+        await letFillTasksDrain()
+
+        let monitor = RecordingMonitor()
+        let program = mixer.programAudio()
+        mixer.start()
+        // The app's tee: one drain, the monitor a leaf on it.
+        var streamed: [CapturedAudio] = []
+        for await block in program {
+            streamed.append(block)
+            await monitor.play(block)
+            if streamed.count == 2 { break }
+        }
+
+        let heard = await monitor.played
+        #expect(heard.count == streamed.count)
+        for (played, sent) in zip(heard, streamed) {
+            #expect(played.presentationTime == sent.presentationTime)
+            let playedSamples = try #require(samples(of: played, sampleRate: format.sampleRate))
+            let sentSamples = try #require(samples(of: sent, sampleRate: format.sampleRate))
+            #expect(playedSamples == sentSamples)
+        }
+    }
+
+    @Test("monitoring cannot alter the program mix: the same mix at any monitor level, and with no monitor")
+    func monitoringNeverAltersTheMix() async throws {
+        /// One run of the mix, optionally teed into a monitor at a level.
+        func mixedSamples(monitorLevel: Double?) async throws -> [[Float]] {
+            let audio = try #require(
+                makeAudio(
+                    channels: [[Float](repeating: 0.5, count: format.blockFrames)], sampleRate: format.sampleRate))
+            let mixer = makeMixer(tickTimes: ticks(1))
+            mixer.setChannelStrips([ChannelStrip(input: FakeAudioInput(id: "mic", buffers: [audio]), pan: 0.25)])
+            await letFillTasksDrain()
+
+            let monitor: RecordingMonitor? = monitorLevel == nil ? nil : RecordingMonitor()
+            if let monitor, let monitorLevel {
+                await monitor.setLevel(monitorLevel)
+            }
+            let program = mixer.programAudio()
+            mixer.start()
+            let block = try #require(await collect(program, limit: 1).first)
+            await monitor?.play(block)
+            return try #require(samples(of: block, sampleRate: format.sampleRate))
+        }
+
+        let unmonitored = try await mixedSamples(monitorLevel: nil)
+        for level in [0.0, 0.5, 1.0] {
+            #expect(try await mixedSamples(monitorLevel: level) == unmonitored)
+        }
+    }
+
+    @Test("two strips sum on the master — the master reads the mix, not the loudest strip")
+    func masterReadsTheSum() async throws {
+        let quiet = try #require(
+            makeAudio(channels: [[Float](repeating: 0.25, count: format.blockFrames)], sampleRate: format.sampleRate))
+        let loud = try #require(
+            makeAudio(channels: [[Float](repeating: 0.5, count: format.blockFrames)], sampleRate: format.sampleRate))
+        let quietInput = FakeAudioInput(id: "quiet", buffers: [quiet])
+        let loudInput = FakeAudioInput(id: "loud", buffers: [loud])
+        let mixer = makeMixer(tickTimes: ticks(1))
+        mixer.setChannelStrips([ChannelStrip(input: quietInput), ChannelStrip(input: loudInput)])
+        await letFillTasksDrain()
+
+        let meters = mixer.meterReadings()
+        mixer.start()
+        let block = try #require(await collectMeters(meters, limit: 1).first)
+
+        #expect(abs(block.master.left.peak - 0.75) < 0.0001)
+        #expect(try #require(block.strips[loudInput.id]).peak < block.master.left.peak)
     }
 }

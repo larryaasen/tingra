@@ -589,12 +589,42 @@ with a synthetic clock and scripted inputs (see [ARCHITECTURE.md](docs/ARCHITECT
   and mute): the block's peak
   and its RMS (the hotter channel's, for stereo), as linear magnitudes;
   `floor` is what silence meters as.
+- `StereoMeterReading` — the master's measurement over one mix block: a
+  `MeterReading` per program channel, measured **post-fader** on the summed
+  mix. Stereo where a strip's reading collapses to its hotter channel, because
+  the master is where the operator judges the stereo image; `floor` is silence
+  on both channels.
 - `MeterBlock` — one mix tick's readings: every live strip's `MeterReading`
   keyed by input id (a strip with nothing queued reads the floor, never a
-  gap), stamped with the tick's master clock time.
+  gap) plus the post-fader `master` reading, stamped with the tick's master
+  clock time.
 - `MixFormat` — the program mix's audio geometry: the sample rate and the block
   size each mix tick produces (48 kHz, 1024-frame blocks by default; the mix is
   always stereo float32).
+- `AudioMonitor` — the monitor seam: the engine's audio **output** path, the
+  program mix played to an output device the operator chooses (GLOSSARY.md,
+  "Monitor"). A **sink**, not a bus — it consumes blocks the mixer has already
+  produced, so nothing it does can change what viewers hear, and the monitor
+  level scales only what is played out. `availableDevices()` lists the output
+  devices and `deviceUpdates()` streams the list as devices come and go (never
+  polled); `start(device:format:)`/`stop()` open and close the path,
+  `play(_:)` plays one mixed block, and `setLevel(_:)` sets the operator's
+  listening volume.
+- `AudioMonitorDevice` — one audio output device the operator can monitor
+  through, identified by its stable Core Audio UID (the persisted identity)
+  with its user-facing name.
+- `AudioMonitorError` — what can go wrong opening a monitor device
+  (`deviceNotFound`, `couldNotStart`), every case recoverable: a device that
+  will not open leaves the program mix, the stream, and the recording
+  untouched.
+- `AVAudioEngineMonitor` — the first-party `AudioMonitor`: mixed blocks
+  scheduled onto an `AVAudioPlayerNode` inside an `AVAudioEngine` bound to the
+  chosen device, with output devices discovered through the Core Audio HAL.
+  An actor, so the non-`Sendable` engine needs no `@unchecked Sendable`
+  escape. Because the mix tick and the output device run on different clocks,
+  it caps its scheduled backlog (≈85 ms) and **drops** past it rather than
+  letting monitor latency grow — the mixer's intake cap mirrored at the
+  output. Seam-only, like the capture inputs' hardware paths.
 
 ### `packages/TingraEffectPlugIns`
 
@@ -788,7 +818,11 @@ panel: one channel strip per authored audio channel and per discovered audio
 input, each with a mute toggle, a meter, a live level slider, a pan slider
 that recenters on double-click, and an Effects button badged with the chain's
 length; a strip whose device is absent stays on the panel, marked not
-connected, its settings kept for the device's return),
+connected, its settings kept for the device's return — closing with the
+**master strip**, the console's master section: the post-fader stereo master
+meter beside the monitor device picker and the operator's own monitor level.
+There is deliberately no master fader — the engine has no master gain, and the
+monitor level scales only what the operator hears),
 `EffectChainView` (one strip's audio effect chain, in a popover: slots in
 signal order with Move Up / Move Down / Remove, an Add Effect menu over every
 registered audio effect, and a slider per parameter the effect declares —
@@ -800,12 +834,22 @@ first in document order, new devices appended muted — falling back to the
 seeding policy, first input unmuted at unity, the rest muted, every strip
 centered, when nothing is authored; strip edits sync back into the active
 preset and autosave debounced like shot edits), `StripMeter` (one
-strip's meter: a compact capsule showing the strip's pre-fader signal — an RMS
-bar over broadcast green/yellow/red zones with a decayed peak marker — drawn at
-display cadence in a `TimelineView` sampling the shared `MeterRelay` the
-model's meter drain fills, so readings never churn SwiftUI observation, with
-unit-tested `MeterBallistics`: instant attack, 20 dB/s decay on a −60…0 dBFS
-scale), `LayerTreeEditorView` (the layer-tree editor:
+strip's meter: a compact capsule showing the strip's pre-fader signal),
+`MasterMeter` (the master's meter: two capsules showing the program mix
+post-fader, one per program channel — stereo because the master is where the
+operator judges the stereo image), `MeterCapsule` (the one capsule both
+meters draw, so the scale, the zone boundaries, and the ballistics can never
+drift between two meters read side by side — an RMS bar over broadcast
+green/yellow/red zones with a decayed peak marker, drawn at display cadence in
+a `TimelineView` sampling the shared `MeterRelay` the model's meter drain
+fills, so readings never churn SwiftUI observation), `MeterBallistics` (the
+unit-tested draw-time ballistics: instant attack, 20 dB/s decay on a −60…0
+dBFS scale), `MonitorPreferences` (where the monitor device and level persist:
+machine-local `UserDefaults`, not the project document — which headphones are
+plugged into this Mac is not part of the show — and not session state, since
+headphones do not change between launches; monitoring starts off on a fresh
+install, because monitoring through speakers beside a live microphone is a
+feedback howl), `LayerTreeEditorView` (the layer-tree editor:
 add a layer bound to any discovered camera or display, remove, reorder, and
 adjust a layer's frame and opacity with live sliders — every edit on program at
 the next tick, and autosaved to the project file), `LayerTreeEdit` (the pure,
