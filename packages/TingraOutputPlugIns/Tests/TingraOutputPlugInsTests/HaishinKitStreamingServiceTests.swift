@@ -100,7 +100,7 @@ struct HaishinKitStreamingServiceTests {
             videoBitsPerSecond: 6_000_000,
             keyframeInterval: 4
         )
-        let settings = HaishinKitStreamingService.videoSettings(for: configuration)
+        let settings = HaishinKitMediaConversion.videoSettings(for: configuration)
         #expect(settings.videoSize == CGSize(width: 1280, height: 720))
         #expect(settings.bitRate == 6_000_000)
         #expect(settings.profileLevel == kVTProfileLevel_H264_High_AutoLevel as String)
@@ -111,14 +111,14 @@ struct HaishinKitStreamingServiceTests {
     @Test("HEVC selects the HEVC Main profile")
     func hevcProfileMapping() {
         let configuration = StreamConfiguration(videoCodec: .hevc)
-        let settings = HaishinKitStreamingService.videoSettings(for: configuration)
+        let settings = HaishinKitMediaConversion.videoSettings(for: configuration)
         #expect(settings.profileLevel == kVTProfileLevel_HEVC_Main_AutoLevel as String)
     }
 
     @Test("Audio settings carry the bitrate and sample rate as AAC")
     func audioSettingsMapping() {
         let configuration = StreamConfiguration(audioBitsPerSecond: 128_000, audioSampleRate: 44_100)
-        let settings = HaishinKitStreamingService.audioSettings(for: configuration)
+        let settings = HaishinKitMediaConversion.audioSettings(for: configuration)
         #expect(settings.bitRate == 128_000)
         #expect(settings.sampleRate == 44_100)
     }
@@ -130,7 +130,7 @@ struct HaishinKitStreamingServiceTests {
         let pixelBuffer = try #require(Self.makePixelBuffer(width: 64, height: 64))
         let pts = CMTime(value: 900, timescale: 30)
         let frame = CapturedFrame(pixelBuffer: pixelBuffer, presentationTime: pts)
-        let sample = try #require(HaishinKitStreamingService.videoSampleBuffer(for: frame, frameRate: 30))
+        let sample = try #require(HaishinKitMediaConversion.videoSampleBuffer(for: frame, frameRate: 30))
         #expect(CMSampleBufferGetPresentationTimeStamp(sample) == pts)
         #expect(CMSampleBufferGetImageBuffer(sample) != nil)
     }
@@ -138,7 +138,7 @@ struct HaishinKitStreamingServiceTests {
     @Test("LPCM audio converts to a PCM buffer whose AVAudioTime carries the PTS as host time")
     func audioConversionCarriesPTS() throws {
         let audio = try #require(Self.makeToneAudio(seconds: 2.5, sampleRate: 48_000, samples: 1024))
-        let (buffer, when) = try #require(HaishinKitStreamingService.pcmBuffer(for: audio))
+        let (buffer, when) = try #require(HaishinKitMediaConversion.pcmBuffer(for: audio))
         #expect(buffer.frameLength == 1024)
         #expect(buffer.format.sampleRate == 48_000)
         let carried = AVAudioTime.seconds(forHostTime: when.hostTime)
@@ -148,7 +148,7 @@ struct HaishinKitStreamingServiceTests {
     @Test("A zero-sample audio buffer converts to nil rather than a degenerate buffer")
     func emptyAudioConvertsToNil() throws {
         let audio = try #require(Self.makeEmptyAudio(sampleRate: 48_000))
-        #expect(HaishinKitStreamingService.pcmBuffer(for: audio) == nil)
+        #expect(HaishinKitMediaConversion.pcmBuffer(for: audio) == nil)
     }
 
     // MARK: - Fixtures

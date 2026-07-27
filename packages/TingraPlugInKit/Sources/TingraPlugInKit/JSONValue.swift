@@ -135,6 +135,14 @@ extension JSONValue {
         return value
     }
 
+    /// The array's elements, or nil if this value is not an array — how a
+    /// tool reads a repeated argument, such as `stream_start`'s list of
+    /// destinations.
+    public var arrayValue: [JSONValue]? {
+        guard case .array(let elements) = self else { return nil }
+        return elements
+    }
+
     /// The member named `key` when this value is an object, or nil when it
     /// is not an object or has no such member.
     public subscript(key: String) -> JSONValue? {

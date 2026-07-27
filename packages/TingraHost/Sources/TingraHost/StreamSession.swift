@@ -12,16 +12,34 @@ import TingraEventBus
 import TingraPlugInKit
 
 /// One live stream: the host's session orchestration for the v1 pipeline —
-/// one video source and one audio input feeding one streaming service (see
-/// CLI.md, "Non-goals (v1)": one camera, one microphone, one destination).
+/// one video source and one audio input feeding **N destination legs**.
+///
+/// The program is one stream with one `T0`, so multiple destinations are one
+/// session fanned out, never N sessions: N sessions would each re-pick `T0`
+/// and carry different PTS per destination for no benefit (ARCHITECTURE.md,
+/// "Multiple destinations"). Each leg owns its own ``StreamingService`` — and
+/// therefore its own compression session — so fan-out costs one encoder per
+/// destination; the seam has no one-encode/N-muxer split to exploit.
 ///
 /// The session owns the shared timeline (`T0` at start; every buffer is
-/// rebased onto it before reaching the service, per CLOCK.md "Timestamp
+/// rebased onto it before reaching every leg, per CLOCK.md "Timestamp
 /// rules"), delivers the program audio at its source's cadence, reports the
 /// CLI.md status events (`stream.started`, `stream.stats`, `stream.reconnecting`,
 /// `stream.reconnected`, `stream.stopped`) on the event bus as `event`-group
-/// events in the `output` domain, and drives the reconnect policy when the
+/// events in the `output` domain, and drives the reconnect policy when a
 /// service reports a connection loss.
+///
+/// **Legs are independent.** The attempt budget and the stability window are
+/// per leg, so one destination dropping never takes another down. A leg whose
+/// budget is exhausted is reported (`stream.destination.lost`) and stays dead
+/// for the rest of the run while the others keep streaming; the session ends
+/// with ``Outcome/connectionLost`` only when the **last** live leg is lost.
+///
+/// **Start is best effort.** Every leg is connected at start; a leg the
+/// destination rejects is reported (`stream.destination.rejected`) and stays
+/// dead — it does *not* enter the reconnect budget, which governs mid-stream
+/// losses only. ``run()`` throws only when *every* leg was rejected, so a
+/// single-destination session behaves exactly as it did before fan-out.
 ///
 /// The program video reaches the session through a ``VideoSource``:
 /// - ``VideoSource/input(_:)`` is the CLI's single-input path — the session
@@ -51,6 +69,58 @@ import TingraPlugInKit
 /// drives a ``VideoSource/program(_:)`` session from the compositor and the
 /// mixer.
 public actor StreamSession {
+    /// One destination the program fans out to: where it goes, and the
+    /// service that takes it there.
+    ///
+    /// The `id` is the leg's stable identity in the status events
+    /// (`destination`), so a script or an agent can tell one leg's
+    /// `stream.stats` from another's. Callers mint it: the CLI numbers its
+    /// `--url` occurrences, the app passes the saved destination's id, the
+    /// daemon generates one per requested destination. Ids are labels, not
+    /// keys — the session indexes legs positionally, so a caller that repeats
+    /// an id only produces confusing events, never crossed state.
+    public struct DestinationLeg: Sendable {
+        /// The leg's stable identity in status events.
+        public let id: String
+
+        /// Where this leg streams to. Held for reconnects; its stream key
+        /// never reaches the bus.
+        public let destination: Destination
+
+        /// The streaming service delivering the program to ``destination``
+        /// (from the provider its URL scheme resolved to).
+        public let service: any StreamingService
+
+        /// Creates a destination leg.
+        ///
+        /// - Parameters:
+        ///   - id: The leg's stable identity in status events.
+        ///   - destination: Where this leg streams to.
+        ///   - service: The streaming service for this destination.
+        public init(id: String, destination: Destination, service: any StreamingService) {
+            self.id = id
+            self.destination = destination
+            self.service = service
+        }
+    }
+
+    /// One leg's mutable delivery state — the per-leg half of the reconnect
+    /// policy, kept parallel to ``legs`` by index.
+    private struct LegState {
+        /// Whether this leg is still delivering. A leg goes dead when the
+        /// destination rejected it at start, or when its reconnect budget
+        /// ran out; a dead leg emits no stats and is never revived.
+        var isLive = false
+
+        /// When this leg's last successful reconnect happened on the master
+        /// clock — how its next loss is classified as the same outage (within
+        /// the policy's stability window) or a fresh one.
+        var lastRecoveryTime: CMTime?
+
+        /// The reconnect attempts left for this leg's current outage.
+        var remainingReconnectAttempts = 0
+    }
+
     /// How the session's program video is produced.
     public enum VideoSource: Sendable {
         /// A single capture input the session paces itself with
@@ -148,8 +218,13 @@ public actor StreamSession {
     /// How the program audio is produced, or nil under `--no-audio`.
     private let audioSource: AudioSource?
 
-    /// The streaming service delivering the program to the destination.
-    private let service: any StreamingService
+    /// The destination legs the program fans out to, in the order the caller
+    /// listed them. Fixed for the session's lifetime — v1 adds and removes
+    /// destinations between runs, never mid-stream.
+    private let legs: [DestinationLeg]
+
+    /// Each leg's delivery state, parallel to ``legs`` by index.
+    private var legStates: [LegState]
 
     /// The recording service writing the program to a local file, or nil
     /// when `--record` was not given. A parallel compression sink: fed the
@@ -164,10 +239,6 @@ public actor StreamSession {
     /// Whether recording has started, so the file is finalized exactly once
     /// on teardown and only after it actually opened.
     private var recordingStarted = false
-
-    /// Where the program streams to. Held for reconnects; its stream key
-    /// never reaches the bus.
-    private let destination: Destination
 
     /// The session's compression and program settings.
     private let configuration: StreamConfiguration
@@ -192,17 +263,51 @@ public actor StreamSession {
     /// (a signal racing the duration timer) cannot double-finish.
     private var finished = false
 
-    /// When the last successful reconnect happened on the master clock —
-    /// how the next loss is classified as the same outage (within the
-    /// policy's stability window) or a fresh one.
-    private var lastRecoveryTime: CMTime?
-
-    /// The reconnect attempts left for the current outage.
-    private var remainingReconnectAttempts = 0
-
     /// Creates a session from a single capture input (the CLI's one-camera
     /// pipeline). At least one media side should be present; the caller has
-    /// already resolved inputs and read the stream key.
+    /// already resolved inputs and read the stream keys.
+    ///
+    /// - Parameters:
+    ///   - videoInput: The video input the session paces itself, or nil for
+    ///     an audio-only stream.
+    ///   - audioInput: The audio input, or nil for a video-only stream.
+    ///   - destinations: The destination legs the program fans out to, each
+    ///     with the service its URL scheme resolved to.
+    ///   - configuration: The compression and program settings.
+    ///   - policy: The reconnect/stats/duration policy.
+    ///   - clock: The master clock (synthetic in tests).
+    ///   - eventBus: The host's event bus.
+    ///   - recording: The recording service for `--record`, or nil for a
+    ///     stream-only session.
+    ///   - recordingFile: Where the recording is written; required when
+    ///     `recording` is present, ignored otherwise.
+    public init(
+        videoInput: (any Input)?,
+        audioInput: (any Input)?,
+        destinations: [DestinationLeg],
+        configuration: StreamConfiguration,
+        policy: Policy,
+        clock: any EngineClock,
+        eventBus: EventBus,
+        recording: (any RecordingService)? = nil,
+        recordingFile: RecordingFile? = nil
+    ) {
+        self.init(
+            videoSource: videoInput.map(VideoSource.input),
+            audioSource: audioInput.map(AudioSource.input),
+            legs: destinations,
+            configuration: configuration,
+            policy: policy,
+            clock: clock,
+            eventBus: eventBus,
+            recording: recording,
+            recordingFile: recordingFile
+        )
+    }
+
+    /// Creates a single-destination session from a single capture input —
+    /// the one-leg convenience over ``init(videoInput:audioInput:destinations:configuration:policy:clock:eventBus:recording:recordingFile:)``,
+    /// still the common case (one camera, one microphone, one destination).
     ///
     /// - Parameters:
     ///   - videoInput: The video input the session paces itself, or nil for
@@ -234,8 +339,7 @@ public actor StreamSession {
         self.init(
             videoSource: videoInput.map(VideoSource.input),
             audioSource: audioInput.map(AudioSource.input),
-            service: service,
-            destination: destination,
+            legs: [DestinationLeg(id: Self.soleLegID, destination: destination, service: service)],
             configuration: configuration,
             policy: policy,
             clock: clock,
@@ -250,6 +354,48 @@ public actor StreamSession {
     /// mixer, and their inputs; the session paces nothing and starts/stops
     /// no device — it rebases each program frame and mixed block onto `T0`
     /// and delivers them.
+    ///
+    /// - Parameters:
+    ///   - programVideo: The compositor's program-frame stream, or nil for an
+    ///     audio-only stream.
+    ///   - programAudio: The mixer's program-audio stream, or nil for a
+    ///     video-only stream.
+    ///   - destinations: The destination legs the program fans out to.
+    ///   - configuration: The compression and program settings.
+    ///   - policy: The reconnect/stats/duration policy.
+    ///   - clock: The master clock (the same one pacing the compositor and
+    ///     the mixer).
+    ///   - eventBus: The host's event bus.
+    ///   - recording: The recording service, or nil for a stream-only session.
+    ///   - recordingFile: Where the recording is written; required when
+    ///     `recording` is present, ignored otherwise.
+    public init(
+        programVideo: AsyncStream<CapturedFrame>?,
+        programAudio: AsyncStream<CapturedAudio>? = nil,
+        destinations: [DestinationLeg],
+        configuration: StreamConfiguration,
+        policy: Policy,
+        clock: any EngineClock,
+        eventBus: EventBus,
+        recording: (any RecordingService)? = nil,
+        recordingFile: RecordingFile? = nil
+    ) {
+        self.init(
+            videoSource: programVideo.map(VideoSource.program),
+            audioSource: programAudio.map(AudioSource.program),
+            legs: destinations,
+            configuration: configuration,
+            policy: policy,
+            clock: clock,
+            eventBus: eventBus,
+            recording: recording,
+            recordingFile: recordingFile
+        )
+    }
+
+    /// Creates a single-destination session from already-paced program
+    /// streams — the one-leg convenience over
+    /// ``init(programVideo:programAudio:destinations:configuration:policy:clock:eventBus:recording:recordingFile:)``.
     ///
     /// - Parameters:
     ///   - programVideo: The compositor's program-frame stream, or nil for an
@@ -281,8 +427,7 @@ public actor StreamSession {
         self.init(
             videoSource: programVideo.map(VideoSource.program),
             audioSource: programAudio.map(AudioSource.program),
-            service: service,
-            destination: destination,
+            legs: [DestinationLeg(id: Self.soleLegID, destination: destination, service: service)],
             configuration: configuration,
             policy: policy,
             clock: clock,
@@ -292,15 +437,19 @@ public actor StreamSession {
         )
     }
 
-    /// The designated initializer both public inits funnel through.
+    /// The leg id the single-destination convenience initializers mint, so a
+    /// one-destination run reports a stable, obvious `destination` param
+    /// instead of an invented number.
+    private static let soleLegID = "destination"
+
+    /// The designated initializer every public init funnels through.
     ///
     /// - Parameters:
     ///   - videoSource: How the program video is produced, or nil under
     ///     `--no-video`.
     ///   - audioSource: How the program audio is produced, or nil for a
     ///     video-only stream.
-    ///   - service: The streaming service.
-    ///   - destination: Where the program streams to.
+    ///   - legs: The destination legs the program fans out to.
     ///   - configuration: The compression and program settings.
     ///   - policy: The reconnect/stats/duration policy.
     ///   - clock: The master clock (synthetic in tests).
@@ -311,8 +460,7 @@ public actor StreamSession {
     private init(
         videoSource: VideoSource?,
         audioSource: AudioSource?,
-        service: any StreamingService,
-        destination: Destination,
+        legs: [DestinationLeg],
         configuration: StreamConfiguration,
         policy: Policy,
         clock: any EngineClock,
@@ -322,8 +470,8 @@ public actor StreamSession {
     ) {
         self.videoSource = videoSource
         self.audioSource = audioSource
-        self.service = service
-        self.destination = destination
+        self.legs = legs
+        self.legStates = Array(repeating: LegState(), count: legs.count)
         self.configuration = configuration
         self.policy = policy
         self.clock = clock
@@ -345,10 +493,11 @@ public actor StreamSession {
     /// ended after an orderly teardown.
     ///
     /// Throws only for start-time failures — an input that cannot start
-    /// (authorization denied, device gone) or a rejected initial
-    /// connection — so the caller can map them to error identifiers. Once
-    /// live, problems surface as events and an eventual outcome, never a
-    /// throw.
+    /// (authorization denied, device gone), or **every** destination
+    /// rejecting the connection — so the caller can map them to error
+    /// identifiers. A partial rejection is not a throw: the session goes live
+    /// on the legs that connected. Once live, problems surface as events and
+    /// an eventual outcome, never a throw.
     public func run() async throws -> Outcome {
         // Only a session-owned capture input is started here; a program
         // source is driven by the caller's compositor or mixer, already
@@ -383,10 +532,11 @@ public actor StreamSession {
         }
 
         do {
-            try await service.start(to: destination)
+            try await connectLegs()
         } catch {
             await finalizeRecording()
             await stopInputs()
+            await stopServices()
             throw error
         }
 
@@ -394,9 +544,15 @@ public actor StreamSession {
         // PTS = hostTime − T0 from here on (CLOCK.md, Timestamp rules).
         let t0 = clock.now
         eventBus.event("stream.started", domain: .output, params: startedParams)
+        for index in legs.indices where legStates[index].isLive {
+            eventBus.event("stream.destination.started", domain: .output, params: legParams(index))
+        }
 
         let pumpTasks = startPumps(t0: t0)
-        let watchTasks = [watchConnection(), watchStats(t0: t0), watchDuration(), watchRecording()]
+        var watchTasks: [Task<Void, Never>?] = [watchStats(t0: t0), watchDuration(), watchRecording()]
+        for task in watchConnections() {
+            watchTasks.append(task)
+        }
 
         var result: Outcome = .stopRequested
         for await first in outcome {
@@ -411,7 +567,7 @@ public actor StreamSession {
             task.cancel()
         }
         await stopInputs()
-        await service.stop()
+        await stopServices()
         // Finalize the recording last so it captures everything the pumps
         // delivered, however the session ended (stop, duration, or a lost
         // connection).
@@ -422,6 +578,95 @@ public actor StreamSession {
             params: ["reason": .string(result.rawValue)]
         )
         return result
+    }
+
+    /// Connects every destination leg, best effort: a leg the destination
+    /// accepts goes live, a leg it rejects is reported as an error event and
+    /// stays dead for the run. A rejected leg does **not** enter the
+    /// reconnect budget — that governs mid-stream losses only, so a
+    /// destination that was wrong at start stays wrong rather than retrying
+    /// against a typo.
+    ///
+    /// - Throws: The first leg's error when *every* leg was rejected (the
+    ///   whole start failed, so the caller maps it to `connectionFailed`),
+    ///   or ``StreamingServiceError/unsupportedDestination(_:)`` when the
+    ///   session was given no destinations at all.
+    private func connectLegs() async throws {
+        guard !legs.isEmpty else {
+            throw StreamingServiceError.unsupportedDestination(
+                "A stream session needs at least one destination; none was configured."
+            )
+        }
+        var firstError: (any Error)?
+        for index in legs.indices {
+            do {
+                try await legs[index].service.start(to: legs[index].destination)
+                legStates[index].isLive = true
+            } catch {
+                if firstError == nil { firstError = error }
+                reportDestinationRejected(index, error: error)
+            }
+        }
+        // Best effort: one live leg is a live session. Only a clean sweep of
+        // rejections fails the run, so a single-destination session throws
+        // exactly where it always did.
+        guard liveLegCount == 0, let firstError else { return }
+        throw firstError
+    }
+
+    /// How many legs are still delivering.
+    private var liveLegCount: Int {
+        legStates.count { $0.isLive }
+    }
+
+    /// Reports a leg the destination rejected at start.
+    ///
+    /// An `error` event, not an outcome: with more than one destination the
+    /// session is still live, so this follows the `recordingFailed`
+    /// precedent — reported with a stable identifier so scripts and the
+    /// operator see it, without changing the run's fate (CLI.md, "Status
+    /// events").
+    private func reportDestinationRejected(_ index: Int, error: any Error) {
+        var params = legParams(index)
+        params["identifier"] = .string(ErrorIdentifier.connectionFailed.rawValue)
+        params["message"] = .string(
+            "The destination rejected the connection and will not be streamed to: \(error)"
+        )
+        eventBus.error("stream.destination.rejected", domain: .output, params: params)
+    }
+
+    /// Reports a leg whose reconnect budget ran out mid-stream. The session
+    /// keeps streaming to whatever is left; ``Outcome/connectionLost`` is the
+    /// last live leg's job, not this one's.
+    private func reportDestinationLost(_ index: Int, reason: String) {
+        var params = legParams(index)
+        params["identifier"] = .string(ErrorIdentifier.connectionLost.rawValue)
+        params["message"] = .string(
+            "The connection was lost and not recovered within \(policy.reconnectAttempts) reconnect "
+                + "attempts; this destination stopped: \(reason)"
+        )
+        eventBus.error("stream.destination.lost", domain: .output, params: params)
+    }
+
+    /// The params identifying one leg on every per-leg event: its stable id
+    /// and its URL. Flat, because an event param is a scalar (EVENTS.md), so
+    /// the identity rides on each event rather than in a lookup table a
+    /// consumer would have to build. The URL carries no secret — the stream
+    /// key is held apart in ``Destination`` and composed inside the service.
+    private func legParams(_ index: Int) -> [String: EventValue] {
+        [
+            "destination": .string(legs[index].id),
+            "destinationUrl": .string(legs[index].destination.url.absoluteString),
+        ]
+    }
+
+    /// Stops every leg's service on teardown — dead legs included, so a leg
+    /// that died mid-run releases its connection with the rest rather than
+    /// separately (each service is stopped exactly once, however it ended).
+    private func stopServices() async {
+        for leg in legs {
+            await leg.service.stop()
+        }
     }
 
     /// Stops the session-owned inputs, if present. A program source is left
@@ -468,8 +713,16 @@ public actor StreamSession {
     /// while an ``AudioSource/program(_:)`` source arrives already paced by
     /// the mixer's mix tick. All of them stamp media on the master clock, so
     /// the identical `T0` rebase applies.
+    ///
+    /// Each pump delivers the rebased media to **every** leg's service, in
+    /// leg order. The service list is snapshotted here rather than re-read
+    /// per frame: legs are fixed for the session, and a leg that is dead or
+    /// mid-reconnect discards what it is sent — exactly what a single
+    /// destination already did across a reconnect gap — so the hot path
+    /// stays free of state reads.
     private func startPumps(t0: CMTime) -> [Task<Void, Never>] {
         var tasks: [Task<Void, Never>] = []
+        let services = legs.map(\.service)
         if let videoSource {
             let frames: AsyncStream<CapturedFrame>
             switch videoSource {
@@ -479,7 +732,6 @@ public actor StreamSession {
             case .program(let programVideo):
                 frames = programVideo
             }
-            let service = self.service
             let recording = self.recording
             tasks.append(
                 Task {
@@ -489,10 +741,12 @@ public actor StreamSession {
                             presentationTime: CMTimeSubtract(frame.presentationTime, t0)
                         )
                         // The program frame is immutable after it is yielded,
-                        // so both compression sinks read the same buffer
-                        // within the tick — neither mutates it, per the frame
+                        // so every compression sink reads the same buffer
+                        // within the tick — none mutates it, per the frame
                         // ownership rule (ARCHITECTURE.md).
-                        await service.send(video: rebased)
+                        for service in services {
+                            await service.send(video: rebased)
+                        }
                         await recording?.send(video: rebased)
                     }
                 }
@@ -506,13 +760,14 @@ public actor StreamSession {
             case .program(let programAudio):
                 audio = programAudio
             }
-            let service = self.service
             let recording = self.recording
             tasks.append(
                 Task {
                     for await buffer in audio {
                         guard let rebased = buffer.rebased(by: t0) else { continue }
-                        await service.send(audio: rebased)
+                        for service in services {
+                            await service.send(audio: rebased)
+                        }
                         await recording?.send(audio: rebased)
                     }
                 }
@@ -521,15 +776,20 @@ public actor StreamSession {
         return tasks
     }
 
-    /// Watches the service's connection events and drives the reconnect
+    /// Watches every leg's connection events and drives that leg's reconnect
     /// policy: `stream.reconnecting` per attempt, `stream.reconnected` on
-    /// recovery, ``Outcome/connectionLost`` when the budget is exhausted.
-    private func watchConnection() -> Task<Void, Never>? {
-        Task {
-            for await event in service.events {
-                switch event {
-                case .connectionLost(let reason):
-                    await reconnect(after: reason)
+    /// recovery, `stream.destination.lost` when the leg's budget is
+    /// exhausted, and ``Outcome/connectionLost`` only once the last live leg
+    /// is gone. One watcher per leg, so the legs never share reconnect state.
+    private func watchConnections() -> [Task<Void, Never>] {
+        legs.indices.map { index in
+            let service = legs[index].service
+            return Task {
+                for await event in service.events {
+                    switch event {
+                    case .connectionLost(let reason):
+                        await reconnect(leg: index, after: reason)
+                    }
                 }
             }
         }
@@ -567,78 +827,94 @@ public actor StreamSession {
         )
     }
 
-    /// Runs the reconnect attempts for one connection loss.
+    /// Runs the reconnect attempts for one leg's connection loss.
     ///
-    /// A loss within the stability window of the last recovery is the
-    /// same outage and keeps draining the attempt budget; a loss after a
-    /// stable stretch (or the first loss) gets the policy's full budget.
-    private func reconnect(after reason: String) async {
+    /// The budget and the stability window are the leg's own: a loss within
+    /// the stability window of *that leg's* last recovery is the same outage
+    /// and keeps draining its budget; a loss after a stable stretch (or its
+    /// first loss) gets the policy's full budget. One destination flapping
+    /// therefore never spends another destination's attempts.
+    ///
+    /// When the leg's budget runs out it goes dead and is reported, and the
+    /// session ends only if it was the last live one.
+    private func reconnect(leg index: Int, after reason: String) async {
+        // A leg that was rejected at start, or already lost, has nothing left
+        // to reconnect — a late loss event from its service is ignored.
+        guard legStates[index].isLive else { return }
         let isSameOutage =
-            lastRecoveryTime.map {
+            legStates[index].lastRecoveryTime.map {
                 CMTimeSubtract(clock.now, $0).seconds < Double(policy.stabilitySeconds)
             } ?? false
         if !isSameOutage {
-            remainingReconnectAttempts = policy.reconnectAttempts
+            legStates[index].remainingReconnectAttempts = policy.reconnectAttempts
         }
-        while remainingReconnectAttempts > 0 {
+        while legStates[index].remainingReconnectAttempts > 0 {
             guard !finished else { return }
-            let attempt = policy.reconnectAttempts - remainingReconnectAttempts + 1
-            remainingReconnectAttempts -= 1
-            eventBus.event(
-                "stream.reconnecting",
-                domain: .output,
-                params: [
-                    "attempt": .int(attempt),
-                    "maxAttempts": .int(policy.reconnectAttempts),
-                    "delay": .int(policy.reconnectDelaySeconds),
-                    "reason": .string(reason),
-                ]
-            )
+            let attempt = policy.reconnectAttempts - legStates[index].remainingReconnectAttempts + 1
+            legStates[index].remainingReconnectAttempts -= 1
+            var params = legParams(index)
+            params["attempt"] = .int(attempt)
+            params["maxAttempts"] = .int(policy.reconnectAttempts)
+            params["delay"] = .int(policy.reconnectDelaySeconds)
+            params["reason"] = .string(reason)
+            eventBus.event("stream.reconnecting", domain: .output, params: params)
             await sleep(seconds: policy.reconnectDelaySeconds)
             guard !finished else { return }
             do {
-                try await service.start(to: destination)
-                lastRecoveryTime = clock.now
-                eventBus.event(
-                    "stream.reconnected",
-                    domain: .output,
-                    params: ["attempt": .int(attempt)]
-                )
+                try await legs[index].service.start(to: legs[index].destination)
+                legStates[index].lastRecoveryTime = clock.now
+                var recovered = legParams(index)
+                recovered["attempt"] = .int(attempt)
+                eventBus.event("stream.reconnected", domain: .output, params: recovered)
                 return
             } catch {
-                eventBus.network(
-                    "stream.reconnect.attempt",
-                    domain: .output,
-                    params: [
-                        "attempt": .int(attempt),
-                        "error": .string(String(describing: error)),
-                    ]
-                )
+                var failed = legParams(index)
+                failed["attempt"] = .int(attempt)
+                failed["error"] = .string(String(describing: error))
+                eventBus.network("stream.reconnect.attempt", domain: .output, params: failed)
             }
         }
-        finish(.connectionLost)
+        legStates[index].isLive = false
+        reportDestinationLost(index, reason: reason)
+        // The run survives a partial loss and ends only when nothing is left
+        // to stream to (CLI.md, "Multiple destinations").
+        if liveLegCount == 0 {
+            finish(.connectionLost)
+        }
     }
 
-    /// Emits `stream.stats` on the policy's cadence, reading the service's
-    /// live counters (a point read for a periodic report — the status-sink
-    /// model in EVENTS.md, not a poll for state changes).
+    /// Emits one `stream.stats` per live leg on the policy's cadence, reading
+    /// each service's live counters (a point read for a periodic report — the
+    /// status-sink model in EVENTS.md, not a poll for state changes).
+    ///
+    /// One destination emits exactly one line per tick as before, now
+    /// carrying its leg identity; N destinations emit N lines, so a consumer
+    /// reads each leg's delivery rather than an average that describes none
+    /// of them. A dead leg reports nothing.
     private func watchStats(t0: CMTime) -> Task<Void, Never>? {
         guard policy.statsIntervalSeconds > 0 else { return nil }
         let interval = CMTime(value: CMTimeValue(policy.statsIntervalSeconds), timescale: 1)
         return Task {
             for await tickTime in clock.tick(every: interval) {
-                let statistics = await service.statistics()
-                eventBus.event(
-                    "stream.stats",
-                    domain: .output,
-                    params: [
-                        "elapsed": .double(CMTimeSubtract(tickTime, t0).seconds),
-                        "bytesSent": .int(statistics.bytesSent),
-                        "bitrate": .int(statistics.bytesPerSecond * 8),
-                        "fps": .int(statistics.framesPerSecond),
-                    ]
-                )
+                await emitStats(at: tickTime, t0: t0)
             }
+        }
+    }
+
+    /// Emits one tick's `stream.stats` for every live leg.
+    ///
+    /// - Parameters:
+    ///   - tickTime: The stats tick on the master clock.
+    ///   - t0: The session start, so `elapsed` is session relative.
+    private func emitStats(at tickTime: CMTime, t0: CMTime) async {
+        for index in legs.indices where legStates[index].isLive {
+            let statistics = await legs[index].service.statistics()
+            var params = legParams(index)
+            params["elapsed"] = .double(CMTimeSubtract(tickTime, t0).seconds)
+            params["bytesSent"] = .int(statistics.bytesSent)
+            params["bitrate"] = .int(statistics.bytesPerSecond * 8)
+            params["fps"] = .int(statistics.framesPerSecond)
+            eventBus.event("stream.stats", domain: .output, params: params)
         }
     }
 
@@ -666,10 +942,19 @@ public actor StreamSession {
     /// The `stream.started` params: the resolved pipeline, mirroring the
     /// `stream.plan` param names (a stable scripting contract, CLI.md).
     /// The stream key never appears; a disabled side omits its block.
+    ///
+    /// `url` stays the **first live leg's** URL — identical to the one
+    /// destination case, and never a synthesized value — with the additive
+    /// `destinations`/`destinationsRejected` counts summarizing the fan-out.
+    /// Which legs those are is reported per leg by `stream.destination.started`
+    /// and `stream.destination.rejected`, so the flat event contract holds.
     private var startedParams: [String: EventValue] {
-        var params: [String: EventValue] = [
-            "url": .string(destination.url.absoluteString)
-        ]
+        var params: [String: EventValue] = [:]
+        if let firstLive = legs.indices.first(where: { legStates[$0].isLive }) {
+            params["url"] = .string(legs[firstLive].destination.url.absoluteString)
+        }
+        params["destinations"] = .int(liveLegCount)
+        params["destinationsRejected"] = .int(legs.count - liveLegCount)
         if let videoSource {
             // A single input names itself; the compositor's program has no one
             // device to name, so it reports the stable "program" identity.

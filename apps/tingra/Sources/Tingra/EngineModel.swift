@@ -112,6 +112,26 @@ final class EngineModel {
         let fps: Int
     }
 
+    /// One destination leg's live state, derived from its own share of the
+    /// session's per-leg status events — what each row of the streaming panel
+    /// shows while the program is on air (ARCHITECTURE.md, "Multiple
+    /// destinations").
+    enum DestinationState: Equatable {
+        /// Publishing to this destination.
+        case live
+
+        /// This destination dropped and a reconnect attempt is in flight.
+        case reconnecting(attempt: Int, maxAttempts: Int)
+
+        /// This destination refused the connection at start, so it is not
+        /// being streamed to; the rest of the session is unaffected.
+        case rejected
+
+        /// This destination dropped and was not recovered within its
+        /// reconnect budget. The session continues on the others.
+        case lost
+    }
+
     /// The discovered cameras, for the camera picker.
     private(set) var cameras: [InputChoice] = []
 
@@ -149,10 +169,20 @@ final class EngineModel {
     /// effects").
     private(set) var videoEffectChoices: [VideoEffectChoice] = []
 
-    /// The RTMP(S) destination URL the streaming panel edits, persisted in the
-    /// project document (the stream key is not — it lives in secure storage;
-    /// see ARCHITECTURE.md, "Streaming the program"). Empty until configured.
-    var destinationURL: String = ""
+    /// The destinations the streaming panel edits, persisted in the project
+    /// document (the stream keys are not — they live in secure storage, filed
+    /// by destination id; see ARCHITECTURE.md, "Streaming the program" and
+    /// "Multiple destinations"). Empty until the operator adds one.
+    ///
+    /// Going live fans the one program out to every enabled destination with
+    /// a usable URL, as one session with one leg each.
+    private(set) var destinations: [DestinationEdit] = []
+
+    /// Whether at least one destination is ready to stream — what the Start
+    /// control enables on.
+    var hasStreamableDestination: Bool {
+        destinations.contains(where: \.isStreamable)
+    }
 
     /// The live streaming status, driven entirely by the `stream.*` events on
     /// the bus (never a poll) — what the Start/Stop control reflects.
@@ -160,8 +190,21 @@ final class EngineModel {
 
     /// The latest delivery stats from the last `stream.stats` event while
     /// live, or nil when not streaming — the panel shows them beside the Live
-    /// label. Event-driven, like ``streamStatus``.
+    /// label. Event-driven, like ``streamStatus``. With several destinations
+    /// this is the **first live leg's**, never an average across legs that
+    /// describes none of them; each leg's own is in ``destinationStats``.
     private(set) var streamStats: StreamStats?
+
+    /// Each streaming destination's latest delivery stats, keyed by
+    /// destination id — what the panel's per-destination rows show. Driven by
+    /// the session's per-leg `stream.stats` events; cleared when the stream
+    /// ends.
+    private(set) var destinationStats: [ProjectDestinationID: StreamStats] = [:]
+
+    /// Each streaming destination's live state, keyed by destination id —
+    /// how a row shows that one destination is reconnecting or gone while the
+    /// others stay live. Empty when not streaming.
+    private(set) var destinationStates: [ProjectDestinationID: DestinationState] = [:]
 
     /// Whether a stream is currently starting, live, or reconnecting — so the
     /// control shows Stop and the destination fields lock.
@@ -1389,17 +1432,18 @@ final class EngineModel {
 
     // MARK: Streaming
 
-    /// The stream key stored for the current destination URL, or nil when none
-    /// is stored (or the URL is empty). Read from secure storage so the
-    /// streaming panel can prefill its key field on launch without the key
-    /// ever passing through the project document. A read failure is reported
-    /// and treated as "no stored key" — never a crash.
+    /// The stream key stored for a destination, or nil when none is stored.
     ///
+    /// Read from secure storage so the streaming panel can prefill its key
+    /// field on launch without the key ever passing through the project
+    /// document. A read failure is reported and treated as "no stored key" —
+    /// never a crash.
+    ///
+    /// - Parameter id: The destination's stable id.
     /// - Returns: The stored stream key, or nil.
-    func storedStreamKey() -> String? {
-        guard let account = destinationAccount else { return nil }
+    func storedStreamKey(for id: ProjectDestinationID) -> String? {
         do {
-            return try secureStorage.secret(forAccount: account)
+            return try secureStorage.secret(forAccount: Self.secureStorageAccount(for: id))
         } catch {
             eventBus.error(
                 "securestore.read",
@@ -1410,40 +1454,131 @@ final class EngineModel {
         }
     }
 
-    /// Puts the program on air: resolves the destination URL to the streaming
-    /// provider, stores the key in secure storage, and drives a
-    /// ``StreamSession`` fed the compositor's program frames and the mixer's
-    /// program audio — reusing the CLI's proven reconnect/stability/stats
-    /// machinery (ARCHITECTURE.md, "Streaming the program"). One active
-    /// session (the v1 rule): a second call while streaming is ignored.
-    ///
-    /// The stream key is used to build the ``Destination`` and to seed secure
-    /// storage; it never becomes an event param, a log line, or part of the
-    /// project document. An empty key streams keyless (some servers embed the
-    /// key in the URL path) and clears any stored key for the URL.
-    ///
-    /// - Parameter streamKey: The RTMP(S) stream key the operator entered.
-    func startStreaming(streamKey: String) async {
-        guard streamSession == nil else { return }
-        guard let url = URL(string: destinationURL), let scheme = url.scheme?.lowercased(), !destinationURL.isEmpty
-        else {
-            streamStatus = .error("Enter a valid rtmp:// or rtmps:// destination URL.")
-            return
-        }
-        guard let provider = await outputs.provider(forScheme: scheme) else {
-            streamStatus = .error("No streaming output serves '\(scheme)://' destinations (use rtmp:// or rtmps://).")
-            return
-        }
+    // MARK: Destination editing
 
-        // The key goes only into secure storage (or is cleared when blank),
-        // keyed by the destination URL — a best-effort write: a Keychain error
-        // is reported but does not block the stream, which still holds the key
-        // in memory for this session.
-        persistStreamKey(streamKey, forAccount: url.absoluteString)
+    /// Adds an empty destination to the panel and autosaves.
+    ///
+    /// The new row saves nothing until its URL is usable
+    /// (``DestinationEdit/projectDestination``), so an abandoned row never
+    /// reaches the project file.
+    func addDestination() {
+        destinations.append(DestinationEdit())
+        eventBus.event("destination.added", domain: .output, params: ["destinations": .int(destinations.count)])
+        scheduleAutosave()
+    }
+
+    /// Removes a destination and clears its stored stream key — deleting a
+    /// destination should not leave its secret behind in the Keychain.
+    ///
+    /// - Parameter id: The destination to remove.
+    func removeDestination(_ id: ProjectDestinationID) {
+        guard let index = destinations.firstIndex(where: { $0.id == id }) else { return }
+        destinations.remove(at: index)
+        persistStreamKey("", for: id)
+        eventBus.event("destination.removed", domain: .output, params: ["destinations": .int(destinations.count)])
+        scheduleAutosave()
+    }
+
+    /// Updates a destination's typed URL and autosaves.
+    ///
+    /// The id is untouched, so the destination keeps the stream key already
+    /// filed under it — the reason keys are keyed by id and not by URL.
+    ///
+    /// - Parameters:
+    ///   - text: The URL as typed.
+    ///   - id: The destination to update.
+    func setDestinationURL(_ text: String, for id: ProjectDestinationID) {
+        updateDestination(id) { $0.urlText = text }
+    }
+
+    /// Updates a destination's operator-facing name and autosaves.
+    ///
+    /// - Parameters:
+    ///   - name: The new label.
+    ///   - id: The destination to update.
+    func setDestinationName(_ name: String, for id: ProjectDestinationID) {
+        updateDestination(id) { $0.name = name }
+    }
+
+    /// Enables or disables a destination and autosaves. A disabled
+    /// destination keeps everything it has but contributes no leg to the next
+    /// stream.
+    ///
+    /// - Parameters:
+    ///   - isEnabled: Whether it is streamed to.
+    ///   - id: The destination to update.
+    func setDestinationEnabled(_ isEnabled: Bool, for id: ProjectDestinationID) {
+        updateDestination(id) { $0.isEnabled = isEnabled }
+    }
+
+    /// Applies an edit to one destination, resets a stale terminal status,
+    /// and schedules the debounced autosave. A no-op for an unknown id.
+    ///
+    /// - Parameters:
+    ///   - id: The destination to update.
+    ///   - edit: The mutation to apply.
+    private func updateDestination(_ id: ProjectDestinationID, _ edit: (inout DestinationEdit) -> Void) {
+        guard let index = destinations.firstIndex(where: { $0.id == id }) else { return }
+        edit(&destinations[index])
+        // An edit after a failed or finished run clears the stale banner, so
+        // the panel does not keep reporting the previous attempt's fate.
+        if !isStreaming { streamStatus = .idle }
+        scheduleAutosave()
+    }
+
+    /// The secure-storage account a destination's stream key is filed under.
+    ///
+    /// Keyed by the destination's **id**, not its URL: two destinations can
+    /// share an ingest URL with different keys, and editing a URL would
+    /// orphan a key stored under the old one (ARCHITECTURE.md, "Multiple
+    /// destinations"). The prefix keeps these items distinct from any other
+    /// secret the host files later.
+    ///
+    /// - Parameter id: The destination's stable id.
+    /// - Returns: The account string.
+    private static func secureStorageAccount(for id: ProjectDestinationID) -> String {
+        "destination:\(id.rawValue)"
+    }
+
+    /// Puts the program on air: resolves every enabled destination to its
+    /// streaming provider, stores each key in secure storage, and drives one
+    /// ``StreamSession`` fanning the compositor's program frames and the
+    /// mixer's program audio out to all of them — reusing the CLI's proven
+    /// reconnect/stability/stats machinery (ARCHITECTURE.md, "Streaming the
+    /// program", "Multiple destinations"). One active session (the v1 rule,
+    /// now one session with N legs): a second call while streaming is ignored.
+    ///
+    /// The start is **best effort**: a destination that refuses the
+    /// connection is reported and skipped while the others go live; only a
+    /// clean sweep of refusals fails the run.
+    ///
+    /// Each stream key is used to build its ``Destination`` and to seed
+    /// secure storage; none ever becomes an event param, a log line, or part
+    /// of the project document. An empty key streams keyless (some servers
+    /// embed the key in the URL path) and clears that destination's stored
+    /// key.
+    ///
+    /// - Parameter keys: The stream key the operator entered for each
+    ///   destination, by destination id. A destination with no entry streams
+    ///   keyless.
+    func startStreaming(keys: [ProjectDestinationID: String]) async {
+        guard streamSession == nil else { return }
+        let streamable = destinations.filter(\.isStreamable)
+        guard !streamable.isEmpty else {
+            streamStatus = .error(
+                String(
+                    localized: "Add a destination with an rtmp://, rtmps://, or srt:// URL, then start again.",
+                    bundle: .module,
+                    comment: "Stream error shown when no destination is enabled and has a usable URL"
+                )
+            )
+            return
+        }
 
         // The stream always carries the program mix — an all-muted mixer
         // streams silence, the way an empty shot streams the background
-        // canvas (ARCHITECTURE.md, "The audio mixer").
+        // canvas (ARCHITECTURE.md, "The audio mixer"). Every leg encodes with
+        // these settings; per-destination compression is a later iteration.
         let configuration = StreamConfiguration(
             width: format.width,
             height: format.height,
@@ -1451,7 +1586,34 @@ final class EngineModel {
             includesVideo: true,
             includesAudio: true
         )
-        let destination = Destination(url: url, streamKey: streamKey.isEmpty ? nil : streamKey)
+
+        var legs: [StreamSession.DestinationLeg] = []
+        for destination in streamable {
+            guard let url = destination.url, let scheme = url.scheme?.lowercased() else { continue }
+            guard let provider = await outputs.provider(forScheme: scheme) else {
+                streamStatus = .error(
+                    String(
+                        localized: "No streaming output serves \(scheme) destinations. Use rtmp, rtmps, or srt.",
+                        bundle: .module,
+                        comment: "Stream error when a destination's URL scheme has no registered output"
+                    )
+                )
+                return
+            }
+            // The key goes only into secure storage (or is cleared when
+            // blank), filed under the destination id — a best-effort write: a
+            // Keychain error is reported but does not block the stream, which
+            // still holds the key in memory for this session.
+            let key = keys[destination.id] ?? ""
+            persistStreamKey(key, for: destination.id)
+            legs.append(
+                StreamSession.DestinationLeg(
+                    id: destination.id.rawValue,
+                    destination: Destination(url: url, streamKey: key.isEmpty ? nil : key),
+                    service: provider.makeStreamingService(configuration: configuration)
+                )
+            )
+        }
 
         // Tee the program into a fresh stream: the drains in `start()` forward
         // each composited frame and each mixed block here while the
@@ -1464,8 +1626,7 @@ final class EngineModel {
         let session = StreamSession(
             programVideo: programStream,
             programAudio: programAudioStream,
-            service: provider.makeStreamingService(configuration: configuration),
-            destination: destination,
+            destinations: legs,
             configuration: configuration,
             policy: StreamSession.Policy(),
             clock: clock,
@@ -1474,6 +1635,8 @@ final class EngineModel {
         streamSession = session
         streamStatus = .starting
         streamStats = nil
+        destinationStats = [:]
+        destinationStates = [:]
 
         streamTask = Task { [weak self] in
             do {
@@ -1505,15 +1668,16 @@ final class EngineModel {
         await streamSession?.stop()
     }
 
-    /// Stores the stream key for an account, or clears it when the key is
+    /// Stores the stream key for a destination, or clears it when the key is
     /// empty — best effort. A secure-storage error is reported on the bus (no
     /// secret in the message) and swallowed: the in-memory key still drives
     /// this session's stream.
     ///
     /// - Parameters:
     ///   - streamKey: The key to store, or empty to clear the stored key.
-    ///   - account: The secure-storage account (the destination URL).
-    private func persistStreamKey(_ streamKey: String, forAccount account: String) {
+    ///   - id: The destination whose key this is.
+    private func persistStreamKey(_ streamKey: String, for id: ProjectDestinationID) {
+        let account = Self.secureStorageAccount(for: id)
         do {
             if streamKey.isEmpty {
                 try secureStorage.removeSecret(forAccount: account)
@@ -1540,45 +1704,98 @@ final class EngineModel {
         streamTask = nil
     }
 
-    /// Updates ``streamStatus`` from a `stream.*` bus event — the event-driven
-    /// status the CLI's `StreamSession` already emits (`stream.started`,
-    /// `stream.reconnecting`, `stream.reconnected`, `stream.stopped`); no
-    /// polling. Non-stream events are ignored.
+    /// Updates ``streamStatus`` and the per-destination state from a
+    /// `stream.*` bus event — the event-driven status the CLI's
+    /// `StreamSession` already emits (`stream.started`, the per-leg
+    /// `stream.destination.*`, `stream.reconnecting`, `stream.reconnected`,
+    /// `stream.stopped`); no polling. Non-stream events are ignored.
+    ///
+    /// The session-level status answers "are we on air"; a leg's own events
+    /// answer "is *this* destination on air", so one destination reconnecting
+    /// colors its row without claiming the whole stream is in trouble
+    /// (ARCHITECTURE.md, "Multiple destinations").
     ///
     /// - Parameter event: An event drained from the bus.
     private func handleStreamStatusEvent(_ event: EventBusEvent) {
+        let destination = event.params?["destination"].flatMap(Self.stringValue).map(ProjectDestinationID.init)
         switch event.name {
-        case "stream.started", "stream.reconnected":
+        case "stream.started":
             streamStatus = .live
+        case "stream.destination.started":
+            setDestinationState(.live, for: destination)
+        case "stream.destination.rejected":
+            setDestinationState(.rejected, for: destination)
+        case "stream.destination.lost":
+            setDestinationState(.lost, for: destination)
+            if let destination { destinationStats[destination] = nil }
+        case "stream.reconnected":
+            // The session as a whole is live again as soon as any leg is; a
+            // leg still down keeps its own row's state.
+            streamStatus = .live
+            setDestinationState(.live, for: destination)
         case "stream.stats":
             // Bitrate arrives in bits per second; the panel shows kbps.
             let bitrate = event.params?["bitrate"].flatMap(Self.intValue) ?? 0
             let fps = event.params?["fps"].flatMap(Self.intValue) ?? 0
-            streamStats = StreamStats(bitrateKbps: bitrate / 1000, fps: fps)
+            let stats = StreamStats(bitrateKbps: bitrate / 1000, fps: fps)
+            if let destination {
+                destinationStats[destination] = stats
+                setDestinationState(.live, for: destination)
+            }
+            // The headline figure is the first live leg's, never an average.
+            if isFirstLiveDestination(destination) { streamStats = stats }
         case "stream.reconnecting":
             let attempt = event.params?["attempt"].flatMap(Self.intValue) ?? 0
             let maxAttempts = event.params?["maxAttempts"].flatMap(Self.intValue) ?? 0
-            streamStatus = .reconnecting(attempt: attempt, maxAttempts: maxAttempts)
-            streamStats = nil
+            setDestinationState(.reconnecting(attempt: attempt, maxAttempts: maxAttempts), for: destination)
+            if let destination { destinationStats[destination] = nil }
+            // The session banner reports trouble only when nothing is left
+            // delivering; one leg of several reconnecting is that leg's news.
+            if !destinationStates.values.contains(.live) {
+                streamStatus = .reconnecting(attempt: attempt, maxAttempts: maxAttempts)
+                streamStats = nil
+            }
         case "stream.stopped":
-            // The session reports its outcome as the stop reason; a lost
-            // connection past the reconnect budget is the failure case.
+            // The session reports its outcome as the stop reason; every leg
+            // being lost past its reconnect budget is the failure case.
             let reason = event.params?["reason"].flatMap(Self.stringValue)
             streamStatus =
                 reason == StreamSession.Outcome.connectionLost.rawValue
-                ? .error("The connection was lost and not recovered.")
+                ? .error(
+                    String(
+                        localized: "Every destination was lost and not recovered.",
+                        bundle: .module,
+                        comment: "Stream error shown when the last live destination was lost"
+                    )
+                )
                 : .stopped
             streamStats = nil
+            destinationStats = [:]
         default:
             break
         }
     }
 
-    /// The secure-storage account for the current destination — the URL string
-    /// when it parses, else nil (an empty or malformed URL has no stored key).
-    private var destinationAccount: String? {
-        guard !destinationURL.isEmpty, let url = URL(string: destinationURL) else { return nil }
-        return url.absoluteString
+    /// Records one destination's live state, ignoring an event that names no
+    /// destination (or one no longer in the panel).
+    ///
+    /// - Parameters:
+    ///   - state: The state to record.
+    ///   - id: The destination the event named, if any.
+    private func setDestinationState(_ state: DestinationState, for id: ProjectDestinationID?) {
+        guard let id else { return }
+        destinationStates[id] = state
+    }
+
+    /// Whether a destination is the first one currently delivering — the leg
+    /// whose counters stand as the session's headline figures.
+    ///
+    /// - Parameter id: The destination an event named, if any.
+    /// - Returns: Whether its stats should drive ``streamStats``.
+    private func isFirstLiveDestination(_ id: ProjectDestinationID?) -> Bool {
+        guard let id else { return true }
+        let firstLive = destinations.first { destinationStates[$0.id] == .live }
+        return firstLive?.id == id
     }
 
     /// The `Int` inside an event value, when it is one.
@@ -1591,15 +1808,6 @@ final class EngineModel {
     private static func stringValue(_ value: EventValue) -> String? {
         if case .string(let string) = value { return string }
         return nil
-    }
-
-    /// Records that the destination URL changed (the panel's text field):
-    /// schedules the debounced autosave so the new URL reaches the project
-    /// document, and reflects the URL's stored key by resetting a stale
-    /// error/stopped status back to idle.
-    func destinationURLChanged() {
-        if !isStreaming { streamStatus = .idle }
-        scheduleAutosave()
     }
 
     // MARK: Lifecycle
@@ -1644,9 +1852,9 @@ final class EngineModel {
         do {
             if let project = try store.load() {
                 presets = project.presets
-                // Restore the destination URL (the key stays in secure
-                // storage, read lazily when the panel prefills its field).
-                if let url = project.destination?.url { destinationURL = url.absoluteString }
+                // Restore the destinations (each key stays in secure storage,
+                // read lazily when the panel prefills that row's field).
+                destinations = DestinationEdit.edits(from: project.destinations)
             }
         } catch {
             eventBus.error(
@@ -1778,12 +1986,13 @@ final class EngineModel {
         autosaveTask?.cancel()
         autosaveTask = nil
         syncActivePreset()
-        // The destination URL joins the document; its stream key is
-        // excluded — it lives only in secure storage.
-        let destination = URL(string: destinationURL).flatMap {
-            destinationURL.isEmpty ? nil : ProjectDestination(url: $0)
-        }
-        let project = Project(presets: presets, destination: destination)
+        // The destinations join the document; their stream keys are excluded
+        // — those live only in secure storage, filed by destination id. A row
+        // whose URL is not yet usable is left out rather than saved half-typed.
+        let project = Project(
+            presets: presets,
+            destinations: DestinationEdit.projectDestinations(from: destinations)
+        )
         do {
             try store.save(project)
             eventBus.event(

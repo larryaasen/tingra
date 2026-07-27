@@ -16,7 +16,7 @@ Vocabulary follows GLOSSARY.md: inputs and generators, compression, output, dest
 
 ## Non-goals (v1)
 
-Display/window inputs, shot composition, transitions, and multiple destinations are app roadmap items; the CLI adds them later once the engine exposes them. v1 is: one camera, one microphone, one destination. Local recording (`--record`) was deferred until after streaming was solid and landed at roadmap step 5.
+Display/window inputs, shot composition, and transitions are app roadmap items; the CLI adds them later once the engine exposes them. v1 is: one camera, one microphone. Local recording (`--record`) was deferred until after streaming was solid and landed at roadmap step 5; **multiple destinations** was also a deferral here and landed at roadmap step 8 — a repeatable `--url` now fans one program out to several services at once (see "Destination"), though it is still one capture and one composite, and every destination shares the run's compression settings.
 
 ## Repository and package layout
 
@@ -95,16 +95,49 @@ tingra-cli stream --url <destination> [--key <stream key>] [options]
 
 | Option | Description |
 | :----- | :---------- |
-| `--url <url>` | RTMP(S) or SRT destination. Examples: `rtmp://live.twitch.tv/app`, `rtmps://a.rtmps.youtube.com/live2`, `srt://host:8890?streamid=...`. Required. |
-| `--key <key>` | Stream key, appended to the RTMP URL path. Prefer `--key-env` or `--key-stdin` in scripts. |
-| `--key-env <VAR>` | Read the stream key from an environment variable (keeps it out of shell history and `ps` output). |
-| `--key-stdin` | Read the stream key from stdin. |
-| `--reconnect <n>` | Reconnection attempts on connection loss (default 3, `0` disables). |
+| `--url <url>` | RTMP(S) or SRT destination. Examples: `rtmp://live.twitch.tv/app`, `rtmps://a.rtmps.youtube.com/live2`, `srt://host:8890?streamid=...`. Required. **Repeatable** — see "Multiple destinations". |
+| `--key <key>` | Stream key. For RTMP(S) it becomes the publish name; for SRT it is composed into the URL's `streamid` (see the SRT note). **Repeatable**, one per `--url` in the same order. Prefer `--key-env` or `--key-stdin` in scripts. |
+| `--key-env <VAR>` | Read the stream key from an environment variable (keeps it out of shell history and `ps` output). Repeatable, one per `--url`. |
+| `--key-stdin` | Read the stream key from stdin. Single-destination only — stdin yields one value. |
+| `--reconnect <n>` | Reconnection attempts on connection loss (default 3, `0` disables). Applied **per destination**. |
 | `--reconnect-delay <sec>` | Delay between attempts (default 2). |
 
-**v1 scope: RTMP and RTMPS go live; SRT output arrives at roadmap step 8** (decided 2026-07-04, see TODO.md — an RTMP-only build stays fully source, with no prebuilt libsrt). `srt://` URLs still parse, but resolve no registered output and report a clear `invalidArgument` error naming the roadmap step.
+**RTMP, RTMPS, and SRT all go live** (SRT landed 2026-07-24, roadmap step 8; RTMP/RTMPS from v1). Each resolves to its output provider by URL scheme through the one output registry.
 
-**Reconnect semantics.** A lost connection gets up to `--reconnect` attempts, `--reconnect-delay` seconds apart. A reconnected stream must then survive a stability window (10 seconds) before it counts as recovered: a connection that drops again within the window is the same outage and keeps draining the attempt budget. Without this, a destination that accepts every publish and closes the connection moments later — how most services reject a bad stream key — would reconnect forever. When the budget is exhausted, the stream ends with `connectionLost` (exit 75).
+**Multiple destinations.** Repeat `--url` to put one program on air to several services at once — Twitch and YouTube together, or a backup ingest beside the primary. It is **one stream fanned out to N destination legs**, not N streams: one capture, one composite, one timeline, one `stream.started`, one exit code. Each leg gets its own connection, its own encoder, and its own reconnect budget.
+
+```bash
+tingra-cli stream \
+  --url rtmp://live.twitch.tv/app        --key-env TWITCH_KEY \
+  --url rtmps://a.rtmps.youtube.com/live2 --key-env YOUTUBE_KEY
+```
+
+- **Keys pair with URLs by position.** Pass one `--key` (or `--key-env`) per `--url` in the same order, or none at all. An unequal count is a usage error (exit 64) naming both counts, rather than silently shifting a key onto the wrong destination. Mixing `--key` with `--key-env` in one run is still rejected, as it always was.
+- **Transports can be mixed.** Each URL resolves its own provider by scheme, so an RTMP destination and an SRT destination in one run are normal.
+- **Legs are named `destination-1`, `destination-2`, …** in order, and every per-destination event carries that id in its `destination` param (plus the URL in `destinationUrl`).
+- **Every leg encodes with the same `--resolution`/`--video-bitrate`/… settings.** Per-destination compression settings are a later iteration; note that fan-out therefore costs one encoder per destination.
+
+**Starting and losing destinations.** The start is **best effort** and a partial loss does not end the run:
+
+- A destination that **refuses the connection at start** is reported as a `stream.destination.rejected` error event (identifier `connectionFailed`) and is not streamed to; the rest go live. The command throws (exit 75) only when **every** destination is refused — so a single-destination run behaves exactly as it always has.
+- A destination refused at start **does not enter the reconnect budget**. That budget governs mid-stream losses; a destination that was wrong from the first handshake is not retried against a typo.
+- A destination that **drops mid-stream** reconnects on its own budget (`--reconnect` attempts, `--reconnect-delay` apart, its own stability window). Its `stream.reconnecting` events carry its id; the other destinations are untouched and never charged for its outage.
+- When a destination exhausts its budget it is reported as `stream.destination.lost` (identifier `connectionLost`) and stays dead for the run. **The run continues and exits 0 while at least one destination is still delivering**; exit 75 comes only when the last live one is lost.
+
+**SRT and the stream key.** SRT has no RTMP-style publish name; the key rides in the URL's `streamid` (e.g. MediaMTX's `publish:<path>` shape). `--key` composes in so scripts keep the key out of the URL and out of `ps`/history:
+- `--key` (or `--key-env`/`--key-stdin`) with an SRT URL that has **no** `streamid` → `streamid=<key>` is appended to the URL. Pass the whole `streamid` value as the key (e.g. `--key 'publish:live/abc123'`).
+- `--key` with an SRT URL that **already** carries a `streamid` is ambiguous and is rejected (`invalidArgument`): supply the key one way, not both — either put the whole `streamid` in the URL, or pass it as the key with no `streamid` in the URL.
+- No key → the SRT URL is used exactly as given (its own `streamid`, if any).
+
+The key is placed into `streamid` **literally** (not percent-encoded), so a `publish:live/key` value stays `publish:live/key`; the key must therefore be URL-safe. The composed URL holds the secret and is never logged. Note SRT reconnect: an SRT link that dies mid-stream is not currently auto-reconnected — see "Reconnect semantics".
+
+**Reconnect semantics.** A lost connection gets up to `--reconnect` attempts, `--reconnect-delay` seconds apart. A reconnected stream must then survive a stability window (10 seconds) before it counts as recovered: a connection that drops again within the window is the same outage and keeps draining the attempt budget. Without this, a destination that accepts every publish and closes the connection moments later — how most services reject a bad stream key — would reconnect forever. When the budget is exhausted, that destination ends with `connectionLost`; the run ends (exit 75) once the last live destination has.
+
+The budget and the stability window are **per destination**: with several `--url`s, one flapping destination never spends another's attempts.
+
+Note that no reconnect attempt is ever made for the **initial** connection, on any transport: a destination that refuses the first handshake is reported straight away rather than retried.
+
+*RTMP(S) only in this iteration.* A **bad SRT connection is still caught at start** — a rejected handshake (bad `streamid`, unreachable host) is reported at once, and fails the command (exit 75) when it is the only destination. What SRT lacks is the **mid-stream** loss signal: HaishinKit 2.x's SRT publish path exposes no event when an already-established link later dies, so a hard SRT timeout is not auto-reconnected the way an RTMP drop is (SRT's own ARQ retransmission already rides out ordinary packet loss below this layer). Recorded in TODO.md as a deferral; never worked around with a poll loop. **With several destinations this has a further consequence:** an SRT leg never reports a mid-stream loss, so it counts as healthy for the whole run — a mixed RTMP + SRT run whose RTMP leg dies keeps going and exits 0 on the strength of an SRT leg that may already be dead.
 
 #### Input selection
 
@@ -147,15 +180,22 @@ The `--json` status events are bus events on the standard NDJSON stream (EVENTS.
 
 | Event | When | Params |
 | :---- | :--- | :----- |
-| `stream.started` | The connection and publish succeeded; media is flowing. | `url`, plus the resolved video block (`videoInput`, `videoInputName`, `resolution`, `fps`, `videoCodec`, `videoBitrate`, `keyframeInterval`) and audio block (`audioInput`, `audioInputName`, `audioCodec`, `audioBitrate`, `audioSamplerate`); a disabled side omits its block. |
-| `stream.stats` | Every `--stats-interval` seconds. | `elapsed`, `bytesSent`, `bitrate` (bits/second), `fps`. |
-| `stream.reconnecting` | A reconnect attempt is starting. | `attempt`, `maxAttempts`, `delay`, `reason`. |
-| `stream.reconnected` | A reconnect attempt succeeded. | `attempt`. |
+| `stream.started` | At least one destination connected and published; media is flowing. | `url` (the **first live** destination's), `destinations` (how many went live), `destinationsRejected` (how many were refused), plus the resolved video block (`videoInput`, `videoInputName`, `resolution`, `fps`, `videoCodec`, `videoBitrate`, `keyframeInterval`) and audio block (`audioInput`, `audioInputName`, `audioCodec`, `audioBitrate`, `audioSamplerate`); a disabled side omits its block. |
+| `stream.destination.started` | One destination went live (one per live destination, after `stream.started`). | `destination`, `destinationUrl`. |
+| `stream.stats` | Every `--stats-interval` seconds, **once per live destination**. | `destination`, `destinationUrl`, `elapsed`, `bytesSent`, `bitrate` (bits/second), `fps`. |
+| `stream.reconnecting` | A reconnect attempt is starting for one destination. | `destination`, `destinationUrl`, `attempt`, `maxAttempts`, `delay`, `reason`. |
+| `stream.reconnected` | A reconnect attempt succeeded for one destination. | `destination`, `destinationUrl`, `attempt`. |
 | `stream.stopped` | The stream ended, however it ended. | `reason`: `stopRequested` (Ctrl-C/SIGTERM), `durationElapsed`, or `connectionLost`. |
 | `recording.started` | `--record` opened the file and began writing (before `stream.started`). | `path`, `container` (`mov`/`mp4`). |
 | `recording.stopped` | The recording was finalized on teardown. | `path`. |
 
-Failures ride the same stream as `error` events carrying `identifier` + `message` (see "Error identifiers"). A recording write failure surfaces as an `error` event with `identifier` `recordingFailed`; because recording is independent of streaming, that error stops the recording but not the stream. The stream key never appears in any event (the recording path is not a secret and does appear); the key is never made a param in the first place (EVENTS.md, Redaction).
+Two `error`-group events report a destination the run continues without (see "Multiple destinations"): **`stream.destination.rejected`** (`destination`, `destinationUrl`, `identifier` `connectionFailed`, `message`) when a destination refuses the connection at start, and **`stream.destination.lost`** (same params, `identifier` `connectionLost`) when one exhausts its reconnect budget mid-stream. Neither ends a run that still has a live destination — the `recordingFailed` precedent: reported with a stable identifier, without changing the run's fate.
+
+Every per-destination event carries `destination` (the leg id, `destination-1`…) and `destinationUrl`. A single-destination run emits exactly the events it always did, plus these additive params and one `stream.destination.started` line — the shapes are append-only, so existing scripts keep reading the same keys.
+
+`--dry-run` mirrors the same shape: `stream.plan` gains a `destinations` count (its `url` stays the first destination's), and each destination gets one `stream.plan.destination` event with `destination`, `destinationUrl`, and `keySource`.
+
+Failures ride the same stream as `error` events carrying `identifier` + `message` (see "Error identifiers"). A recording write failure surfaces as an `error` event with `identifier` `recordingFailed`; because recording is independent of streaming, that error stops the recording but not the stream. No stream key ever appears in any event (the recording path is not a secret and does appear); a key is never made a param in the first place (EVENTS.md, Redaction).
 
 #### Dry run
 
@@ -180,11 +220,11 @@ Failures ride the same stream as `error` events carrying `identifier` + `message
 
 | Code | Meaning |
 | :--- | :------ |
-| 0 | Clean stop (signal or `--duration`). |
-| 64 | Usage error (bad flags, malformed URL). |
+| 0 | Clean stop (signal or `--duration`) — including a run that lost or was refused *some* of its destinations while at least one kept delivering. |
+| 64 | Usage error (bad flags, malformed URL, a `--key` count that does not match the `--url` count). |
 | 69 | Input not found or authorization denied (camera/mic TCC). |
 | 70 | Internal pipeline error. |
-| 75 | Connection failed or lost after all reconnect attempts. |
+| 75 | Connection failed or lost after all reconnect attempts — every destination refused at start, or the last live one lost. |
 
 #### Error identifiers
 
@@ -230,7 +270,7 @@ The MCP tool surface is plug-in defined: plug-ins contribute tools to the host's
 | `stream_status` | `--json` status events | Bitrate, fps, dropped frames, connection state for a session. |
 | `stream_stop` | Ctrl-C | Clean stop: flush compression, close connection, finalize any recording. |
 
-One active stream session in v1. Stream keys pass through tool input into the host's secure storage and are never logged.
+One active stream session in v1 — which may fan out to several destinations (see MCP.md, "Sessions and concurrency"). Stream keys pass through tool input into the host's secure storage and are never logged.
 
 **Recording is not yet in the MCP surface** (decided 2026-07-05, roadmap step 5). `--record` ships on the CLI's `stream` command only; the MCP tools gain no `record_start`/`record_stop`, and `stream_start` gains no `record` option in this step. The agent-facing contract stays as small as it can be until an agent actually needs recording, at which point recording attaches as an optional `record` field on `stream_start`'s input schema (reusing the same `RecordingService` the CLI drives) — a purely additive change. `stream_stop` already documents "finalize any recording," so the tool table is forward-compatible; the daemon writing files under its own identity is the extra consideration that addition carries.
 
@@ -258,6 +298,15 @@ tingra-cli stream --url rtmps://a.rtmps.youtube.com/live2 --key-stdin \
 
 # SRT destination
 tingra-cli stream --url "srt://ingest.example.com:8890?streamid=publish:mystream"
+
+# One program to Twitch and YouTube at once: repeat --url, one key each,
+# in the same order. One capture, one composite, one exit code; each
+# destination reconnects on its own budget, and losing one does not end
+# the run.
+export TWITCH_KEY=live_xxxxxxxx YOUTUBE_KEY=yt_xxxxxxxx
+tingra-cli stream \
+  --url rtmp://live.twitch.tv/app         --key-env TWITCH_KEY \
+  --url rtmps://a.rtmps.youtube.com/live2 --key-env YOUTUBE_KEY
 
 # Fully generated 30 second test against the local simulator (no hardware)
 tingra-cli stream --url rtmp://localhost:1935/live --key tingra_test_key \

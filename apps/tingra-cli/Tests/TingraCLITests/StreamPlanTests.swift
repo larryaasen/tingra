@@ -59,7 +59,7 @@ struct StreamPlanTests {
     @Test("no selectors resolve to the system default camera and microphone")
     func defaultsResolve() async throws {
         let plan = try await StreamPlan.resolve(
-            request: StreamRequest(url: "rtmp://localhost/live"),
+            request: StreamRequest(urls: ["rtmp://localhost/live"]),
             registry: try await makeRegistry(),
             defaults: builtInDefaults
         )
@@ -70,7 +70,7 @@ struct StreamPlanTests {
 
     @Test("explicit selectors override the defaults")
     func selectorsOverrideDefaults() async throws {
-        var request = StreamRequest(url: "rtmp://localhost/live")
+        var request = StreamRequest(urls: ["rtmp://localhost/live"])
         request.camera = "BRIO"
         request.mic = "MV7"
 
@@ -86,7 +86,7 @@ struct StreamPlanTests {
 
     @Test("generators resolve by their stable identifiers, no hardware involved")
     func generatorsResolve() async throws {
-        var request = StreamRequest(url: "rtmp://localhost/live")
+        var request = StreamRequest(urls: ["rtmp://localhost/live"])
         request.videoGenerator = .alignment
         request.audioGenerator = .tone
 
@@ -102,7 +102,7 @@ struct StreamPlanTests {
 
     @Test("--no-video and --no-audio leave that side unresolved")
     func disabledSidesStayNil() async throws {
-        var request = StreamRequest(url: "rtmp://localhost/live")
+        var request = StreamRequest(urls: ["rtmp://localhost/live"])
         request.noVideo = true
         request.audioGenerator = .tone
 
@@ -122,7 +122,7 @@ struct StreamPlanTests {
 
         await #expect(throws: StreamPlanError.noDefaultInput(.camera)) {
             _ = try await StreamPlan.resolve(
-                request: StreamRequest(url: "rtmp://localhost/live"),
+                request: StreamRequest(urls: ["rtmp://localhost/live"]),
                 registry: registry,
                 defaults: noDefaults
             )
@@ -131,7 +131,7 @@ struct StreamPlanTests {
 
     @Test("an unknown selector propagates the selector error")
     func unknownSelectorPropagates() async throws {
-        var request = StreamRequest(url: "rtmp://localhost/live")
+        var request = StreamRequest(urls: ["rtmp://localhost/live"])
         request.camera = "Elgato"
         let registry = try await makeRegistry()
 
@@ -152,7 +152,7 @@ struct StreamPlanTests {
 struct StreamPlanOutputTests {
     /// A fully-populated plan over the generator inputs.
     private func makePlan() async throws -> StreamPlan {
-        var request = StreamRequest(url: "rtmp://localhost/live")
+        var request = StreamRequest(urls: ["rtmp://localhost/live"])
         request.videoGenerator = .bars
         request.audioGenerator = .tone
         request.keySource = .environment
@@ -173,6 +173,7 @@ struct StreamPlanOutputTests {
         let expected: [String: EventValue] = [
             "url": .string("rtmp://localhost/live"),
             "keySource": .string("environment"),
+            "destinations": .int(1),
             "reconnect": .int(3),
             "reconnectDelay": .int(2),
             "statsInterval": .int(5),
@@ -197,7 +198,7 @@ struct StreamPlanOutputTests {
 
     @Test("a disabled side is omitted from the event params entirely")
     func disabledSideOmitted() async throws {
-        var request = StreamRequest(url: "rtmp://localhost/live")
+        var request = StreamRequest(urls: ["rtmp://localhost/live"])
         request.noVideo = true
         request.audioGenerator = .tone
         let plan = try await StreamPlan.resolve(
@@ -233,5 +234,71 @@ struct StreamPlanOutputTests {
         #expect(text.contains("30s"))
         #expect(text.contains("/tmp/backup.mp4"))
         #expect(!text.contains("live_"))
+    }
+
+    /// A plan fanning one program out to three destinations of two transports.
+    private func makeFannedOutPlan() async throws -> StreamPlan {
+        var request = StreamRequest(urls: [
+            "rtmp://localhost/live",
+            "rtmps://backup.example/live2",
+            "srt://localhost:8890",
+        ])
+        request.videoGenerator = .bars
+        request.audioGenerator = .tone
+        request.keySource = .option
+        return try await StreamPlan.resolve(
+            request: request,
+            registry: try await makeRegistry(),
+            defaults: noDefaults
+        )
+    }
+
+    @Test("a fanned-out plan counts its destinations and keeps url on the first")
+    func fanOutSummarizesDestinations() async throws {
+        let params = try await makeFannedOutPlan().eventParams
+
+        // `url` stays the first destination's, so a script written against a
+        // single-destination plan keeps reading the same key.
+        #expect(params["url"] == .string("rtmp://localhost/live"))
+        #expect(params["destinations"] == .int(3))
+    }
+
+    @Test("each destination gets its own plan event with a stable leg id")
+    func fanOutReportsEachDestination() async throws {
+        let destinations = try await makeFannedOutPlan().destinationEventParams
+
+        #expect(destinations.count == 3)
+        #expect(destinations[0]["destination"] == .string("destination-1"))
+        #expect(destinations[0]["destinationUrl"] == .string("rtmp://localhost/live"))
+        #expect(destinations[1]["destination"] == .string("destination-2"))
+        #expect(destinations[1]["destinationUrl"] == .string("rtmps://backup.example/live2"))
+        #expect(destinations[2]["destination"] == .string("destination-3"))
+        #expect(destinations[2]["destinationUrl"] == .string("srt://localhost:8890"))
+        // The source is reported per destination; no key value ever is.
+        for params in destinations {
+            #expect(params["keySource"] == .string("option"))
+            #expect(params["key"] == nil)
+        }
+    }
+
+    @Test("a single-destination plan reports one destination event and no numbering")
+    func singleDestinationStaysUnnumbered() async throws {
+        let plan = try await makePlan()
+
+        #expect(plan.destinationEventParams.count == 1)
+        #expect(plan.destinationEventParams[0]["destination"] == .string("destination-1"))
+        #expect(plan.humanDescription.contains("DESTINATION"))
+        #expect(!plan.humanDescription.contains("url 1"))
+    }
+
+    @Test("the human plan numbers the destinations when there is more than one")
+    func fannedOutHumanPlanNumbersDestinations() async throws {
+        let text = try await makeFannedOutPlan().humanDescription
+
+        #expect(text.contains("DESTINATIONS (3)"))
+        #expect(text.contains("url 1"))
+        #expect(text.contains("url 3"))
+        #expect(text.contains("srt://localhost:8890"))
+        #expect(text.contains("one per destination in order"))
     }
 }

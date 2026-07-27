@@ -70,9 +70,9 @@ A project is the saved file for an entire show. A project contains presets. A pr
 
 **Output** — the engine component that sends compressed program media out of Tingra, to destinations or to a recording.
 
-**Destination** — a configured target the program streams to: a streaming service ingest point, a custom server, or a local endpoint. A project can hold many destinations.
+**Destination** — a configured target the program streams to: a streaming service ingest point, a custom server, or a local endpoint. A project can hold many destinations, each with a name, a URL, and an enabled flag; its stream key is never part of the project, living in secure storage under the destination's stable id.
 
-**Multiple destinations** — sending the program to several destinations simultaneously, each with its own compression settings where needed.
+**Multiple destinations** — sending the program to several destinations simultaneously. It is **one stream fanned out**, not several streams: one capture, one composite, one timeline, one session. Each destination is a **leg** of that session, with its own connection and its own reconnect budget, so losing one leaves the others on air. Per-destination compression settings are a later iteration; today every leg carries the program's settings.
 
 ## Control and automation
 

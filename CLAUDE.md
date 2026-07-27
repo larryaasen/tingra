@@ -226,7 +226,7 @@ The engine is organized as services, each exposing its capabilities through plug
 - Capture inputs → Metal compositor → program frame (GPU-resident) → compression sinks (streaming output via `StreamingService`, local recording via `AVAssetWriter`) → destinations.
 - UI, CLI, and MCP callers talk to the engine only through host-exposed protocols/services — never by importing a capture, compositing, or networking framework directly.
 - Device connection and disconnection are normal events, not errors — never surface them as failure states.
-- One active stream session at a time in v1 (see [CLI.md](docs/CLI.md)); don't design around concurrent sessions until that changes.
+- One active stream session at a time in v1 (see [CLI.md](docs/CLI.md)); don't design around concurrent sessions until that changes. One session may fan out to **N destination legs** (roadmap step 8) — that is still one session, not concurrency.
 
 ### Dependency Injection Pattern
 

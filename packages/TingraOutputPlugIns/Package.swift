@@ -12,12 +12,13 @@ import PackageDescription
 
 // The first party streaming output plug-in: the HaishinKit backed
 // StreamingService behind the output seam. This is the only package in the
-// monorepo that imports HaishinKit (RTMP connection handling, muxing, and
-// internal VideoToolbox compression — the standardized, undifferentiated
-// work ARCHITECTURE.md delegates); everything else sees only the
-// StreamingService protocol. Registration goes through the
-// OutputRegistering seam, so the package depends on the protocol package
-// alone, never the engine.
+// monorepo that imports HaishinKit (RTMP and SRT connection handling,
+// muxing, and internal VideoToolbox compression — the standardized,
+// undifferentiated work ARCHITECTURE.md delegates); everything else sees
+// only the StreamingService protocol. SRT (roadmap step 8) pulls in the
+// prebuilt libsrt binary through HaishinKit's SRTHaishinKit product.
+// Registration goes through the OutputRegistering seam, so the package
+// depends on the protocol package alone, never the engine.
 let package = Package(
     name: "TingraOutputPlugIns",
     platforms: [.macOS(.v15)],
@@ -39,6 +40,7 @@ let package = Package(
             dependencies: [
                 .product(name: "HaishinKit", package: "HaishinKit.swift"),
                 .product(name: "RTMPHaishinKit", package: "HaishinKit.swift"),
+                .product(name: "SRTHaishinKit", package: "HaishinKit.swift"),
                 .product(name: "Logboard", package: "Logboard"),
                 .product(name: "TingraEventBus", package: "TingraEventBus"),
                 .product(name: "TingraPlugInKit", package: "TingraPlugInKit"),

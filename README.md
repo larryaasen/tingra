@@ -286,7 +286,8 @@ plug-ins build against, importable without the engine (see
   host's `ToolRegistry` conforms.
 - `JSONValue` — an arbitrary JSON value (the currency of the tool seam):
   scalars, arrays, and objects, encoding as natural JSON; more general than
-  the event bus's scalar-only `EventValue`.
+  the event bus's scalar-only `EventValue`. Reads through `objectValue`,
+  `arrayValue`, `stringValue`, `intValue`, `doubleValue`, and `boolValue`.
 - `EngineClock` — the master clock seam: current time and the absolute-deadline
   tick stream (see [CLOCK.md](docs/CLOCK.md)).
 - `PlugIn` — the protocol every plug-in conforms to: identity plus an
@@ -345,22 +346,30 @@ and plug-ins").
   one frame per program tick, restamped with the tick's time, re-sending the
   held frame across an input stall (see CLOCK.md, "The tick before composition
   exists").
-- `StreamSession` — one live stream: owns the shared timeline (`T0`), pumps
-  program video and program audio into the streaming service — and, when
-  `--record` is set, the same media into a parallel recording sink — emits the
-  `stream.*` (and `recording.*`) status events, drives the reconnect policy
-  (attempts, delay, and the stability window that keeps a flapping connection
-  from reconnecting forever), and finalizes the recording on every teardown
-  path. Its `VideoSource` is either `.input` (a single capture input the
+- `StreamSession` — one live stream fanned out to **N destination legs**: owns
+  the shared timeline (`T0`), pumps program video and program audio into every
+  leg's streaming service — and, when `--record` is set, the same media into a
+  parallel recording sink — emits the `stream.*` (and `recording.*`) status
+  events, drives a **per-leg** reconnect policy (attempts, delay, and the
+  stability window that keeps a flapping connection from reconnecting forever,
+  each leg on its own budget so one destination dropping never takes another
+  down), and finalizes the recording on every teardown path. Its start is best
+  effort — a refused destination is reported and skipped while the rest go
+  live — and it ends with `connectionLost` only when the last live leg is lost.
+  Its `VideoSource` is either `.input` (a single capture input the
   session paces through `ProgramPacer` and whose lifecycle it owns — the CLI's
   one-camera path) or `.program` (the compositor's already tick-paced program
   frames, consumed as-is — the phase-3 app's path), and its `AudioSource`
   mirrors it: `.input` (a pass-through microphone at capture cadence,
   session-owned) or `.program` (the mixer's already-paced program mix, reported
   as the stable `"mix"` identity); everything downstream is identical.
+- `StreamSession.DestinationLeg` — one destination the program fans out to: a
+  caller-minted stable id (the `destination` param on every per-leg status
+  event), the `Destination` it streams to, and the `StreamingService` taking
+  it there.
 - `SecureStorage` / `KeychainSecureStorage` — the host's secret store seam and
   its data-protection-Keychain implementation: stream keys live here (keyed by
-  destination URL under Tingra's identifier namespace), never in the project
+  destination id under Tingra's identifier namespace), never in the project
   document, an event, or a log. A seam so the app runs against the real
   Keychain and tests against an in-memory double.
 - `SecureStorageError` — a recoverable, secret-free failure from the secure
@@ -373,7 +382,9 @@ and plug-ins").
 - `StatusSink` — the status sink: retains the latest control-plane status
   events for point reads (`stream_status`) and re-broadcasts them to
   subscribers (the MCP notifications), so status is reported without polling
-  (see EVENTS.md, "Sinks").
+  (see EVENTS.md, "Sinks"). Retains per event name *and*, for the events a
+  fanned-out stream emits once per destination, per name-and-destination — so
+  one leg's stats never stand in for another's.
 
 ### `packages/TingraCapturePlugIns`
 
@@ -457,9 +468,14 @@ so it stays testable with a synthetic clock and a mock renderer (see
   within v1, optional fields decoding forgivingly); decoding a document newer
   than the build understands throws rather than silently loading it.
 - `ProjectDestination` — a key-free destination configuration saved in a
-  `Project` (the RTMP(S) URL only); the secret it references lives in the
-  host's secure storage, keyed by that URL. Deliberately `Codable` precisely
-  because it holds no secret, unlike the plug-in seam's `Destination`.
+  `Project` (the RTMP(S)/SRT URL, a stable id, the operator's name, and an
+  enabled flag); the secret it references lives in the host's secure storage,
+  keyed by that **id** — not the URL, which is neither unique nor stable
+  across an edit. Deliberately `Codable` precisely because it holds no secret,
+  unlike the plug-in seam's `Destination`.
+- `ProjectDestinationID` — a destination's stable identity within a project:
+  what its stream key is filed under in secure storage and what its per-leg
+  status events report.
 - `Preset` — a named, persisted collection of shots you cut among during a live
   session; a plain `Codable` value type (the project/scripting contract), also
   carrying the preset's optional authored audio configuration (`audioChannels`
@@ -604,18 +620,28 @@ no TCC.
 ### `packages/TingraOutputPlugIns`
 
 The first party streaming output plug-in: the HaishinKit-backed
-`StreamingService` for RTMP/RTMPS destinations. HaishinKit (and its Logboard
-logging façade, rerouted to OSLog) is imported only inside this package, behind
-the `StreamingService` seam.
+`StreamingService` for RTMP/RTMPS and SRT destinations. HaishinKit (and its
+Logboard logging façade, rerouted to OSLog) is imported only inside this
+package, behind the `StreamingService` seam.
 
-- `HaishinKitOutputPlugIn` — contributes the RTMP/RTMPS provider through the
-  output registration seam.
+- `HaishinKitOutputPlugIn` — contributes the RTMP/RTMPS and SRT providers
+  through the output registration seam.
 - `RTMPStreamingServiceProvider` — the provider serving `rtmp://` and `rtmps://`
   destinations; creates a fresh service per stream.
-- `HaishinKitStreamingService` — the concrete service: connects and publishes,
-  compresses internally (VideoToolbox via HaishinKit), appends program video as
-  uncompressed sample buffers and audio as PCM buffers carrying the session-timeline
-  PTS, watches for connection loss, and reports delivery counters.
+- `HaishinKitStreamingService` — the concrete RTMP/RTMPS service: connects and
+  publishes, compresses internally (VideoToolbox via HaishinKit), appends program
+  video as uncompressed sample buffers and audio as PCM buffers carrying the
+  session-timeline PTS, watches for connection loss, and reports delivery counters.
+- `SRTStreamingServiceProvider` — the provider serving `srt://` destinations
+  (roadmap step 8); creates a fresh service per stream.
+- `SRTHaishinKitStreamingService` — the concrete SRT service: composes the stream
+  key into the URL's `streamid`, connects and publishes over SRT (MPEG-TS), shares
+  buffer conversion and compression settings with the RTMP service, and derives
+  its frame rate by counting appends. HaishinKit's SRT publish path exposes no
+  mid-stream loss push, so it reports start-time failures but not `connectionLost`.
+- `HaishinKitMediaConversion` — the transport-neutral compression-settings mapping
+  and buffer conversion (program frame → uncompressed sample buffer, program audio
+  → PCM buffer + `AVAudioTime`) shared by both HaishinKit services.
 
 ### `packages/TingraRecordingPlugIns`
 
@@ -724,11 +750,13 @@ preset's shots — add, duplicate, rename, reorder, remove — applies layer-tre
 edits to the active shot, rebinds the built-in roles' layers when a picker's
 selection changes, starts and stops each channel strip's device as it is unmuted
 and muted, and puts the program on air by feeding the compositor's frames and
-the mixer's blocks to a `StreamSession` program source with the stream key held
-in Keychain-backed secure storage — reflecting the session's `StreamStatus` from
-the bus's `stream.*` events, never a poll), `ContentView` (camera/display
-pickers, a streaming panel — destination URL, secure stream-key field, live
-status, Start/Stop — and, over the preview, a preset switcher that switches and
+the mixer's blocks to a `StreamSession` program source fanned out to every
+enabled destination, each destination's stream key held in Keychain-backed
+secure storage under its own id — reflecting the session's `StreamStatus` and
+each leg's `DestinationState` from the bus's `stream.*` events, never a poll),
+`ContentView` (camera/display
+pickers, a streaming panel — the destination list, live status, Start/Stop —
+and, over the preview, a preset switcher that switches and
 manages the project's presets — an Add Preset button plus a per-preset context
 menu with Duplicate, Rename…, Move Left / Move Right, and Remove Preset,
 disabled on the last remaining preset — above a shot switcher that also manages
@@ -737,7 +765,18 @@ Rename…, a Default Transition submenu setting the shot's persisted default,
 Move Left / Move Right, and Remove Shot, and a segmented transition
 picker — Default (each shot's own default transition, the initial selection),
 or an explicit Cut, Dissolve, or Wipe, with an edge pop-up while Wipe is
-selected — choosing how the next take reaches program), `MixerView` (the mixer
+selected — choosing how the next take reaches program),
+`DestinationListView` (the streaming panel's destination list: one row per
+destination the program fans out to, each with an enable toggle, a name, a
+URL, a secure stream-key field, its own live state — its bitrate and frame
+rate while delivering, or Reconnecting/Refused/Lost when it alone is in
+trouble — and a remove button that also clears its stored key; rows lock while
+streaming, since v1 adds and removes destinations between runs),
+`DestinationEdit` (the pure, unit-tested destination state behind those rows:
+the URL held **as text** while it is typed, streamable only once it carries a
+supported scheme and a host, converting to a saved `ProjectDestination` only
+when usable — so a half-typed URL never reaches the project file, and an
+edited URL keeps its id and therefore its stored key), `MixerView` (the mixer
 panel: one channel strip per authored audio channel and per discovered audio
 input, each with a mute toggle, a meter, a live level slider, a pan slider
 that recenters on double-click, and an Effects button badged with the chain's

@@ -37,6 +37,53 @@ struct StatusSinkTests {
         await sink.shutdown()
     }
 
+    @Test("each destination's latest event is retained separately")
+    func retainsLatestPerDestination() async {
+        let bus = EventBus()
+        let sink = StatusSink()
+        let attach = bus.attach(sink)
+
+        // A fanned-out stream interleaves one stats event per leg per tick.
+        // Keying by name alone would let the last leg's numbers stand in for
+        // every destination's.
+        bus.event("stream.stats", domain: .output, params: ["destination": .string("twitch"), "fps": .int(30)])
+        bus.event("stream.stats", domain: .output, params: ["destination": .string("youtube"), "fps": .int(24)])
+        bus.event("stream.stats", domain: .output, params: ["destination": .string("twitch"), "fps": .int(29)])
+
+        let settled = await eventually {
+            await sink.latestEvent(named: "stream.stats", forDestination: "twitch")?.params?["fps"] == .int(29)
+        }
+        #expect(settled)
+        #expect(
+            await sink.latestEvent(named: "stream.stats", forDestination: "youtube")?.params?["fps"] == .int(24)
+        )
+        #expect(await sink.latestEvent(named: "stream.stats", forDestination: "vimeo") == nil)
+        #expect(await sink.latestEventsByDestination(named: "stream.stats").count == 2)
+        // The name-only read is unchanged: the most recent, whichever leg.
+        #expect(await sink.latestEvent(named: "stream.stats")?.params?["fps"] == .int(29))
+
+        bus.shutdown()
+        await attach.value
+        await sink.shutdown()
+    }
+
+    @Test("an event with no destination is retained by name only")
+    func eventsWithoutADestinationStayNameKeyed() async {
+        let bus = EventBus()
+        let sink = StatusSink()
+        let attach = bus.attach(sink)
+
+        bus.event("stream.started", domain: .output, params: ["url": .string("rtmp://localhost/live")])
+
+        let landed = await eventually { await sink.latestEvent(named: "stream.started") != nil }
+        #expect(landed)
+        #expect(await sink.latestEventsByDestination(named: "stream.started").isEmpty)
+
+        bus.shutdown()
+        await attach.value
+        await sink.shutdown()
+    }
+
     @Test("non-status groups are not retained")
     func ignoresNonStatusGroups() async {
         let bus = EventBus()

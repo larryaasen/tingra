@@ -122,8 +122,8 @@ struct Probe: AsyncParsableCommand {
             guard let provider = await outputs.provider(forScheme: scheme) else {
                 throw StreamingServiceError.unsupportedDestination(
                     """
-                    No registered output serves '\(scheme)://' destinations in v1 — SRT output arrives \
-                    at roadmap step 8. Probe an rtmp:// or rtmps:// destination.
+                    No registered output serves '\(scheme)://' destinations. Probe an rtmp://, \
+                    rtmps://, or srt:// destination.
                     """
                 )
             }

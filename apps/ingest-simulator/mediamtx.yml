@@ -12,7 +12,13 @@ logLevel: info
 rtmp: yes
 rtmpAddress: :1935
 srt: yes
-srtAddress: :8890
+# IPv4 loopback, deliberately — not `:8890` like the other listeners.
+# HaishinKit's SRT client (SRTSocketURL) builds only an IPv4 `sockaddr_in`,
+# so it cannot reach an IPv6 (`*:8890`) SRT socket the way the TCP listeners
+# accept IPv4-mapped-IPv6 connections; a `:8890` SRT bind makes the client's
+# handshake time out with nothing reaching the server. Binding IPv4 loopback
+# matches how a real IPv4 SRT ingest is reached (see SIMULATOR.md).
+srtAddress: 127.0.0.1:8890
 
 # Readback for verification: tests confirm the stream actually arrived
 # (codec, resolution, fps) by reading it back with ffprobe.

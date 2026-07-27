@@ -12,10 +12,11 @@ import Foundation
 /// The saved document for a whole show (GLOSSARY.md, "Project"): everything
 /// needed to reopen the show exactly as it was — the presets (each with its
 /// shots, optional per-shot default transitions, and optional authored audio
-/// configuration; see ``Preset/audioChannels``) and the ``destination``
-/// configuration (the stream key is excluded — it lives in secure storage;
-/// see ARCHITECTURE.md, "Streaming the program"). Further settings join it
-/// in later iterations.
+/// configuration; see ``Preset/audioChannels``) and the ``destinations`` the
+/// program streams to (the stream keys are excluded — they live in secure
+/// storage, filed by destination id; see ARCHITECTURE.md, "Streaming the
+/// program" and "Multiple destinations"). Further settings join it in later
+/// iterations.
 ///
 /// A project is a plain `Codable` value type — the serialized form is the
 /// project / scripting contract (CLAUDE.md, "Data Models"), so its JSON keys
@@ -42,39 +43,52 @@ public struct Project: Sendable, Equatable, Codable {
     /// until multiple presets arrive in the UI.
     public let presets: [Preset]
 
-    /// The stream destination this project last configured, or `nil` when
-    /// none has been set. The key is never stored here — only in the host's
-    /// secure storage, referenced by this destination's URL. One destination
-    /// in v1 of the app; multiple destinations are roadmap step 8.
-    public let destination: ProjectDestination?
+    /// The stream destinations this project last configured, in the order
+    /// the operator listed them, or `nil` when none has been set. One program
+    /// fans out to every enabled one (ARCHITECTURE.md, "Multiple
+    /// destinations").
+    ///
+    /// The keys are never stored here — only in the host's secure storage,
+    /// filed under each destination's ``ProjectDestination/id``.
+    public let destinations: [ProjectDestination]?
 
     /// Creates a project.
     ///
     /// - Parameters:
     ///   - version: The document format version (default: ``currentVersion``).
     ///   - presets: The presets, in switcher order (default: none).
-    ///   - destination: The stream destination configuration (default: none).
+    ///   - destinations: The stream destinations (default: none).
     public init(
         version: Int = Project.currentVersion,
         presets: [Preset] = [],
-        destination: ProjectDestination? = nil
+        destinations: [ProjectDestination]? = nil
     ) {
         self.version = version
         self.presets = presets
-        self.destination = destination
+        self.destinations = destinations
     }
 
     /// The coding keys — stable camelCase names for the project document.
     private enum CodingKeys: String, CodingKey {
         case version
         case presets
+        case destinations
+        /// Read-only: the single destination key written before a project
+        /// could hold several. Decoded and folded into ``destinations``,
+        /// never written again (see ``init(from:)``).
         case destination
     }
 
     /// Decodes a project. `version` is required (a document must declare its
     /// format so future versions can migrate it) and must not exceed
-    /// ``currentVersion``; `presets` and `destination` are optional (a
-    /// minimal document decodes forgivingly with them absent).
+    /// ``currentVersion``; `presets`, `destinations`, and the older single
+    /// `destination` are optional (a minimal document decodes forgivingly
+    /// with them absent).
+    ///
+    /// A document written with the single `destination` key folds it in as
+    /// the only element of ``destinations`` — an **optional key within v1**
+    /// (the pre-release rule, no version bump), the same accommodation
+    /// ``Preset/audioChannels`` made. `destinations` wins when both appear.
     ///
     /// - Throws: `DecodingError.keyNotFound` when `version` is missing, and
     ///   `DecodingError.dataCorrupted` when the document declares a format
@@ -95,16 +109,23 @@ public struct Project: Sendable, Equatable, Codable {
         }
         self.version = version
         presets = try container.decodeIfPresent([Preset].self, forKey: .presets) ?? []
-        destination = try container.decodeIfPresent(ProjectDestination.self, forKey: .destination)
+        if let list = try container.decodeIfPresent([ProjectDestination].self, forKey: .destinations) {
+            destinations = list
+        } else if let single = try container.decodeIfPresent(ProjectDestination.self, forKey: .destination) {
+            destinations = [single]
+        } else {
+            destinations = nil
+        }
     }
 
     /// Encodes a project, writing `version` and `presets` always and
-    /// `destination` only when set, so a project with no destination
+    /// `destinations` only when set, so a project with no destination
     /// round-trips to a document without the key (and reads back as nil).
+    /// The superseded single `destination` key is never written.
     public func encode(to encoder: any Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(version, forKey: .version)
         try container.encode(presets, forKey: .presets)
-        try container.encodeIfPresent(destination, forKey: .destination)
+        try container.encodeIfPresent(destinations, forKey: .destinations)
     }
 }

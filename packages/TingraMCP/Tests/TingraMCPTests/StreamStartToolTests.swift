@@ -33,18 +33,70 @@ struct StreamStartToolTests {
     @Test("a minimal request defaults both sides to the system default input")
     func minimalRequest() throws {
         let request = try StreamStartTool.parse(["url": "rtmp://localhost/live"])
-        #expect(request.url == "rtmp://localhost/live")
+        #expect(request.destinations.count == 1)
+        #expect(request.destinations.first?.url == "rtmp://localhost/live")
+        #expect(request.destinations.first?.id == "destination-1")
         #expect(request.video == .systemDefault)
         #expect(request.audio == .systemDefault)
         #expect(request.configuration.width == 1920)
         #expect(request.configuration.height == 1080)
         #expect(request.configuration.videoBitsPerSecond == 4_500_000)
-        #expect(request.streamKey == nil)
+        #expect(request.destinations.first?.streamKey == nil)
     }
 
     @Test("a missing url returns an invalidArgument error")
     func missingURL() {
         #expect(parseError(["fps": 30])?.identifier == .invalidArgument)
+    }
+
+    @Test("a destinations array becomes one leg per entry, numbered by position")
+    func destinationsArrayFansOut() throws {
+        let request = try StreamStartTool.parse([
+            "destinations": .array([
+                .object(["url": .string("rtmp://localhost/live"), "key": .string("twitch_key")]),
+                .object(["url": .string("srt://localhost:8890")]),
+            ])
+        ])
+
+        #expect(request.destinations.count == 2)
+        #expect(request.destinations[0].id == "destination-1")
+        #expect(request.destinations[0].url == "rtmp://localhost/live")
+        #expect(request.destinations[0].streamKey == "twitch_key")
+        #expect(request.destinations[1].id == "destination-2")
+        #expect(request.destinations[1].url == "srt://localhost:8890")
+        #expect(request.destinations[1].streamKey == nil)
+    }
+
+    @Test("url and destinations together return an invalidArgument error")
+    func bothDestinationFormsReturnAnError() {
+        let error = parseError([
+            "url": .string("rtmp://localhost/live"),
+            "destinations": .array([.object(["url": .string("rtmp://localhost/backup")])]),
+        ])
+        #expect(error?.identifier == .invalidArgument)
+    }
+
+    @Test("an empty destinations array returns an invalidArgument error")
+    func emptyDestinationsReturnsAnError() {
+        #expect(parseError(["destinations": .array([])])?.identifier == .invalidArgument)
+    }
+
+    @Test("a destinations entry that is not an object with a url returns an invalidArgument error")
+    func malformedDestinationEntryReturnsAnError() {
+        #expect(
+            parseError(["destinations": .array([.string("rtmp://localhost/live")])])?.identifier == .invalidArgument)
+        #expect(parseError(["destinations": .array([.object(["key": .string("k")])])])?.identifier == .invalidArgument)
+    }
+
+    @Test("every destination's scheme is checked, not just the first")
+    func everyDestinationSchemeIsChecked() {
+        let error = parseError([
+            "destinations": .array([
+                .object(["url": .string("rtmp://localhost/live")]),
+                .object(["url": .string("http://example.com")]),
+            ])
+        ])
+        #expect(error?.identifier == .invalidArgument)
     }
 
     @Test("an unsupported url scheme returns an invalidArgument error")

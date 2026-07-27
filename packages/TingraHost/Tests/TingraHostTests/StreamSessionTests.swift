@@ -16,29 +16,6 @@ import TingraPlugInKit
 
 @testable import TingraHost
 
-/// Collects the events a session emits on the bus.
-private final class CollectedEvents: Sendable {
-    /// The events seen so far.
-    private let events = Mutex<[EventBusEvent]>([])
-
-    /// Consumes the bus's event stream into the collection.
-    func consume(_ stream: AsyncStream<EventBusEvent>) -> Task<Void, Never> {
-        Task {
-            for await event in stream {
-                events.withLock { $0.append(event) }
-            }
-        }
-    }
-
-    /// The events named `name`, in order.
-    func named(_ name: String) -> [EventBusEvent] {
-        events.withLock { $0.filter { $0.name == name } }
-    }
-
-    /// Every event collected so far.
-    var all: [EventBusEvent] { events.withLock { $0 } }
-}
-
 @Suite("StreamSession")
 struct StreamSessionTests {
     /// The destination sessions in this suite stream to.

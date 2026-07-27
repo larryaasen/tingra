@@ -13,9 +13,8 @@ import TingraPlugInKit
 /// ``HaishinKitStreamingService`` per stream for `rtmp://` and `rtmps://`
 /// destinations.
 ///
-/// SRT stays at roadmap step 8 (see TODO.md): `srt://` resolves no
-/// provider, and the engine reports that as an `invalidArgument` error
-/// naming the roadmap step.
+/// SRT is served by its sibling ``SRTStreamingServiceProvider`` (roadmap
+/// step 8); this provider is unchanged by that addition.
 public struct RTMPStreamingServiceProvider: StreamingServiceProvider {
     /// The provider's stable identifier.
     public let id = OutputID(rawValue: "rtmp")

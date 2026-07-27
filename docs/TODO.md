@@ -218,7 +218,23 @@ or two in the doc that owns them — none need a rewrite.
 
 - [ ] **Steps 7–8** — app era: production features (presets, shots, layers,
   transitions, audio mixer) *(step 7 complete 2026-07-20)*, SRT/multiple
-  destinations *(step 8, open)*.
+  destinations/WHIP-WHEP *(step 8: **both decided deliverables landed** — SRT
+  2026-07-24, multiple destinations 2026-07-26; **WHIP/WHEP remains**, and is
+  deliberately ungated by a date — ARCHITECTURE.md sequences it "as support
+  matures", i.e. when `RTCHaishinKit` leaves alpha. Nothing else in step 8 is
+  outstanding, so the next production iteration is a scoping call, not a
+  queued item)*.
+  - [x] **Step 8, SRT output** *(code complete 2026-07-24)* — the first
+    step-8 iteration: SRT delivery behind the same `StreamingService`/
+    `StreamingServiceProvider` seam as RTMP, as a contained provider
+    addition. See the detailed record below.
+  - [x] **Step 8, multiple destinations** *(design decided 2026-07-24, veto
+    cleared and code complete 2026-07-26)* — one program fanned out to N
+    destination legs inside `StreamSession` (not N sessions), per-leg
+    reconnect, best-effort start, per-leg status events, a repeatable CLI
+    `--url`, `Project.destinations: [ProjectDestination]?` folding in the
+    single `destination` (no version bump), and secure-storage keying by
+    destination id. See the detailed record below.
   - [x] **Step 7 exit criteria — met 2026-07-20** *(drawn 2026-07-19)* — the
     iterations that must land before step 8 opens, collected from the
     deferrals the fourteen records above carried. When this sub-list is
@@ -277,6 +293,128 @@ or two in the doc that owns them — none need a rewrite.
       multiview) — an app-era slice sequenced after step 8, alongside the
       video preview bus it parallels. Recorded here so it cannot silently
       expand the bucket.
+  - [x] **Step 8, multiple destinations** *(code complete 2026-07-26)* — the
+    second step-8 iteration, and the one that makes the engine a real
+    multi-service switcher: **one program fanned out to N destination legs
+    inside one `StreamSession`**, built after the design's veto cleared (see
+    "Decisions to settle" for the approved spec and the two amendments Larry
+    settled at the veto — best-effort start, and a CLI surface). Landed in
+    three iterations:
+    - **Engine.** `StreamSession` gained a public **`DestinationLeg`** (stable
+      id + `Destination` + its own `StreamingService`) and an array of them,
+      with the single-destination initializers kept as one-leg conveniences so
+      the common case reads unchanged. Reconnect state moved to a per-leg
+      `LegState` with one connection watcher each, so **one destination
+      flapping never spends another's budget** (the crux); a leg whose budget
+      runs out is reported and stays dead while the rest stream on, and only
+      the last live leg's loss ends the session with `connectionLost`. Start is
+      best effort; a start-refused leg never enters the reconnect budget. Media
+      pumps snapshot the services once and deliver to every leg in order.
+      `StatusSink` grew per-name-**and**-destination retention so one leg's
+      stats can never stand in for another's. Three event names added
+      (`stream.destination.started`/`.rejected`/`.lost`), `stream.stats` and
+      the reconnect events became per-leg with flat additive `destination` +
+      `destinationUrl` params (an event param is a scalar — EVENTS.md), and
+      `stream.started` gained `destinations`/`destinationsRejected` while `url`
+      stays the first live leg's.
+    - **CLI + MCP.** `--url` and `--key`/`--key-env` became repeatable, paired
+      by position with an unequal count rejected as exit 64 naming both counts;
+      `--key-stdin` stays single-destination. `stream.plan` gained a
+      `destinations` count plus one `stream.plan.destination` event each.
+      `stream_start` takes either `url`/`key` or a `destinations` array (not
+      both) and still returns one session id; `stream_status` grew a
+      `destinations` array of per-leg counters with its flat fields staying the
+      first leg's. `JSONValue` gained `arrayValue` (additive, completing the
+      accessor set).
+    - **Document, secure storage, and the app.** `Project.destinations:
+      [ProjectDestination]?` folds the older single `destination` key in
+      **decode-only** (an optional key within v1, the `Preset.audioChannels`
+      precedent); `ProjectDestination` grew `ProjectDestinationID`, `name`, and
+      `isEnabled`, all optional on decode. Stream keys moved to secure-storage
+      accounts keyed by **destination id, not URL** (no migration —
+      pre-release). The app's streaming panel became a destination list:
+      `DestinationEdit` (the pure, unit-tested state holding the URL as text,
+      streamable only with a supported scheme *and* a host, so a half-typed URL
+      never reaches the project file and an edited URL keeps its id and its
+      key) behind `DestinationListView` (per-row enable, name, URL, secure key,
+      live state, remove-and-clear-key; rows lock while streaming). The session
+      banner reports trouble only when nothing is left delivering — one leg of
+      several reconnecting is that leg's news, on its own row. New strings
+      localized `de`/`es`; every button taps first.
+
+    Tests: `TingraHost` grew a `StreamSession fan-out` suite (8 cases: shared
+    timeline across legs, per-leg stats identity, partial start rejection,
+    every-leg rejection, no destinations, partial leg loss, last-leg loss, and
+    **independent budgets**) plus 2 `StatusSink` cases, reaching 90;
+    `TingraComposition` 141 (destinations round-trip, the single-key fold-in,
+    list-wins, missing-url throw, equality); `tingra-cli` 81; `TingraMCP` 56;
+    `apps/tingra` 99 with a new `DestinationEdit` suite — **665 across the 13
+    targets**. `integration-test.sh` gained **three scenarios (11 checks)** —
+    one program to two RTMP paths with **both read back off the simulator**
+    (`live/` plus the already-configured `live2/` path), a partial start
+    rejection exiting 0, and per-leg reconnect isolation proving all reconnects
+    belong to the failing leg and none to the healthy one — for **11 scenarios
+    / 37 checks, all passing**. Warning-clean, format clean.
+
+    Two things the run itself taught, worth keeping: **MediaMTX does not refuse
+    a bad RTMP key at connect** — it accepts and closes moments later (the
+    accept-then-drop shape the stability window exists for), so a bad key
+    exercises the *mid-stream* path and a genuine start rejection needs an
+    unreachable port (`rtmp://localhost:59999/live`, as the probe scenario
+    already used). And the per-leg isolation scenario confirmed the crux
+    against a real server: all three `stream.reconnecting` events carried
+    `destination-2`, none carried `destination-1`. Recorded in ARCHITECTURE.md, "Multiple destinations";
+    CLI.md, "Destination"/"Status events"/"Exit codes"/"Non-goals";
+    MCP.md, "Sessions and concurrency"; README.md.
+  - [x] **Step 8, SRT output** *(code complete 2026-07-24)* — the first
+    step-8 iteration and the first new streaming transport since v1: SRT
+    delivery behind the same `StreamingService`/`StreamingServiceProvider`
+    seam as RTMP, contained in `TingraOutputPlugIns` (still the sole
+    HaishinKit importer). `HaishinKitOutputPlugIn` now registers a
+    **`SRTStreamingServiceProvider`** (scheme `srt`) alongside the RTMP
+    provider; **no consumer changed** — `stream`, `probe`, the MCP tools,
+    and the app already resolve `srt://` through
+    `OutputRegistry.provider(forScheme:)`, which returned nil before this
+    (the old `invalidArgument`-naming-step-8 path is retired). The new
+    **`SRTHaishinKitStreamingService`** is the `SRTStream`-backed sibling of
+    `HaishinKitStreamingService`; buffer conversion and compression-settings
+    mapping are transport-neutral and were **extracted to
+    `HaishinKitMediaConversion`** (shared by both, not duplicated — the
+    RTMP file's only change). Decisions made and recorded (ARCHITECTURE.md,
+    "How HaishinKit is incorporated"; CLI.md, "Destination"; and "Decisions
+    to settle" below): **(a)** Tingra ships the prebuilt libsrt xcframework
+    (retires the "RTMP-only stays fully source" deferral rationale; the
+    binary is embedded/signed for notarization); **(b)** `--key` composes
+    into the URL's `streamid` (SRT has no publish name) — appended when the
+    URL has none, an `invalidArgument` when the URL already carries one, and
+    placed **literally** because HaishinKit reads `streamid` by raw split
+    with no percent-decoding; **(c)** stats frame rate is counted from video
+    appends (SRT exposes no `currentFPS`), bytes from
+    `SRTConnection.performanceData`. **Spike result / recorded deferral:**
+    HaishinKit 2.x's SRT publish path exposes **no mid-stream
+    connection-loss push** (`SRTConnection.connected` flips false only on our
+    own `close()`, the ground-truth socket state is private), so the SRT
+    service reports start-time failures (thrown → exit 75, `--reconnect`
+    still governs start retries) but never yields `connectionLost`, and the
+    reconnect machinery does not fire on an SRT mid-stream outage in this
+    iteration — SRT's own ARQ retransmission rides out ordinary packet loss
+    below this layer, so the gap is only the hard-timeout case; never a poll
+    loop (CLAUDE.md). **Simulator fix:** MediaMTX's SRT listener was rebound
+    to IPv4 loopback (`srtAddress: 127.0.0.1:8890`) — HaishinKit's
+    `SRTSocketURL` builds only an IPv4 `sockaddr_in` and cannot reach an
+    IPv6 (`*:8890`) SRT socket the way the TCP listeners accept IPv4-mapped
+    connections; recorded in SIMULATOR.md. Tests: `TingraOutputPlugInsTests`
+    grew SRT `streamid` composition (append / ambiguous-throw / URL-own /
+    keyless / empty-key), streamid detection, rejection-omits-key, and
+    expected-media topology cases, plus the plug-in now registers two
+    providers (24 in the target); `integration-test.sh` gained a happy-path
+    SRT scenario (bars+tone, `--key` composed into `streamid`, verified
+    server side) and an SRT bad-key exit-75 scenario. **No document version
+    bump** (SRT streams, but persisting SRT destinations is part of the
+    multiple-destinations iteration). Decisions recorded in ARCHITECTURE.md,
+    "How HaishinKit is incorporated"; CLI.md, "Destination"/"Reconnect
+    semantics"; SIMULATOR.md. **Multiple destinations (the rest of step 8)
+    landed 2026-07-26** in the iteration above.
   - [x] **Step 7, per-layer video effects** *(code complete 2026-07-20)* —
     the seventeenth production-feature iteration and **the one that closes
     step 7**: the effect seam's second media protocol becomes code,
@@ -1040,7 +1178,92 @@ or two in the doc that owns them — none need a rewrite.
   fully source (no prebuilt libsrt in the binary). `--url srt://…` still parses
   (the grammar is stable), but resolves no output provider and reports a clear
   `invalidArgument` error naming the roadmap step. CLI.md "Destination" notes the
-  v1 scope.
+  v1 scope. **Resolved 2026-07-24 — SRT landed (see the step-8 SRT record under
+  "Roadmap progress").** The deferral's "stays fully source" rationale is
+  retired: Tingra now ships the prebuilt libsrt xcframework (decision below).
+
+- [x] **SRT ships the prebuilt libsrt; the key composes into `streamid`; no
+  mid-stream loss push.** Decided/landed 2026-07-24 (roadmap step 8; recorded
+  in ARCHITECTURE.md, "How HaishinKit is incorporated", and CLI.md,
+  "Destination"/"Reconnect semantics"). Three calls, all as recommended and
+  approved: **(a) accept the prebuilt libsrt** — SRT is table stakes, and one
+  build configuration beats source-only purity; the xcframework is embedded and
+  signed for notarization (CLI.md "Distribution" gains the libsrt step when the
+  packaging recipe is next touched). **(b) `--key` → `streamid`** — appended
+  when the SRT URL has no `streamid`, an `invalidArgument` when the URL already
+  carries one (ambiguous), placed literally (no percent-encoding, matching
+  HaishinKit's raw-split reader). **(c) frame rate counted from appends** — SRT
+  exposes no `currentFPS`; bytes come from `SRTConnection.performanceData`.
+  **Deferral (recorded, not a bug):** HaishinKit 2.x's SRT publish path exposes
+  no mid-stream connection-loss push, so SRT reports start-time failures but not
+  `connectionLost`; loss-driven SRT reconnect waits for either a HaishinKit
+  surface that pushes the loss or a sanctioned liveness read — **never** a poll
+  loop. SRT's own ARQ handles ordinary packet loss below this layer, so the gap
+  is only the hard-timeout case.
+
+- [x] **Multiple destinations: one program fanned out to N legs (design
+  decided 2026-07-24, **veto cleared and built 2026-07-26**).** The rest of
+  step 8. The design below was approved as recorded, with **two amendments
+  settled at the veto** and one consequence worth knowing:
+  - **Start is best effort, not all-or-nothing** (Larry's call, 2026-07-26,
+    over the initial recommendation). Every leg is connected at start; a
+    refused one is reported (`stream.destination.rejected`, identifier
+    `connectionFailed`) and skipped while the rest go live; `run()` throws only
+    when *every* leg is refused, so a single-destination session is unchanged.
+    Refinement that falls out: a leg refused **at start does not enter the
+    reconnect budget** (that governs mid-stream losses only), which keeps a
+    one-destination run byte-identical to before — rejected, throw, exit 75, no
+    retries — and avoids `stream.reconnecting` firing before a stream has ever
+    connected.
+  - **The CLI gets the surface too** (Larry's call, 2026-07-26): `--url` and
+    `--key`/`--key-env` are repeatable, paired by position, zero keys or
+    exactly one per URL, an unequal count a usage error naming both counts;
+    `--key-stdin` stays single-destination. This is what makes fan-out testable
+    end to end — `integration-test.sh` gained three scenarios that read *both*
+    destinations back off the simulator.
+  - **Consequence recorded, not a defect:** the last-live-leg rule inherits
+    SRT's blind spot (the deferral above). An SRT leg never reports a
+    mid-stream loss, so it counts as healthy for the whole run — a mixed
+    RTMP + SRT run whose RTMP leg dies keeps going and exits 0 on the strength
+    of an SRT leg that may already be dead. Recorded in CLI.md, "Reconnect
+    semantics".
+  - **Also surfaced by the build, now fixed:** CLI.md's SRT paragraph claimed
+    `--reconnect` governs start-time retries. It never has, on any transport —
+    `StreamSession.run()` calls `service.start(to:)` once and rethrows; the
+    reconnect loop only runs after a mid-stream `connectionLost`. The clause is
+    gone and the true rule is stated.
+
+  The approved design, as built: **one `StreamSession`
+  fanning the single tick-paced program out to N destination legs, not N
+  sessions** — the program is already one stream with one `T0`; N sessions would
+  each re-pick `T0` and carry different PTS per destination for no benefit, and
+  encoder cost (one per destination) is identical either way. What changes:
+  **(1) reconnect state becomes per-leg** — the attempt budget and stability
+  window move from session-wide to leg-local, so one destination dropping never
+  takes another down (the crux). **(2) status events gain a destination
+  identity** — `stream.stats`/`stream.reconnecting`/`stream.reconnected` become
+  per-leg, an additive `--json` field (stable-contract safe). **(3) the "one
+  active stream" MCP contract survives, redefined as one session / N legs** —
+  `stream_start` takes N destinations, still returns one session id;
+  `stream_status` reports legs; `StreamCoordinator`'s shape and the idle-exit
+  guard are unchanged (N concurrent sessions would break both). **(4) partial
+  leg loss** — a run continues and exits 0 when at least one leg is healthy; a
+  dead leg is reported (its budget exhausted) but does not end the run; exit 75
+  only when the last live leg is lost (a `--json`/exit-code contract line for
+  CLI.md). **Document:** add `Project.destinations: [ProjectDestination]?`,
+  keep the single `destination` decode-only and fold it in as the first element
+  (the `Preset.audioChannels` merge precedent — no version bump, pre-release
+  rule); `ProjectDestination` grows a stable `id`, a user-facing `name`, and an
+  `enabled` flag. **Secure storage:** stream keys are keyed by destination `id`,
+  not URL — the current URL keying does not survive two destinations or a URL
+  edit; a clean pre-release change (**no migration**: pre-release, an existing
+  URL-keyed Keychain item is simply orphaned and the operator retypes the key
+  once). Per-destination compression settings **remain deferred** to keep the
+  first cut contained — every leg encodes with the run's settings, which also
+  means fan-out costs one encoder per destination (the seam has no
+  one-encode/N-muxer split to exploit). Full record in ARCHITECTURE.md,
+  "Multiple destinations"; CLI.md, "Destination"/"Status events"/"Exit codes";
+  MCP.md, "Sessions and concurrency".
 
 - [x] **Reconnect stability window.** Decided 2026-07-05 (recorded in CLI.md,
   "Reconnect semantics"): a reconnected stream must survive 10 seconds before it

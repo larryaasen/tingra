@@ -53,15 +53,29 @@ public struct StreamDefaults: Sendable {
     }
 }
 
-/// The fully resolved inputs to a stream, as the `stream_start` tool parsed
-/// and validated them from the MCP arguments before handing them to the
-/// coordinator.
-struct StreamRequest: Sendable {
+/// One destination a `stream_start` call asked for: where a leg goes, and
+/// the key it publishes with.
+struct RequestedDestination: Sendable {
+    /// The leg's stable identity in the status events and `stream_status`,
+    /// minted by position (`destination-1`, `destination-2`, …) so an agent
+    /// can tell one leg's numbers from another's.
+    let id: String
+
     /// The destination URL string (scheme already validated).
     let url: String
 
     /// The stream key, read from the tool arguments; never logged or returned.
     let streamKey: String?
+}
+
+/// The fully resolved inputs to a stream, as the `stream_start` tool parsed
+/// and validated them from the MCP arguments before handing them to the
+/// coordinator.
+struct StreamRequest: Sendable {
+    /// The destinations the one program fans out to, in the order requested.
+    /// One session, N legs — the "one active stream" rule is unchanged
+    /// (MCP.md, "Sessions and concurrency").
+    let destinations: [RequestedDestination]
 
     /// Which input feeds the video side.
     let video: SideSelection
@@ -76,11 +90,16 @@ struct StreamRequest: Sendable {
     let policy: StreamSession.Policy
 }
 
-/// Owns the one active stream in v1 (CLI.md, "Non-goals (v1)": one
-/// destination) on behalf of the `stream_start`/`stream_status`/`stream_stop`
-/// tools. It reuses the host's ``StreamSession`` machinery rather than
-/// duplicating the pipeline, and keys every operation off the session id
-/// `stream_start` returns.
+/// Owns the one active stream on behalf of the
+/// `stream_start`/`stream_status`/`stream_stop` tools. It reuses the host's
+/// ``StreamSession`` machinery rather than duplicating the pipeline, and keys
+/// every operation off the session id `stream_start` returns.
+///
+/// "One active stream" means **one session, N destination legs**: a
+/// `stream_start` naming several destinations still returns one id, and
+/// `stream_status` reports each leg under it. Concurrent *sessions* remain
+/// out of scope — they would break both this coordinator and the daemon's
+/// idle-exit guard (MCP.md, "Sessions and concurrency").
 ///
 /// The coordinator confirms a stream is *live* before `stream_start` returns
 /// — it watches the event bus for `stream.started` (success) or the session's
@@ -98,8 +117,8 @@ public actor StreamCoordinator {
         /// The task pumping the session until it ends.
         let runTask: Task<Void, Never>
 
-        /// The destination URL, for `stream_status`.
-        let url: String
+        /// The destinations the session fans out to, for `stream_status`.
+        let destinations: [RequestedDestination]
     }
 
     /// The active stream, or nil when nothing is streaming.
@@ -167,16 +186,14 @@ public actor StreamCoordinator {
             )
         }
 
-        let destination = try makeDestination(request)
-        let service = try await makeService(request, destination: destination)
+        let legs = try await makeDestinationLegs(request)
         let videoInput = try await resolve(request.video, kind: .camera, defaultID: defaults.cameraID())
         let audioInput = try await resolve(request.audio, kind: .microphone, defaultID: defaults.microphoneID())
 
         let session = StreamSession(
             videoInput: videoInput,
             audioInput: audioInput,
-            service: service,
-            destination: destination,
+            destinations: legs,
             configuration: request.configuration,
             policy: request.policy,
             clock: clock,
@@ -215,14 +232,19 @@ public actor StreamCoordinator {
             throw Self.toolError(from: error)
         }
 
-        active = Active(id: id, session: session, runTask: runTask, url: request.url)
+        active = Active(id: id, session: session, runTask: runTask, destinations: request.destinations)
         return id
     }
 
     /// Reports the current status of the stream with the given id.
     ///
-    /// Reads the latest retained `stream.stats` from the status sink — a
-    /// point read of live data, never a poll (EVENTS.md, "Status sink").
+    /// Reads each destination's latest retained `stream.stats` from the
+    /// status sink — a point read of live data, never a poll (EVENTS.md,
+    /// "Status sink"). A fanned-out stream reports every leg under
+    /// `destinations`; the flat top-level counters stay the **first**
+    /// destination's, so a caller written against one destination reads the
+    /// same fields and never a synthesized average.
+    ///
     /// Throws a ``ToolError`` if the id does not name the active stream.
     func statusReport(sessionId: String) async throws -> JSONValue {
         guard let active, active.id == sessionId else {
@@ -231,18 +253,45 @@ public actor StreamCoordinator {
         var report: [String: JSONValue] = [
             "sessionId": .string(active.id),
             "state": .string("live"),
-            "url": .string(active.url),
         ]
-        // The most recent stats sample, if one has been emitted yet (the
-        // first arrives one stats interval after start).
-        if let stats = await status.latestEvent(named: "stream.stats"), let params = stats.params {
-            for key in ["elapsed", "bytesSent", "bitrate", "fps"] where params[key] != nil {
-                if let value = params[key] {
-                    report[key] = JSONValue(value)
-                }
+        if let first = active.destinations.first {
+            report["url"] = .string(first.url)
+        }
+
+        var legs: [JSONValue] = []
+        for destination in active.destinations {
+            var leg: [String: JSONValue] = [
+                "destination": .string(destination.id),
+                "url": .string(destination.url),
+            ]
+            // A leg reports counters once it has emitted a stats sample; a
+            // leg rejected at start or already lost simply has none.
+            let stats = await status.latestEvent(named: "stream.stats", forDestination: destination.id)
+            Self.copyStatsFields(from: stats, into: &leg)
+            leg["state"] = .string(stats == nil ? "pending" : "live")
+            legs.append(.object(leg))
+
+            if destination.id == active.destinations.first?.id {
+                Self.copyStatsFields(from: stats, into: &report)
             }
         }
+        report["destinations"] = .array(legs)
         return .object(report)
+    }
+
+    /// Copies the delivery counters out of a `stream.stats` event into a
+    /// status report object. A nil event copies nothing (no sample yet).
+    ///
+    /// - Parameters:
+    ///   - stats: The retained `stream.stats` event, if one has arrived.
+    ///   - report: The report object to fill in.
+    private static func copyStatsFields(from stats: EventBusEvent?, into report: inout [String: JSONValue]) {
+        guard let params = stats?.params else { return }
+        for key in ["elapsed", "bytesSent", "bitrate", "fps"] {
+            if let value = params[key] {
+                report[key] = JSONValue(value)
+            }
+        }
     }
 
     /// Stops the stream with the given id: a clean stop that flushes
@@ -270,30 +319,46 @@ public actor StreamCoordinator {
         }
     }
 
-    /// Builds the destination, carrying the stream key inward only.
-    private func makeDestination(_ request: StreamRequest) throws -> Destination {
-        guard let url = URL(string: request.url) else {
-            throw ToolError(identifier: .invalidArgument, message: "The url '\(request.url)' is not a valid URL.")
-        }
-        return Destination(url: url, streamKey: request.streamKey)
-    }
-
-    /// Resolves the destination scheme to a provider and creates a service.
-    private func makeService(_ request: StreamRequest, destination: Destination) async throws
-        -> any StreamingService
-    {
-        guard let scheme = destination.url.scheme?.lowercased() else {
-            throw ToolError(identifier: .invalidArgument, message: "The url '\(request.url)' has no scheme.")
-        }
-        guard let provider = await outputs.provider(forScheme: scheme) else {
-            throw ToolError(
-                identifier: .invalidArgument,
-                message:
-                    "No registered output serves '\(scheme)://' destinations in v1 — SRT output arrives at "
-                    + "roadmap step 8. Stream to an rtmp:// or rtmps:// destination."
+    /// Builds one destination leg per requested destination, each with its
+    /// own streaming service and its own stream key.
+    ///
+    /// Every leg's scheme resolves independently against the one output
+    /// registry, so a request can mix transports (RTMP beside SRT). The keys
+    /// travel inward only — never into a status report, an event, or a log.
+    ///
+    /// - Parameter request: The parsed `stream_start` request.
+    /// - Returns: The legs, in the requested order.
+    /// - Throws: A ``ToolError`` with `invalidArgument` for a URL that does
+    ///   not parse or resolves to no registered output.
+    private func makeDestinationLegs(_ request: StreamRequest) async throws -> [StreamSession.DestinationLeg] {
+        var legs: [StreamSession.DestinationLeg] = []
+        for destination in request.destinations {
+            guard let url = URL(string: destination.url) else {
+                throw ToolError(
+                    identifier: .invalidArgument,
+                    message: "The url '\(destination.url)' is not a valid URL."
+                )
+            }
+            guard let scheme = url.scheme?.lowercased() else {
+                throw ToolError(identifier: .invalidArgument, message: "The url '\(destination.url)' has no scheme.")
+            }
+            guard let provider = await outputs.provider(forScheme: scheme) else {
+                throw ToolError(
+                    identifier: .invalidArgument,
+                    message:
+                        "No registered output serves '\(scheme)://' destinations. Stream to an rtmp://, "
+                        + "rtmps://, or srt:// destination."
+                )
+            }
+            legs.append(
+                StreamSession.DestinationLeg(
+                    id: destination.id,
+                    destination: Destination(url: url, streamKey: destination.streamKey),
+                    service: provider.makeStreamingService(configuration: request.configuration)
+                )
             )
         }
-        return provider.makeStreamingService(configuration: request.configuration)
+        return legs
     }
 
     /// Resolves one side of the pipeline to an input, mapping selector

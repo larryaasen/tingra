@@ -12,8 +12,13 @@ import TingraEventBus
 import TingraHost
 import TingraPlugInKit
 
-/// Where the stream key will come from at connect time. The key value
-/// itself never appears in a plan, an event, or any output.
+/// Where the stream keys will come from at connect time. The key values
+/// themselves never appear in a plan, an event, or any output.
+///
+/// One source *kind* serves every destination — `--key`, `--key-env`, and
+/// `--key-stdin` cannot be mixed in one run (CLI.md, "Destination") — so a
+/// single case describes a whole fan-out, and the per-destination detail is
+/// only which occurrence supplied which key.
 enum KeySource: String, Sendable {
     /// No key: the destination does not require one.
     case none
@@ -32,10 +37,12 @@ enum KeySource: String, Sendable {
 /// The validated `stream` configuration a plan is resolved from — the
 /// parsed option surface, framework-free so tests construct it directly.
 struct StreamRequest: Sendable {
-    /// The destination URL string (already scheme-validated).
-    var url: String
+    /// The destination URL strings (already scheme-validated), in the order
+    /// `--url` was given. One program fans out to all of them (CLI.md,
+    /// "Destination"); the common case is a single entry.
+    var urls: [String]
 
-    /// Where the stream key will come from.
+    /// Where the stream keys will come from.
     var keySource: KeySource = .none
 
     /// The `--camera` selector, if given.
@@ -218,18 +225,36 @@ struct StreamPlan: Sendable {
         return StreamPlan(request: request, video: video, audio: audio)
     }
 
+    /// The stable leg id for the destination at `index` — how the CLI names
+    /// its `--url` occurrences in the status events (`destination`), matching
+    /// ``StreamPlan/destinationEventParams`` and the runtime's per-leg events.
+    ///
+    /// - Parameter index: The zero-based `--url` occurrence.
+    /// - Returns: The leg id, numbered from one so it reads like the flag.
+    static func destinationID(at index: Int) -> String {
+        "destination-\(index + 1)"
+    }
+
     /// The plan as `stream.plan` event params — flat, stable keys (a
     /// scripting contract, see CLI.md "stream --dry-run"). The video and
     /// audio blocks are omitted entirely when that side is disabled; the
     /// stream key never appears, only its source.
+    ///
+    /// `url` stays the **first** destination's, so a single-destination plan
+    /// is byte-identical to what it always was; `destinations` counts the
+    /// fan-out, and each destination is reported in full by its own
+    /// ``destinationEventParams`` entry.
     var eventParams: [String: EventValue] {
         var params: [String: EventValue] = [
-            "url": .string(request.url),
             "keySource": .string(request.keySource.rawValue),
+            "destinations": .int(request.urls.count),
             "reconnect": .int(request.reconnect),
             "reconnectDelay": .int(request.reconnectDelay),
             "statsInterval": .int(request.statsInterval),
         ]
+        if let first = request.urls.first {
+            params["url"] = .string(first)
+        }
         if let duration = request.duration {
             params["duration"] = .int(duration)
         }
@@ -258,12 +283,29 @@ struct StreamPlan: Sendable {
         return params
     }
 
+    /// One `stream.plan.destination` event's params per destination — the
+    /// machine-readable half of the fan-out, mirroring the runtime's
+    /// `stream.destination.started` shape so a script reads plan and live
+    /// events the same way. The stream key never appears, only its source.
+    var destinationEventParams: [[String: EventValue]] {
+        request.urls.enumerated().map { index, url in
+            [
+                "destination": .string(Self.destinationID(at: index)),
+                "destinationUrl": .string(url),
+                "keySource": .string(request.keySource.rawValue),
+            ]
+        }
+    }
+
     /// The human-readable plan, the command result on standard output in
     /// human mode.
     var humanDescription: String {
         var lines = ["DRY RUN — resolved plan; nothing started, nothing connected"]
-        lines.append("DESTINATION")
-        lines.append(row("url", request.url))
+        let isFannedOut = request.urls.count > 1
+        lines.append(isFannedOut ? "DESTINATIONS (\(request.urls.count))" : "DESTINATION")
+        for (index, url) in request.urls.enumerated() {
+            lines.append(row(isFannedOut ? "url \(index + 1)" : "url", url))
+        }
         lines.append(row("key", keySourceDescription))
         lines.append(row("reconnect", "\(request.reconnect) attempts, \(request.reconnectDelay)s delay"))
         lines.append("VIDEO")
@@ -298,12 +340,15 @@ struct StreamPlan: Sendable {
         return lines.joined(separator: "\n")
     }
 
-    /// How the key row reads in the human plan.
+    /// How the key row reads in the human plan. With more than one
+    /// destination the wording says so, since the keys pair with the URLs by
+    /// position (CLI.md, "Destination").
     private var keySourceDescription: String {
+        let perDestination = request.urls.count > 1 ? ", one per destination in order" : ""
         switch request.keySource {
         case .none: return "(none)"
-        case .option: return "provided with --key (value never printed)"
-        case .environment: return "from the --key-env environment variable"
+        case .option: return "provided with --key (value never printed)\(perDestination)"
+        case .environment: return "from the --key-env environment variable\(perDestination)"
         case .stdin: return "read from stdin at connect time"
         }
     }

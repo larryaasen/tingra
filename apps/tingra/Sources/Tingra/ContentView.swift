@@ -57,12 +57,14 @@ struct ContentView: View {
     /// current name when the dialog opens.
     @State private var presetRenameText = ""
 
-    /// The stream-key field's working text. View-local and never handed to
-    /// the model as observable state: the key flows straight into
-    /// ``EngineModel/startStreaming(streamKey:)`` (which stores it in secure
-    /// storage) and is prefilled from there — it never touches the project
-    /// document or the event bus (ARCHITECTURE.md, "Streaming the program").
-    @State private var streamKey = ""
+    /// Each destination's stream-key field text, by destination id. View-local
+    /// and never handed to the model as observable state: the keys flow
+    /// straight into ``EngineModel/startStreaming(keys:)`` (which stores them
+    /// in secure storage) and are prefilled from there — they never touch the
+    /// project document or the event bus (ARCHITECTURE.md, "Streaming the
+    /// program"). Held here rather than per row because Start collects every
+    /// row's key at once.
+    @State private var streamKeys: [ProjectDestinationID: String] = [:]
 
     /// The window body: preview on top, controls beneath.
     var body: some View {
@@ -94,12 +96,6 @@ struct ContentView: View {
             streamingPanel
         }
         .padding()
-        .task(id: model.destinationURL) {
-            // Prefill the key field from secure storage for the current
-            // destination — on launch (once the loaded URL arrives) and
-            // whenever the URL changes.
-            streamKey = model.storedStreamKey() ?? ""
-        }
         .onChange(of: model.selectedCameraID) { _, newValue in
             let name = model.cameras.first { $0.id == newValue }?.name ?? "None"
             model.eventBus.tap(
@@ -169,7 +165,7 @@ struct ContentView: View {
             presenting: presetBeingRenamed
         ) { preset in
             TextField(text: $presetRenameText) {
-                Text("Name", comment: "Rename dialog text field label, for a shot or a preset")
+                Text("Name", comment: "Name text field label — for a shot, a preset, or a destination")
             }
             Button {
                 model.eventBus.tap(
@@ -422,7 +418,7 @@ struct ContentView: View {
             presenting: shotBeingRenamed
         ) { shot in
             TextField(text: $renameText) {
-                Text("Name", comment: "Rename dialog text field label, for a shot or a preset")
+                Text("Name", comment: "Name text field label — for a shot, a preset, or a destination")
             }
             Button {
                 model.eventBus.tap(
@@ -618,40 +614,22 @@ struct ContentView: View {
         .pickerStyle(.menu)
     }
 
-    /// The streaming panel: the RTMP(S) destination URL and stream key, the
-    /// live status, and the Start/Stop control. Puts the program the operator
-    /// already has on air (ARCHITECTURE.md, "Streaming the program") — video
-    /// from the compositor, audio from the mixer panel's program mix; the
-    /// destination fields lock while streaming.
+    /// The streaming panel: the destination list, the session status, and the
+    /// Start/Stop control. Puts the program the operator already has on air
+    /// (ARCHITECTURE.md, "Streaming the program") — video from the
+    /// compositor, audio from the mixer panel's program mix — fanned out to
+    /// every enabled destination as one session with one leg each. The
+    /// destination rows lock while streaming.
     ///
-    /// The stream key is a `SecureField` bound to view-local state, handed to
-    /// the model only at Start — it is stored in the Keychain, never in the
-    /// project document, an event, or a log.
+    /// Each stream key is a `SecureField` bound to view-local state in its own
+    /// row, collected only at Start — the keys are stored in the Keychain,
+    /// never in the project document, an event, or a log.
     private var streamingPanel: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Streaming", comment: "Section heading over the destination and Start/Stop controls")
                 .font(.headline)
 
-            HStack(spacing: 8) {
-                TextField(
-                    text: $model.destinationURL,
-                    prompt: Text("rtmp://server/app", comment: "Placeholder for the destination URL field")
-                ) {
-                    Text("Destination", comment: "Destination URL field label")
-                }
-                .textFieldStyle(.roundedBorder)
-                .disabled(model.isStreaming)
-                .onChange(of: model.destinationURL) { _, _ in model.destinationURLChanged() }
-
-                SecureField(
-                    text: $streamKey,
-                    prompt: Text("Stream key", comment: "Placeholder for the stream key field")
-                ) {
-                    Text("Stream key", comment: "Stream key field label")
-                }
-                .textFieldStyle(.roundedBorder)
-                .disabled(model.isStreaming)
-            }
+            DestinationListView(model: model, keys: $streamKeys)
 
             HStack(spacing: 12) {
                 Spacer()
@@ -663,9 +641,13 @@ struct ContentView: View {
                         model.eventBus.tap("streamStop.button", domain: .output)
                         Task { await model.stopStreaming() }
                     } else {
-                        model.eventBus.tap("streamStart.button", domain: .output)
-                        let key = streamKey
-                        Task { await model.startStreaming(streamKey: key) }
+                        model.eventBus.tap(
+                            "streamStart.button",
+                            domain: .output,
+                            params: ["destinations": .int(model.destinations.count(where: \.isStreamable))]
+                        )
+                        let keys = streamKeys
+                        Task { await model.startStreaming(keys: keys) }
                     }
                 } label: {
                     if model.isStreaming {
@@ -676,7 +658,7 @@ struct ContentView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(model.isStreaming ? .red : .accentColor)
-                .disabled(!model.isStreaming && model.destinationURL.isEmpty)
+                .disabled(!model.isStreaming && !model.hasStreamableDestination)
             }
         }
     }

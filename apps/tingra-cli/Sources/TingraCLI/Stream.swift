@@ -28,14 +28,20 @@ struct Stream: AsyncParsableCommand {
 
     // MARK: Destination
 
-    @Option(help: "RTMP(S) or SRT destination URL, e.g. rtmp://live.twitch.tv/app.")
-    var url: String
+    @Option(
+        help:
+            "RTMP(S) or SRT destination URL, e.g. rtmp://live.twitch.tv/app. Repeat to stream one program to several destinations."
+    )
+    var url: [String] = []
 
-    @Option(help: "Stream key, appended to the RTMP URL path. Prefer --key-env or --key-stdin in scripts.")
-    var key: String?
+    @Option(
+        help:
+            "Stream key. Repeat once per --url, in the same order. Prefer --key-env or --key-stdin in scripts."
+    )
+    var key: [String] = []
 
-    @Option(help: "Read the stream key from this environment variable.")
-    var keyEnv: String?
+    @Option(help: "Read the stream key from this environment variable. Repeat once per --url, in the same order.")
+    var keyEnv: [String] = []
 
     @Flag(help: "Read the stream key from standard input.")
     var keyStdin = false
@@ -127,22 +133,39 @@ struct Stream: AsyncParsableCommand {
     /// failure (CLI.md exit codes). Selector resolution happens later,
     /// against the registry, and reports through the event bus.
     func validate() throws {
-        guard let destination = URL(string: url), let scheme = destination.scheme?.lowercased() else {
-            throw ValidationError("The --url value is not a valid URL: '\(url)'.")
+        guard !url.isEmpty else {
+            throw ValidationError("Pass at least one --url; it names the destination to stream to.")
         }
-        guard ["rtmp", "rtmps", "srt"].contains(scheme) else {
-            throw ValidationError(
-                "The --url scheme '\(scheme)' is not supported; use rtmp://, rtmps://, or srt://."
-            )
+        for value in url {
+            guard let destination = URL(string: value), let scheme = destination.scheme?.lowercased() else {
+                throw ValidationError("The --url value is not a valid URL: '\(value)'.")
+            }
+            guard ["rtmp", "rtmps", "srt"].contains(scheme) else {
+                throw ValidationError(
+                    "The --url scheme '\(scheme)' is not supported; use rtmp://, rtmps://, or srt://."
+                )
+            }
         }
-        let keySources = [key != nil, keyEnv != nil, keyStdin].count(where: { $0 })
+        let keySources = [!key.isEmpty, !keyEnv.isEmpty, keyStdin].count(where: { $0 })
         guard keySources <= 1 else {
             throw ValidationError("Pass at most one of --key, --key-env, and --key-stdin.")
         }
-        if let keyEnv {
-            guard let value = ProcessInfo.processInfo.environment[keyEnv], !value.isEmpty else {
-                throw ValidationError("The --key-env variable '\(keyEnv)' is not set (or is empty).")
+        // Keys pair with destinations by position, so an unequal count is
+        // rejected rather than silently shifting a key onto the wrong
+        // destination — the one mistake positional pairing invites.
+        try validateKeyPairing(count: key.count, flag: "--key")
+        try validateKeyPairing(count: keyEnv.count, flag: "--key-env")
+        for name in keyEnv {
+            guard let value = ProcessInfo.processInfo.environment[name], !value.isEmpty else {
+                throw ValidationError("The --key-env variable '\(name)' is not set (or is empty).")
             }
+        }
+        // Standard input carries one value, so it cannot key a fan-out.
+        guard !(keyStdin && url.count > 1) else {
+            throw ValidationError(
+                "--key-stdin supplies one key, so it cannot serve \(url.count) destinations; "
+                    + "pass --key-env once per --url instead."
+            )
         }
         guard !(noVideo && noAudio) else {
             throw ValidationError("--no-video and --no-audio together leave nothing to stream.")
@@ -190,12 +213,27 @@ struct Stream: AsyncParsableCommand {
         }
     }
 
+    /// Checks that a repeatable key flag was given either not at all or once
+    /// per `--url`.
+    ///
+    /// - Parameters:
+    ///   - count: How many times the flag was given.
+    ///   - flag: The flag's name, for the message.
+    /// - Throws: `ValidationError` naming both counts when they disagree.
+    private func validateKeyPairing(count: Int, flag: String) throws {
+        guard count > 0, count != url.count else { return }
+        throw ValidationError(
+            "\(flag) was given \(count) time(s) but --url \(url.count) time(s); pass one \(flag) per "
+                + "--url, in the same order, or none at all."
+        )
+    }
+
     /// The validated option surface as a plan request.
     var request: StreamRequest {
-        var request = StreamRequest(url: url)
-        if key != nil {
+        var request = StreamRequest(urls: url)
+        if !key.isEmpty {
             request.keySource = .option
-        } else if keyEnv != nil {
+        } else if !keyEnv.isEmpty {
             request.keySource = .environment
         } else if keyStdin {
             request.keySource = .stdin
@@ -282,6 +320,9 @@ struct Stream: AsyncParsableCommand {
             )
             if dryRun {
                 eventBus.event("stream.plan", domain: .session, params: plan.eventParams)
+                for params in plan.destinationEventParams {
+                    eventBus.event("stream.plan.destination", domain: .session, params: params)
+                }
                 if !json {
                     print(plan.humanDescription)
                 }
@@ -301,8 +342,14 @@ struct Stream: AsyncParsableCommand {
                     domain: .output,
                     params: [
                         "identifier": .string(ErrorIdentifier.connectionLost.rawValue),
+                        // With more than one destination this is the *last*
+                        // live one going down — earlier legs were reported as
+                        // they died and did not end the run.
                         "message": .string(
-                            "The connection was lost and not recovered within \(reconnect) reconnect attempts."
+                            url.count > 1
+                                ? "Every destination was lost and not recovered within \(reconnect) reconnect "
+                                    + "attempts each; the last one has now gone."
+                                : "The connection was lost and not recovered within \(reconnect) reconnect attempts."
                         ),
                     ]
                 )
@@ -328,8 +375,8 @@ struct Stream: AsyncParsableCommand {
         }
     }
 
-    /// Connects and streams until stopped: builds the destination and the
-    /// session from the resolved plan, wires Ctrl-C / SIGTERM to a clean
+    /// Connects and streams until stopped: builds the destination legs and
+    /// the session from the resolved plan, wires Ctrl-C / SIGTERM to a clean
     /// stop, and returns why the session ended.
     private func goLive(
         plan: StreamPlan,
@@ -338,24 +385,8 @@ struct Stream: AsyncParsableCommand {
         clock: HostClock,
         eventBus: EventBus
     ) async throws -> StreamSession.Outcome {
-        // The URL parsed at validation; the scheme resolves the provider.
-        guard let destinationURL = URL(string: request.url), let scheme = destinationURL.scheme?.lowercased()
-        else {
-            throw StreamingServiceError.unsupportedDestination("The --url value is not a valid URL.")
-        }
-        guard let provider = await outputs.provider(forScheme: scheme) else {
-            throw StreamingServiceError.unsupportedDestination(
-                """
-                No registered output serves '\(scheme)://' destinations in v1 — SRT output arrives \
-                at roadmap step 8. Stream to an rtmp:// or rtmps:// destination.
-                """
-            )
-        }
-
-        // The key is read only here, at connect time, and only ever handed
-        // to the destination — never an event param, never printed.
-        let streamKey = try StreamKey.read(option: key, environmentVariable: keyEnv, stdin: keyStdin)
-        let destination = Destination(url: destinationURL, streamKey: streamKey)
+        let configuration = streamConfiguration
+        let legs = try await makeDestinationLegs(outputs: outputs, configuration: configuration)
 
         var videoInput: (any Input)?
         if let video = plan.video {
@@ -366,7 +397,6 @@ struct Stream: AsyncParsableCommand {
             audioInput = await registry.input(withID: InputID(rawValue: audio.id))
         }
 
-        let configuration = streamConfiguration
         // Recording is an independent second sink: resolved by the --record
         // path's file extension against the same output registry, created
         // from the same program compression settings (CLI.md, "Recording and
@@ -378,8 +408,7 @@ struct Stream: AsyncParsableCommand {
         let session = StreamSession(
             videoInput: videoInput,
             audioInput: audioInput,
-            service: provider.makeStreamingService(configuration: configuration),
-            destination: destination,
+            destinations: legs,
             configuration: configuration,
             policy: StreamSession.Policy(
                 reconnectAttempts: reconnect,
@@ -401,6 +430,60 @@ struct Stream: AsyncParsableCommand {
         }
         defer { signalTask.cancel() }
         return try await session.run()
+    }
+
+    /// Builds one destination leg per `--url`, each with its own streaming
+    /// service and its own stream key.
+    ///
+    /// Every leg's URL scheme resolves independently against the one output
+    /// registry, so a run can mix transports (an RTMP destination beside an
+    /// SRT one) — each leg simply gets the provider its own scheme names. The
+    /// keys are read only here, at connect time, and only ever handed to a
+    /// destination: never an event param, never printed.
+    ///
+    /// - Parameters:
+    ///   - outputs: The output registry destination schemes resolve against.
+    ///   - configuration: The program compression settings every leg encodes
+    ///     with (per-destination settings are a later iteration).
+    /// - Returns: The legs, in `--url` order.
+    /// - Throws: ``StreamingServiceError/unsupportedDestination(_:)`` when a
+    ///   URL resolves to no provider, or ``StreamKeyError`` when a key source
+    ///   yields nothing.
+    private func makeDestinationLegs(
+        outputs: OutputRegistry,
+        configuration: StreamConfiguration
+    ) async throws -> [StreamSession.DestinationLeg] {
+        var legs: [StreamSession.DestinationLeg] = []
+        for (index, value) in url.enumerated() {
+            // The URL parsed at validation; the scheme resolves the provider.
+            guard let destinationURL = URL(string: value), let scheme = destinationURL.scheme?.lowercased()
+            else {
+                throw StreamingServiceError.unsupportedDestination("The --url value is not a valid URL: '\(value)'.")
+            }
+            guard let provider = await outputs.provider(forScheme: scheme) else {
+                throw StreamingServiceError.unsupportedDestination(
+                    """
+                    No registered output serves '\(scheme)://' destinations. Stream to an rtmp://, \
+                    rtmps://, or srt:// destination.
+                    """
+                )
+            }
+            // Keys pair with URLs by position; validation already guaranteed
+            // the counts match, so an absent entry means no key was given.
+            let streamKey = try StreamKey.read(
+                option: index < key.count ? key[index] : nil,
+                environmentVariable: index < keyEnv.count ? keyEnv[index] : nil,
+                stdin: keyStdin
+            )
+            legs.append(
+                StreamSession.DestinationLeg(
+                    id: StreamPlan.destinationID(at: index),
+                    destination: Destination(url: destinationURL, streamKey: streamKey),
+                    service: provider.makeStreamingService(configuration: configuration)
+                )
+            )
+        }
+        return legs
     }
 
     /// Resolves the `--record` target to a recording sink, or `(nil, nil)`

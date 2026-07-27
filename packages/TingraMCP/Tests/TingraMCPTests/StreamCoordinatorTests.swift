@@ -46,8 +46,9 @@ struct StreamCoordinatorTests {
     /// A generator-only request to the mock destination.
     private var generatorRequest: StreamRequest {
         StreamRequest(
-            url: "rtmp://localhost/live",
-            streamKey: "test_key",
+            destinations: [
+                RequestedDestination(id: "destination-1", url: "rtmp://localhost/live", streamKey: "test_key")
+            ],
             video: .generator(InputID(rawValue: "bars")),
             audio: .generator(InputID(rawValue: "tone")),
             configuration: StreamConfiguration(),
@@ -100,6 +101,47 @@ struct StreamCoordinatorTests {
         #expect(report["sessionId"] == .string(id))
         #expect(report["state"] == .string("live"))
         #expect(report["url"] == .string("rtmp://localhost/live"))
+        _ = try await coordinator.stop(sessionId: id)
+    }
+
+    @Test("status lists every destination of a fanned-out session under one session id")
+    func statusListsEveryDestination() async throws {
+        let (coordinator, _, _) = try await makeCoordinator()
+        let request = StreamRequest(
+            destinations: [
+                RequestedDestination(id: "destination-1", url: "rtmp://localhost/live", streamKey: "a"),
+                RequestedDestination(id: "destination-2", url: "rtmp://localhost/backup", streamKey: "b"),
+            ],
+            video: .generator(InputID(rawValue: "bars")),
+            audio: .generator(InputID(rawValue: "tone")),
+            configuration: StreamConfiguration(),
+            policy: StreamSession.Policy(statsIntervalSeconds: 0)
+        )
+        // Two destinations are still one session — the v1 rule is unchanged.
+        let id = try await coordinator.start(request)
+        let report = try await coordinator.statusReport(sessionId: id)
+
+        #expect(report["sessionId"] == .string(id))
+        // The flat top-level url stays the first destination's, so a caller
+        // written against one destination reads what it always did.
+        #expect(report["url"] == .string("rtmp://localhost/live"))
+
+        let destinations = try #require(report["destinations"]?.arrayValue)
+        #expect(destinations.count == 2)
+        #expect(destinations[0]["destination"] == .string("destination-1"))
+        #expect(destinations[0]["url"] == .string("rtmp://localhost/live"))
+        #expect(destinations[1]["destination"] == .string("destination-2"))
+        #expect(destinations[1]["url"] == .string("rtmp://localhost/backup"))
+        // No stats have been emitted yet, so each leg reads as pending.
+        #expect(destinations[0]["state"] == .string("pending"))
+
+        // Neither stream key reaches the report.
+        for leg in destinations {
+            for value in (leg.objectValue ?? [:]).values {
+                #expect(value.stringValue != "a")
+                #expect(value.stringValue != "b")
+            }
+        }
         _ = try await coordinator.stop(sessionId: id)
     }
 

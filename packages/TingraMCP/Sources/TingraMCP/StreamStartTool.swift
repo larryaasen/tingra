@@ -11,10 +11,15 @@ import Foundation
 import TingraHost
 import TingraPlugInKit
 
-/// The `stream_start` tool: go live to a destination, mirroring the
-/// `tingra-cli stream` options (CLI.md). Returns the session id
-/// `stream_status` and `stream_stop` key off. One active stream in v1 — a
+/// The `stream_start` tool: go live to one or more destinations, mirroring
+/// the `tingra-cli stream` options (CLI.md). Returns the session id
+/// `stream_status` and `stream_stop` key off. One active stream — a
 /// conflicting start returns a structured error naming the active session.
+///
+/// Several destinations are **one session with N legs**, so a fan-out still
+/// returns a single id (MCP.md, "Sessions and concurrency"). Name them either
+/// with the `url`/`key` pair (one destination, the common case) or with the
+/// `destinations` array; passing both is an error.
 ///
 /// The tool parses and validates the MCP arguments (the same rules as the
 /// CLI's flag validation) into a ``StreamRequest``, then hands it to the
@@ -31,15 +36,32 @@ struct StreamStartTool: Tool {
     let name = "stream_start"
     let title = "Start Streaming"
     let description =
-        "Start capturing and streaming to an RTMP/RTMPS destination. Mirrors `tingra-cli stream`. "
-        + "Returns a session id used by stream_status and stream_stop. One active stream at a time."
+        "Start capturing and streaming to one or more RTMP/RTMPS/SRT destinations. Mirrors `tingra-cli stream`. "
+        + "Returns a session id used by stream_status and stream_stop. One active stream at a time; several "
+        + "destinations are one session fanned out, reported per destination by stream_status."
 
     let inputSchema: JSONValue = .object([
         "type": .string("object"),
-        "required": .array([.string("url")]),
         "properties": .object([
-            "url": schema("string", "RTMP(S) destination URL, e.g. rtmp://live.twitch.tv/app."),
-            "key": schema("string", "Stream key. Passed to secure storage; never returned or logged."),
+            "url": schema(
+                "string",
+                "RTMP(S) or SRT destination URL, e.g. rtmp://live.twitch.tv/app. Use this for a single "
+                    + "destination, or 'destinations' for several — not both."),
+            "key": schema("string", "Stream key for 'url'. Never returned or logged."),
+            "destinations": .object([
+                "type": .string("array"),
+                "description": .string(
+                    "Several destinations for one program. Each item is an object with a required 'url' and an "
+                        + "optional 'key'. Use instead of 'url'/'key', not alongside them."),
+                "items": .object([
+                    "type": .string("object"),
+                    "required": .array([.string("url")]),
+                    "properties": .object([
+                        "url": schema("string", "RTMP(S) or SRT destination URL."),
+                        "key": schema("string", "Stream key for this destination. Never returned or logged."),
+                    ]),
+                ]),
+            ]),
             "camera": schema(
                 "string", "Camera selector: index, unique name substring, or ID. Default: system default."),
             "mic": schema("string", "Microphone selector, same forms. Default: system default."),
@@ -84,16 +106,7 @@ struct StreamStartTool: Tool {
     /// value — the same rules the CLI's `stream` validation enforces.
     static func parse(_ arguments: JSONValue) throws -> StreamRequest {
         let reader = ArgumentReader(arguments)
-
-        guard let url = reader.string("url") else {
-            throw invalid("stream_start requires a string 'url'.")
-        }
-        guard let scheme = URL(string: url)?.scheme?.lowercased() else {
-            throw invalid("The 'url' value is not a valid URL: '\(url)'.")
-        }
-        guard ["rtmp", "rtmps", "srt"].contains(scheme) else {
-            throw invalid("The 'url' scheme '\(scheme)' is not supported; use rtmp://, rtmps://, or srt://.")
-        }
+        let destinations = try parseDestinations(reader)
 
         let noVideo = reader.bool("noVideo") ?? false
         let noAudio = reader.bool("noAudio") ?? false
@@ -175,13 +188,65 @@ struct StreamStartTool: Tool {
             durationSeconds: duration
         )
         return StreamRequest(
-            url: url,
-            streamKey: reader.string("key"),
+            destinations: destinations,
             video: video,
             audio: audio,
             configuration: configuration,
             policy: policy
         )
+    }
+
+    /// Parses the destinations from either the `url`/`key` pair or the
+    /// `destinations` array, validating each URL's scheme.
+    ///
+    /// Exactly one of the two forms must be given: accepting both would leave
+    /// the order (and therefore each leg's identity) ambiguous.
+    ///
+    /// - Parameter reader: The `stream_start` arguments.
+    /// - Returns: The requested destinations, numbered by position.
+    /// - Throws: A ``ToolError`` with `invalidArgument` for a missing,
+    ///   duplicated, malformed, or unsupported destination.
+    private static func parseDestinations(_ reader: ArgumentReader) throws -> [RequestedDestination] {
+        let single = reader.string("url")
+        let list = reader.value("destinations")?.arrayValue
+
+        if single != nil, list != nil {
+            throw invalid("Pass either 'url' (one destination) or 'destinations' (several), not both.")
+        }
+        if let single {
+            return [try makeDestination(url: single, key: reader.string("key"), index: 0)]
+        }
+        guard let list else {
+            throw invalid("stream_start requires a string 'url', or a 'destinations' array of {url, key} objects.")
+        }
+        guard !list.isEmpty else {
+            throw invalid("'destinations' is empty; name at least one destination to stream to.")
+        }
+        return try list.enumerated().map { index, item in
+            guard let members = item.objectValue, let url = members["url"]?.stringValue else {
+                throw invalid("Each 'destinations' item must be an object with a string 'url'.")
+            }
+            return try makeDestination(url: url, key: members["key"]?.stringValue, index: index)
+        }
+    }
+
+    /// Validates one destination's URL and pairs it with its key and its
+    /// position-derived leg id.
+    ///
+    /// - Parameters:
+    ///   - url: The destination URL string.
+    ///   - key: The stream key for it, if given.
+    ///   - index: The zero-based position, which names the leg.
+    /// - Returns: The validated destination.
+    /// - Throws: A ``ToolError`` for a malformed URL or unsupported scheme.
+    private static func makeDestination(url: String, key: String?, index: Int) throws -> RequestedDestination {
+        guard let scheme = URL(string: url)?.scheme?.lowercased() else {
+            throw invalid("The 'url' value is not a valid URL: '\(url)'.")
+        }
+        guard ["rtmp", "rtmps", "srt"].contains(scheme) else {
+            throw invalid("The 'url' scheme '\(scheme)' is not supported; use rtmp://, rtmps://, or srt://.")
+        }
+        return RequestedDestination(id: "destination-\(index + 1)", url: url, streamKey: key)
     }
 
     /// Parses `WxH`, defaulting to 1920x1080.

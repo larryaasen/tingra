@@ -4,14 +4,18 @@
 # "Test scenarios enabled", and CLI.md "Testing").
 #
 # Runs tingra-cli with generators against the local ingest simulator and
-# verifies the stream server side with ffprobe: the happy RTMP path, the
-# bad-stream-key rejection (exit 75), probe, and reconnect across a server
-# outage. Generators mean no camera, no microphone, and no TCC
-# authorization — these run on any machine and in the integration CI job
-# (integration.yml), which triggers on streaming/output changes rather
-# than blocking every PR.
+# verifies the stream server side with ffprobe: the happy RTMP and SRT
+# paths, multiple destinations (one program fanned out to two paths, both
+# read back) and a partial start rejection, the bad-stream-key rejection
+# (exit 75) for both transports, probe, and reconnect across a server
+# outage. Generators mean no camera, no
+# microphone, and no TCC authorization — these run on any machine and in the
+# integration CI job (integration.yml), which triggers on streaming/output
+# changes rather than blocking every PR.
 #
-# SRT scenarios join when SRT output lands (roadmap step 8).
+# The SRT scenarios (roadmap step 8) exercise the --key → streamid
+# composition end to end: the key is passed as the whole MediaMTX streamid
+# and the SRT service composes it into the connect URL.
 
 set -euo pipefail
 
@@ -21,8 +25,20 @@ CLI_DIR="$REPO_DIR/apps/tingra-cli"
 OUT_DIR="$(mktemp -d)"
 
 RTMP_URL="rtmp://localhost:1935/live"
+# The second configured path, so the fan-out scenario streams one program to
+# a Twitch-shaped and a YouTube-shaped destination at once and reads back both.
+RTMP2_URL="rtmp://localhost:1935/live2"
+SRT_URL="srt://localhost:8890"
+# A port nothing listens on, for the destination that must be refused at
+# connect time (the same address the probe scenario uses).
+UNREACHABLE_URL="rtmp://localhost:59999/live"
 GOOD_KEY="tingra_test_key"
 BAD_KEY="wrong_key"
+# SRT carries the publish target in the streamid; MediaMTX's shape is
+# `publish:<path>` (SIMULATOR.md). The whole streamid is passed as the key so
+# the SRT service composes it into the URL (CLI.md, "Destination").
+SRT_GOOD_KEY="publish:live/$GOOD_KEY"
+SRT_BAD_KEY="publish:live/$BAD_KEY"
 
 # Everything the CLI needs beyond the destination: generators only.
 GENERATOR_FLAGS=(--video-generator bars --audio-generator tone --resolution 640x360)
@@ -86,6 +102,155 @@ if grep -q "$GOOD_KEY" "$OUT_DIR/happy.json"; then
 fi
 report "the stream key never appears in output" "$key_ok"
 
+echo "== Scenario: happy path SRT (bars + tone, key composed into streamid, verified server side)"
+# The key is passed as the whole MediaMTX streamid; the SRT service composes
+# it into srt://localhost:8890?streamid=publish:live/tingra_test_key, which
+# MediaMTX routes to the live/tingra_test_key path — read back the same way.
+"$CLI" stream --url "$SRT_URL" --key "$SRT_GOOD_KEY" "${GENERATOR_FLAGS[@]}" \
+    --duration 20 --stats-interval 5 --json > "$OUT_DIR/srt.json" &
+srt_pid=$!
+sleep 8
+srt_verify_output="$("$SIM" verify "live/$GOOD_KEY")"
+echo "$srt_verify_output"
+srt_verify_ok=false
+if grep -q "codec_name=h264" <<< "$srt_verify_output" && grep -q "codec_name=aac" <<< "$srt_verify_output"; then
+    srt_verify_ok=true
+fi
+report "SRT server receives H.264 + AAC" "$srt_verify_ok"
+
+srt_stream_ok=false
+if wait "$srt_pid"; then
+    srt_stream_ok=true
+fi
+report "SRT stream exits 0 after --duration" "$srt_stream_ok"
+
+srt_events_ok=false
+if grep -q '"name":"stream.started"' "$OUT_DIR/srt.json" \
+    && grep -q '"name":"stream.stats"' "$OUT_DIR/srt.json" \
+    && grep -q '"reason":"durationElapsed"' "$OUT_DIR/srt.json"; then
+    srt_events_ok=true
+fi
+report "SRT started/stats/stopped events on the NDJSON stream" "$srt_events_ok"
+
+srt_key_ok=true
+if grep -q "$GOOD_KEY" "$OUT_DIR/srt.json"; then
+    srt_key_ok=false
+fi
+report "the SRT stream key never appears in output" "$srt_key_ok"
+
+echo "== Scenario: multiple destinations (one program fanned out to two RTMP paths, both verified)"
+# The real shape of the feature: one program to a Twitch-style path and a
+# YouTube-style path at once, keys paired with --url by position. Both are
+# read back independently, so this proves the fan-out delivers to each rather
+# than one leg quietly winning (ARCHITECTURE.md, "Multiple destinations").
+"$CLI" stream --url "$RTMP_URL" --key "$GOOD_KEY" --url "$RTMP2_URL" --key "$GOOD_KEY" \
+    "${GENERATOR_FLAGS[@]}" --duration 20 --stats-interval 5 --json > "$OUT_DIR/fanout.json" &
+fanout_pid=$!
+sleep 8
+fanout_first="$("$SIM" verify "live/$GOOD_KEY")"
+fanout_second="$("$SIM" verify "live2/$GOOD_KEY")"
+echo "$fanout_first"
+echo "$fanout_second"
+fanout_verify_ok=false
+if grep -q "codec_name=h264" <<< "$fanout_first" && grep -q "codec_name=aac" <<< "$fanout_first" \
+    && grep -q "codec_name=h264" <<< "$fanout_second" && grep -q "codec_name=aac" <<< "$fanout_second"; then
+    fanout_verify_ok=true
+fi
+report "both destinations receive H.264 + AAC" "$fanout_verify_ok"
+
+fanout_stream_ok=false
+if wait "$fanout_pid"; then
+    fanout_stream_ok=true
+fi
+report "the fanned-out stream exits 0 after --duration" "$fanout_stream_ok"
+
+# Each leg announces itself and reports its own stats under its own id.
+fanout_events_ok=false
+if grep -q '"destination":"destination-1"' "$OUT_DIR/fanout.json" \
+    && grep -q '"destination":"destination-2"' "$OUT_DIR/fanout.json" \
+    && grep -q '"name":"stream.destination.started"' "$OUT_DIR/fanout.json" \
+    && grep -q '"destinations":2' "$OUT_DIR/fanout.json"; then
+    fanout_events_ok=true
+fi
+report "per-destination started events and a destination count of 2" "$fanout_events_ok"
+
+fanout_stats_ok=false
+if grep '"name":"stream.stats"' "$OUT_DIR/fanout.json" | grep -q '"destination":"destination-1"' \
+    && grep '"name":"stream.stats"' "$OUT_DIR/fanout.json" | grep -q '"destination":"destination-2"'; then
+    fanout_stats_ok=true
+fi
+report "both destinations report their own stats" "$fanout_stats_ok"
+
+fanout_key_ok=true
+if grep -q "$GOOD_KEY" "$OUT_DIR/fanout.json"; then
+    fanout_key_ok=false
+fi
+report "no stream key appears in the fanned-out output" "$fanout_key_ok"
+
+echo "== Scenario: one destination rejected at start, the run continues on the other (exit 0)"
+# Best-effort start (CLI.md, "Multiple destinations"): the unreachable
+# destination is refused and reported as connectionFailed, the good one goes
+# live, and the run still exits 0 because a live leg remains. An unreachable
+# port is used because MediaMTX does not refuse a bad key at connect — it
+# accepts and closes, which is the mid-stream case exercised below.
+"$CLI" stream --url "$RTMP_URL" --key "$GOOD_KEY" --url "$UNREACHABLE_URL" --key "$GOOD_KEY" \
+    "${GENERATOR_FLAGS[@]}" --duration 15 --stats-interval 5 --json > "$OUT_DIR/partial.json" &
+partial_pid=$!
+sleep 6
+partial_verify="$("$SIM" verify "live/$GOOD_KEY")"
+echo "$partial_verify"
+partial_verify_ok=false
+if grep -q "codec_name=h264" <<< "$partial_verify"; then
+    partial_verify_ok=true
+fi
+report "the accepted destination still receives the program" "$partial_verify_ok"
+
+partial_exit_ok=false
+if wait "$partial_pid"; then
+    partial_exit_ok=true
+fi
+report "a partial start rejection still exits 0" "$partial_exit_ok"
+
+partial_events_ok=false
+if grep -q '"name":"stream.destination.rejected"' "$OUT_DIR/partial.json" \
+    && grep -q '"identifier":"connectionFailed"' "$OUT_DIR/partial.json" \
+    && grep -q '"destinations":1' "$OUT_DIR/partial.json" \
+    && grep -q '"destinationsRejected":1' "$OUT_DIR/partial.json" \
+    && grep -q '"reason":"durationElapsed"' "$OUT_DIR/partial.json"; then
+    partial_events_ok=true
+fi
+report "the refused destination is reported without ending the run" "$partial_events_ok"
+
+echo "== Scenario: one destination's outage does not disturb the other (per-leg reconnect)"
+# The crux of per-leg state. A bad key is accepted then closed by MediaMTX —
+# the rejected-stream-key shape — so that leg reconnects on its own budget
+# while the good leg streams straight through, untouched and never charged
+# for the other's outage.
+"$CLI" stream --url "$RTMP_URL" --key "$GOOD_KEY" --url "$RTMP_URL" --key "$BAD_KEY" \
+    "${GENERATOR_FLAGS[@]}" --duration 15 --stats-interval 5 --json > "$OUT_DIR/perleg.json" &
+perleg_pid=$!
+
+perleg_exit_ok=false
+if wait "$perleg_pid"; then
+    perleg_exit_ok=true
+fi
+report "one destination flapping still exits 0" "$perleg_exit_ok"
+
+# Every reconnect belongs to the failing leg; the healthy one has none.
+perleg_isolated_ok=false
+if grep '"name":"stream.reconnecting"' "$OUT_DIR/perleg.json" | grep -q '"destination":"destination-2"' \
+    && ! grep '"name":"stream.reconnecting"' "$OUT_DIR/perleg.json" | grep -q '"destination":"destination-1"'; then
+    perleg_isolated_ok=true
+fi
+report "only the failing destination reconnects" "$perleg_isolated_ok"
+
+perleg_healthy_ok=false
+if grep '"name":"stream.stats"' "$OUT_DIR/perleg.json" | grep -q '"destination":"destination-1"' \
+    && grep -q '"reason":"durationElapsed"' "$OUT_DIR/perleg.json"; then
+    perleg_healthy_ok=true
+fi
+report "the healthy destination keeps reporting throughout" "$perleg_healthy_ok"
+
 echo "== Scenario: local recording (--record) alongside streaming, verified with ffprobe"
 # Record the same program that streams: bars + tone to a temp .mp4 while
 # publishing to the simulator, then verify the finalized file with ffprobe.
@@ -142,6 +307,21 @@ else
     fi
 fi
 report "bad key exits 75 (connectionLost)" "$badkey_ok"
+
+echo "== Scenario: bad SRT stream key is rejected (exit 75)"
+# A streamid whose path MediaMTX does not define is rejected at the SRT
+# handshake — the connectionFailed path for SRT, mirroring RTMP.
+srt_badkey_ok=false
+if "$CLI" stream --url "$SRT_URL" --key "$SRT_BAD_KEY" "${GENERATOR_FLAGS[@]}" \
+    --duration 60 --reconnect 2 --reconnect-delay 1 --stats-interval 0 \
+    --json > "$OUT_DIR/srt-badkey.json" 2>&1; then
+    srt_badkey_ok=false
+else
+    if [[ $? -eq 75 ]]; then
+        srt_badkey_ok=true
+    fi
+fi
+report "bad SRT key exits 75 (connectionLost)" "$srt_badkey_ok"
 
 echo "== Scenario: probe"
 probe_ok=false

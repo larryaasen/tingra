@@ -121,6 +121,102 @@ struct StreamValidationTests {
         }
     }
 
+    @Test("--url repeats into an ordered destination list")
+    func repeatedURLsFanOut() throws {
+        let stream = try Stream.parse([
+            "--url", "rtmp://localhost/live",
+            "--url", "srt://localhost:8890",
+            "--dry-run",
+        ])
+        #expect(stream.url == ["rtmp://localhost/live", "srt://localhost:8890"])
+        #expect(stream.request.urls.count == 2)
+    }
+
+    @Test("every repeated --url is scheme-checked, not just the first")
+    func everyRepeatedURLIsChecked() {
+        #expect(throws: (any Error).self) {
+            _ = try Stream.parse([
+                "--url", "rtmp://localhost/live",
+                "--url", "ftp://example.com",
+                "--dry-run",
+            ])
+        }
+    }
+
+    @Test("an invocation with no --url throws a usage error")
+    func noURLThrows() {
+        #expect(throws: (any Error).self) {
+            _ = try Stream.parse(["--dry-run"])
+        }
+    }
+
+    @Test("one --key per --url pairs by position")
+    func keysPairByPosition() throws {
+        let stream = try Stream.parse([
+            "--url", "rtmp://localhost/live",
+            "--url", "rtmp://localhost/backup",
+            "--key", "first",
+            "--key", "second",
+            "--dry-run",
+        ])
+        #expect(stream.key == ["first", "second"])
+        #expect(stream.request.keySource == .option)
+    }
+
+    @Test("no keys at all is valid for a fan-out")
+    func keylessFanOutIsValid() throws {
+        let stream = try Stream.parse([
+            "--url", "rtmp://localhost/live",
+            "--url", "rtmp://localhost/backup",
+            "--dry-run",
+        ])
+        #expect(stream.request.keySource == .none)
+    }
+
+    @Test("a --key count that does not match the --url count throws a usage error")
+    func unequalKeyCountThrows() {
+        // One key for two destinations would silently land on whichever URL
+        // came first; the counts must agree or the run is rejected.
+        #expect(throws: (any Error).self) {
+            _ = try Stream.parse([
+                "--url", "rtmp://localhost/live",
+                "--url", "rtmp://localhost/backup",
+                "--key", "only-one",
+                "--dry-run",
+            ])
+        }
+        #expect(throws: (any Error).self) {
+            _ = try parse(["--key", "one", "--key", "two"])
+        }
+    }
+
+    @Test("a --key-env count that does not match the --url count throws a usage error")
+    func unequalKeyEnvCountThrows() throws {
+        setenv("TINGRA_TEST_KEY_A", "live_a", 1)
+        defer { unsetenv("TINGRA_TEST_KEY_A") }
+        #expect(throws: (any Error).self) {
+            _ = try Stream.parse([
+                "--url", "rtmp://localhost/live",
+                "--url", "rtmp://localhost/backup",
+                "--key-env", "TINGRA_TEST_KEY_A",
+                "--dry-run",
+            ])
+        }
+    }
+
+    @Test("--key-stdin cannot serve more than one destination")
+    func keyStdinRejectsFanOut() {
+        // Standard input yields one value, so it cannot key two destinations.
+        #expect(throws: (any Error).self) {
+            _ = try Stream.parse([
+                "--url", "rtmp://localhost/live",
+                "--url", "rtmp://localhost/backup",
+                "--key-stdin",
+                "--dry-run",
+            ])
+        }
+    }
+
     @Test("--no-video and --no-audio together throw")
     func disablingBothThrows() {
         #expect(throws: (any Error).self) {

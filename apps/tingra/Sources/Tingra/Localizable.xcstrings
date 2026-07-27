@@ -18,6 +18,23 @@
         }
       }
     },
+    "Add Destination": {
+      "comment": "Button that adds a stream destination",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ziel hinzufügen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Añadir destino"
+          }
+        }
+      }
+    },
     "Add Effect": {
       "comment": "Menu adding an effect to a channel strip's chain",
       "localizations": {
@@ -82,6 +99,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "Añadir toma"
+          }
+        }
+      }
+    },
+    "Add a destination with an rtmp://, rtmps://, or srt:// URL, then start again.": {
+      "comment": "Stream error shown when no destination is enabled and has a usable URL",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fügen Sie ein Ziel mit einer rtmp://-, rtmps://- oder srt://-URL hinzu und starten Sie erneut."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Añada un destino con una URL rtmp://, rtmps:// o srt:// y vuelva a iniciar."
           }
         }
       }
@@ -375,6 +409,23 @@
         }
       }
     },
+    "Every destination was lost and not recovered.": {
+      "comment": "Stream error shown when the last live destination was lost",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alle Ziele gingen verloren und konnten nicht wiederhergestellt werden."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se perdieron todos los destinos y no se recuperaron."
+          }
+        }
+      }
+    },
     "Height": {
       "comment": "Layer frame slider label",
       "localizations": {
@@ -405,6 +456,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "Inactivo"
+          }
+        }
+      }
+    },
+    "Include this destination when streaming": {
+      "comment": "Tooltip for the destination toggle",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieses Ziel beim Streamen einbeziehen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Incluir este destino al transmitir"
           }
         }
       }
@@ -490,6 +558,40 @@
           "stringUnit": {
             "state": "translated",
             "value": "Nivel"
+          }
+        }
+      }
+    },
+    "Live": {
+      "comment": "Per-destination state: this destination is publishing",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Live"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En vivo"
+          }
+        }
+      }
+    },
+    "Lost": {
+      "comment": "Per-destination state: the destination dropped and did not recover",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verloren"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Perdido"
           }
         }
       }
@@ -631,7 +733,7 @@
       }
     },
     "Name": {
-      "comment": "Rename dialog text field label, for a shot or a preset",
+      "comment": "Name text field label — for a shot, a preset, or a destination",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -677,6 +779,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "Nueva toma"
+          }
+        }
+      }
+    },
+    "New destination": {
+      "comment": "Placeholder label for a destination with no name or URL yet",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Neues Ziel"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nuevo destino"
           }
         }
       }
@@ -732,6 +851,23 @@
         }
       }
     },
+    "No destinations yet. Add one to stream.": {
+      "comment": "Empty state under the streaming panel's destination list",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Noch keine Ziele. Fügen Sie eines zum Streamen hinzu."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aún no hay destinos. Añada uno para transmitir."
+          }
+        }
+      }
+    },
     "No effects": {
       "comment": "Placeholder in an empty audio effect chain",
       "localizations": {
@@ -745,6 +881,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "Sin efectos"
+          }
+        }
+      }
+    },
+    "No streaming output serves %@ destinations. Use rtmp, rtmps, or srt.": {
+      "comment": "Stream error when a destination's URL scheme has no registered output",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keine Streaming-Ausgabe bedient %@-Ziele. Verwenden Sie rtmp, rtmps oder srt."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ninguna salida de transmisión sirve destinos %@. Use rtmp, rtmps o srt."
           }
         }
       }
@@ -898,6 +1051,40 @@
           "stringUnit": {
             "state": "translated",
             "value": "Reconectando…"
+          }
+        }
+      }
+    },
+    "Refused": {
+      "comment": "Per-destination state: the destination refused the connection at start",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abgelehnt"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rechazado"
+          }
+        }
+      }
+    },
+    "Remove Destination": {
+      "comment": "Button that deletes a stream destination",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ziel entfernen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eliminar destino"
           }
         }
       }
@@ -1153,6 +1340,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "Clave de transmisión"
+          }
+        }
+      }
+    },
+    "Stream to this destination": {
+      "comment": "Accessibility label for a destination's enable toggle",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zu diesem Ziel streamen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transmitir a este destino"
           }
         }
       }

@@ -28,6 +28,17 @@ public actor StatusSink: EventSink {
     /// earlier one — exactly what a status read wants.
     private var latestByName: [String: EventBusEvent] = [:]
 
+    /// The most recent event of each name **per destination**, for the events
+    /// a fanned-out stream emits once per leg (`stream.stats` and the
+    /// reconnect events carry a `destination` param — see ARCHITECTURE.md,
+    /// "Multiple destinations"). Keyed name → destination id → event.
+    ///
+    /// Kept beside ``latestByName`` rather than replacing it: a reader that
+    /// wants "the latest stats" still gets one, and a reader that wants each
+    /// destination's own can have that too, instead of one leg's numbers
+    /// silently standing in for another's.
+    private var latestByDestination: [String: [String: EventBusEvent]] = [:]
+
     /// Live subscribers to the broadcast stream, keyed so a terminated
     /// subscription removes exactly its own continuation.
     private var subscribers: [UUID: AsyncStream<EventBusEvent>.Continuation] = [:]
@@ -41,6 +52,9 @@ public actor StatusSink: EventSink {
     public func receive(_ event: EventBusEvent) async {
         guard Self.isStatus(event) else { return }
         latestByName[event.name] = event
+        if let destination = Self.destination(of: event) {
+            latestByDestination[event.name, default: [:]][destination] = event
+        }
         for continuation in subscribers.values {
             continuation.yield(event)
         }
@@ -48,8 +62,33 @@ public actor StatusSink: EventSink {
 
     /// The most recent retained event of the given name, or nil if none has
     /// been seen — how `stream_status` reads the latest `stream.stats`.
+    ///
+    /// With a fanned-out stream several destinations emit this name, and the
+    /// most recent one wins whichever leg it came from; read
+    /// ``latestEvent(named:forDestination:)`` when the leg matters.
     public func latestEvent(named name: String) -> EventBusEvent? {
         latestByName[name]
+    }
+
+    /// The most recent retained event of the given name for one destination
+    /// leg, or nil if that leg has emitted none.
+    ///
+    /// - Parameters:
+    ///   - name: The event name, e.g. `stream.stats`.
+    ///   - destination: The leg id carried in the event's `destination` param.
+    /// - Returns: That leg's latest event of the name, or nil.
+    public func latestEvent(named name: String, forDestination destination: String) -> EventBusEvent? {
+        latestByDestination[name]?[destination]
+    }
+
+    /// Every destination's most recent event of the given name, keyed by leg
+    /// id — the whole fan-out's current state in one read.
+    ///
+    /// - Parameter name: The event name, e.g. `stream.stats`.
+    /// - Returns: Leg id → that leg's latest event; empty when none has been
+    ///   seen.
+    public func latestEventsByDestination(named name: String) -> [String: EventBusEvent] {
+        latestByDestination[name] ?? [:]
     }
 
     /// A snapshot of the most recent event of every retained name — the
@@ -90,5 +129,12 @@ public actor StatusSink: EventSink {
     /// the `error` group (failures agents must react to).
     private static func isStatus(_ event: EventBusEvent) -> Bool {
         event.group == .event || event.group == .error
+    }
+
+    /// The destination leg an event names, when it is one of the per-leg
+    /// events a fanned-out stream emits.
+    private static func destination(of event: EventBusEvent) -> String? {
+        guard case .string(let id) = event.params?["destination"] else { return nil }
+        return id
     }
 }

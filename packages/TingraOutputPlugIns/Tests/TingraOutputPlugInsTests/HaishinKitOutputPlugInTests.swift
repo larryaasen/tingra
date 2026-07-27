@@ -73,8 +73,8 @@ private struct FixedClock: EngineClock {
 
 /// Tests for the output plug-in's registration path.
 struct HaishinKitOutputPlugInTests {
-    @Test("Activation registers the RTMP provider serving rtmp and rtmps")
-    func activationRegistersProvider() async throws {
+    @Test("Activation registers the RTMP provider (rtmp/rtmps) and the SRT provider (srt)")
+    func activationRegistersProviders() async throws {
         let registry = RecordingOutputRegistry()
         let context = PlugInContext(
             eventBus: EventBus(),
@@ -87,13 +87,14 @@ struct HaishinKitOutputPlugInTests {
         try await HaishinKitOutputPlugIn().activate(in: context)
 
         let providers = registry.registered
-        #expect(providers.count == 1)
-        let provider = try #require(providers.first)
-        #expect(provider.id == OutputID(rawValue: "rtmp"))
-        #expect(provider.schemes == ["rtmp", "rtmps"])
+        #expect(providers.count == 2)
+        let rtmp = try #require(providers.first { $0.id == OutputID(rawValue: "rtmp") })
+        #expect(rtmp.schemes == ["rtmp", "rtmps"])
+        let srt = try #require(providers.first { $0.id == OutputID(rawValue: "srt") })
+        #expect(srt.schemes == ["srt"])
     }
 
-    @Test("The provider creates a fresh service per stream")
+    @Test("The RTMP provider creates a fresh service per stream")
     func providerCreatesFreshServices() throws {
         let provider = RTMPStreamingServiceProvider()
         let first = try #require(
@@ -101,6 +102,18 @@ struct HaishinKitOutputPlugInTests {
         )
         let second = try #require(
             provider.makeStreamingService(configuration: StreamConfiguration()) as? HaishinKitStreamingService
+        )
+        #expect(first !== second)
+    }
+
+    @Test("The SRT provider creates a fresh service per stream")
+    func srtProviderCreatesFreshServices() throws {
+        let provider = SRTStreamingServiceProvider()
+        let first = try #require(
+            provider.makeStreamingService(configuration: StreamConfiguration()) as? SRTHaishinKitStreamingService
+        )
+        let second = try #require(
+            provider.makeStreamingService(configuration: StreamConfiguration()) as? SRTHaishinKitStreamingService
         )
         #expect(first !== second)
     }

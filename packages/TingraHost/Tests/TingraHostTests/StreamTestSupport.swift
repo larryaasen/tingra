@@ -11,7 +11,44 @@ import CoreMedia
 import CoreVideo
 import Foundation
 import Synchronization
+import TingraEventBus
 import TingraPlugInKit
+
+/// Collects the events a session emits on the bus, so a test can assert on
+/// the status stream a sink would see. Shared by every suite that drives a
+/// ``StreamSession``.
+final class CollectedEvents: Sendable {
+    /// The events seen so far.
+    private let events = Mutex<[EventBusEvent]>([])
+
+    /// Consumes the bus's event stream into the collection.
+    func consume(_ stream: AsyncStream<EventBusEvent>) -> Task<Void, Never> {
+        Task {
+            for await event in stream {
+                events.withLock { $0.append(event) }
+            }
+        }
+    }
+
+    /// The events named `name`, in order.
+    func named(_ name: String) -> [EventBusEvent] {
+        events.withLock { $0.filter { $0.name == name } }
+    }
+
+    /// The events named `name` whose `destination` param is `id`, in order —
+    /// how a fan-out test reads one leg's share of the status stream.
+    ///
+    /// - Parameters:
+    ///   - name: The event name to match.
+    ///   - id: The destination leg id to match.
+    /// - Returns: The matching events, in emission order.
+    func named(_ name: String, forDestination id: String) -> [EventBusEvent] {
+        named(name).filter { $0.params?["destination"] == .string(id) }
+    }
+
+    /// Every event collected so far.
+    var all: [EventBusEvent] { events.withLock { $0 } }
+}
 
 /// A deterministic clock for tests, per CLOCK.md's substitution rule: the
 /// tick stream yields exactly the scripted times to every consumer, then

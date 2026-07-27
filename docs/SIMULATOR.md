@@ -41,7 +41,7 @@ apps/ingest-simulator/
 
 ```yaml
 rtmpAddress: :1935
-srtAddress: :8890
+srtAddress: 127.0.0.1:8890  # IPv4 loopback — see note below
 hlsAddress: :8888
 
 paths:
@@ -53,6 +53,8 @@ paths:
 ```
 
 Defining only the known key paths means an incorrect key fails the publish, which is exactly the behavior we want to test against. If we later need dynamic keys, MediaMTX supports an HTTP auth hook.
+
+**Why the SRT listener binds IPv4 loopback (`127.0.0.1:8890`), unlike the others (`:port`).** The `StreamingService`'s SRT client (HaishinKit's `SRTSocketURL`) builds only an IPv4 `sockaddr_in`, so it cannot reach an IPv6 (`*:8890`) SRT socket the way the TCP listeners (RTMP/RTSP/HLS) transparently accept IPv4-mapped-IPv6 connections — a `:8890` SRT bind makes the client's handshake time out with nothing ever reaching MediaMTX. Binding IPv4 loopback is also the realistic case: a production SRT ingest is reached over IPv4. The other listeners stay `:port` because their clients connect fine over IPv6.
 
 ### sim.sh
 
