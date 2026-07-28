@@ -1335,4 +1335,116 @@ struct CompositorTests {
         }
         #expect(count <= 100)
     }
+
+    // MARK: Multiview
+
+    /// A two-shot preset whose shots reference different inputs, so a take
+    /// between them moves the tally (ARCHITECTURE.md, "Multiview").
+    private var tallyPreset: Preset {
+        Preset(
+            id: PresetID(rawValue: "p"),
+            name: "P",
+            shots: [
+                Shot(id: ShotID(rawValue: "a"), name: "A", layers: [Layer(input: InputID(rawValue: "camera"))]),
+                Shot(id: ShotID(rawValue: "b"), name: "B", layers: [Layer(input: InputID(rawValue: "display"))]),
+            ]
+        )
+    }
+
+    @Test("a multiview tile reads the input's latest frame from the slot the compositor holds")
+    func latestFrameForInputReadsTheSlot() async {
+        let recorder = RenderRecorder()
+        let compositor = makeCompositor(recorder: recorder, tickTimes: [])
+        let input = FakeInput(id: "camera", frameCount: 3)
+
+        // Nothing delivered yet: a tile draws black rather than a stale frame.
+        #expect(compositor.latestFrame(forInput: input.id) == nil)
+
+        compositor.setInputs([input])
+        try? await Task.sleep(nanoseconds: 20_000_000)
+
+        // The slot the tick renders from is the very frame the tile reads —
+        // one holder, a read-only share (the ownership rule's clause 4).
+        #expect(compositor.latestFrame(forInput: input.id) != nil)
+        #expect(compositor.latestFrame(forInput: InputID(rawValue: "absent")) == nil)
+    }
+
+    @Test("stopping clears the slots a multiview tile reads")
+    func latestFrameIsClearedOnStop() async {
+        let recorder = RenderRecorder()
+        let compositor = makeCompositor(recorder: recorder, tickTimes: [])
+        let input = FakeInput(id: "camera", frameCount: 1)
+        compositor.setInputs([input])
+        try? await Task.sleep(nanoseconds: 20_000_000)
+        #expect(compositor.latestFrame(forInput: input.id) != nil)
+
+        compositor.stop()
+
+        #expect(compositor.latestFrame(forInput: input.id) == nil)
+    }
+
+    @Test("the program tally is the on-program shot's layer inputs")
+    func programInputIDsAreTheProgramShotsInputs() {
+        let recorder = RenderRecorder()
+        let compositor = makeCompositor(recorder: recorder, tickTimes: [])
+
+        // A background-only program lights no lamp.
+        #expect(compositor.programInputIDs.isEmpty)
+
+        compositor.loadPreset(tallyPreset)
+        #expect(compositor.programInputIDs == [InputID(rawValue: "camera")])
+
+        compositor.take(shotID: ShotID(rawValue: "b"))
+        #expect(compositor.programInputIDs == [InputID(rawValue: "display")])
+    }
+
+    @Test("an input on two layers of the same shot lights one lamp")
+    func programInputIDsCountsAnInputOnce() {
+        let recorder = RenderRecorder()
+        let compositor = makeCompositor(recorder: recorder, tickTimes: [])
+        let camera = InputID(rawValue: "camera")
+        compositor.setShot(
+            Shot(layers: [
+                Layer(input: camera), Layer(input: camera, frame: CGRect(x: 0.5, y: 0.5, width: 0.5, height: 0.5)),
+            ])
+        )
+
+        #expect(compositor.programInputIDs == [camera])
+    }
+
+    @Test("mid-dissolve the tally holds both shots' inputs, and collapses when the blend completes")
+    func programInputIDsUnionsAcrossATransition() async {
+        // Two ticks at 30 fps: a one-tick dissolve blends on the first and is
+        // settled by the second.
+        let ticks = (0..<2).map { CMTime(value: CMTimeValue($0), timescale: 30) }
+        let recorder = RenderRecorder()
+        let compositor = makeCompositor(recorder: recorder, tickTimes: ticks)
+        compositor.loadPreset(tallyPreset)
+
+        compositor.take(shotID: ShotID(rawValue: "b"), transition: .dissolve(duration: 1.0 / 30.0))
+        // The take has landed, so `programShot` is already the *incoming*
+        // shot — deriving tally from it alone would darken the outgoing
+        // input while its pixels are still visibly on air.
+        #expect(compositor.programShot.id == ShotID(rawValue: "b"))
+        #expect(compositor.programInputIDs == [InputID(rawValue: "camera"), InputID(rawValue: "display")])
+
+        let program = compositor.programFrames()
+        compositor.start()
+        _ = await collect(program, limit: 2)
+
+        // The blend finished on the first tick, so only the incoming shot's
+        // input is on air now.
+        #expect(compositor.programInputIDs == [InputID(rawValue: "display")])
+    }
+
+    @Test("a cut moves the tally with no union — there is nothing blending")
+    func programInputIDsDoesNotUnionOnACut() {
+        let recorder = RenderRecorder()
+        let compositor = makeCompositor(recorder: recorder, tickTimes: [])
+        compositor.loadPreset(tallyPreset)
+
+        compositor.take(shotID: ShotID(rawValue: "b"), transition: .cut)
+
+        #expect(compositor.programInputIDs == [InputID(rawValue: "display")])
+    }
 }

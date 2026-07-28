@@ -78,6 +78,16 @@ import TingraPlugInKit
 /// a sink, and transitions stay program-only (a transition is the move *to
 /// air*).
 ///
+/// It also serves the app's **multiview** — the monitoring surface that
+/// tiles program, preview, and every input at once (GLOSSARY.md,
+/// "Multiview") — through two *read* accessors rather than a third bus:
+/// ``latestFrame(forInput:)`` hands a tile the slot the compositor is
+/// already holding, and ``programInputIDs`` answers what is on air for the
+/// tiles' tally lamps. Both are pulls, read at display cadence by whoever
+/// is drawing, so a multiview nobody has open costs the tick task nothing
+/// at all — there is no consumer to attach and no continuation to test
+/// (ARCHITECTURE.md, "Multiview").
+///
 /// The mutating controls (``setInputs(_:)``, ``setShot(_:)``,
 /// ``loadPreset(_:)``, ``take(shotID:)``, ``updateShot(_:)``,
 /// ``addShot(_:at:)``, ``removeShot(shotID:)``, ``moveShot(shotID:to:)``,
@@ -731,6 +741,62 @@ public final class Compositor: Sendable {
     public var previewShot: Shot? {
         state.withLock { state in
             state.previewShotID.flatMap { id in state.shots.first { $0.id == id } }
+        }
+    }
+
+    /// The latest frame an input has delivered — a read of the latest-wins
+    /// slot the compositor is already holding, for an operator-facing
+    /// **monitor** to draw (ARCHITECTURE.md, "Multiview").
+    ///
+    /// This is a **pull**, deliberately. A multiview tile draws at display
+    /// cadence (CLOCK.md's preview-sampling rule), so it reads whatever
+    /// frame is current when it draws rather than being pushed one per
+    /// tick — which is what makes an unwatched multiview free: nobody calls
+    /// this, so there is no consumer to attach, no continuation to test,
+    /// and no tick-task work at all. It is also the only way a tile *can*
+    /// get frames: draining an input's `frames()` would finish the
+    /// compositor's own fill task and stop the program.
+    ///
+    /// **Ownership:** the compositor stays the one *holder*. The returned
+    /// frame is a retained, read-only reference the caller draws from and
+    /// drops (ARCHITECTURE.md, "Frame ownership across the `Input` seam",
+    /// clause 4). It must never be accumulated into a history — holding
+    /// frames back starves a capture framework's buffer pool — and never
+    /// handed to a sink, which takes ownership explicitly instead.
+    ///
+    /// - Parameter id: The input to read.
+    /// - Returns: The input's most recent frame, or `nil` when that input
+    ///   is not running or has not delivered one yet.
+    public func latestFrame(forInput id: InputID) -> CapturedFrame? {
+        state.withLock { $0.slots[id] }
+    }
+
+    /// The inputs contributing to what is on program **right now** — the
+    /// question a **tally** lamp asks (GLOSSARY.md, "Tally").
+    ///
+    /// Normally these are the layer inputs of the shot on program. While a
+    /// transition is in progress it is the **union of the outgoing and
+    /// incoming shots'** inputs, because both are visibly on air until the
+    /// blend completes. That union is the whole reason this accessor
+    /// exists rather than callers reading ``programShot``: from the moment
+    /// a take lands, `programShot` is the *incoming* shot, so deriving
+    /// tally from it alone would darken an outgoing-only input while its
+    /// pixels are still going out — and a tally that lies about what is on
+    /// air is worse than no tally at all. It also keeps the private
+    /// transition state private.
+    ///
+    /// An input counts once however many layers reference it, and counts
+    /// whether or not it is currently running: the tally answers "is this
+    /// input on program", not "is it delivering". Preview needs no
+    /// equivalent — transitions are program-only, so a caller derives the
+    /// staged side from ``previewShot`` directly.
+    public var programInputIDs: Set<InputID> {
+        state.withLock { state in
+            var ids = Set(state.shot.layers.map(\.input))
+            if let pending = state.pendingTransition {
+                ids.formUnion(pending.outgoing.layers.map(\.input))
+            }
+            return ids
         }
     }
 

@@ -75,8 +75,8 @@ struct ContentView: View {
             HStack(spacing: 12) {
                 // Preview left of program, the switcher convention: the
                 // operator reads left to right, staging then taking.
-                monitor(relay: model.previewRelay, label: previewLabel, tint: .green)
-                monitor(relay: model.programRelay, label: programLabel, tint: .red)
+                MonitorTile(source: model.previewRelay, label: previewLabel, badgeTint: .green)
+                MonitorTile(source: model.programRelay, label: programLabel, badgeTint: .red)
             }
 
             presetSwitcher
@@ -123,32 +123,6 @@ struct ContentView: View {
     /// The localized name of the preview bus (see ``programLabel``).
     private var previewLabel: Text {
         Text("Preview", comment: "Name of the preview bus — labels its monitor and its switcher row")
-    }
-
-    /// One bus monitor: the `MTKView` over the given relay, badged with the
-    /// bus's name in its tint. Program and preview differ only by which relay
-    /// they sample, so they are the same view twice (ARCHITECTURE.md, "The
-    /// preview bus").
-    ///
-    /// - Parameters:
-    ///   - relay: The bus's frame relay, sampled at display cadence.
-    ///   - label: The bus's localized name.
-    ///   - tint: The badge's tint — the broadcast convention, red for what is
-    ///     on air and green for what is staged.
-    private func monitor(relay: ProgramFrameRelay, label: Text, tint: Color) -> some View {
-        MonitorView(relay: relay)
-            .aspectRatio(16.0 / 9.0, contentMode: .fit)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(.black)
-            .clipShape(.rect(cornerRadius: 8))
-            .overlay(alignment: .topLeading) {
-                label
-                    .font(.caption.weight(.semibold))
-                    .padding(6)
-                    .background(tint.opacity(0.85), in: .capsule)
-                    .foregroundStyle(.white)
-                    .padding(8)
-            }
     }
 
     /// The preset switcher: one button per preset in the project, switching

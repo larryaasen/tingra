@@ -863,8 +863,25 @@ original and copy holds the on-program shot — and a rename that ignores empty
 names), `ProjectStore` (loads and autosaves the `.tingraproject` document under
 `~/Library/Application Support/Tingra`, setting an unreadable file aside rather
 than overwriting it), `MonitorView` (the Core Image `MTKView` that samples one
-bus at display rate — one instance over program, another over preview; it was
-`ProgramPreviewView` while program was the only bus), and `ProgramLayout` (the
+frame source at display rate — one instance over program, another over preview,
+and one per input tile in multiview; it was `ProgramPreviewView` while program
+was the only bus), `MonitorFrameSource` (the seam a monitor reads through, so
+those three cases share one draw path: a bus's `ProgramFrameRelay`, or an
+`InputFrameSource`), `MonitorTile` (the framed monitor — video letterboxed on
+black, an optional tally border, and a name badge — shared by the main window's
+two monitors and every multiview tile), `MonitorRenderContext` (the one Metal
+device, command queue, and `CIContext` every monitor draws through, rather than
+one per view), `MultiviewView` (the multiview window: program and preview across
+the top with one tile per running input beneath, each tally-bordered — red on
+air, green staged. Not a bus: nothing is fed from it and nothing is promoted out
+of it, so it adds no engine surface beyond two read accessors, and the tiles are
+deliberately inert — a tile is an *input* while preview stages a *shot*, and a
+guess one click from air is exactly what the preview bus refused),
+`InputFrameSource` (one input's tile frames, pulled from the compositor's
+latest-wins slot on each draw — a read-only share, drawn and dropped),
+`MultiviewTile` (the pure, unit-tested tile derivation and its tally rule, red
+winning over green), `MultiviewCommands` (the View-menu command that opens the
+window, ⌥⌘M), and `ProgramLayout` (the
 pure, unit-tested arrangement that seeds a fresh project's picture-in-picture,
 display, and camera shots). The window monitors preview beside program and
 carries a second switcher row that stages a shot on preview, with a Take button

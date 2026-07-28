@@ -216,6 +216,46 @@ or two in the doc that owns them — none need a rewrite.
     16), and the app's `ProgramLayout` arrangement (`TingraTests`, 4).
     `TingraComposition` and `tingra` added to the ci.yml matrix.
 
+- [x] **Step 9 — buses and monitoring** *(complete 2026-07-27)*. The
+  production surfaces the monitoring ruling sequenced after step 8
+  (ARCHITECTURE.md, "Roadmap sequencing" step 9), in the three iterations that
+  slice was deliberately cut into. Each was **decided and recorded before any
+  code** under the effect seam's decide-then-build rule; the full records are
+  in ARCHITECTURE.md and in "Decisions to settle" below.
+  - [x] **The preview bus** *(code complete 2026-07-26)* — the engine's second
+    video bus: a second `ShotRenderer` pass over the same tick's snapshot
+    behind `Compositor.previewFrames()`, with `setPreview(shotID:)` staging
+    and `takePreview(transition:)` promoting as a **swap**, and the app's
+    preview monitor, second switcher row, and Take button.
+    `ProgramPreviewView` became `MonitorView`. See "The preview bus".
+  - [x] **The monitor path** *(code complete 2026-07-27)* — the slice's larger
+    half and the engine's **first audio output path**: the `AudioMonitor` seam
+    and its `AVAudioEngineMonitor` default in `TingraAudio`, a sink on the
+    app's program-audio tee rather than a second bus, plus **post-fader stereo
+    master metering** on the existing `MeterBlock` and the app's master strip.
+    Renamed in the deciding — this is *monitoring*, not the "audio preview"
+    the docs had called it since 2026-07-19, because preview names the staging
+    bus and Tingra's audio is per-preset, not shot-scoped. GLOSSARY.md gained
+    **Monitor** and **Master**. See "The monitor path".
+  - [x] **Multiview** *(code complete 2026-07-27)* — the last iteration, and
+    **the only one that added no bus**: a monitoring window tiling program,
+    preview, and every running input, with a **tally** lamp per tile. The
+    engine surface is two read-only `Compositor` accessors —
+    `latestFrame(forInput:)`, which a tile *pulls* at display cadence from the
+    latest-wins slot the compositor already holds, and `programInputIDs`,
+    which unions the outgoing shot's inputs mid-transition so a tally cannot
+    lie about what is on air. The frame-ownership rule gained **clause 4**
+    (read-only sharing for monitoring, never for delivery) to sanction the
+    share, and `MonitorView` generalized over a `MonitorFrameSource` so both
+    windows share one draw path. Tiles are deliberately **inert**. GLOSSARY.md
+    gained **Tally**. See "Multiview".
+
+  **718 tests across 13 targets**, warning-clean, `check-format` clean.
+  Nothing in the slice touched the streamed path, `TingraPlugInKit`, or the
+  document format — **no version bump** across all three iterations (the
+  pre-release rule), and the plug-in stability contract is no closer to a
+  breaking edit than it was when step 8 closed.
+
 - [ ] **Steps 7–8** — app era: production features (presets, shots, layers,
   transitions, audio mixer) *(step 7 complete 2026-07-20)*, SRT/multiple
   destinations/WHIP-WHEP *(step 8: **both decided deliverables landed** — SRT
@@ -1045,6 +1085,111 @@ or two in the doc that owns them — none need a rewrite.
     behavior).
 
 ## Decisions to settle
+
+- [x] **Multiview: the buses-and-monitoring slice, third iteration — the one
+  that closes step 9.** Decided and recorded 2026-07-27 (ARCHITECTURE.md,
+  "Multiview"), **go-ahead given and built the same day** — the
+  decide-then-build rule the effect seam set and the monitor path followed,
+  applied because the shape here is genuinely open rather than queued
+  plumbing. GLOSSARY.md already defines the thing ("a single view that tiles
+  program, preview, and all inputs at once for monitoring"); what was undecided
+  is whether it is engine surface at all, and where the per-input pixels come
+  from.
+
+  The seven approved decisions are in ARCHITECTURE.md; the shape in brief:
+  - **Not a bus — a monitoring surface, and the first iteration of the slice
+    that adds no bus at all.** The test is whether anything can be fed *from*
+    it or promoted *out of* it: program feeds every sink, preview is promoted
+    by `takePreview`, multiview does neither. GLOSSARY.md calls it a *view*,
+    and the **Monitor** entry the last iteration added is its category. A bus
+    would mean a third `ShotRenderer` pass compositing a mosaic at program
+    resolution every tick for pixels one window reads. **Door left open:** a
+    multiview *output* (sent to a second machine) is a real bus, just not
+    this.
+  - **Tiles are *pulled* from the compositor's existing latest-wins slots —
+    one accessor, `latestFrame(forInput:)`.** A tile cannot drain
+    `input.frames()` (that finishes the compositor's fill task and stops the
+    program), and a per-input stream would be tick-rate work for a consumer
+    that draws at display rate. The `MTKView`s pull on their own draws —
+    CLOCK.md's preview-sampling rule one surface over. This is a **stronger**
+    costs-nothing-unwatched than the preview bus itself: preview still tests a
+    continuation every tick; a closed multiview window costs the engine
+    nothing, and not one line of the tick task changes.
+  - **The frame-ownership rule gains a fourth clause: read-only sharing for
+    monitoring, never for delivery.** The compositor stays the one *holder*;
+    a tile gets a retained, read-only reference for one draw — sound because
+    rule 3 already makes the buffer immutable after transfer. Two obligations
+    ride with it: a monitoring reader **draws and drops** (accumulating a
+    history would starve `SCStream`'s pool), and a sink still gets ownership
+    handed to it explicitly. Worth writing down precisely because the rule's
+    value is that it has no quiet exceptions.
+  - **Tally is derived and honest through a transition — the second accessor,
+    `programInputIDs`.** Preview derives from the public `previewShot`
+    (transitions are program-only). Program cannot derive from `programShot`:
+    mid-dissolve that is the *incoming* shot, so an outgoing-only input would
+    go dark while still visibly on air, and a tally that lies is worse than no
+    tally. So the compositor computes the incoming shot's inputs **plus the
+    outgoing shot's while a transition runs**, hiding the private
+    `PendingTransition` rather than exposing it. Red wins over green.
+  - **A separate window from a View-menu command, not a panel.** The main
+    window already holds both monitors, both switcher rows, the layer editor,
+    the mixer, and the destination list — a tile grid would compete with the
+    two surfaces it duplicates. A window is also what makes the cost story
+    *true*: a collapsed panel still exists.
+  - **Tiles are inert — a decision, not an omission.** A tile is an *input*;
+    preview stages a *shot*, and the bridge ("stage the shot that shows only
+    this input") is a **heuristic one click from air** — exactly what the
+    preview-bus record refused when it kept modifier-clicks off the program
+    row. Synthesizing a shot on click would be a monitoring surface silently
+    authoring the document. Named as what would make it free later: a
+    canonical per-input full-frame shot, or drag-from-multiview.
+  - **Multiview starts nothing, and one draw path serves every monitor.** A
+    camera indicator lighting because a monitoring window opened is a defect;
+    so it tiles only what is already running, and a started-but-silent input
+    is a black named tile rather than one that pops in. `MonitorView`
+    generalizes over a small `MonitorFrameSource` seam so program, preview,
+    and every tile share one aspect-fit path and one `CIContext` — the
+    `MeterCapsule` lesson, one media over.
+
+  No engine event (a window is not engine state — the contrast is
+  `monitor.started`, which opens a device); the menu command `tap`s.
+  Strings localized `de`/`es`. **Deferred and named:** audio in multiview,
+  a multiview *output*, and clicking to stage.
+
+  **Two call-outs raised for the veto and both cleared:** the
+  **ownership-rule clause** (it amends a 2026-07-04 rule whose worth is its
+  lack of exceptions — the one thing here that outlives the iteration), and
+  **inert tiles** (the most likely place to want more, and cheap to add later
+  since nothing is designed against it).
+
+  **Built as recorded, with three facts worth keeping.** (1) **Tally
+  freshness was the one thing the record under-specified.** Every tally
+  change follows an operator action the model already handles — except a
+  transition *finishing*, which happens on a compositor tick with nothing
+  observable attached, so a live-derived tally would have stayed unioned
+  forever. A take now schedules **one** refresh for its own known duration
+  plus a tick of margin (`EngineModel.scheduleTallyRefresh(after:)`),
+  cancelled and replaced by a later take: not a poll (CLAUDE.md), one shot
+  derived from the duration the take was made with. The margin is
+  deliberate — a lamp lit a frame too long is honest, one that darkens early
+  is not. (2) **Generalizing `MonitorView` over a `MonitorFrameSource` paid
+  for itself at once**: program, preview, and every tile share one draw path
+  *and* one `MonitorRenderContext` (device, queue, `CIContext`), where a
+  context per view would mean one shader cache and texture pool per tile for
+  one identical job; the framing collapsed into one `MonitorTile` used by
+  both windows, so they cannot drift (the `MeterCapsule` lesson). (3) The two
+  compositor accessors are read-only and lock-scoped, so **the tick task did
+  not change** and `ShotRenderer` gained no requirement — the preview bus's
+  record repeated one iteration on. `MultiviewView`/`MonitorView`/
+  `MonitorTile` are seam-only and not unit-tested (the `MonitorView`
+  precedent); the tests drive the pure derivation. **Tally** joined
+  GLOSSARY.md with the build, and the **Multiview** entry gained the
+  not-a-bus and starts-nothing properties. Tests: TingraComposition
+  155 → 161, `apps/tingra` 107 → 115 — **718 across 13 targets**,
+  warning-clean, `check-format` clean. `integration-test.sh` **not** re-run:
+  no `StreamSession` change, no CLI change, and the compositor's addition is
+  two accessors the tick task never calls. **With this the slice is complete
+  and step 9 closes.**
 
 - [x] **The monitor path: the buses-and-monitoring slice, second iteration.**
   Decided and recorded 2026-07-27 (ARCHITECTURE.md, "The monitor path"),

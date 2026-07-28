@@ -265,6 +265,28 @@ final class EngineModel {
     /// document (ARCHITECTURE.md, "The preview bus").
     private(set) var previewShotID: ShotID?
 
+    /// The inputs the engine is currently running, in name order — the
+    /// multiview's tiles (GLOSSARY.md, "Multiview").
+    ///
+    /// Exactly what is running, never what is merely discovered: opening a
+    /// monitoring window must not start a device, and a camera indicator
+    /// lighting up because the operator opened a window would be a defect.
+    /// A running input that has not delivered its first frame yet still
+    /// gets a tile — a black one carrying its name — so tiles do not pop in.
+    private(set) var multiviewInputs: [InputChoice] = []
+
+    /// The inputs contributing to what is on program, for the multiview
+    /// tiles' **tally** lamps (GLOSSARY.md, "Tally"). Mirrored from
+    /// ``Compositor/programInputIDs``, which unions the outgoing shot's
+    /// inputs while a transition is in progress.
+    private(set) var programInputIDs: Set<InputID> = []
+
+    /// The inputs contributing to the shot staged on preview — the green
+    /// half of the tally (see ``programInputIDs``). Derived from the
+    /// compositor's staged shot; transitions are program-only, so there is
+    /// nothing to union here.
+    private(set) var previewInputIDs: Set<InputID> = []
+
     /// The shot currently selected in the switcher — the one the layer-tree
     /// editor edits. `nil` when there are no shots.
     var activeShot: Shot? {
@@ -472,6 +494,10 @@ final class EngineModel {
     /// reading per mix tick, display data only, never the event bus
     /// (EVENTS.md, control plane only).
     @ObservationIgnored private var meterTask: Task<Void, Never>?
+
+    /// The pending one-shot tally refresh for a transition in flight, if
+    /// any (see ``scheduleTallyRefresh(after:)``).
+    @ObservationIgnored private var tallyRefreshTask: Task<Void, Never>?
 
     /// Whether ``start()`` has run, so it boots the engine once.
     @ObservationIgnored private var started = false
@@ -752,6 +778,18 @@ final class EngineModel {
         }
 
         compositor.setInputs(Array(activeInputs.values))
+        // Multiview tiles exactly what is running — never what is merely
+        // discovered — in a stable name order, so a tile does not jump when
+        // another device connects. Generators stay out for the same reason
+        // they stay out of the layer editor's input list: the `Input` seam
+        // cannot yet declare video vs audio capability.
+        multiviewInputs =
+            activeInputs.values
+            .filter { $0.kind == .camera || $0.kind == .display }
+            .map { InputChoice(id: $0.id, name: $0.name) }
+            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        // A rebind above can have changed which input a layer names.
+        syncTally()
         eventBus.event(
             "compositor.inputs",
             domain: .composition,
@@ -764,6 +802,72 @@ final class EngineModel {
                 hasAppliedConfiguration = true
                 establishSessionPreset()
             }
+        }
+    }
+
+    // MARK: Multiview
+
+    /// One input's latest frame, for a multiview tile to draw.
+    ///
+    /// A straight forward to ``Compositor/latestFrame(forInput:)`` — the
+    /// slot the compositor already holds, shared read-only for one draw
+    /// (ARCHITECTURE.md, "Frame ownership across the `Input` seam", clause
+    /// 4). The tile pulls it on its own draw at display cadence, so a
+    /// multiview window nobody has open costs the engine nothing at all.
+    ///
+    /// - Parameter id: The input to read.
+    /// - Returns: The input's most recent pixel buffer, or nil when it is
+    ///   not running or has not delivered one yet.
+    func latestFrame(forInput id: InputID) -> CVPixelBuffer? {
+        compositor.latestFrame(forInput: id)?.pixelBuffer
+    }
+
+    /// Re-reads the tally from the compositor: which inputs are on program,
+    /// and which are on the staged shot.
+    ///
+    /// Called from every place the app changes the program, the staged
+    /// shot, or a shot's layer bindings — the same call sites that already
+    /// mirror ``Compositor/activeShotID``/``Compositor/previewShotID`` back
+    /// from the compositor, so the tally is read from the engine rather
+    /// than second-guessed here. The one change the app cannot observe this
+    /// way is a transition *finishing*, which ``scheduleTallyRefresh(after:)``
+    /// covers.
+    private func syncTally() {
+        programInputIDs = compositor.programInputIDs
+        previewInputIDs = Set(compositor.previewShot?.layers.map(\.input) ?? [])
+    }
+
+    /// Schedules the one tally refresh the app has no other way to learn
+    /// about: the moment a transition completes and the outgoing shot's
+    /// inputs stop being on air.
+    ///
+    /// Every other tally change follows an operator action the model
+    /// already handles, but a transition ends on a compositor tick with
+    /// nothing observable attached — so a take schedules a single refresh
+    /// for its own known duration. This is **not** a poll (CLAUDE.md): it is
+    /// one shot, derived from the duration the take was made with, and a
+    /// second take supersedes it by cancelling the first. A cut schedules
+    /// nothing — it has already landed.
+    ///
+    /// - Parameter transition: The transition the take was made with.
+    private func scheduleTallyRefresh(after transition: Transition) {
+        tallyRefreshTask?.cancel()
+        let duration: TimeInterval
+        switch transition {
+        case .cut: return
+        case .dissolve(let seconds): duration = seconds
+        case .wipe(_, let seconds): duration = seconds
+        case .shader(_, let seconds): duration = seconds
+        }
+        // A tick of margin, so the refresh lands after the compositor's
+        // final blend tick rather than a frame before it: a tally that
+        // stays lit a frame too long is honest, one that darkens early is
+        // not.
+        let margin = 1.0 / Double(format.frameRate)
+        tallyRefreshTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(max(0, duration) + margin))
+            guard !Task.isCancelled else { return }
+            self?.syncTally()
         }
     }
 
@@ -1168,8 +1272,11 @@ final class EngineModel {
         // outside the loaded pool (see ``switchPreset(to:)``) whose inputs
         // can stop once this take replaces it.
         let wasHoldingSnapshot = activeShotID == nil && hasSessionPreset
-        compositor.take(shotID: shotID, transition: resolvedTransition(for: shotID))
+        let transition = resolvedTransition(for: shotID)
+        compositor.take(shotID: shotID, transition: transition)
         activeShotID = compositor.activeShotID
+        syncTally()
+        scheduleTallyRefresh(after: transition)
         if wasHoldingSnapshot {
             Task { await reconfigure() }
         }
@@ -1194,6 +1301,7 @@ final class EngineModel {
         let staged = shotID == previewShotID ? nil : shotID
         compositor.setPreview(shotID: staged)
         previewShotID = compositor.previewShotID
+        syncTally()
     }
 
     /// Takes the staged shot to program, swapping the buses: what was on
@@ -1214,9 +1322,12 @@ final class EngineModel {
         // The same held-snapshot bookkeeping a direct take does: a snapshot
         // from outside the pool can stop its inputs once this take replaces it.
         let wasHoldingSnapshot = activeShotID == nil && hasSessionPreset
-        compositor.takePreview(transition: resolvedTransition(for: staged))
+        let transition = resolvedTransition(for: staged)
+        compositor.takePreview(transition: transition)
         activeShotID = compositor.activeShotID
         previewShotID = compositor.previewShotID
+        syncTally()
+        scheduleTallyRefresh(after: transition)
         if wasHoldingSnapshot {
             Task { await reconfigure() }
         }
@@ -1304,6 +1415,7 @@ final class EngineModel {
         // A removed shot cannot stay staged — re-read rather than second-guess
         // which shot preview is left holding.
         previewShotID = compositor.previewShotID
+        syncTally()
         scheduleAutosave()
         await reconfigure()
     }
@@ -1357,6 +1469,7 @@ final class EngineModel {
         // Preview follows the same by-id rule the program does across a preset
         // switch: it survives only when the incoming preset holds the shot.
         previewShotID = compositor.previewShotID
+        syncTally()
         await reconfigure()
         await adoptAudioChannels(of: target)
     }
@@ -1453,6 +1566,7 @@ final class EngineModel {
                 }
             }
             activeShotID = compositor.activeShotID
+            syncTally()
         }
         eventBus.event(
             "preset.removed",
@@ -1679,6 +1793,9 @@ final class EngineModel {
         guard edited != shots[index] else { return }
         shots[index] = edited
         compositor.updateShot(edited)
+        // A layer edit can add, remove, or rebind a layer's input, which is
+        // exactly what the tally reads.
+        syncTally()
         scheduleAutosave()
     }
 
@@ -2202,6 +2319,7 @@ final class EngineModel {
             compositor.loadPreset(Preset(id: active.id, name: active.name, shots: shots))
         }
         activeShotID = compositor.activeShotID
+        syncTally()
     }
 
     /// Rebinds every layer bound to one device to another across all the
@@ -2340,7 +2458,7 @@ enum TakeTransitionKind: String, CaseIterable {
 /// program at display rate without pushing 30 fps of state changes through
 /// SwiftUI.
 @MainActor
-final class ProgramFrameRelay {
+final class ProgramFrameRelay: MonitorFrameSource {
     /// The most recent program frame's pixel buffer, or nil before the
     /// first frame. Under the frame ownership rule the relay is the one
     /// holder; the coordinator only reads it to draw.

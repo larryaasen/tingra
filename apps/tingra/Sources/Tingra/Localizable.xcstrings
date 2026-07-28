@@ -188,6 +188,23 @@
         }
       }
     },
+    "Choose a camera or a display to see it here.": {
+      "comment": "Multiview placeholder guidance when no input is running",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wählen Sie eine Kamera oder ein Display, um es hier zu sehen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Elija una cámara o una pantalla para verla aquí."
+          }
+        }
+      }
+    },
     "Connecting…": {
       "comment": "Stream status: connecting to the destination",
       "localizations": {
@@ -783,6 +800,23 @@
         }
       }
     },
+    "Multiview": {
+      "comment": "Title of the multiview monitoring window, and its View-menu command",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Multiview"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Multivista"
+          }
+        }
+      }
+    },
     "Mute": {
       "comment": "Help tag on a channel strip's mute toggle",
       "localizations": {
@@ -881,6 +915,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "Sin predeterminada"
+          }
+        }
+      }
+    },
+    "No Inputs Running": {
+      "comment": "Multiview placeholder title when no input is running",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keine Eingänge aktiv"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ninguna entrada activa"
           }
         }
       }
