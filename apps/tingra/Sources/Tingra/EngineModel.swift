@@ -265,6 +265,16 @@ final class EngineModel {
     /// document (ARCHITECTURE.md, "The preview bus").
     private(set) var previewShotID: ShotID?
 
+    /// Whether the program is faded to black — picture *and* sound
+    /// (GLOSSARY.md, "Fade to black"). The **latch**, so it flips the moment
+    /// the operator acts rather than tracking either ramp: the button's state
+    /// and the program monitor's badge both read it, and neither should lag a
+    /// half-second behind the click.
+    ///
+    /// Session state, deliberately: it never enters the project document, so
+    /// a show never reopens black (ARCHITECTURE.md, "Fade to black").
+    private(set) var isFadedToBlack = false
+
     /// The inputs the engine is currently running, in name order — the
     /// multiview's tiles (GLOSSARY.md, "Multiview").
     ///
@@ -869,6 +879,40 @@ final class EngineModel {
             guard !Task.isCancelled else { return }
             self?.syncTally()
         }
+    }
+
+    // MARK: Fade to black
+
+    /// Takes the whole program off air — or brings it back — over
+    /// `duration`, and latches there (GLOSSARY.md, "Fade to black").
+    ///
+    /// **One control drives both engine surfaces**, and it lives here
+    /// because it has to: `TingraComposition` and `TingraAudio` depend on
+    /// each other in neither direction, so nothing in the engine can own a
+    /// state that spans them. The picture fades on the compositor's program
+    /// tick and the master on the mixer's block cadence — two ramps from one
+    /// duration, landing within a tick of each other (ARCHITECTURE.md,
+    /// "Fade to black").
+    ///
+    /// **Video and audio are coupled by default**, because Tingra's program
+    /// is defined as picture *and* sound: a black picture over live room
+    /// audio is dead air, which is the thing the operator reached for this
+    /// control to avoid. A video-only fade would be this method without the
+    /// mixer line.
+    ///
+    /// Everything fed from program inherits it by construction — every
+    /// streaming destination, any recording, and the app's own program
+    /// monitor. Preview, multiview, and the strip meters stay live, so the
+    /// operator keeps working behind the fade.
+    ///
+    /// - Parameters:
+    ///   - faded: `true` to take the program down, `false` to bring it up.
+    ///   - duration: The ramp length in seconds (default: the
+    ///     broadcast-typical half second both engine surfaces default to).
+    func setFadeToBlack(_ faded: Bool, duration: TimeInterval = Transition.defaultDissolveDuration) {
+        isFadedToBlack = faded
+        compositor.setFadeToBlack(faded, duration: duration)
+        mixer.setMasterFade(faded, duration: duration)
     }
 
     // MARK: Mixer

@@ -1276,13 +1276,15 @@ or two in the doc that owns them — none need a rewrite.
   byte-for-byte what it was, so the streamed path is untouched.
   **Multiview remains** — the slice's last iteration.
 
-- [ ] **Fade to black (FTB): the program master stage.** Raised 2026-07-26;
-  nothing exists today — no `Transition` case, no compositor or mixer stage, no
-  GLOSSARY.md term. Every switcher has it and Tingra has no way to take the
-  program off air short of stopping the stream, so it is a real gap, but it is
-  **not** a queued step-8 item: it needs a decision record first (the effect
-  seam's decide-then-build rule), and it should be scoped against the preview
-  bus slice above rather than bolted onto it.
+- [x] **Fade to black (FTB): the program master stage.** Raised 2026-07-26 —
+  nothing existed then: no `Transition` case, no compositor or mixer stage, no
+  GLOSSARY.md term. Every switcher has it and Tingra had no way to take the
+  program off air short of stopping the stream, so it was a real gap, but
+  **not** a queued step-8 item: it needed a decision record first (the effect
+  seam's decide-then-build rule), and it was scoped against the buses-and-
+  monitoring slice rather than bolted onto it. **Decided and recorded
+  2026-07-27** (ARCHITECTURE.md, "Fade to black"), **go-ahead given and built
+  the same day** — the last unchecked item in "Decisions to settle".
 
   **Where it fits: a master stage on the program bus, not a transition.** A
   transition is the move from one shot to the next; FTB is a latching master
@@ -1326,32 +1328,79 @@ or two in the doc that owns them — none need a rewrite.
     operator's own Output window is **deliberately not faded**, "in order to
     make it easier to queue up a source for later."
 
-  **The recommendation, for the veto:**
-  - **One control fades video and audio together**, defaulting to both, with
-    video-only available as a per-invocation choice later — not two independent
-    controls in v1. (The broadcast console splits FTB from the audio master,
-    and vMix makes the coupling an opt-in tick-box; the argument for coupling
-    by default is that Tingra's operator is one person and its program is
-    defined as picture *and* sound — dead air with a black picture is the
-    thing the operator actually wants. This is the recommendation most likely
-    to draw a veto, and the cheapest to reverse: it is a default, not a shape.)
-  - **Latching state, not a one-shot** — `Compositor`/`AudioMixer` hold a
-    "faded to black" flag with a ramp in progress; taking a shot while black
-    changes what is *behind* the fade and nothing visible, and fading back up
-    reveals whatever is on program then.
-  - **Session state, not persisted** — nothing enters `Preset`/`Project`, no
-    document version bump (the pre-release rule, the same call the preview bus
-    and the mixer's pre-routing level/mute made). A show must never reopen black.
-  - **A ramp duration with a broadcast-typical 0.5 s default**, matching
-    `Transition.defaultDissolveDuration` rather than inventing a second
-    convention.
-  - **This one *does* get an engine event** (unlike preview selection): going to
-    and from black is a discrete on-air state change, not a gesture-rate edit —
-    the `shot.added`/`shot.removed` line, not the `updateShot` line.
+  **The decisions, in brief — the full record is in ARCHITECTURE.md:**
+  - **One control fades video and audio together** (the point flagged as most
+    likely to draw a veto; **confirmed** 2026-07-27). Tingra's operator is one
+    person and its program is defined as picture *and* sound — a black picture
+    over live room audio is dead air, the thing the control exists to avoid.
+    Video-only stays a later per-invocation choice and costs one line, because
+    the two engine surfaces are separately named and addressable.
+  - **Two engine surfaces, one app control — structural, not a preference.**
+    `TingraComposition` and `TingraAudio` depend on each other in neither
+    direction, so there is no place *in the engine* for one object owning
+    "faded to black": `Compositor.setFadeToBlack(_:duration:)` and
+    `AudioMixer.setMasterFade(_:duration:)`, with `EngineModel` coordinating
+    them as it already does for `reconfigure`. The audio surface is not called
+    "fade to black" — at the master there is no black, only silence.
+  - **The video stage is a pass over whatever the tick rendered — so a fade
+    and a transition run at once.** The draft here had the ramp riding the
+    `PendingTransition` spine; **it cannot**, because that struct carries an
+    outgoing `Shot` and a `BlendKind` FTB has neither of, and occupying the
+    slot would forbid hitting FTB *during* a dissolve — exactly when an
+    operator reaches for it. FTB keeps its own ramp state beside the
+    transition slot and reuses only the `tickCount(for:frameRate:)` helper.
+  - **One new `ShotRenderer` requirement, and held black costs less than
+    running clear.** `renderFaded(_:toBlack:format:time:)` runs only mid-ramp;
+    at full black the compositor skips the layer-tree render entirely and
+    renders an empty `Shot()` (already empty over opaque black). No default
+    implementation, the settled `renderWipe`/`renderShader` precedent for this
+    package-internal seam. `TingraPlugInKit` untouched.
+  - **The audio stage lands upstream of the master meter for free**, as the
+    monitor path promised: the gain applies to the summed `left`/`right`
+    before `masterReading` reads those same arrays, so the master meter shows
+    silence with no metering change at all. Strip meters stay **pre-fader** —
+    the right asymmetry, since the operator can then see their microphone is
+    live *and* see that nobody can hear it.
+  - **Both ramps are constant-slope and tick-counted on their own cadence**
+    (program ticks; mix blocks) from one requested duration, so they land
+    within a tick of each other. An interrupted fade reverses at the same rate
+    from where it is, rescaling its position if the ramp length changed. The
+    audio ramp interpolates **per sample** within the block — a hand-ridden
+    fader tolerates per-block steps, a scripted half-second ramp stepping
+    once per block is a zipper. Both store an **integer position over an
+    integer total** and divide, rather than accumulating a float step: an
+    accumulated step leaves a residue on any ramp length that does not divide
+    evenly (the default half second is 15 ticks and 23 blocks — neither
+    does), the ramp then never tests equal to its endpoint, and the fade
+    stage runs forever after one fade cycle. Found by a test; see the "built"
+    note below.
+  - **Latching session state that starts and stops nothing** — no
+    `Preset`/`Project` field, no document version bump (the pre-release rule),
+    and no device lifecycle change: fading down must not kill a camera
+    indicator or drop a microphone.
+  - **The app's program monitor goes black too, with a badge** (the second
+    open question; **confirmed** 2026-07-27). vMix keeps its Output window
+    live "to make it easier to queue up a source for later" — a reason that
+    does not transplant, because preview and multiview are what queue up a
+    source in Tingra and both stay live. A monitor showing what viewers are
+    not seeing would contradict the GLOSSARY.md **Monitor** definition, and
+    keeping it live would cost a second program render every tick.
+  - **A 0.5 s default duration, as an engine parameter with no UI** — matching
+    `Transition.defaultDissolveDuration`. vMix's real mistake is that the
+    duration is not adjustable *at all*; Tingra's is a parameter from day one.
+    No picker, because transitions have none either — exposing durations is
+    one later call for all of them.
+  - **One event per engine surface**: `composition/program.fadeToBlack` and
+    `audio/master.fade`, each carrying `state` and `durationSeconds`, tied
+    together by the app's single `fadeToBlack.button` tap. Each service
+    reports what *it* did, so a later video-only fade reads correctly in the
+    log without a param.
   - **Rejected as the *implementation*: modeling black as a special shot**
     taken with a dissolve. It clobbers `activeShotID` (the operator loses what
     they were on), covers no audio, and does not survive a shot switch
     underneath — three symptoms of a master stage wearing a shot's clothes.
+    (The empty black `Shot()` the full-black shortcut renders is not that: a
+    private render target inside the tick, never in the pool.)
 
   **A black *source* is a separate, complementary feature — not the rejected
   alternative.** TriCaster carries **BLACK** as a selectable source on its
@@ -1363,13 +1412,94 @@ or two in the doc that owns them — none need a rewrite.
   today; a black source is a smaller, independent item — arguably just a
   first-party solid-colour **generator** in `TingraGeneratorPlugIns` beside
   bars and tone, bound into a layer like any other input, needing no new seam.
-  Worth queuing separately; it is not a prerequisite for FTB and FTB is not a
-  substitute for it.
+  Worth queuing separately (see "A black source" below); it is not a
+  prerequisite for FTB and FTB is not a substitute for it.
 
-  When decided, the record lands in ARCHITECTURE.md ("Fade to black") with a
-  GLOSSARY.md term beside **Transition**/**Program**; the CLI/MCP surface
-  (a `fade_to_black` tool, `tingra-cli` verb) is a separate later call, as is
-  a keyboard-accessible app control and its `de`/`es` strings.
+  **The CLI/MCP surface stays a separate later call** (a `fade_to_black` tool,
+  a `tingra-cli` verb): the CLI never builds a compositor or a mixer — it
+  streams a single input through `StreamSession`'s `.input` source — so there
+  is nothing for either to act on until that changes, the same reason the
+  monitor path took no CLI surface.
+
+  **Built as recorded, with four facts worth keeping.** (1) **The full-black
+  shortcut turned out to be the cheap half of the iteration, not an
+  optimization needing justification.** Because `Shot()` is already empty over
+  opaque black, "composite nothing" is the *existing* seam call with an empty
+  shot — so a held-black program does no layer compositing, no effect chains,
+  and no fade pass, in a six-line branch. The one new `ShotRenderer`
+  requirement runs only during the ramp. (2) **The audio side needed no new
+  plumbing beyond the ramp itself**: the gain is a single pass over the
+  `left`/`right` arrays `mixBlock` had already summed, inserted between the
+  channel walk and the two things that read them, so the program yield *and*
+  the master meter both picked it up with no change to either — the whole
+  `AudioMixer` diff is the ramp state, the pass, and one event. (3)
+  **Fade-and-transition-at-once is the case that justified the whole shape**,
+  and the mock renderer proves it directly: a dissolve under a fade calls
+  `renderDissolve` then `renderFaded`, in that order, on the same tick. (4)
+  **The fade *tracks* a dissolve toward black rather than matching it
+  exactly**, and the gap is inherent to a master stage rather than a defect:
+  the fade darkens the already-composited, BT.709-tagged program frame where a
+  dissolve blends the source images in one pass, so its input has been through
+  one more encode/decode of the 8-bit working format — a handful of code values
+  at the midpoint, none at either endpoint. A renderer test pins the tracking
+  and records the reason, having first been written (wrongly) as an equality.
+  (5) **Both ramps were first written as accumulating float steps, and a test
+  caught it — the one real bug of the iteration.** Asking whether the master
+  returns to its original setting after FTB is lifted turned out to have the
+  answer "very nearly, forever": `max(target, gain - step)` clamps overshoot
+  but not an undershoot of `1.1e-16`, so on any ramp length that does not
+  divide evenly — including *both* defaults, 15 ticks at 30 fps and 23 blocks
+  at 48 kHz — the ramp never reached its endpoint, the "is it active" test
+  never went false again, and **the fade stage would have run on every tick
+  and every block for the rest of the session** after a single fade cycle: a
+  permanent extra Core Image pass darkening a frame by nothing, and a mix
+  permanently scaled by `0.9999999999999999`. The fix is the integer
+  position/total the `PendingTransition` spine already used and this should
+  have started from. Pinned now by parameterized round-trip tests over the
+  tick counts real durations actually produce.
+
+  **The app side is a latch and two delegations, with no pure derivation to
+  unit-test** — the `MonitorView`/`MultiviewView` seam-only precedent — so
+  `apps/tingra` gained no tests; the behavior is pinned in both engine
+  packages instead. Tests: TingraComposition 161 → 179 (the clear program
+  running no stage at all, the ramp's amounts, full black compositing nothing,
+  fade-under-transition and its ordering, the latch across a shot switch,
+  preview never faded, the zero duration, `stop()` clearing it, and the event;
+  plus four renderer tests for the pixels — the endpoints, the midpoint, the
+  dissolve tracking, and the stamp and BT.709 tags; plus the ramp's own round
+  trip, its uneven-length cases, and its rescale on a length change) and
+  TingraAudio 48 → 61
+  (the byte-identical open master in the pan record's proof form, the ramp to
+  silence, the per-sample interpolation a per-block step would fail, the
+  faded-master-silent/strips-still-reading asymmetry, the latch, the restore,
+  `stop()`, the event, the block-count rule, the fade pass itself, and the
+  same three ramp tests) —
+  **749 across 13 targets**, warning-clean, `check-format` clean.
+  `integration-test.sh` **was** re-run, unlike the two step-9 iterations before
+  it, because this one does change what `programFrames()` yields to a sink:
+  **37 checks across 11 scenarios, all passing**, the baseline unchanged.
+
+- [ ] **A black source: a first-party solid-colour generator.** Queued
+  2026-07-27 by the fade-to-black record, which is careful that the two are
+  **complementary, not alternatives**: a black source is **upstream**, so
+  overlays, keys, and titles composite over it (cut the background to black and
+  keep a lower third up), where FTB is a downstream master stage that obscures
+  everything. TriCaster carries **BLACK** as a selectable source on its
+  Program/Preview rows and ATEM the same on its M/E bus *while also* shipping
+  FTB; Tingra now has FTB and still has no black source.
+
+  **Shape, if it is wanted:** a solid-colour generator in
+  `TingraGeneratorPlugIns` beside bars and tone, bound into a layer like any
+  other input — **no new seam, no new engine surface, and no document change**,
+  which is what makes it small. Two things to settle when it is taken up: (1)
+  whether it is black-only or a colour picker (a solid generator is barely more
+  work than a black one, and a colour is occasionally what an operator wants
+  behind a key), and (2) that the layer-tree editor's add-layer choices
+  currently exclude `InputKind.generator` on purpose — `InputKind` cannot say
+  whether a generator produces video or audio, and a video/audio capability on
+  the `Input` seam is a deliberate protocol addition (recorded under "The
+  layer-tree editor"). That protocol question, not the generator, is the real
+  work — and it is the same question a media-file input will ask.
 
 - [x] **The preview bus: the buses-and-monitoring slice, first iteration.**
   Decided 2026-07-26 (recorded in ARCHITECTURE.md, "The preview bus"),

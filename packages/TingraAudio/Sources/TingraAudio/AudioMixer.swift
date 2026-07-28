@@ -53,6 +53,15 @@ import TingraPlugInKit
 /// data that never rides the event bus (EVENTS.md; ARCHITECTURE.md,
 /// "Per-strip meters").
 ///
+/// Downstream of every strip sits one master stage: the **master fade**
+/// (``setMasterFade(_:duration:)``), the audio half of **fade to black**
+/// (GLOSSARY.md) — a latching ramp of everything leaving the mixer, down to
+/// silence and back. It applies after every chain, level, pan, and mute, and
+/// before the master reading above, so a faded-down master meters as silence
+/// while every strip meter keeps showing its input delivering. Its picture
+/// half is `Compositor.setFadeToBlack(_:duration:)`, which a caller owning
+/// both drives alongside it.
+///
 /// The mixer emits from its first tick — silence before any strip delivers —
 /// so the program mix, like the program video, is a live canvas at the tick
 /// rate from the moment it starts. Level, pan, and mute changes are gesture-rate
@@ -107,8 +116,88 @@ public final class AudioMixer: Sendable {
         /// nothing.
         var meterContinuation: AsyncStream<MeterBlock>.Continuation?
 
+        /// The **master fade** — the audio half of fade to black, open until
+        /// the operator takes the program down (GLOSSARY.md, "Fade to
+        /// black").
+        var fade = MasterFade()
+
         /// The running mix task, while started.
         var mixTask: Task<Void, Never>?
+    }
+
+    /// The master fade's latching state and its ramp, counted in mix blocks
+    /// the way the compositor's counts program ticks — two ramps on two
+    /// cadences from one requested duration, landing within a block of each
+    /// other (ARCHITECTURE.md, "Fade to black").
+    /// The ramp is **counted in blocks and divided**, never accumulated as a
+    /// running float, for the reason recorded on the compositor's twin:
+    /// subtracting an uneven per-block step leaves a residue (`1` minus
+    /// `1/3` three times lands on `1.1e-16`, not `0`), and a residue means
+    /// ``isActive`` never goes false again — so after one fade cycle the mix
+    /// would be scaled by `0.9999999999999999` on every block for the rest
+    /// of the session instead of being left alone. Dividing an integer
+    /// position by an integer total makes both endpoints exact, so bringing
+    /// the master back up restores a **byte-identical** mix rather than an
+    /// inaudibly-close one.
+    struct MasterFade {
+        /// The number of mix blocks a whole open-to-silent travel spans, at
+        /// least one. Fixed for the travel, so a fade interrupted mid-ramp
+        /// reverses at the same rate from wherever it had reached.
+        var totalBlocks: Int = 1
+
+        /// How far along that travel the master currently sits,
+        /// `0`...`totalBlocks`.
+        var position: Int = 0
+
+        /// Where the ramp is heading — `totalBlocks` after a fade down, `0`
+        /// after a fade up. The **latch**.
+        var targetPosition: Int = 0
+
+        /// The master's current linear gain, `1` (open) down to `0`
+        /// (silent) — exact at both ends by construction.
+        var gain: Double { 1 - Double(position) / Double(totalBlocks) }
+
+        /// The gain this block ends at — where ``gain`` will be once the
+        /// block has been rendered. Interpolating from `gain` to this across
+        /// the block's samples is what keeps a scripted ramp free of the
+        /// zipper a per-block step would produce; a strip's hand-ridden
+        /// level needs no such thing.
+        var endGain: Double {
+            var next = self
+            next.advance()
+            return next.gain
+        }
+
+        /// Whether the master is anything other than fully open — the test
+        /// for whether the fade pass has to run at all.
+        var isActive: Bool { position != 0 || targetPosition != 0 }
+
+        /// Whether the master is faded down or on its way there.
+        var isFaded: Bool { targetPosition > 0 }
+
+        /// Advances the ramp by one block, stopping on the target.
+        mutating func advance() {
+            if position < targetPosition {
+                position += 1
+            } else if position > targetPosition {
+                position -= 1
+            }
+        }
+
+        /// Points the ramp at silence or at unity over `totalBlocks` blocks,
+        /// rescaling how far it has already travelled onto the new block
+        /// count so an interrupted fade keeps the level it was at.
+        ///
+        /// - Parameters:
+        ///   - faded: `true` to head for silence, `false` for unity.
+        ///   - newTotal: The block count a whole travel spans (at least 1).
+        mutating func retarget(faded: Bool, totalBlocks newTotal: Int) {
+            if newTotal != totalBlocks {
+                position = Int(((1 - gain) * Double(newTotal)).rounded())
+                totalBlocks = newTotal
+            }
+            targetPosition = faded ? newTotal : 0
+        }
     }
 
     /// One channel strip's live state: its controls and its queue.
@@ -315,6 +404,80 @@ public final class AudioMixer: Sendable {
         }
     }
 
+    /// Fades the **master** — everything leaving the mixer once every channel
+    /// strip has contributed (GLOSSARY.md, "Master") — down to silence over
+    /// `duration`, or back up, and **latches** there.
+    ///
+    /// This is the audio half of **fade to black** (GLOSSARY.md), and it is
+    /// deliberately not named for black: at the master there is no picture,
+    /// only silence. The picture half is
+    /// `Compositor.setFadeToBlack(_:duration:)`; the two engine libraries do
+    /// not depend on each other, so a caller taking the whole program off air
+    /// drives both (ARCHITECTURE.md, "Fade to black").
+    ///
+    /// It sits downstream of every strip's effect chain, level, pan, and
+    /// mute, and upstream of the post-fader **master meter** — so while the
+    /// master is faded down the master meter reads silence while every strip
+    /// meter keeps showing its input delivering, pre-fader. That asymmetry is
+    /// the point: the operator can see their microphone is live *and* see
+    /// that nobody can hear it.
+    ///
+    /// Fading changes nothing about the strips and stops no device: a muted
+    /// strip stays muted, an open one stays open, and bringing the master
+    /// back up restores exactly the mix that was there.
+    ///
+    /// - Parameters:
+    ///   - faded: `true` to fade the master to silence, `false` to bring it
+    ///     back up. Calling it again with the value already in effect
+    ///     re-times the ramp toward the same target and is otherwise
+    ///     harmless.
+    ///   - duration: The ramp length in seconds, for a full open-to-silent
+    ///     travel (default: half a second, the broadcast-typical length a
+    ///     dissolve uses). Clamped to at least one block, so a zero or
+    ///     negative duration still completes on the next mix tick.
+    public func setMasterFade(_ faded: Bool, duration: TimeInterval = AudioMixer.defaultMasterFadeDuration) {
+        let blocks = Self.blockCount(for: duration, format: format)
+        state.withLock { state in
+            state.fade.retarget(faded: faded, totalBlocks: blocks)
+        }
+        eventBus.event(
+            "master.fade",
+            domain: .audio,
+            params: [
+                "state": .string(faded ? "silent" : "open"),
+                "durationSeconds": .double(duration),
+            ]
+        )
+    }
+
+    /// Whether the master is faded down or on its way there — the latch
+    /// ``setMasterFade(_:duration:)`` sets, not the ramp's current position.
+    public var isMasterFaded: Bool {
+        state.withLock { $0.fade.isFaded }
+    }
+
+    /// The master fade's default ramp length, matching the compositor's
+    /// `Transition.defaultDissolveDuration` — the broadcast-typical half
+    /// second — rather than inventing a second convention. It is declared
+    /// here rather than imported because `TingraAudio` and
+    /// `TingraComposition` are siblings that do not depend on each other.
+    public static let defaultMasterFadeDuration: TimeInterval = 0.5
+
+    /// Converts a fade duration in seconds to the whole number of mix blocks
+    /// it spans — at least one, so a zero or negative duration still
+    /// completes on the next tick rather than never finishing (the
+    /// compositor's `tickCount(for:frameRate:)` rule, one cadence over).
+    ///
+    /// - Parameters:
+    ///   - duration: The requested ramp length in seconds.
+    ///   - format: The mix format whose block size and sample rate set the
+    ///     cadence.
+    /// - Returns: The block count the ramp spans.
+    static func blockCount(for duration: TimeInterval, format: MixFormat) -> Int {
+        let blocksPerSecond = format.sampleRate / Double(format.blockFrames)
+        return max(1, Int((duration * blocksPerSecond).rounded()))
+    }
+
     /// Starts the mix tick: the mixer sums and yields one block per tick
     /// until ``stop()`` — silence before any strip delivers. Idempotent — a
     /// second call while running does nothing.
@@ -357,6 +520,9 @@ public final class AudioMixer: Sendable {
             state.channels.removeAll()
             state.programContinuation = nil
             state.meterContinuation = nil
+            // The master fade is session state, so a stopped mixer never
+            // comes back up silent — a show must not reopen faded down.
+            state.fade = MasterFade()
             return taken
         }
         mixTask?.cancel()
@@ -378,7 +544,10 @@ public final class AudioMixer: Sendable {
     /// processors, not generators). While a meter consumer is attached,
     /// the same walk also measures each channel's consumed samples
     /// pre-fader — after the chain, before level, pan, and mute — and
-    /// yields the tick's ``MeterBlock``.
+    /// yields the tick's ``MeterBlock``. Last of all, while the **master
+    /// fade** is anything but fully open, the summed block is scaled by the
+    /// master's ramping gain — downstream of every strip and upstream of the
+    /// post-fader master reading, both of which read the same summed arrays.
     private func mixBlock(at tickTime: CMTime, format: MixFormat) {
         let frames = format.blockFrames
         let output:
@@ -446,6 +615,18 @@ public final class AudioMixer: Sendable {
                         }
                         state.channels[id] = channel
                     }
+                    // The master fade, last: downstream of every strip's
+                    // chain, level, pan, and mute, and — because it runs
+                    // before both the program yield and the master reading
+                    // below, which read these same arrays — upstream of the
+                    // post-fader master meter by construction, so the meter
+                    // shows silence with no metering change at all
+                    // (ARCHITECTURE.md, "Fade to black").
+                    if state.fade.isActive {
+                        Self.applyMasterFade(
+                            &left, &right, from: state.fade.gain, to: state.fade.endGain, frames: frames)
+                    }
+                    state.fade.advance()
                     let program = state.programContinuation.map { (left, right, $0) }
                     // The master reading is taken here, on the summed block —
                     // after every strip's chain, level, pan, and mute, which
@@ -472,6 +653,38 @@ public final class AudioMixer: Sendable {
                 left: block.left, right: block.right, at: tickTime, sampleRate: format.sampleRate)
         else { return }
         block.continuation.yield(mixed)
+    }
+
+    /// Applies the master fade across one block, interpolating the gain
+    /// linearly from `start` to `end` sample by sample.
+    ///
+    /// Per **sample**, not per block, deliberately: a channel strip's level
+    /// is a hand-ridden gesture where a per-block constant gain is right, but
+    /// a scripted half-second ramp stepping once per block is a zipper — and
+    /// the interpolation is one multiply-add on a block already being walked
+    /// (ARCHITECTURE.md, "Fade to black").
+    ///
+    /// - Parameters:
+    ///   - left: The summed left channel, faded in place.
+    ///   - right: The summed right channel, faded in place.
+    ///   - start: The master gain at the first sample.
+    ///   - end: The master gain the block ends at.
+    ///   - frames: The block's frame count (at least 1).
+    static func applyMasterFade(
+        _ left: inout [Float],
+        _ right: inout [Float],
+        from start: Double,
+        to end: Double,
+        frames: Int
+    ) {
+        guard frames > 0 else { return }
+        let first = Float(start)
+        let slope = Float(end - start) / Float(frames)
+        for i in 0..<frames {
+            let gain = first + slope * Float(i)
+            left[i] *= gain
+            right[i] *= gain
+        }
     }
 
     /// Measures one strip's meter reading over the samples a tick consumed:

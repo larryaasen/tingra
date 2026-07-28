@@ -76,7 +76,12 @@ struct ContentView: View {
                 // Preview left of program, the switcher convention: the
                 // operator reads left to right, staging then taking.
                 MonitorTile(source: model.previewRelay, label: previewLabel, badgeTint: .green)
-                MonitorTile(source: model.programRelay, label: programLabel, badgeTint: .red)
+                MonitorTile(
+                    source: model.programRelay,
+                    label: programLabel,
+                    badgeTint: .red,
+                    statusBadge: model.isFadedToBlack ? fadedToBlackLabel : nil
+                )
             }
 
             presetSwitcher
@@ -426,6 +431,8 @@ struct ContentView: View {
                     }
                 }
             }
+
+            fadeToBlackControl
         }
         .alert(
             Text("Rename Shot", comment: "Rename shot dialog title"),
@@ -504,6 +511,61 @@ struct ContentView: View {
                 .disabled(model.previewShotID == nil)
             }
         }
+    }
+
+    /// The **fade to black** control: one latching button that takes the
+    /// whole program off air — picture *and* sound together — and brings it
+    /// back (GLOSSARY.md, "Fade to black").
+    ///
+    /// Its own row beneath the transition controls, because it is a **master
+    /// stage rather than a transition**: a transition is the move from one
+    /// shot to the next, where this holds across shot switches. It stays
+    /// available when the preset has no shots — the operator must always be
+    /// able to take the program down — which is why it sits outside the
+    /// switcher's shots guard. Prominent and red while active, the broadcast
+    /// convention for a latched FTB.
+    private var fadeToBlackControl: some View {
+        HStack(spacing: 8) {
+            Button {
+                model.eventBus.tap(
+                    "fadeToBlack.button",
+                    domain: .composition,
+                    params: ["state": .string(model.isFadedToBlack ? "clear" : "black")]
+                )
+                model.setFadeToBlack(!model.isFadedToBlack)
+            } label: {
+                fadeToBlackLabel
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(model.isFadedToBlack ? .red : .gray)
+            .keyboardShortcut("b", modifiers: [.command, .shift])
+
+            if model.isFadedToBlack {
+                fadedToBlackHint
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    /// The localized name of the fade-to-black control.
+    private var fadeToBlackLabel: Text {
+        Text("Fade to Black", comment: "Button taking the whole program — picture and sound — off air, and back")
+    }
+
+    /// The localized badge shown on the program monitor while the program is
+    /// faded to black (see ``MonitorTile/statusBadge``).
+    private var fadedToBlackLabel: Text {
+        Text("Faded to Black", comment: "Badge on the program monitor while the program is faded to black")
+    }
+
+    /// The localized hint beside the control while the program is down,
+    /// naming what is still live behind the fade.
+    private var fadedToBlackHint: Text {
+        Text(
+            "Viewers see and hear nothing. Preview and multiview stay live.",
+            comment: "Hint beside the fade to black control while the program is off air"
+        )
     }
 
     /// Whether the rename dialog is up — presented while a shot is being

@@ -48,6 +48,8 @@ A project is the saved file for an entire show. A project contains presets. A pr
 
 **Master** — the program mix's final stage: what leaves the mixer once every channel strip has contributed. V1 has one bus, so the master *is* the program mix; the master meter reads it post-fader.
 
+**Fade to black (FTB)** — the master stage that takes the whole program off air: it ramps the picture to black and the master to silence together, then **latches** there until the operator brings it back up. Not a transition — a transition is the move from one shot to the next, while FTB holds across shot switches: taking a shot while black changes what is behind the fade, and fading back up reveals whatever is on program then. It sits downstream of the layer tree and every channel strip, so everything fed from program inherits it — destinations, recordings, and the program monitor alike. Preview, multiview, and the strip meters stay live behind it: the operator keeps working while viewers see and hear nothing.
+
 ## Audio
 
 **Mixer** — the audio surface of the engine: combines every audio input into the program mix.

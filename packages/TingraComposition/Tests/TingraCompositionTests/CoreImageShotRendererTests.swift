@@ -814,6 +814,103 @@ struct CoreImageShotRendererTests {
         let after = try #require(renderer.render(shot: edited, frames: frames, format: format, time: .zero))
         #expect(readPixel(after.pixelBuffer, x: 2, y: 2).blue > 200)
     }
+
+    // MARK: - Fade to black
+
+    @Test("the fade stage at 0 leaves the frame it was handed unchanged")
+    func fadeAtZeroLeavesTheFrameUnchanged() throws {
+        let renderer = makeRenderer()
+        let format = ProgramFormat(width: 4, height: 4, frameRate: 30)
+        let frame = solidFrame(red: 200, green: 100, blue: 50)
+
+        let faded = try #require(renderer.renderFaded(frame, toBlack: 0, format: format, time: .zero))
+
+        #expect(readPixel(faded.pixelBuffer, x: 2, y: 2) == Pixel(blue: 50, green: 100, red: 200, alpha: 255))
+    }
+
+    @Test("the fade stage at 1 renders black, whatever it was handed")
+    func fadeAtOneRendersBlack() throws {
+        let renderer = makeRenderer()
+        let format = ProgramFormat(width: 4, height: 4, frameRate: 30)
+        let frame = solidFrame(red: 200, green: 100, blue: 50)
+
+        let faded = try #require(renderer.renderFaded(frame, toBlack: 1, format: format, time: .zero))
+
+        #expect(readPixel(faded.pixelBuffer, x: 2, y: 2) == Pixel(blue: 0, green: 0, red: 0, alpha: 255))
+    }
+
+    @Test("the fade stage midway darkens every channel, and darkens them in order")
+    func fadeMidwayDarkensEveryChannel() throws {
+        let renderer = makeRenderer()
+        let format = ProgramFormat(width: 4, height: 4, frameRate: 30)
+        let frame = solidFrame(red: 200, green: 100, blue: 50)
+
+        let faded = try #require(renderer.renderFaded(frame, toBlack: 0.5, format: format, time: .zero))
+
+        // Every channel darkens, none reaches black, and their order is
+        // preserved — a fade dims the picture rather than tinting it. The
+        // exact values are not halves of the byte values: Core Image blends
+        // in its own linear working space, which the dissolve below is
+        // pinned against.
+        let pixel = readPixel(faded.pixelBuffer, x: 2, y: 2)
+        #expect((1..<200).contains(Int(pixel.red)))
+        #expect((1..<100).contains(Int(pixel.green)))
+        #expect((1..<50).contains(Int(pixel.blue)))
+        #expect(pixel.red > pixel.green && pixel.green > pixel.blue)
+        // The program frame stays opaque — a fade darkens, never punches a hole.
+        #expect(pixel.alpha == 255)
+    }
+
+    @Test("the fade stage tracks a dissolve toward black at the same progress")
+    func fadeTracksADissolveTowardBlack() throws {
+        let renderer = makeRenderer()
+        let format = ProgramFormat(width: 4, height: 4, frameRate: 30)
+        let input = InputID(rawValue: "camera")
+        let frames = [input: solidFrame(red: 200, green: 100, blue: 50)]
+        let shot = Shot(name: "Full frame", layers: [Layer(input: input)])
+
+        // The picture the fade is handed, and the same picture dissolved
+        // toward an empty shot over opaque black.
+        let composited = try #require(renderer.render(shot: shot, frames: frames, format: format, time: .zero))
+        let faded = try #require(renderer.renderFaded(composited, toBlack: 0.5, format: format, time: .zero))
+        let dissolved = try #require(
+            renderer.renderDissolve(
+                from: shot, to: Shot(), progress: 0.5, frames: frames, format: format, time: .zero)
+        )
+
+        // Fade to black and a dissolve toward black share the renderer's
+        // alpha math, so the operator sees the same ramp character from
+        // both — the reason the fade reuses the dissolve's convention
+        // rather than inventing a second one.
+        //
+        // They track rather than match exactly, and the gap is inherent to
+        // the master stage rather than a defect: the fade darkens the
+        // *already-composited, BT.709-tagged* program frame, where the
+        // dissolve blends the source images in one pass, so the fade's
+        // input has been through one more encode/decode of the pipeline's
+        // 8-bit working format. A handful of code values at the midpoint,
+        // and none at either endpoint.
+        let fadedPixel = readPixel(faded.pixelBuffer, x: 2, y: 2)
+        let dissolvedPixel = readPixel(dissolved.pixelBuffer, x: 2, y: 2)
+        #expect(abs(Int(fadedPixel.red) - Int(dissolvedPixel.red)) <= 10)
+        #expect(abs(Int(fadedPixel.green) - Int(dissolvedPixel.green)) <= 10)
+        #expect(abs(Int(fadedPixel.blue) - Int(dissolvedPixel.blue)) <= 10)
+    }
+
+    @Test("the faded frame carries the tick's time and the BT.709 tags every buffer must")
+    func fadedFrameIsStampedAndTagged() throws {
+        let renderer = makeRenderer()
+        let format = ProgramFormat(width: 4, height: 4, frameRate: 30)
+        let time = CMTime(value: 7, timescale: 30)
+
+        let faded = try #require(
+            renderer.renderFaded(solidFrame(red: 10, green: 20, blue: 30), toBlack: 0.5, format: format, time: time)
+        )
+
+        #expect(faded.presentationTime == time)
+        let primaries = CVBufferCopyAttachment(faded.pixelBuffer, kCVImageBufferColorPrimariesKey, nil)
+        #expect(primaries as? String == kCVImageBufferColorPrimaries_ITU_R_709_2 as String)
+    }
 }
 
 /// A test video effect that replaces the image with a flat color, so a

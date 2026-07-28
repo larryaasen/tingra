@@ -162,4 +162,44 @@ public protocol ShotRenderer {
         format: ProgramFormat,
         time: CMTime
     ) -> CapturedFrame?
+
+    /// Darkens an already-composited program frame toward black by `amount`
+    /// — the pixel half of **fade to black** (GLOSSARY.md, "Fade to black").
+    ///
+    /// Unlike every other requirement here this one takes a *frame* rather
+    /// than shots, and that is the point: FTB is a **master stage**, so it
+    /// applies to whatever the tick produced — a plain render, a dissolve, a
+    /// wipe, or a shader transition — which is what lets a fade and a
+    /// transition run at the same time (ARCHITECTURE.md, "Fade to black").
+    ///
+    /// The compositor calls this only while the fade is **between** clear and
+    /// black. At `amount` `0` it does not call it at all, and at `amount` `1`
+    /// it skips the layer-tree render entirely and renders an empty shot over
+    /// its opaque-black background instead — so a program held black does no
+    /// compositing and no fading.
+    ///
+    /// A per-stage requirement with no default implementation, for the
+    /// reasons recorded on ``renderWipe(from:to:edge:progress:frames:format:time:)``:
+    /// a silent fallback would mask a conformer that forgot the stage, and a
+    /// forgotten *fade* stage would put pixels on air that the operator
+    /// believes are black — the one failure this stage exists to prevent.
+    ///
+    /// - Parameters:
+    ///   - frame: The composited program frame to darken. Ownership follows
+    ///     the usual rule: the renderer reads it and composites into a fresh
+    ///     buffer, never writing to it (ARCHITECTURE.md, "Frame ownership
+    ///     across the `Input` seam").
+    ///   - amount: How far toward black, `0`...`1` — `0` is the frame
+    ///     unchanged, `1` is fully black.
+    ///   - format: The program geometry to render into.
+    ///   - time: The program tick's master clock time, stamped onto the
+    ///     returned frame.
+    /// - Returns: The darkened program frame, or `nil` if a buffer could not
+    ///   be produced; the compositor skips that tick rather than crash.
+    func renderFaded(
+        _ frame: CapturedFrame,
+        toBlack amount: Double,
+        format: ProgramFormat,
+        time: CMTime
+    ) -> CapturedFrame?
 }

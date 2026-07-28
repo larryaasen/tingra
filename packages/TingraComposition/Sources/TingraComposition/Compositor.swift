@@ -78,6 +78,16 @@ import TingraPlugInKit
 /// a sink, and transitions stay program-only (a transition is the move *to
 /// air*).
 ///
+/// Downstream of all of that sits one master stage: **fade to black**
+/// (GLOSSARY.md). ``setFadeToBlack(_:duration:)`` ramps the program's
+/// picture to black and latches there, across shot switches, until it is
+/// brought back up. It applies to whatever the tick rendered — a plain shot
+/// or a transition in progress — so a fade and a transition can run at once,
+/// and while the program is held fully black no layer tree is composited at
+/// all. It is the picture half: a caller taking the whole program off air
+/// pairs it with `AudioMixer.setMasterFade(_:duration:)`. Preview is never
+/// faded — the operator keeps working behind the fade.
+///
 /// It also serves the app's **multiview** — the monitoring surface that
 /// tiles program, preview, and every input at once (GLOSSARY.md,
 /// "Multiview") — through two *read* accessors rather than a third bus:
@@ -160,8 +170,79 @@ public final class Compositor: Sendable {
         /// The single active preview-frame consumer, while attached.
         var previewContinuation: AsyncStream<CapturedFrame>.Continuation?
 
+        /// The **fade to black** master stage — clear until the operator
+        /// takes the program down (GLOSSARY.md, "Fade to black").
+        var fade = FadeRamp()
+
         /// The running tick task, while started.
         var tickTask: Task<Void, Never>?
+    }
+
+    /// The fade-to-black master stage's latching state and its ramp, counted
+    /// in ticks like a transition but deliberately **not** a
+    /// ``PendingTransition``: FTB blends toward black rather than between two
+    /// shots, and keeping it in its own slot is what lets a fade and a
+    /// transition be in progress at the same time — hitting fade to black
+    /// mid-dissolve is precisely when an operator reaches for it
+    /// (ARCHITECTURE.md, "Fade to black").
+    /// The ramp is **counted in ticks and divided**, never accumulated as a
+    /// running float — the same spine ``PendingTransition`` uses, and for a
+    /// reason that is load-bearing here rather than merely tidy. Accumulating
+    /// a per-tick step leaves a residue whenever the step does not divide
+    /// evenly (subtracting `1/3` three times from `1` lands on `1.1e-16`,
+    /// not `0`), and a residue is not cosmetic: `amount` would never test
+    /// equal to `0`, so the fade stage would keep running on **every tick for
+    /// the rest of the session** after one fade cycle — an extra Core Image
+    /// pass forever, to darken a frame by nothing. Dividing an integer
+    /// position by an integer total makes both endpoints exact, so a fade
+    /// brought back up restores the composited frame itself.
+    struct FadeRamp {
+        /// The number of ticks a whole clear-to-black travel spans, at least
+        /// one. Fixed for the travel, so a fade interrupted mid-ramp
+        /// reverses at the same rate from wherever it had reached rather
+        /// than snapping or re-timing.
+        var totalTicks: Int = 1
+
+        /// How far along that travel the program currently sits,
+        /// `0`...`totalTicks`.
+        var position: Int = 0
+
+        /// Where the ramp is heading — `totalTicks` after a fade down, `0`
+        /// after a fade up. The **latch**: once `position` reaches it, it
+        /// stays there across shot switches until the operator says
+        /// otherwise.
+        var targetPosition: Int = 0
+
+        /// How far toward black the program currently is, `0` (clear) to `1`
+        /// (fully black) — exact at both ends by construction.
+        var amount: Double { Double(position) / Double(totalTicks) }
+
+        /// Whether the program is faded to black or on its way there.
+        var isBlack: Bool { targetPosition > 0 }
+
+        /// Advances the ramp by one tick, stopping on the target.
+        mutating func advance() {
+            if position < targetPosition {
+                position += 1
+            } else if position > targetPosition {
+                position -= 1
+            }
+        }
+
+        /// Points the ramp at black or at clear over `totalTicks` ticks,
+        /// rescaling how far it has already travelled onto the new tick
+        /// count so an interrupted fade keeps the picture it was showing.
+        ///
+        /// - Parameters:
+        ///   - black: `true` to head for black, `false` for clear.
+        ///   - newTotal: The tick count a whole travel spans (at least 1).
+        mutating func retarget(black: Bool, totalTicks newTotal: Int) {
+            if newTotal != totalTicks {
+                position = Int((amount * Double(newTotal)).rounded())
+                totalTicks = newTotal
+            }
+            targetPosition = black ? newTotal : 0
+        }
     }
 
     /// A transition (dissolve or wipe) counted in ticks rather than
@@ -800,6 +881,62 @@ public final class Compositor: Sendable {
         }
     }
 
+    /// Takes the program's picture to black — or brings it back up — over
+    /// `duration`, and **latches** there (GLOSSARY.md, "Fade to black").
+    ///
+    /// This is a **master stage**, not a transition: it applies to whatever
+    /// the tick rendered, downstream of the layer tree and every transition,
+    /// so taking a shot while black changes what is *behind* the fade and
+    /// nothing visible, and fading back up reveals whatever is on program
+    /// then. A fade and a transition can be in progress at once — the
+    /// transition blends underneath and the fade darkens the result.
+    ///
+    /// It is the picture half only. The program is picture *and* sound, so a
+    /// caller taking the program off air pairs this with
+    /// `AudioMixer.setMasterFade(_:duration:)`: the two engine libraries do
+    /// not depend on each other, so coordinating them belongs to whoever owns
+    /// both (ARCHITECTURE.md, "Fade to black").
+    ///
+    /// Fading changes no device lifecycle — nothing starts, nothing stops —
+    /// so fading back up is instant and a capture indicator never goes dark
+    /// while the app still holds the device. It is session state: nothing
+    /// enters the ``Preset`` or the ``Project``, and ``stop()`` clears it, so
+    /// a show never reopens black.
+    ///
+    /// - Parameters:
+    ///   - faded: `true` to take the picture to black, `false` to bring it
+    ///     back up. Calling it again with the value already in effect
+    ///     re-times the ramp toward the same target and is otherwise
+    ///     harmless.
+    ///   - duration: The ramp length in seconds, for a full clear-to-black
+    ///     travel (default: ``Transition/defaultDissolveDuration``, the
+    ///     broadcast-typical half second — the same convention a dissolve
+    ///     uses rather than a second one). Clamped to at least one tick, so a
+    ///     zero or negative duration still completes on the next tick.
+    public func setFadeToBlack(_ faded: Bool, duration: TimeInterval = Transition.defaultDissolveDuration) {
+        let ticks = Self.tickCount(for: duration, frameRate: format.frameRate)
+        state.withLock { state in
+            state.fade.retarget(black: faded, totalTicks: ticks)
+        }
+        eventBus.event(
+            "program.fadeToBlack",
+            domain: .composition,
+            params: [
+                "state": .string(faded ? "black" : "clear"),
+                "durationSeconds": .double(duration),
+            ]
+        )
+    }
+
+    /// Whether the program's picture is faded to black or on its way there —
+    /// the latch ``setFadeToBlack(_:duration:)`` sets, not the ramp's current
+    /// position. A caller badging its program monitor reads this, so the
+    /// badge tracks the operator's intent from the moment they act rather
+    /// than sampling a ramp at display rate.
+    public var isFadedToBlack: Bool {
+        state.withLock { $0.fade.isBlack }
+    }
+
     /// Starts the program tick: the compositor renders and yields one frame
     /// per tick until ``stop()``. Idempotent — a second call while running
     /// does nothing.
@@ -826,6 +963,10 @@ public final class Compositor: Sendable {
                                 outgoing: pending.outgoing, kind: pending.kind, progress: progress)
                             state.pendingTransition = pending.elapsedTicks >= pending.totalTicks ? nil : pending
                         }
+                        // The fade advances every tick, consumer or not, so
+                        // the ramp keeps the wall-clock length it was asked
+                        // for whether or not anyone is watching.
+                        state.fade.advance()
                         return TickSnapshot(
                             shot: state.shot,
                             frames: state.slots,
@@ -834,7 +975,8 @@ public final class Compositor: Sendable {
                             previewShot: state.previewShotID.flatMap { id in
                                 state.shots.first { $0.id == id }
                             },
-                            previewContinuation: state.previewContinuation
+                            previewContinuation: state.previewContinuation,
+                            fadeAmount: state.fade.amount
                         )
                     }
                     // Preview is a second pass over this same snapshot, so it
@@ -848,7 +990,20 @@ public final class Compositor: Sendable {
                         previewContinuation.yield(preview)
                     }
                     guard let continuation = snapshot.continuation else { continue }
-                    let program: CapturedFrame? =
+                    // Held fully black: the layer tree is not composited at
+                    // all — an empty shot over its opaque-black background is
+                    // the whole frame — so a program held down costs less
+                    // than a program running clear, and the fade stage itself
+                    // is skipped too (ARCHITECTURE.md, "Fade to black").
+                    if snapshot.fadeAmount >= 1 {
+                        if let black = renderer.render(
+                            shot: Self.blackShot, frames: [:], format: format, time: tickTime)
+                        {
+                            continuation.yield(black)
+                        }
+                        continue
+                    }
+                    let composited: CapturedFrame? =
                         if let blend = snapshot.blend {
                             switch blend.kind {
                             case .dissolve:
@@ -885,6 +1040,16 @@ public final class Compositor: Sendable {
                             renderer.render(
                                 shot: snapshot.shot, frames: snapshot.frames, format: format, time: tickTime)
                         }
+                    guard let composited else { continue }
+                    // The master stage, last: it darkens whatever the tick
+                    // rendered — a plain shot, a dissolve, a wipe, a shader
+                    // transition — which is what lets a fade and a transition
+                    // run at once.
+                    let program: CapturedFrame? =
+                        snapshot.fadeAmount > 0
+                        ? renderer.renderFaded(
+                            composited, toBlack: snapshot.fadeAmount, format: format, time: tickTime)
+                        : composited
                     if let program {
                         continuation.yield(program)
                     }
@@ -915,6 +1080,9 @@ public final class Compositor: Sendable {
             state.programContinuation = nil
             state.previewContinuation = nil
             state.pendingTransition = nil
+            // Fade to black is session state, so a stopped compositor never
+            // comes back up black — a show must not reopen faded down.
+            state.fade = FadeRamp()
             return taken
         }
         tickTask?.cancel()
@@ -925,6 +1093,17 @@ public final class Compositor: Sendable {
         previewContinuation?.finish()
         eventBus.event("program.stopped", domain: .composition)
     }
+
+    /// The frame rendered while the program is held fully black: a shot with
+    /// no layers over its opaque-black background, so the existing seam call
+    /// produces pure black with no layer work at all.
+    ///
+    /// This is **not** the rejected "black as a special shot" implementation
+    /// of fade to black (ARCHITECTURE.md): it is a private render target
+    /// inside the tick, never in the shot pool, never `activeShotID`, and
+    /// never something the operator can take — which is exactly what taking
+    /// a black shot would have cost.
+    private static let blackShot = Shot()
 
     /// Stores one input's newest frame into its latest-wins slot.
     private func store(_ frame: CapturedFrame, for id: InputID) {
@@ -1034,6 +1213,12 @@ private struct TickSnapshot {
 
     /// The active preview-frame consumer, or `nil` if none is attached.
     let previewContinuation: AsyncStream<CapturedFrame>.Continuation?
+
+    /// How far toward black the program's **fade to black** master stage has
+    /// reached this tick, `0` (clear) to `1` (fully black). Program only —
+    /// preview stages nothing and is never faded, because the operator needs
+    /// to keep working behind the fade.
+    let fadeAmount: Double
 }
 
 extension Transition {

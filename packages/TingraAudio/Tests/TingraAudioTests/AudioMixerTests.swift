@@ -987,4 +987,251 @@ struct AudioMixerTests {
         #expect(abs(block.master.left.peak - 0.75) < 0.0001)
         #expect(try #require(block.strips[loudInput.id]).peak < block.master.left.peak)
     }
+
+    // MARK: The master fade (fade to black)
+
+    /// A one-strip mixer over a constant 0.5 tone, the fixture every master
+    /// fade test rides.
+    private func makeTonedMixer(ticks tickCount: Int) throws -> AudioMixer {
+        let audio = try #require(
+            makeAudio(
+                channels: [[Float](repeating: 0.5, count: format.blockFrames * tickCount)],
+                sampleRate: format.sampleRate))
+        let mixer = makeMixer(tickTimes: ticks(tickCount))
+        mixer.setChannelStrips([ChannelStrip(input: FakeAudioInput(id: "mic", buffers: [audio]))])
+        return mixer
+    }
+
+    @Test("an open master leaves the mix byte-identical — the fade stage never runs")
+    func anOpenMasterLeavesTheMixUntouched() async throws {
+        /// One run of the mix, optionally with the master explicitly opened.
+        func mixedSamples(openingTheMaster: Bool) async throws -> [[Float]] {
+            let mixer = try makeTonedMixer(ticks: 1)
+            await letFillTasksDrain()
+            if openingTheMaster { mixer.setMasterFade(false) }
+            let program = mixer.programAudio()
+            mixer.start()
+            let block = try #require(await collect(program, limit: 1).first)
+            return try #require(samples(of: block, sampleRate: format.sampleRate))
+        }
+
+        // The pan record's proof form: an untouched master is not merely
+        // "close enough", it is the same samples.
+        #expect(try await mixedSamples(openingTheMaster: true) == (try await mixedSamples(openingTheMaster: false)))
+        #expect(try makeTonedMixer(ticks: 1).isMasterFaded == false)
+    }
+
+    @Test("fading the master down ramps toward silence over the requested blocks")
+    func fadingTheMasterRampsTowardSilence() async throws {
+        let mixer = try makeTonedMixer(ticks: 5)
+        await letFillTasksDrain()
+        // A four-block ramp: blocks 0...3 descend, and the block after it —
+        // where the ramp's endpoint falls — is fully silent.
+        let duration = 4 * Double(format.blockFrames) / format.sampleRate
+        mixer.setMasterFade(true, duration: duration)
+
+        let program = mixer.programAudio()
+        mixer.start()
+        let blocks = await collect(program, limit: 5)
+
+        let peaks = try blocks.map { block -> Float in
+            let channels = try #require(samples(of: block, sampleRate: format.sampleRate))
+            return try #require(channels.first).map(abs).max() ?? 0
+        }
+        #expect(peaks.count == 5)
+        #expect(zip(peaks, peaks.dropFirst()).allSatisfy { $0 > $1 })
+        #expect(peaks[4] == 0)
+        #expect(mixer.isMasterFaded)
+    }
+
+    @Test("the ramp interpolates within the block — the first sample is louder than the last")
+    func theRampInterpolatesWithinTheBlock() async throws {
+        let mixer = try makeTonedMixer(ticks: 1)
+        await letFillTasksDrain()
+        let duration = 4 * Double(format.blockFrames) / format.sampleRate
+        mixer.setMasterFade(true, duration: duration)
+
+        let program = mixer.programAudio()
+        mixer.start()
+        let block = try #require(await collect(program, limit: 1).first)
+
+        // A per-block constant gain would leave the block flat; per-sample
+        // interpolation is what keeps a scripted ramp free of a zipper.
+        let channels = try #require(samples(of: block, sampleRate: format.sampleRate))
+        let channel = try #require(channels.first)
+        let first = try #require(channel.first)
+        let last = try #require(channel.last)
+        #expect(first > last)
+        // It descends the whole way, never in steps.
+        #expect(zip(channel, channel.dropFirst()).allSatisfy { $0 >= $1 })
+    }
+
+    @Test("a faded master meters silence while every strip meter keeps reading its input")
+    func aFadedMasterMetersSilenceWhileStripsKeepReading() async throws {
+        let audio = try #require(
+            makeAudio(
+                channels: [[Float](repeating: 0.5, count: format.blockFrames * 2)], sampleRate: format.sampleRate))
+        let input = FakeAudioInput(id: "mic", buffers: [audio])
+        let mixer = makeMixer(tickTimes: ticks(2))
+        mixer.setChannelStrips([ChannelStrip(input: input)])
+        await letFillTasksDrain()
+        // The shortest ramp still spans one block, so the second block is
+        // the first one fully down.
+        mixer.setMasterFade(true, duration: 0)
+
+        let meters = mixer.meterReadings()
+        mixer.start()
+        let blocks = await collectMeters(meters, limit: 2)
+        let block = try #require(blocks.last)
+
+        // The asymmetry the master stage exists to produce: the operator can
+        // see their microphone is live *and* see that nobody can hear it.
+        #expect(abs(try #require(block.strips[input.id]).peak - 0.5) < 0.0001)
+        #expect(block.master == .floor)
+    }
+
+    @Test("the master fade latches — the mix stays silent block after block")
+    func theMasterFadeLatches() async throws {
+        let mixer = try makeTonedMixer(ticks: 3)
+        await letFillTasksDrain()
+        mixer.setMasterFade(true, duration: 0)
+
+        let program = mixer.programAudio()
+        mixer.start()
+        let blocks = await collect(program, limit: 3)
+
+        // The first block is the (shortest possible) ramp; every block after
+        // it stays silent without being asked again — the latch.
+        #expect(blocks.count == 3)
+        for block in blocks.dropFirst() {
+            let channels = try #require(samples(of: block, sampleRate: format.sampleRate))
+            #expect(try #require(channels.first).allSatisfy { $0 == 0 })
+        }
+    }
+
+    @Test("bringing the master back up restores exactly the mix that was there")
+    func bringingTheMasterBackUpRestoresTheMix() async throws {
+        let mixer = try makeTonedMixer(ticks: 1)
+        await letFillTasksDrain()
+        mixer.setMasterFade(true, duration: 0)
+        mixer.setMasterFade(false, duration: 0)
+
+        let program = mixer.programAudio()
+        mixer.start()
+        let block = try #require(await collect(program, limit: 1).first)
+
+        let channels = try #require(samples(of: block, sampleRate: format.sampleRate))
+        #expect(try #require(channels.first).allSatisfy { abs($0 - 0.5) < 0.0001 })
+        #expect(mixer.isMasterFaded == false)
+    }
+
+    @Test("stop clears the master fade — a show never reopens silent")
+    func stopClearsTheMasterFade() async throws {
+        let mixer = try makeTonedMixer(ticks: 1)
+        mixer.setMasterFade(true)
+        #expect(mixer.isMasterFaded)
+
+        mixer.stop()
+
+        #expect(mixer.isMasterFaded == false)
+    }
+
+    @Test("fading the master reports a control-plane event naming the state and the ramp")
+    func fadingTheMasterReportsAnEvent() async throws {
+        let bus = EventBus()
+        let events = bus.events()
+        let mixer = AudioMixer(clock: SyntheticClock(tickTimes: []), format: format, eventBus: bus)
+
+        mixer.setMasterFade(true, duration: 0.5)
+
+        var state: String?
+        for await event in events where event.name == "master.fade" {
+            state = event.params?["state"]?.description
+            #expect(event.group == .event)
+            #expect(event.domain == .audio)
+            break
+        }
+        #expect(state == "silent")
+    }
+
+    @Test("a ramp shorter than one block still completes on the next tick")
+    func aRampShorterThanABlockCompletesOnTheNextTick() {
+        #expect(AudioMixer.blockCount(for: 0, format: format) == 1)
+        #expect(AudioMixer.blockCount(for: -1, format: format) == 1)
+        // Half a second at 48 kHz in 1024-frame blocks — the default ramp.
+        #expect(AudioMixer.blockCount(for: 0.5, format: format) == 23)
+    }
+
+    @Test("a full down-and-up round trip returns the master to exactly unity, and stops the pass running")
+    func aRoundTripReturnsTheMasterToExactlyUnity() {
+        var fade = AudioMixer.MasterFade()
+        #expect(fade.isActive == false)
+
+        // Down over four blocks, one block at a time.
+        fade.retarget(faded: true, totalBlocks: 4)
+        for _ in 0..<4 { fade.advance() }
+        #expect(fade.gain == 0)
+        #expect(fade.isActive)
+
+        // ...and back up over four more.
+        fade.retarget(faded: false, totalBlocks: 4)
+        for _ in 0..<4 { fade.advance() }
+
+        // Exactly unity, not 0.9999…: the ramp clamps onto its target
+        // rather than accumulating toward it. That is what makes the
+        // restored mix byte-identical — `isActive` going false means the
+        // fade pass is skipped entirely, so nothing multiplies the block at
+        // all, not even by 1.
+        #expect(fade.gain == 1)
+        #expect(fade.isActive == false)
+    }
+
+    @Test("a ramp whose step does not divide evenly still lands exactly on its target", arguments: [3, 7, 15, 23])
+    func anUnevenRampStillLandsExactlyOnTarget(blocks: Int) {
+        // These are the counts a real duration produces — 23 is the default
+        // half second at 48 kHz in 1024-frame blocks — and none of their
+        // reciprocals sums back to 1 in binary floating point. Accumulating
+        // a per-block step would leave a residue here, `isActive` would
+        // never go false again, and the fade pass would scale every block
+        // for the rest of the session.
+        var fade = AudioMixer.MasterFade()
+        fade.retarget(faded: true, totalBlocks: blocks)
+        for _ in 0..<blocks { fade.advance() }
+        #expect(fade.gain == 0)
+
+        fade.retarget(faded: false, totalBlocks: blocks)
+        for _ in 0..<blocks { fade.advance() }
+        #expect(fade.gain == 1)
+        #expect(fade.isActive == false)
+    }
+
+    @Test("an interrupted fade keeps the level it had reached when the ramp length changes")
+    func anInterruptedFadeKeepsItsLevelAcrossARampLengthChange() {
+        var fade = AudioMixer.MasterFade()
+        fade.retarget(faded: true, totalBlocks: 4)
+        for _ in 0..<2 { fade.advance() }
+        #expect(fade.gain == 0.5)
+
+        // Reversing with a different ramp length rescales where it is
+        // rather than snapping: the master stays at half.
+        fade.retarget(faded: false, totalBlocks: 8)
+        #expect(fade.gain == 0.5)
+        for _ in 0..<4 { fade.advance() }
+        #expect(fade.gain == 1)
+        #expect(fade.isActive == false)
+    }
+
+    @Test("the fade pass interpolates linearly from the block's first sample to its last")
+    func theFadePassInterpolatesLinearly() {
+        var left = [Float](repeating: 1, count: 4)
+        var right = [Float](repeating: 1, count: 4)
+
+        AudioMixer.applyMasterFade(&left, &right, from: 1, to: 0, frames: 4)
+
+        // Starts at the block's entry gain and steps evenly toward its exit
+        // gain — the exit gain itself belongs to the next block's first
+        // sample, so a ramp across blocks is continuous with no repeats.
+        #expect(left == [1, 0.75, 0.5, 0.25])
+        #expect(right == left)
+    }
 }

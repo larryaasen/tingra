@@ -468,6 +468,14 @@ so it stays testable with a synthetic clock and a mock renderer (see
   on program onto preview. Preview is a second `ShotRenderer` pass over the
   same tick's snapshot, run only while a shot is staged and a consumer is
   attached, and never fed to a sink — nothing on preview reaches viewers.
+  Downstream of everything sits one master stage, **fade to black**:
+  `setFadeToBlack(_:duration:)` ramps the program's picture to black and
+  latches there across shot switches (`isFadedToBlack` reads the latch). It
+  applies to whatever the tick rendered, so a fade and a transition can run at
+  once; while the program is held fully black no layer tree is composited at
+  all. Program only — preview is never faded, so the operator keeps working
+  behind it — and picture only: `AudioMixer.setMasterFade(_:duration:)` is the
+  other half.
 - `Project` — the saved document for a whole show: a versioned, plain `Codable`
   value type holding the presets, the stream `destination` (key excluded — it
   lives in secure storage), and each shot's optional default transition. The
@@ -533,8 +541,11 @@ so it stays testable with a synthetic clock and a mock renderer (see
   shader code; `Codable` by its stable camelCase raw value.
 - `ShotRenderer` — the internal seam between the compositor's tick-paced control
   flow and the pixel work (a plain render, a dissolve's crossfade, a wipe's
-  directional reveal, a shader transition's kernel blend); task-confined, so it
-  needs no `Sendable`, and swappable for a mock in tests.
+  directional reveal, a shader transition's kernel blend, and fade to black's
+  `renderFaded(_:toBlack:format:time:)` — the one requirement that takes a
+  composited *frame* rather than shots, because it is a master stage applying to
+  whatever the tick produced); task-confined, so it needs no `Sendable`, and
+  swappable for a mock in tests.
 - `VideoEffectFactory` — how a renderer resolves a layer's persisted chain
   entries into live `VideoEffect`s without depending on the host's effect
   registry: the app builds one from a boot-time snapshot of the registry and
@@ -544,9 +555,11 @@ so it stays testable with a synthetic clock and a mock renderer (see
   a Metal-backed `CIContext`, GPU-resident, into an IOSurface-backed 32BGRA
   program buffer tagged BT.709 (a software `CIContext` makes the compositing
   math unit-testable with no GPU); dissolves alpha-blend the two layer trees,
-  wipes blend them behind a soft-edged swept gradient mask, and shader
+  wipes blend them behind a soft-edged swept gradient mask, shader
   transitions blend through the first-party stitchable Metal kernels, compiled
-  once at first use from compiled-in source. A layer's effect chain is applied
+  once at first use from compiled-in source, and the fade stage composites
+  opaque black over the finished program frame at the ramp's alpha — the same
+  alpha math a dissolve uses, so both share one ramp character. A layer's effect chain is applied
   to its own image before placement (and cropped back to its extent), composing
   lazily so the whole chain fuses into the one render pass; instances are cached
   per layer and rebuilt only when the layer's configurations change.
@@ -576,7 +589,13 @@ with a synthetic clock and scripted inputs (see [ARCHITECTURE.md](docs/ARCHITECT
   control never clicks; `programAudio()` is the single-consumer mixed stream,
   and `meterReadings()` its meter sibling — one `MeterBlock` per tick,
   measured pre-fader as a byproduct of the same walk, only while a consumer is
-  attached, and never on the event bus.
+  attached, and never on the event bus. Downstream of every strip,
+  `setMasterFade(_:duration:)` ramps the whole master to silence and latches
+  there (`isMasterFaded` reads the latch; `defaultMasterFadeDuration` is the
+  broadcast-typical half second) — the audio half of **fade to black**,
+  interpolated per sample within the block so a scripted ramp has no zipper,
+  and applied upstream of the post-fader master reading, so a faded master
+  meters as silence while every strip meter keeps reading its input.
 - `ChannelStrip` — one input's slot in the mixer: the input and its level, pan,
   and mute (the effect chain is mixer channel state, set through
   `AudioMixer.setEffects(_:forInput:)`, since effect instances hold live
@@ -790,8 +809,11 @@ and muted, and puts the program on air by feeding the compositor's frames and
 the mixer's blocks to a `StreamSession` program source fanned out to every
 enabled destination, each destination's stream key held in Keychain-backed
 secure storage under its own id — reflecting the session's `StreamStatus` and
-each leg's `DestinationState` from the bus's `stream.*` events, never a poll),
-`ContentView` (camera/display
+each leg's `DestinationState` from the bus's `stream.*` events, never a poll,
+and takes the whole program off air with `setFadeToBlack(_:duration:)` — the
+one control driving both engine surfaces, which lives here because
+`TingraComposition` and `TingraAudio` depend on each other in neither
+direction), `ContentView` (camera/display
 pickers, a streaming panel — the destination list, live status, Start/Stop —
 and, over the preview, a preset switcher that switches and
 manages the project's presets — an Add Preset button plus a per-preset context
@@ -802,7 +824,9 @@ Rename…, a Default Transition submenu setting the shot's persisted default,
 Move Left / Move Right, and Remove Shot, and a segmented transition
 picker — Default (each shot's own default transition, the initial selection),
 or an explicit Cut, Dissolve, or Wipe, with an edge pop-up while Wipe is
-selected — choosing how the next take reaches program),
+selected — choosing how the next take reaches program, and beneath it a
+latching Fade to Black button (⇧⌘B) that takes the whole program off air,
+picture and sound together, and stays available when the preset has no shots),
 `DestinationListView` (the streaming panel's destination list: one row per
 destination the program fans out to, each with an enable toggle, a name, a
 URL, a secure stream-key field, its own live state — its bitrate and frame
@@ -868,8 +892,10 @@ and one per input tile in multiview; it was `ProgramPreviewView` while program
 was the only bus), `MonitorFrameSource` (the seam a monitor reads through, so
 those three cases share one draw path: a bus's `ProgramFrameRelay`, or an
 `InputFrameSource`), `MonitorTile` (the framed monitor — video letterboxed on
-black, an optional tally border, and a name badge — shared by the main window's
-two monitors and every multiview tile), `MonitorRenderContext` (the one Metal
+black, an optional tally border, a name badge, and an optional status badge,
+which is what tells a program monitor faded to black apart from a dead one —
+shared by the main window's two monitors and every multiview tile),
+`MonitorRenderContext` (the one Metal
 device, command queue, and `CIContext` every monitor draws through, rather than
 one per view), `MultiviewView` (the multiview window: program and preview across
 the top with one tile per running input beneath, each tally-bordered — red on

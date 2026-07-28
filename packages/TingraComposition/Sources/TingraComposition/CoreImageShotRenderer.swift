@@ -229,6 +229,28 @@ public final class CoreImageShotRenderer: ShotRenderer {
         return renderToBuffer(blended, format: format, time: time)
     }
 
+    /// Darkens a composited program frame toward black: an opaque black
+    /// image is composited over it at `amount` alpha — the same
+    /// "fade toward what is underneath" alpha math
+    /// ``renderDissolve(from:to:progress:frames:format:time:)`` and the
+    /// layer-opacity path already use, with black as the thing underneath.
+    ///
+    /// The frame is read, never written: the darkened result renders into a
+    /// fresh buffer from the pool (the frame-ownership rule).
+    public func renderFaded(
+        _ frame: CapturedFrame,
+        toBlack amount: Double,
+        format: ProgramFormat,
+        time: CMTime
+    ) -> CapturedFrame? {
+        let clampedAmount = min(max(amount, 0), 1)
+        let programRect = CGRect(x: 0, y: 0, width: format.width, height: format.height)
+        let image = CIImage(cvPixelBuffer: frame.pixelBuffer)
+        let black = CIImage(color: CIColor(red: 0, green: 0, blue: 0, alpha: clampedAmount))
+            .cropped(to: programRect)
+        return renderToBuffer(black.composited(over: image), format: format, time: time)
+    }
+
     /// The compiled transition kernels, keyed by shader — built once on
     /// first use (`lazy`, so a session that never takes a shader transition
     /// never compiles), inside the tick task like everything else in this

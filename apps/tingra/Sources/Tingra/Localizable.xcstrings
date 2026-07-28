@@ -443,6 +443,40 @@
         }
       }
     },
+    "Fade to Black": {
+      "comment": "Button taking the whole program — picture and sound — off air, and back",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Schwarzblende"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fundido a negro"
+          }
+        }
+      }
+    },
+    "Faded to Black": {
+      "comment": "Badge on the program monitor while the program is faded to black",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Schwarzblende aktiv"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fundido a negro activo"
+          }
+        }
+      }
+    },
     "Height": {
       "comment": "Layer frame slider label",
       "localizations": {
@@ -1578,6 +1612,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "Transición"
+          }
+        }
+      }
+    },
+    "Viewers see and hear nothing. Preview and multiview stay live.": {
+      "comment": "Hint beside the fade to black control while the program is off air",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zuschauer sehen und hören nichts. Vorschau und Multiview bleiben live."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Los espectadores no ven ni oyen nada. La previsualización y el multivista siguen activos."
           }
         }
       }

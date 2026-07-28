@@ -53,6 +53,12 @@ private final class RenderRecorder: Sendable {
         let blendProgress: Double?
         let wipeEdge: WipeEdge?
         let shader: TransitionShader?
+
+        /// How far toward black the master fade stage darkened an
+        /// already-composited frame, for a `renderFaded` call — `nil` for
+        /// every render call, so a test can tell the stage apart from the
+        /// shot work it runs after.
+        var fadeAmount: Double?
     }
 
     private let calls = Mutex<[Call]>([])
@@ -62,9 +68,34 @@ private final class RenderRecorder: Sendable {
         calls.withLock { $0.append(call) }
     }
 
+    /// Appends the master fade stage's call. It carries no shot — the stage
+    /// acts on whatever the tick already composited — so an empty shot
+    /// stands in and `fadeAmount` is what identifies it. Recorded into the
+    /// same array as the render calls so a test can assert their **order**
+    /// within one tick.
+    func recordFade(_ amount: Double, at time: CMTime) {
+        record(
+            Call(
+                shot: Shot(),
+                presentedInputs: [],
+                time: time,
+                blendOutgoing: nil,
+                blendProgress: nil,
+                wipeEdge: nil,
+                shader: nil,
+                fadeAmount: amount
+            )
+        )
+    }
+
     /// The recorded calls so far.
     var recorded: [Call] {
         calls.withLock { $0 }
+    }
+
+    /// Just the master fade stage's calls, in order.
+    var fades: [Call] {
+        recorded.filter { $0.fadeAmount != nil }
     }
 }
 
@@ -158,6 +189,16 @@ private struct MockShotRenderer: ShotRenderer {
                 shader: shader
             )
         )
+        return CapturedFrame(pixelBuffer: makePixelBuffer(), presentationTime: time)
+    }
+
+    func renderFaded(
+        _ frame: CapturedFrame,
+        toBlack amount: Double,
+        format: ProgramFormat,
+        time: CMTime
+    ) -> CapturedFrame? {
+        recorder.recordFade(amount, at: time)
         return CapturedFrame(pixelBuffer: makePixelBuffer(), presentationTime: time)
     }
 }
@@ -1446,5 +1487,285 @@ struct CompositorTests {
         compositor.take(shotID: ShotID(rawValue: "b"), transition: .cut)
 
         #expect(compositor.programInputIDs == [InputID(rawValue: "display")])
+    }
+
+    // MARK: - Fade to black
+
+    /// A two-shot preset for the fade-to-black tests.
+    private var fadePreset: Preset {
+        Preset(
+            name: "Fade",
+            shots: [
+                Shot(id: ShotID(rawValue: "a"), name: "A"),
+                Shot(id: ShotID(rawValue: "b"), name: "B"),
+            ]
+        )
+    }
+
+    @Test("a clear program never runs the fade stage")
+    func aClearProgramNeverRunsTheFadeStage() async {
+        let ticks = (0..<3).map { CMTime(value: CMTimeValue($0), timescale: 30) }
+        let recorder = RenderRecorder()
+        let compositor = makeCompositor(recorder: recorder, tickTimes: ticks)
+        compositor.loadPreset(fadePreset)
+
+        let program = compositor.programFrames()
+        compositor.start()
+        _ = await collect(program, limit: 3)
+
+        #expect(recorder.fades.isEmpty)
+        #expect(compositor.isFadedToBlack == false)
+    }
+
+    @Test("fading down ramps toward black over the requested ticks")
+    func fadingDownRampsOverTheRequestedTicks() async {
+        let ticks = (0..<4).map { CMTime(value: CMTimeValue($0), timescale: 30) }
+        let recorder = RenderRecorder()
+        let compositor = makeCompositor(recorder: recorder, tickTimes: ticks)
+        compositor.loadPreset(fadePreset)
+        // Four ticks at 30 fps — the ramp is asked for exactly that long, so
+        // it reaches black on the fourth.
+        compositor.setFadeToBlack(true, duration: 4.0 / 30.0)
+
+        let program = compositor.programFrames()
+        compositor.start()
+        _ = await collect(program, limit: 4)
+
+        // Three partial ticks run the stage; the fourth has reached full
+        // black, where the stage is skipped entirely.
+        let amounts = recorder.fades.compactMap(\.fadeAmount)
+        #expect(amounts.count == 3)
+        #expect(amounts == [0.25, 0.5, 0.75])
+        #expect(compositor.isFadedToBlack)
+    }
+
+    @Test("a program held fully black composites no layer tree and runs no fade stage")
+    func fullBlackCompositesNothing() async {
+        let ticks = (0..<3).map { CMTime(value: CMTimeValue($0), timescale: 30) }
+        let recorder = RenderRecorder()
+        let compositor = makeCompositor(recorder: recorder, tickTimes: ticks)
+        compositor.loadPreset(
+            Preset(
+                name: "Fade",
+                shots: [
+                    Shot(
+                        id: ShotID(rawValue: "a"),
+                        name: "A",
+                        layers: [Layer(input: InputID(rawValue: "camera"))]
+                    )
+                ]
+            )
+        )
+        // One tick of ramp, so every tick after the first is held black.
+        compositor.setFadeToBlack(true, duration: 0)
+
+        let program = compositor.programFrames()
+        compositor.start()
+        let times = await collect(program, limit: 3)
+
+        // The program keeps yielding one frame per tick — a live canvas at
+        // the tick rate, black or not.
+        #expect(times.count == 3)
+        // Nothing composited: every call is the empty black shot, with no
+        // layers, no input frames, and no fade stage after it.
+        #expect(recorder.fades.isEmpty)
+        #expect(recorder.recorded.count == 3)
+        #expect(recorder.recorded.allSatisfy { $0.shot.layers.isEmpty })
+        #expect(recorder.recorded.allSatisfy { $0.shot.background == .black })
+        #expect(recorder.recorded.allSatisfy { $0.presentedInputs.isEmpty })
+    }
+
+    @Test("a fade and a transition run on the same tick, the fade last")
+    func aFadeAndATransitionRunOnTheSameTick() async {
+        let ticks = (0..<4).map { CMTime(value: CMTimeValue($0), timescale: 30) }
+        let recorder = RenderRecorder()
+        let compositor = makeCompositor(recorder: recorder, tickTimes: ticks)
+        compositor.loadPreset(fadePreset)
+        // A dissolve already in flight when the operator kills the program —
+        // the case that kept the fade out of the transition slot.
+        compositor.take(shotID: ShotID(rawValue: "b"), transition: .dissolve(duration: 4.0 / 30.0))
+        compositor.setFadeToBlack(true, duration: 8.0 / 30.0)
+
+        let program = compositor.programFrames()
+        compositor.start()
+        _ = await collect(program, limit: 4)
+
+        // Both stages ran on every tick, and the fade ran *after* the blend
+        // it darkens.
+        let calls = recorder.recorded
+        #expect(calls.count == 8)
+        #expect(
+            calls.enumerated().allSatisfy { index, call in
+                index.isMultiple(of: 2) ? call.blendProgress != nil : call.fadeAmount != nil
+            })
+        #expect(recorder.fades.compactMap(\.fadeAmount) == [0.125, 0.25, 0.375, 0.5])
+    }
+
+    @Test("a fade interrupted mid-ramp reverses at the same rate from where it reached")
+    func anInterruptedFadeReversesFromWhereItReached() async {
+        let recorder = RenderRecorder()
+        // Two runs over the same compositor: the clock yields all its ticks
+        // at once, so the interruption is scripted between two starts.
+        let compositor = makeCompositor(
+            recorder: recorder, tickTimes: (0..<2).map { CMTime(value: CMTimeValue($0), timescale: 30) })
+        compositor.loadPreset(fadePreset)
+        compositor.setFadeToBlack(true, duration: 4.0 / 30.0)
+
+        let program = compositor.programFrames()
+        compositor.start()
+        _ = await collect(program, limit: 2)
+
+        // Halfway down, the operator changes their mind at the same rate.
+        #expect(recorder.fades.compactMap(\.fadeAmount) == [0.25, 0.5])
+        compositor.setFadeToBlack(false, duration: 4.0 / 30.0)
+        #expect(compositor.isFadedToBlack == false)
+    }
+
+    @Test("fading to black latches across a shot switch")
+    func fadingToBlackLatchesAcrossAShotSwitch() async {
+        let ticks = (0..<3).map { CMTime(value: CMTimeValue($0), timescale: 30) }
+        let recorder = RenderRecorder()
+        let compositor = makeCompositor(recorder: recorder, tickTimes: ticks)
+        compositor.loadPreset(fadePreset)
+        compositor.setFadeToBlack(true, duration: 0)
+        // Taking a shot while black changes what is *behind* the fade — the
+        // program stays black and the active shot moves.
+        compositor.take(shotID: ShotID(rawValue: "b"))
+
+        let program = compositor.programFrames()
+        compositor.start()
+        _ = await collect(program, limit: 3)
+
+        #expect(compositor.activeShotID == ShotID(rawValue: "b"))
+        #expect(compositor.isFadedToBlack)
+        #expect(recorder.recorded.allSatisfy { $0.shot.layers.isEmpty && $0.fadeAmount == nil })
+    }
+
+    @Test("preview is never faded — the operator keeps working behind the fade")
+    func previewIsNeverFaded() async {
+        let ticks = (0..<3).map { CMTime(value: CMTimeValue($0), timescale: 30) }
+        let recorder = RenderRecorder()
+        let compositor = makeCompositor(recorder: recorder, tickTimes: ticks)
+        compositor.loadPreset(fadePreset)
+        compositor.setPreview(shotID: ShotID(rawValue: "b"))
+        compositor.setFadeToBlack(true, duration: 0)
+
+        let program = compositor.programFrames()
+        let preview = compositor.previewFrames()
+        compositor.start()
+        _ = await collect(program, limit: 3)
+        _ = await collect(preview, limit: 3)
+
+        // Preview renders the staged shot plainly on every tick, with the
+        // fade stage never touching it.
+        let previewCalls = recorder.recorded.filter { $0.shot.id == ShotID(rawValue: "b") }
+        #expect(previewCalls.count == 3)
+        #expect(previewCalls.allSatisfy { $0.fadeAmount == nil })
+    }
+
+    @Test("a zero duration reaches black on the next tick")
+    func aZeroDurationReachesBlackOnTheNextTick() async {
+        let ticks = [CMTime(value: 0, timescale: 30)]
+        let recorder = RenderRecorder()
+        let compositor = makeCompositor(recorder: recorder, tickTimes: ticks)
+        compositor.loadPreset(fadePreset)
+
+        compositor.setFadeToBlack(true, duration: 0)
+        let program = compositor.programFrames()
+        compositor.start()
+        _ = await collect(program, limit: 1)
+
+        #expect(recorder.fades.isEmpty)
+        #expect(recorder.recorded.count == 1)
+        #expect(recorder.recorded[0].shot.layers.isEmpty)
+    }
+
+    @Test("a full down-and-up round trip returns the picture to exactly clear")
+    func aRoundTripReturnsThePictureToExactlyClear() {
+        var fade = Compositor.FadeRamp()
+        #expect(fade.amount == 0)
+
+        fade.retarget(black: true, totalTicks: 4)
+        for _ in 0..<4 { fade.advance() }
+        #expect(fade.amount == 1)
+
+        fade.retarget(black: false, totalTicks: 4)
+        for _ in 0..<4 { fade.advance() }
+
+        // Exactly 0, not 0.0001: the ramp clamps onto its target rather than
+        // accumulating toward it, and the tick only runs the fade stage
+        // while `amount > 0` — so a restored program is the composited
+        // frame itself, not one darkened by a residual fraction.
+        #expect(fade.amount == 0)
+    }
+
+    @Test("a ramp whose step does not divide evenly still lands exactly on its target", arguments: [3, 7, 15, 23])
+    func anUnevenFadeRampLandsExactlyOnTarget(ticks: Int) {
+        // These are the tick counts real durations produce — 15 is the
+        // default half second at 30 fps — and none of their reciprocals sums
+        // back to 1 in binary floating point. Accumulating a per-tick step
+        // would leave a residue, `amount` would never test equal to 0 again,
+        // and the fade stage would run an extra Core Image pass on every
+        // tick for the rest of the session.
+        var fade = Compositor.FadeRamp()
+        fade.retarget(black: true, totalTicks: ticks)
+        for _ in 0..<ticks { fade.advance() }
+        #expect(fade.amount == 1)
+
+        fade.retarget(black: false, totalTicks: ticks)
+        for _ in 0..<ticks { fade.advance() }
+        #expect(fade.amount == 0)
+        #expect(fade.isBlack == false)
+    }
+
+    @Test("an interrupted fade keeps the picture it had reached when the ramp length changes")
+    func anInterruptedFadeKeepsItsPictureAcrossARampLengthChange() {
+        var fade = Compositor.FadeRamp()
+        fade.retarget(black: true, totalTicks: 4)
+        for _ in 0..<2 { fade.advance() }
+        #expect(fade.amount == 0.5)
+
+        // Reversing with a different ramp length rescales where it is rather
+        // than snapping: the picture stays half down.
+        fade.retarget(black: false, totalTicks: 8)
+        #expect(fade.amount == 0.5)
+        for _ in 0..<4 { fade.advance() }
+        #expect(fade.amount == 0)
+    }
+
+    @Test("stop() clears the fade — a show never reopens black")
+    func stopClearsTheFade() async {
+        let recorder = RenderRecorder()
+        let compositor = makeCompositor(recorder: recorder, tickTimes: [])
+        compositor.loadPreset(fadePreset)
+        compositor.setFadeToBlack(true)
+        #expect(compositor.isFadedToBlack)
+
+        compositor.stop()
+
+        #expect(compositor.isFadedToBlack == false)
+    }
+
+    @Test("fading reports a control-plane event naming the state and the ramp")
+    func fadingReportsAnEvent() async {
+        let bus = EventBus()
+        let events = bus.events()
+        let compositor = Compositor(
+            clock: SyntheticClock(tickTimes: []),
+            format: ProgramFormat(width: 2, height: 2, frameRate: 30),
+            eventBus: bus,
+            makeRenderer: { MockShotRenderer(recorder: RenderRecorder()) }
+        )
+
+        compositor.setFadeToBlack(true, duration: 0.5)
+
+        var state: String?
+        for await event in events where event.name == "program.fadeToBlack" {
+            state = event.params?["state"]?.description
+            #expect(event.group == .event)
+            #expect(event.domain == .composition)
+            break
+        }
+        #expect(state == "black")
     }
 }

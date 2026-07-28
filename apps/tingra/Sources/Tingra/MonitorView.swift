@@ -210,6 +210,13 @@ struct MonitorTile: View {
     /// the border is what makes an on-air input findable at a glance.
     var borderTint: Color?
 
+    /// A state badge shown opposite the label, or nil for none — the
+    /// program monitor's "faded to black" indicator. It exists because the
+    /// program monitor deliberately *does* go black with the program
+    /// (ARCHITECTURE.md, "Fade to black"), so without it a black monitor
+    /// would be indistinguishable from a dead compositor.
+    var statusBadge: Text?
+
     /// The monitor: video, tally border, then badge.
     var body: some View {
         MonitorView(source: source)
@@ -229,6 +236,16 @@ struct MonitorTile: View {
                     .background(badgeTint.opacity(0.85), in: .capsule)
                     .foregroundStyle(.white)
                     .padding(8)
+            }
+            .overlay(alignment: .topTrailing) {
+                if let statusBadge {
+                    statusBadge
+                        .font(.caption.weight(.semibold))
+                        .padding(6)
+                        .background(.red.opacity(0.85), in: .capsule)
+                        .foregroundStyle(.white)
+                        .padding(8)
+                }
             }
     }
 }
