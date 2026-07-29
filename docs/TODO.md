@@ -1086,6 +1086,19 @@ or two in the doc that owns them — none need a rewrite.
 
 ## Decisions to settle
 
+- [x] **UI components package — deferred (decided 2026-07-28).**
+  ARCHITECTURE.md anticipates UI packages under `packages/` in phase 2;
+  nothing requires one yet, and none exists. The app's reusable, model-free
+  views (`MonitorTile`/`MonitorFrameSource`, `StripMeter`) stay in the app
+  target until one of two triggers fires: the shared design-tokens file
+  CLAUDE.md anticipates, or a second consuming surface. Extracting now would
+  buy a package boundary with one consumer at the cost of the public-API and
+  documentation burden a package carries; extracting at the trigger also
+  restores fast `swift test` and full package-warning visibility for that
+  code once the app builds via `xcodebuild` (Xcode hides package warnings —
+  CLAUDE.md, "Strict Compilation"). Recorded in ARCHITECTURE.md,
+  "Repository structure".
+
 - [x] **Multiview: the buses-and-monitoring slice, third iteration — the one
   that closes step 9.** Decided and recorded 2026-07-27 (ARCHITECTURE.md,
   "Multiview"), **go-ahead given and built the same day** — the
