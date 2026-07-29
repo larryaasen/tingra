@@ -1500,6 +1500,88 @@ or two in the doc that owns them — none need a rewrite.
   the `Input` seam is a deliberate protocol addition (recorded under "The
   layer-tree editor"). That protocol question, not the generator, is the real
   work — and it is the same question a media-file input will ask.
+  *(That protocol question was taken up first and separately — see "The `Input`
+  media capability" below. This item is unblocked by it, not bundled into it.)*
+
+- [x] **The `Input` media capability** *(decided 2026-07-28, go-ahead given and
+  built the same day; recorded in ARCHITECTURE.md, "The `Input` media
+  capability", under Capture)*. Chosen as
+  the next production iteration over the plug-in API 1.0.0 / bundle loader, a
+  multiview output, and the `tingra-cli` version call, because it is the actual
+  blocker under three separate queued things rather than a feature in its own
+  right.
+
+  **The problem is a modeling error, not a missing feature.** `InputKind` is a
+  *provenance* category (what a thing is, and whether it captures or
+  synthesizes); three places read it as a *media* category (what a thing
+  produces) and survive only because camera→video and microphone→audio
+  coincide. `generator` is where the two come apart, so today **tone can never
+  become a channel strip and bars can never become a layer**, and a media-file
+  input would ask the same question and get the same non-answer.
+
+  **The shape:** one additive `var media: InputMedia` on `Input` — an
+  `OptionSet` of `.video`/`.audio` — defaulting to `[]` (the only default
+  consistent with the seam's existing already-finished `frames()`/`audio()`
+  defaults), documented as a declaration of intent rather than a guarantee so a
+  future network feed stays offerable. `InputKind` is untouched. In
+  `TingraPlugInKit`, so the stability contract applies — but the package has
+  **no first tag yet**, which is what makes this the cheapest moment it will
+  ever have, and an argument for settling it *before* 1.0.0 rather than after.
+
+  **Scope, deliberately narrow:** the seam, every first-party conformance
+  (which the `[]` default makes mandatory in the same change), and the **three**
+  app-side media-role filters — multiview tiles, the layer editor's add-layer
+  choices, and the mixer's strip discovery. The camera/display/microphone
+  **device pickers** stay on `kind`; an over-broad sweep of every `$0.kind ==`
+  in the repo would be the wrong change. No JSON contract change (`devices`
+  output is sectioned by kind already, and generators appear in neither
+  listing), no `Codable` on `InputMedia`, and the CLI's hand-synced
+  `VideoGeneratorKind`/`AudioGeneratorKind` enums stay — they give `--help` its
+  value list — gaining a test that they agree with what the registry declares.
+
+  **The demonstration is the point:** the moment it lands, bars/alignment/pluge
+  become legal layers and tone becomes a strip, with **no new plug-in code** —
+  which is why the black source above ships separately rather than bundled.
+
+  **Built as recorded.** Six `media` declarations (four video generators, tone,
+  and the three capture inputs) were the whole plug-in-side change; the app
+  side is `microphones` → `audioInputs` plus a new `videoInputs`, both through
+  one `mediaChoices(from:producing:)` helper that also **sorts by name** — the
+  kind-based filters never did, so the add-layer menu had been in an order that
+  could change between launches (`InputRegistry.allInputs` is
+  dictionary-ordered). The `[]` default bit exactly once, and in test fixtures
+  rather than production code, which is the case the `input.noMedia` diagnostic
+  exists for.
+
+  **The one real bug the iteration produced, and it was in the app, not the
+  seam:** admitting audio generators to the strip roster also fed them to
+  `MixerStrip.seed(from:)`, whose fallback unmutes the *first* strip — and
+  unmuting **starts** the input. `440 Hz Tone` sorts ahead of every microphone
+  by name, so a fresh project would have opened with a test tone live on the
+  program mix and on any stream. Fixed by changing the seed's predicate rather
+  than the ordering: it unmutes the first input whose kind is **not**
+  `.generator`, and seeds everything muted when only generators are present.
+  This is why `InputChoice` carries `kind` beside the media-filtered lists —
+  the roster is a media question, "what should be live out of the box" is a
+  provenance one. **General lesson: widening a filter is a policy change
+  wherever a list's first element means something.**
+
+  Tests: TingraPlugInKit 26 → 33, TingraHost 90 → 93,
+  TingraGeneratorPlugIns 36 → 37, `apps/tingra` 115 → 123, `tingra-cli` 81 → 85
+  — **772 across 13 targets**, warning-clean, `check-format` clean.
+  `integration-test.sh` **not** re-run: the streamed path is untouched
+  (`StreamSession`, the pacer, and the providers all unchanged, and the CLI's
+  generator resolution still goes through the same
+  `resolveInput(selector:ofKind:)` call).
+
+  **One build hazard worth remembering:** adding a member to a public protocol
+  in `TingraPlugInKit` changes its module ABI, and SwiftPM's *incremental*
+  build across path dependencies did not fully invalidate — TingraComposition
+  reported three genuine-looking test failures, TingraAudio crashed with signal
+  4, and TingraMCP failed to link (`CoreAudioTypes` not found). All three were
+  stale artifacts: `rm -rf .build` and every one passed unchanged. When a seam
+  in the protocol package changes, clean-build the dependents before believing
+  a failure.
 
 - [x] **The preview bus: the buses-and-monitoring slice, first iteration.**
   Decided 2026-07-26 (recorded in ARCHITECTURE.md, "The preview bus"),

@@ -42,6 +42,10 @@ public final class BarsGenerator: Input, Sendable {
     /// Generators are their own input kind (see GLOSSARY.md).
     public let kind = InputKind.generator
 
+    /// A test pattern: video only. The kind above cannot say this — which is
+    /// the whole reason ``InputMedia`` exists.
+    public let media = InputMedia.video
+
     /// The master clock (or a synthetic clock under test) whose tick paces
     /// frame synthesis and stamps each frame's PTS.
     private let clock: any EngineClock

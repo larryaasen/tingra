@@ -176,7 +176,7 @@ struct Serve: AsyncParsableCommand {
         // Assemble the engine: registries, the tool registry, the status sink
         // that feeds stream_status and the MCP notifications, and the clock.
         let clock = HostClock()
-        let inputs = InputRegistry()
+        let inputs = InputRegistry(eventBus: eventBus)
         let outputs = OutputRegistry()
         let tools = ToolRegistry()
         let status = StatusSink()

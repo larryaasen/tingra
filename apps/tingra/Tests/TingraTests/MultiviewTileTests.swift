@@ -17,7 +17,7 @@ struct MultiviewTileTests {
     /// A running-input choice for a tile.
     @MainActor
     private static func choice(_ id: String) -> EngineModel.InputChoice {
-        EngineModel.InputChoice(id: InputID(rawValue: id), name: id)
+        EngineModel.InputChoice(id: InputID(rawValue: id), name: id, kind: .camera)
     }
 
     /// An input id.

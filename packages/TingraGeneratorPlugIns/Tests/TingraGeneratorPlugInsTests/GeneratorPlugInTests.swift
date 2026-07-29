@@ -86,6 +86,35 @@ struct GeneratorPlugInTests {
         #expect(registered[4].kind == .generator)
     }
 
+    @Test("every generator declares the media it produces, which its kind cannot")
+    func generatorsDeclareTheirMedia() async throws {
+        let plugIn = GeneratorPlugIn()
+        let registrar = MockInputRegistrar()
+        let context = PlugInContext(
+            eventBus: EventBus(),
+            clock: SyntheticClock(),
+            inputs: registrar,
+            outputs: UnusedOutputRegistrar(),
+            effects: UnusedEffectRegistrar(),
+            tools: UnusedToolRegistrar()
+        )
+
+        try await plugIn.activate(in: context)
+
+        let registered = await registrar.registered
+        try #require(registered.count == 5)
+        // Every generator shares one kind, so the kind cannot separate the
+        // four test patterns from the tone — the media declaration is the
+        // only thing that can, and is what admits bars to a layer and tone
+        // to a channel strip.
+        #expect(registered[0].media == .video)
+        #expect(registered[1].media == .video)
+        #expect(registered[2].media == .video)
+        #expect(registered[3].media == .video)
+        #expect(registered[4].media == .audio)
+        #expect(registered.allSatisfy { !$0.media.isEmpty })
+    }
+
     @Test("each registration is reported as a trace event on the bus")
     func registrationEmitsTraceEvents() async throws {
         let eventBus = EventBus()

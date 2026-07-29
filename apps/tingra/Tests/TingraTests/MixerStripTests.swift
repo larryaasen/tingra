@@ -15,10 +15,11 @@ import TingraPlugInKit
 
 @Suite("MixerStrip")
 struct MixerStripTests {
-    /// A discovered-input choice for seeding.
+    /// A discovered-input choice for seeding. Defaults to a captured input;
+    /// pass `.generator` for a synthesized one.
     @MainActor
-    private static func choice(_ id: String) -> EngineModel.InputChoice {
-        EngineModel.InputChoice(id: InputID(rawValue: id), name: id)
+    private static func choice(_ id: String, kind: InputKind = .microphone) -> EngineModel.InputChoice {
+        EngineModel.InputChoice(id: InputID(rawValue: id), name: id, kind: kind)
     }
 
     @Test("seeding unmutes the first input at unity and mutes the rest")
@@ -38,6 +39,33 @@ struct MixerStripTests {
     @MainActor
     func seedingFromNoInputsYieldsNoStrips() {
         #expect(MixerStrip.seed(from: []).isEmpty)
+    }
+
+    @Test("seeding never unmutes a generator, even when it sorts first")
+    @MainActor
+    func seedingSkipsGeneratorsSortingFirst() {
+        // The 440 Hz tone genuinely sorts ahead of every microphone by name,
+        // so this is the real discovery order once audio generators became
+        // channel strips. Unmuting also starts the input, so seeding the
+        // tone would put it on the program mix of a fresh project.
+        let strips = MixerStrip.seed(from: [
+            Self.choice("440 Hz Tone", kind: .generator),
+            Self.choice("MacBook Pro Microphone"),
+        ])
+
+        #expect(strips.map(\.isMuted) == [true, false])
+    }
+
+    @Test("seeding with only generators leaves every strip muted")
+    @MainActor
+    func seedingWithOnlyGeneratorsMutesEverything() {
+        let strips = MixerStrip.seed(from: [
+            Self.choice("440 Hz Tone", kind: .generator),
+            Self.choice("second-tone", kind: .generator),
+        ])
+
+        // A silent mix the operator can unmute, never an unrequested tone.
+        #expect(strips.allSatisfy { $0.isMuted })
     }
 
     @Test("strips compare equal only when every field matches")
@@ -67,7 +95,8 @@ struct MixerStripTests {
     func mergingAuthoredChannelKeepsSettings() {
         let channel = AudioChannel(
             input: InputID(rawValue: "mic-1"), name: "Old Name", level: 0.6, pan: -0.5, isMuted: true)
-        let discovered = EngineModel.InputChoice(id: InputID(rawValue: "mic-1"), name: "Studio Microphone")
+        let discovered = EngineModel.InputChoice(
+            id: InputID(rawValue: "mic-1"), name: "Studio Microphone", kind: .microphone)
 
         let strips = MixerStrip.strips(channels: [channel], discovered: [discovered])
 

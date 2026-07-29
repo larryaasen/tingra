@@ -81,6 +81,10 @@ final class DisplayInput: Input, Sendable {
     /// A display.
     var kind: InputKind { .display }
 
+    /// A display produces video only. System audio capture is a later
+    /// ScreenCaptureKit surface; when it lands this becomes `[.video, .audio]`.
+    var media: InputMedia { .video }
+
     /// Requests authorization and starts the capture stream task.
     ///
     /// Throws ``CaptureInputError/authorizationDenied(_:_:)`` when Screen

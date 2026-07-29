@@ -43,6 +43,64 @@ struct InputDefaultsTests {
         }
         #expect(count == 0)
     }
+
+    @Test("media defaults to empty, matching what the default streams deliver")
+    func defaultMediaIsEmpty() {
+        #expect(BareInput().media.isEmpty)
+    }
+
+    @Test("the default media declaration agrees with the default streams")
+    func defaultMediaAgreesWithDefaultStreams() async {
+        // The whole justification for `[]` being the default: an input that
+        // overrides neither stream genuinely produces nothing, so anything
+        // else would be a declaration the seam itself contradicts.
+        let input = BareInput()
+        var frameCount = 0
+        for await _ in input.frames() { frameCount += 1 }
+        var audioCount = 0
+        for await _ in input.audio() { audioCount += 1 }
+
+        #expect(input.media.contains(.video) == (frameCount > 0))
+        #expect(input.media.contains(.audio) == (audioCount > 0))
+    }
+}
+
+@Suite("InputMedia")
+struct InputMediaTests {
+    @Test("video and audio are distinct options")
+    func videoAndAudioAreDistinct() {
+        #expect(InputMedia.video != InputMedia.audio)
+        #expect(!InputMedia.video.contains(.audio))
+        #expect(!InputMedia.audio.contains(.video))
+    }
+
+    @Test("a combined set contains both options")
+    func combinedSetContainsBoth() {
+        let both: InputMedia = [.video, .audio]
+        #expect(both.contains(.video))
+        #expect(both.contains(.audio))
+    }
+
+    @Test("an empty set contains neither option")
+    func emptySetContainsNeither() {
+        let none: InputMedia = []
+        #expect(none.isEmpty)
+        #expect(!none.contains(.video))
+        #expect(!none.contains(.audio))
+    }
+
+    @Test("equal sets compare equal and different sets do not")
+    func equality() {
+        #expect(InputMedia([.video, .audio]) == InputMedia([.audio, .video]))
+        #expect(InputMedia.video != InputMedia([.video, .audio]))
+    }
+
+    @Test("a set is usable as a dictionary key")
+    func hashable() {
+        let counts: [InputMedia: Int] = [.video: 1, .audio: 2, [.video, .audio]: 3]
+        #expect(counts[.video] == 1)
+        #expect(counts[[.video, .audio]] == 3)
+    }
 }
 
 @Suite("CapturedAudio")

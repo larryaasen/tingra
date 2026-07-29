@@ -37,13 +37,22 @@ import TingraPlugInKit
 @MainActor
 @Observable
 final class EngineModel {
-    /// One selectable input (a camera or a display) as the pickers show it.
+    /// One selectable input as the pickers and media-role lists show it.
     struct InputChoice: Identifiable, Hashable {
         /// The input's stable identifier.
         let id: InputID
 
         /// The user-facing name.
         let name: String
+
+        /// The input's provenance. Carried beside the name because a couple
+        /// of policies are about *where content comes from* rather than what
+        /// the input produces — chiefly the mixer's seed, which must never
+        /// put a synthesized tone on air by default (see
+        /// ``MixerStrip/seed(from:)``). Deliberately has no default: a
+        /// choice carrying the wrong kind would be silent bad data, and
+        /// every construction site knows the real one.
+        let kind: InputKind
     }
 
     /// One registered audio effect as the strip's Add Effect menu offers
@@ -145,8 +154,19 @@ final class EngineModel {
     /// The chosen display, or nil for none.
     var selectedDisplayID: InputID?
 
-    /// The discovered microphones, seeding the mixer's channel strips.
-    private(set) var microphones: [InputChoice] = []
+    /// Every discovered input that produces **audio**, seeding the mixer's
+    /// channel strips. Filtered on ``Input/media``, not on ``InputKind``:
+    /// the question "can this be a channel strip" is a media question, so an
+    /// audio generator belongs here beside the microphones (see
+    /// ARCHITECTURE.md, "The `Input` media capability").
+    private(set) var audioInputs: [InputChoice] = []
+
+    /// Every discovered input that produces **video**, for the layer-tree
+    /// editor's add-layer choices. Filtered on ``Input/media`` for the same
+    /// reason as ``audioInputs`` — which is what admits the video
+    /// generators the editor had to exclude while `InputKind` was the only
+    /// thing to filter on.
+    private(set) var videoInputs: [InputChoice] = []
 
     /// The mixer's channel strips — the level, pan, and mute the mixer panel
     /// edits (GLOSSARY.md, "Channel strip"): the active preset's authored
@@ -303,11 +323,31 @@ final class EngineModel {
         shots.first { $0.id == activeShotID }
     }
 
-    /// The inputs a new layer can bind to: every discovered camera and
-    /// display. Generators stay out until the `Input` seam can declare video
-    /// vs audio capability (see ARCHITECTURE.md, "The layer-tree editor").
+    /// The discovered inputs producing the given media, in a stable
+    /// name order so a picker does not reshuffle when another device
+    /// connects (`InputRegistry.allInputs` is dictionary-ordered).
+    ///
+    /// - Parameters:
+    ///   - inputs: The discovered inputs to filter.
+    ///   - media: The media a choice must produce to be included.
+    /// - Returns: The matching inputs as view-facing choices.
+    nonisolated static func mediaChoices(
+        from inputs: [any Input],
+        producing media: InputMedia
+    ) -> [InputChoice] {
+        inputs
+            .filter { $0.media.contains(media) }
+            .map { InputChoice(id: $0.id, name: $0.name, kind: $0.kind) }
+            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
+    /// The inputs a new layer can bind to: everything that produces video.
+    /// Generators are in — the exclusion that stood here was never about
+    /// generators as such, only about `InputKind` being unable to say
+    /// whether one produced video or audio (see ARCHITECTURE.md, "The
+    /// `Input` media capability").
     var layerInputChoices: [InputChoice] {
-        cameras + displays
+        videoInputs
     }
 
     /// The transition kind the next shot switcher tap takes with
@@ -363,7 +403,7 @@ final class EngineModel {
     @ObservationIgnored private let clock = HostClock()
 
     /// The input registry the plug-ins register into.
-    @ObservationIgnored private let registry = InputRegistry()
+    @ObservationIgnored private lazy var registry = InputRegistry(eventBus: eventBus)
 
     /// The output registry the streaming plug-in registers into — the same
     /// seam the CLI resolves a destination scheme against
@@ -608,17 +648,22 @@ final class EngineModel {
         videoEffectProviders.fill(with: videoProviders)
 
         let inputs = await registry.allInputs
-        cameras = inputs.filter { $0.kind == .camera }.map { InputChoice(id: $0.id, name: $0.name) }
-        displays = inputs.filter { $0.kind == .display }.map { InputChoice(id: $0.id, name: $0.name) }
-        microphones = inputs.filter { $0.kind == .microphone }.map { InputChoice(id: $0.id, name: $0.name) }
+        // The camera and display pickers ask a *provenance* question —
+        // "choose a camera" — so they filter on kind; listing a generator
+        // among the cameras would be wrong. The two media-role lists below
+        // ask "what does this produce" and filter on media instead.
+        cameras = inputs.filter { $0.kind == .camera }.map { InputChoice(id: $0.id, name: $0.name, kind: .camera) }
+        displays = inputs.filter { $0.kind == .display }.map { InputChoice(id: $0.id, name: $0.name, kind: .display) }
+        videoInputs = Self.mediaChoices(from: inputs, producing: .video)
+        audioInputs = Self.mediaChoices(from: inputs, producing: .audio)
         loadProject()
         // The strips merge the loaded preset's authored audio channels with
-        // discovery — the seed policy (first microphone unmuted) is the
+        // discovery — the seed policy (first audio input unmuted) is the
         // fallback when the document authored none (a fresh project, or one
         // written before routing landed).
         mixerStrips = MixerStrip.strips(
             channels: presets.first { $0.id == activePresetID }?.audioChannels,
-            discovered: microphones
+            discovered: audioInputs
         )
 
         let program = compositor.programFrames()
@@ -764,7 +809,14 @@ final class EngineModel {
         for (id, input) in activeInputs where desired[id] == nil {
             await input.stop()
             activeInputs[id] = nil
-            eventBus.event("input.stopped", domain: .capture, params: ["id": .string(id.rawValue)])
+            // The reason distinguishes an orderly stop from a device that
+            // went away: a video input stops here only because no shot and
+            // no picker still names it.
+            eventBus.event(
+                "input.stopped",
+                domain: .capture,
+                params: ["id": .string(id.rawValue), "reason": .string("unreferenced")]
+            )
         }
         for (id, input) in desired where activeInputs[id] == nil {
             do {
@@ -790,13 +842,14 @@ final class EngineModel {
         compositor.setInputs(Array(activeInputs.values))
         // Multiview tiles exactly what is running — never what is merely
         // discovered — in a stable name order, so a tile does not jump when
-        // another device connects. Generators stay out for the same reason
-        // they stay out of the layer editor's input list: the `Input` seam
-        // cannot yet declare video vs audio capability.
+        // another device connects. A tile shows picture, so the filter is
+        // the media question: everything running that produces video, which
+        // now includes the video generators (ARCHITECTURE.md, "The `Input`
+        // media capability").
         multiviewInputs =
             activeInputs.values
-            .filter { $0.kind == .camera || $0.kind == .display }
-            .map { InputChoice(id: $0.id, name: $0.name) }
+            .filter { $0.media.contains(.video) }
+            .map { InputChoice(id: $0.id, name: $0.name, kind: $0.kind) }
             .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
         // A rebind above can have changed which input a layer names.
         syncTally()
@@ -1114,7 +1167,14 @@ final class EngineModel {
         for (id, input) in activeAudioInputs where desired[id] == nil {
             await input.stop()
             activeAudioInputs[id] = nil
-            eventBus.event("input.stopped", domain: .capture, params: ["id": .string(id.rawValue)])
+            // An audio input stops here only because its strip is muted or
+            // gone — the honest-microphone policy, where a muted strip
+            // releases the device so its capture indicator goes out.
+            eventBus.event(
+                "input.stopped",
+                domain: .capture,
+                params: ["id": .string(id.rawValue), "reason": .string("stripMutedOrRemoved")]
+            )
         }
         for (id, input) in desired where activeAudioInputs[id] == nil {
             do {
@@ -1688,7 +1748,7 @@ final class EngineModel {
     /// - Parameter preset: The preset whose audio configuration to adopt.
     private func adoptAudioChannels(of preset: Preset) async {
         guard let channels = preset.audioChannels else { return }
-        let strips = MixerStrip.strips(channels: channels, discovered: microphones)
+        let strips = MixerStrip.strips(channels: channels, discovered: audioInputs)
         guard strips != mixerStrips else { return }
         mixerStrips = strips
         await reconfigureAudio()

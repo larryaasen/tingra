@@ -8,6 +8,7 @@
 //
 
 import AVFoundation
+import TingraEventBus
 import TingraPlugInKit
 
 /// The AVFoundation-backed capture plug-in: contributes the Mac's cameras
@@ -61,7 +62,7 @@ public struct AVFoundationCapturePlugIn: PlugIn {
     /// keeps running.
     public func activate(in context: PlugInContext) async throws {
         for device in enumerateDevices() {
-            try await context.inputs.register(Self.makeInput(for: device))
+            try await context.inputs.register(Self.makeInput(for: device, eventBus: context.eventBus))
             context.eventBus.trace(
                 "input.discovered",
                 domain: .capture,
@@ -76,8 +77,11 @@ public struct AVFoundationCapturePlugIn: PlugIn {
         // Fire and forget for the life of the process: the reporter ends
         // when its notification stream does. There is no deactivation hook
         // yet — plug-ins live as long as the engine.
-        let reporter = DeviceEventReporter(changes: deviceChanges(), makeInput: Self.makeInput)
         let eventBus = context.eventBus
+        let reporter = DeviceEventReporter(
+            changes: deviceChanges(),
+            makeInput: { Self.makeInput(for: $0, eventBus: eventBus) }
+        )
         let inputs = context.inputs
         Task {
             await reporter.run(on: eventBus, inputs: inputs)
@@ -86,8 +90,18 @@ public struct AVFoundationCapturePlugIn: PlugIn {
 
     /// The plug-in's input factory: a camera or microphone input over a
     /// discovered device, used at activation and for later connections.
-    private static func makeInput(for device: CaptureDevice) -> any Input {
-        device.kind == .camera ? CameraInput(device: device) : MicrophoneInput(device: device)
+    ///
+    /// - Parameters:
+    ///   - device: The discovered device to build an input for.
+    ///   - eventBus: The host's event bus, handed to the input so it can
+    ///     report its own capture diagnostics (the negotiated audio format,
+    ///     a retried bring-up) rather than leaving them to AVFoundation's
+    ///     console logging, which never reaches a sink.
+    /// - Returns: The input.
+    private static func makeInput(for device: CaptureDevice, eventBus: EventBus) -> any Input {
+        device.kind == .camera
+            ? CameraInput(device: device)
+            : MicrophoneInput(device: device, eventBus: eventBus)
     }
 
     /// Reads the connected cameras and microphones from AVFoundation.

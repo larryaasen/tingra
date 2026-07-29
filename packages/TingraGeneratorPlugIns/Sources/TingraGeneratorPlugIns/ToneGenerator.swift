@@ -37,6 +37,10 @@ public final class ToneGenerator: Input, Sendable {
     /// Generators are their own input kind (see GLOSSARY.md).
     public let kind = InputKind.generator
 
+    /// A test tone: audio only. This is what lets tone become a channel
+    /// strip — the kind it shares with bars never could.
+    public let media = InputMedia.audio
+
     /// The master clock (or a synthetic clock under test) whose tick paces
     /// buffer synthesis and stamps each buffer's PTS.
     private let clock: any EngineClock

@@ -195,13 +195,18 @@ plug-ins build against, importable without the engine (see
 
 - `Input` — the protocol for anything producing video or audio frames: cameras,
   displays, microphones, media, generators; carries the stable identifier,
-  user-facing name, and kind that discovery lists, with `frames()` and
-  `audio()` streams (each defaulting to an already-finished stream for the
-  media the input does not produce).
+  user-facing name, kind, and declared media that discovery lists, with
+  `frames()` and `audio()` streams (each defaulting to an already-finished
+  stream for the media the input does not produce).
 - `InputID` — the stable identifier for an input, as surfaced by input
   discovery.
-- `InputKind` — the kind of input (camera, microphone, display, generator),
-  driving discovery grouping and selector resolution.
+- `InputKind` — the kind of input (camera, microphone, display, generator) —
+  its *provenance* — driving discovery grouping and selector resolution.
+- `InputMedia` — the media an input produces (`.video`, `.audio`, both, or
+  neither): the *media* axis beside `InputKind`'s provenance axis, and what
+  decides whether an input is offered as a layer, a channel strip, or a
+  multiview tile. Defaults to empty, and is a declaration of intent rather
+  than a guarantee (ARCHITECTURE.md, "The `Input` media capability").
 - `InputRegistering` — the registration seam where input plug-ins attach
   (register on connect, unregister on disconnect); the host's `InputRegistry`
   conforms.
@@ -310,7 +315,8 @@ and plug-ins").
 - `InputRegistry` — the actor where input plug-ins register the inputs they
   contribute and the engine resolves them from (by stable ID, listing index, or
   unique name substring via `resolveInput(selector:ofKind:)`); the host's
-  concrete `InputRegistering`.
+  concrete `InputRegistering`. Given the event bus, it reports an input that
+  declares no `InputMedia` as an `error` event rather than refusing it.
 - `InputRegistryError` — errors thrown by the registry (e.g. registering a
   duplicate input identifier).
 - `InputSelectorError` — selector resolution failures (`notFound`,
@@ -855,7 +861,8 @@ effect gets parameter UI without the app knowing it exists),
 `MixerStrip` (the pure, unit-tested strip state: the merge of the active
 preset's authored `AudioChannel`s with live discovery — authored channels
 first in document order, new devices appended muted — falling back to the
-seeding policy, first input unmuted at unity, the rest muted, every strip
+seeding policy, first *captured* input unmuted at unity — never a generator,
+which would put a test tone on air — the rest muted, every strip
 centered, when nothing is authored; strip edits sync back into the active
 preset and autosave debounced like shot edits), `StripMeter` (one
 strip's meter: a compact capsule showing the strip's pre-fader signal),

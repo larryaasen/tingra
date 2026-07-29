@@ -267,11 +267,11 @@ struct MixerView: View {
         )
     }
 
-    /// Whether a strip's device is currently discovered. A strip with no
-    /// device — an authored channel whose device is absent — stays on the
+    /// Whether a strip's input is currently discovered. A strip with no
+    /// input — an authored channel whose device is absent — stays on the
     /// panel as a dormant strip, contributing silence until it returns.
     private func isConnected(_ strip: MixerStrip) -> Bool {
-        model.microphones.contains { $0.id == strip.id }
+        model.audioInputs.contains { $0.id == strip.id }
     }
 
     /// A live binding to one strip's mute, reporting the `tap` before the

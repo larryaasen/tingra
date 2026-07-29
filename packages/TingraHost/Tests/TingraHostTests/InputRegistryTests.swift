@@ -8,6 +8,7 @@
 //
 
 import Testing
+import TingraEventBus
 import TingraPlugInKit
 
 @testable import TingraHost
@@ -18,6 +19,7 @@ private struct MockInput: Input {
     let id: InputID
     let name = "Mock Camera"
     let kind = InputKind.camera
+    let media = InputMedia.video
 
     func start() async throws {}
 
@@ -25,6 +27,18 @@ private struct MockInput: Input {
         AsyncStream { $0.finish() }
     }
 
+    func stop() async {}
+}
+
+/// An input that declares no media — the plug-in defect the registry
+/// reports. It keeps the seam's `media` default rather than overriding it,
+/// so this is exactly what a conformance written without the property does.
+private struct UndeclaredMediaInput: Input {
+    let id = InputID(rawValue: "mock.undeclared")
+    let name = "Undeclared"
+    let kind = InputKind.generator
+
+    func start() async throws {}
     func stop() async {}
 }
 
@@ -81,5 +95,53 @@ struct InputRegistryTests {
 
         let all = await registry.allInputs
         #expect(all.count == 2)
+    }
+
+    @Test("an input declaring no media registers successfully and is reported")
+    func undeclaredMediaIsReportedNotRejected() async throws {
+        let eventBus = EventBus()
+        let events = CollectedEvents()
+        let eventsTask = events.consume(eventBus.events())
+        defer { eventsTask.cancel() }
+        let registry = InputRegistry(eventBus: eventBus)
+        let input = UndeclaredMediaInput()
+
+        // Registration succeeds: a plug-in's omission must not cost the host
+        // a capability, and the input stays resolvable by identifier.
+        try await registry.register(input)
+        #expect(await registry.input(withID: input.id) != nil)
+
+        let reported = await eventually { !events.named("input.noMedia").isEmpty }
+        #expect(reported)
+        let event = try #require(events.named("input.noMedia").first)
+        #expect(event.group == .error)
+        #expect(event.domain == .capture)
+        #expect(event.params?["id"] == .string("mock.undeclared"))
+        #expect(event.params?["name"] == .string("Undeclared"))
+    }
+
+    @Test("an input declaring media is not reported")
+    func declaredMediaIsNotReported() async throws {
+        let eventBus = EventBus()
+        let events = CollectedEvents()
+        let eventsTask = events.consume(eventBus.events())
+        defer { eventsTask.cancel() }
+        let registry = InputRegistry(eventBus: eventBus)
+
+        try await registry.register(MockInput(id: InputID(rawValue: "mock.camera.0")))
+
+        // Give the bus the same opportunity to deliver as the test above.
+        _ = await eventually(within: 0.1) { !events.named("input.noMedia").isEmpty }
+        #expect(events.named("input.noMedia").isEmpty)
+    }
+
+    @Test("a registry with no event bus still registers an input declaring no media")
+    func undeclaredMediaWithoutEventBus() async throws {
+        let registry = InputRegistry()
+        let input = UndeclaredMediaInput()
+
+        try await registry.register(input)
+
+        #expect(await registry.input(withID: input.id) != nil)
     }
 }

@@ -43,7 +43,27 @@ public protocol Input: Sendable {
 
     /// The kind of input, driving grouping in discovery output and selector
     /// resolution.
+    ///
+    /// This is the input's *provenance* — what it is, and whether it
+    /// captures or synthesizes. For what it *produces*, see ``media``: the
+    /// two axes coincide for capture devices and come apart for generators.
     var kind: InputKind { get }
+
+    /// The media this input produces, driving which media roles it is
+    /// offered for: whether it can become a layer in a shot, a channel
+    /// strip in the mixer, or a multiview tile.
+    ///
+    /// A declaration of intent rather than a guarantee — see ``InputMedia``.
+    /// Consumers filter on this, never on ``kind``, when the question is
+    /// "what does this produce"; a *device* picker ("choose a camera") is
+    /// asking the provenance question and correctly filters on ``kind``.
+    ///
+    /// The default is `[]`, matching the ``frames()`` and ``audio()``
+    /// defaults below: an input that overrides neither genuinely produces
+    /// nothing. Every input that produces anything must therefore declare
+    /// it, or it is offered for no role at all — a registry that is handed
+    /// one reports it as an `error` event naming the fix.
+    var media: InputMedia { get }
 
     /// Begins producing frames.
     ///
@@ -69,6 +89,11 @@ public protocol Input: Sendable {
 }
 
 extension Input {
+    /// By default an input declares no media, which is what the ``frames()``
+    /// and ``audio()`` defaults below actually deliver. Every input that
+    /// produces something overrides this; see ``InputMedia``.
+    public var media: InputMedia { [] }
+
     /// By default an input produces no video: an already-finished stream.
     /// Video inputs (cameras, displays, video generators) override this.
     public func frames() -> AsyncStream<CapturedFrame> {

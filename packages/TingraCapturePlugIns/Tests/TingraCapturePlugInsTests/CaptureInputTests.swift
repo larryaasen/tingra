@@ -40,6 +40,7 @@ struct CameraInputTests {
         #expect(input.id == InputID(rawValue: "0x8020000005ac8514"))
         #expect(input.name == "FaceTime HD Camera")
         #expect(input.kind == .camera)
+        #expect(input.media == .video)
     }
 
     @Test("stop() before start is safe and finishes an attached stream")
@@ -78,6 +79,38 @@ struct MicrophoneInputTests {
         #expect(input.id == InputID(rawValue: "BuiltInMicrophoneDevice"))
         #expect(input.name == "MacBook Pro Microphone")
         #expect(input.kind == .microphone)
+        #expect(input.media == .audio)
+    }
+
+    @Test(
+        "the tap format carries the device's own rate and channel count",
+        arguments: [
+            (48_000.0, AVAudioChannelCount(1)),
+            (44_100.0, AVAudioChannelCount(2)),
+            (48_000.0, AVAudioChannelCount(4)),
+            // A Vocaster One: its mic pair plus loopback and show-mix feeds.
+            // This is the case that regressed — `AVAudioFormat`'s inferring
+            // initializer returns nil above two channels, so a multi-channel
+            // interface silently produced no format, no tap, and a dead
+            // strip. Anything past two channels is the guard that matters.
+            (48_000.0, AVAudioChannelCount(10)),
+        ])
+    func tapFormatMatchesDevice(sampleRate: Double, channels: AVAudioChannelCount) throws {
+        let format = try #require(
+            MicrophoneInput.tapFormat(sampleRate: sampleRate, channels: channels),
+            "a \(channels)-channel device at \(sampleRate) Hz must yield a tap format"
+        )
+
+        #expect(format.sampleRate == sampleRate)
+        #expect(format.channelCount == channels)
+        #expect(format.commonFormat == .pcmFormatFloat32)
+    }
+
+    @Test(
+        "a degenerate rate or channel count yields no tap format",
+        arguments: [(0.0, AVAudioChannelCount(2)), (48_000.0, AVAudioChannelCount(0))])
+    func tapFormatRejectsDegenerateInput(sampleRate: Double, channels: AVAudioChannelCount) {
+        #expect(MicrophoneInput.tapFormat(sampleRate: sampleRate, channels: channels) == nil)
     }
 
     @Test("a tapped PCM buffer converts with its AVAudioTime host time as the PTS")

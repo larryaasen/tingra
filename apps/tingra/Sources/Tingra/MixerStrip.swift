@@ -54,16 +54,25 @@ struct MixerStrip: Identifiable, Equatable {
 
     /// Seeds the session's strips from the discovered audio inputs — the
     /// no-authored-audio fallback of ``strips(channels:discovered:)``: the
-    /// first input unmuted at unity — the successor of the CLI-era "first
-    /// microphone streams" default — and every other input muted at unity,
-    /// present on the panel but silent (and not capturing) until the
-    /// operator unmutes it. Every strip seeds centered.
+    /// first **captured** input unmuted at unity — the successor of the
+    /// CLI-era "first microphone streams" default — and every other input
+    /// muted at unity, present on the panel but silent (and not capturing)
+    /// until the operator unmutes it. Every strip seeds centered.
+    ///
+    /// A **generator is never seeded unmuted**, even when it sorts first by
+    /// name (the 440 Hz tone does). Unmuting also starts the input, so
+    /// seeding a generator would put a test tone on the program mix — and on
+    /// any stream — the first time an operator opened a fresh project. When
+    /// the only audio inputs are generators, every strip seeds muted: a
+    /// silent mix the operator can unmute is right where an unrequested tone
+    /// is not.
     ///
     /// - Parameter inputs: The discovered audio inputs, in listing order.
     /// - Returns: One strip per input.
     static func seed(from inputs: [EngineModel.InputChoice]) -> [MixerStrip] {
-        inputs.enumerated().map { index, input in
-            MixerStrip(id: input.id, name: input.name, level: 1, pan: 0, isMuted: index != 0)
+        let liveID = inputs.first { $0.kind != .generator }?.id
+        return inputs.map { input in
+            MixerStrip(id: input.id, name: input.name, level: 1, pan: 0, isMuted: input.id != liveID)
         }
     }
 

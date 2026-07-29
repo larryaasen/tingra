@@ -56,7 +56,7 @@ struct Devices: AsyncParsableCommand {
         let consoleTask = eventBus.attach(ConsoleSink(mode: json ? .json : .human, groups: [.error]))
         let osLogTask = OSLogAttachment.attachIfNeeded(to: eventBus)
 
-        let registry = InputRegistry()
+        let registry = InputRegistry(eventBus: eventBus)
         let context = PlugInContext(
             eventBus: eventBus,
             clock: HostClock(),

@@ -296,7 +296,7 @@ struct Stream: AsyncParsableCommand {
             }
         }
 
-        let registry = InputRegistry()
+        let registry = InputRegistry(eventBus: eventBus)
         let outputs = OutputRegistry()
         let clock = HostClock()
         let context = PlugInContext(

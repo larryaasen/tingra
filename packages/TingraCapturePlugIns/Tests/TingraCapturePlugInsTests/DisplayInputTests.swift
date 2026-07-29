@@ -106,6 +106,7 @@ struct DisplayInputTests {
         #expect(input.id == InputID(rawValue: "37D8832A-2D66-02CA-B9F7-8F30A301B230"))
         #expect(input.name == "Built-in Display")
         #expect(input.kind == .display)
+        #expect(input.media == .video)
     }
 
     @Test("stop() before start is safe and finishes an attached stream")

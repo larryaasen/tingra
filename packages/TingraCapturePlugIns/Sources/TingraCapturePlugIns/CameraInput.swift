@@ -80,6 +80,10 @@ final class CameraInput: Input, Sendable {
     /// A camera.
     var kind: InputKind { device.kind }
 
+    /// A camera produces video only; its audio stream stays the seam's
+    /// already-finished default.
+    var media: InputMedia { .video }
+
     /// Requests authorization and starts the capture session task.
     ///
     /// Throws ``CaptureInputError/authorizationDenied(_:_:)`` when TCC

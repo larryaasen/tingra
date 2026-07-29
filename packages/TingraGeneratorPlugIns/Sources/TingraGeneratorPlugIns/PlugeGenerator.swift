@@ -41,6 +41,9 @@ public final class PlugeGenerator: Input, Sendable {
     /// Generators are their own input kind (see GLOSSARY.md).
     public let kind = InputKind.generator
 
+    /// A calibration pattern: video only.
+    public let media = InputMedia.video
+
     /// The master clock (or a synthetic clock under test) whose tick paces
     /// frame synthesis and stamps each frame's PTS.
     private let clock: any EngineClock
@@ -125,6 +128,9 @@ public final class PlugeStrictGenerator: Input, Sendable {
 
     /// Generators are their own input kind (see GLOSSARY.md).
     public let kind = InputKind.generator
+
+    /// A calibration pattern: video only.
+    public let media = InputMedia.video
 
     /// The master clock (or a synthetic clock under test) whose tick paces
     /// frame synthesis and stamps each frame's PTS.
