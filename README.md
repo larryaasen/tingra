@@ -836,9 +836,12 @@ each leg's `DestinationState` from the bus's `stream.*` events, never a poll,
 and takes the whole program off air with `setFadeToBlack(_:duration:)` — the
 one control driving both engine surfaces, which lives here because
 `TingraComposition` and `TingraAudio` depend on each other in neither
-direction), `ContentView` (camera/display
+direction), `ContentView` (the main window in two sections — a monitoring
+section across the top, the input grid on the left and the preview and program
+monitors on the right, over a control section holding everything the operator
+works: camera/display
 pickers, a streaming panel — the destination list, live status, Start/Stop —
-and, over the preview, a preset switcher that switches and
+and a preset switcher that switches and
 manages the project's presets — an Add Preset button plus a per-preset context
 menu with Duplicate, Rename…, Move Left / Move Right, and Remove Preset,
 disabled on the last remaining preset — above a shot switcher that also manages
@@ -927,12 +930,15 @@ which is what tells a program monitor faded to black apart from a dead one —
 shared by the main window's two monitors and every multiview tile),
 `MonitorRenderContext` (the one Metal
 device, command queue, and `CIContext` every monitor draws through, rather than
-one per view), `MultiviewView` (the multiview window: program and preview across
-the top with one tile per running input beneath, each tally-bordered — red on
-air, green staged. Not a bus: nothing is fed from it and nothing is promoted out
-of it, so it adds no engine surface beyond two read accessors, and the tiles are
-deliberately inert — a tile is an *input* while preview stages a *shot*, and a
-guess one click from air is exactly what the preview bus refused),
+one per view), `InputGridView` (the input grid: one tile per running input,
+name-badged and tally-bordered — red on air, green staged, no border idle —
+shared by the main window's top-left strip and the multiview window, so the two
+surfaces cannot read a tally differently. The tiles are deliberately inert: a
+tile is an *input* while preview stages a *shot*, and a guess one click from air
+is exactly what the preview bus refused), `MultiviewView` (the multiview window:
+program and preview across the top with the same input grid beneath, at full
+tile size on a display of its own. Not a bus: nothing is fed from it and nothing
+is promoted out of it, so it adds no engine surface beyond two read accessors),
 `InputFrameSource` (one input's tile frames, pulled from the compositor's
 latest-wins slot on each draw — a read-only share, drawn and dropped),
 `MultiviewTile` (the pure, unit-tested tile derivation and its tally rule, red

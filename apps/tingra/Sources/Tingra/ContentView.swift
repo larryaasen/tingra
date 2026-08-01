@@ -12,8 +12,18 @@ import TingraComposition
 import TingraEventBus
 import TingraPlugInKit
 
-/// The main window: the preview and program monitors above the preset
-/// switcher, the shot switcher, the layer-tree editor, and the input pickers.
+/// The main window, in two sections: a **monitoring section** across the top
+/// — the input grid on the left, the preview and program monitors on the
+/// right — over a **control section** carrying the preset switcher, the shot
+/// switcher, the layer-tree editor, the input pickers, the mixer, and the
+/// streaming panel.
+///
+/// That is the broadcast switcher's own arrangement (ARCHITECTURE.md, "The
+/// main window's two sections"): everything the operator *watches* is above
+/// everything the operator *works*, so an eye checking what is about to go to
+/// air never has to cross the controls that put it there. The input grid is
+/// the same ``InputGridView`` the multiview window tiles, so what a tile shows
+/// and what its tally reads cannot differ between the two surfaces.
 ///
 /// The preset switcher switches among — and manages — the project's presets
 /// (ARCHITECTURE.md, "Multiple presets in the UI"): switching never
@@ -69,20 +79,10 @@ struct ContentView: View {
     /// row's key at once.
     @State private var streamKeys: [ProjectDestinationID: String] = [:]
 
-    /// The window body: preview on top, controls beneath.
+    /// The window body: the monitoring section on top, the controls beneath.
     var body: some View {
         VStack(spacing: 12) {
-            HStack(spacing: 12) {
-                // Preview left of program, the switcher convention: the
-                // operator reads left to right, staging then taking.
-                MonitorTile(source: model.previewRelay, label: previewLabel, badgeTint: .green)
-                MonitorTile(
-                    source: model.programRelay,
-                    label: programLabel,
-                    badgeTint: .red,
-                    statusBadge: model.isFadedToBlack ? fadedToBlackLabel : nil
-                )
-            }
+            topSection
 
             presetSwitcher
 
@@ -107,6 +107,53 @@ struct ContentView: View {
         }
         .onChange(of: model.selectedDisplayID) { _, _ in
             Task { await model.reconfigure() }
+        }
+    }
+
+    /// The monitoring section: the input grid on the left, the preview and
+    /// program monitors on the right.
+    ///
+    /// A plain `HStack` rather than an `HSplitView`, and a **width cap**
+    /// rather than a layout priority. Both were measured rather than assumed,
+    /// because `HStack`'s two obvious levers each do the opposite of what
+    /// they sound like:
+    ///
+    /// - A **layout priority** on the monitors hands their group everything
+    ///   except the *minimum* of the others, so it would pin the grid at its
+    ///   narrowest forever — a priority cannot express "take the surplus".
+    /// - An **`HSplitView`** opens with its first pane collapsed to that
+    ///   pane's minimum (180 of 1400 measured) and needs a stored divider
+    ///   position to do better — one more piece of window state to persist,
+    ///   for a section an operator reads rather than adjusts.
+    ///
+    /// So the two panes are ordinary flexible subviews, and the cap is what
+    /// makes the grid yield: a constrained subview is offered half the width
+    /// and keeps only what its `maxWidth` allows, leaving the rest to the
+    /// monitors. The cap is deliberately narrow enough that the monitors stay
+    /// the larger surface at every window size — the grid holds a steady
+    /// one-column strip while each monitor runs from 198 points at the
+    /// narrowest usable window to 648 at 1600 — because the wall-of-tiles
+    /// reading is what the multiview window is for (⌥⌘M), on a display of
+    /// its own.
+    private var topSection: some View {
+        HStack(spacing: 12) {
+            // A smaller tile minimum than the multiview window's, so a tile
+            // stays whole in a strip this narrow rather than being the width
+            // that forces the column count down.
+            InputGridView(model: model, minimumTileWidth: 160)
+                .frame(minWidth: 180, maxWidth: 260)
+
+            HStack(spacing: 12) {
+                // Preview left of program, the switcher convention: the
+                // operator reads left to right, staging then taking.
+                MonitorTile(source: model.previewRelay, label: previewLabel, badgeTint: .green)
+                MonitorTile(
+                    source: model.programRelay,
+                    label: programLabel,
+                    badgeTint: .red,
+                    statusBadge: model.isFadedToBlack ? fadedToBlackLabel : nil
+                )
+            }
         }
     }
 

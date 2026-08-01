@@ -206,7 +206,7 @@
       }
     },
     "Choose a camera or a display to see it here.": {
-      "comment": "Multiview placeholder guidance when no input is running",
+      "comment": "Input grid placeholder guidance when no input is running",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -971,7 +971,7 @@
       }
     },
     "No Inputs Running": {
-      "comment": "Multiview placeholder title when no input is running",
+      "comment": "Input grid placeholder title when no input is running",
       "localizations": {
         "de": {
           "stringUnit": {
