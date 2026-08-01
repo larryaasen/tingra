@@ -81,6 +81,21 @@ struct MixerView: View {
             Picker(selection: monitorDeviceBinding) {
                 Text("No monitoring", comment: "Monitor device picker entry for monitoring nothing")
                     .tag(String?.none)
+                // A selection with no matching tag is undefined behaviour in
+                // SwiftUI, and this picker has two ways to reach one: the
+                // device list fills asynchronously while the selection is
+                // restored synchronously at launch, and a chosen device can
+                // be unplugged while the app deliberately keeps it selected.
+                // So the absent device gets its own entry rather than the
+                // selection being silently dropped — the dormant channel
+                // strip, one control over.
+                if let uid = dormantMonitorDeviceUID {
+                    Text(
+                        "\(model.monitorDeviceName ?? uid) (Not connected)",
+                        comment: "Picker entry for a selected device that is not currently connected"
+                    )
+                    .tag(String?.some(uid))
+                }
                 ForEach(model.monitorDevices) { device in
                     Text(device.name).tag(String?.some(device.uid))
                 }
@@ -112,6 +127,14 @@ struct MixerView: View {
                 .frame(width: 44, alignment: .trailing)
         }
         .controlSize(.small)
+    }
+
+    /// The selected monitor device's UID when the device list does not
+    /// currently contain it, or nil when the selection resolves (or there is
+    /// none) — what the picker needs its own entry for.
+    private var dormantMonitorDeviceUID: String? {
+        guard let uid = model.monitorDeviceUID else { return nil }
+        return model.monitorDevices.contains { $0.uid == uid } ? nil : uid
     }
 
     /// A binding to the monitored device, reporting the picker's `tap` before

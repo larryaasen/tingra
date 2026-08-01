@@ -16,6 +16,9 @@ apps/                           # Runnable products
                                 #   pinned MediaMTX + sim.sh; test-only, never linked into the product
   tingra/                       # Phase 3 — the assembled SwiftUI/AppKit app; scaffolded at
                                 #   roadmap step 6 (camera + display composited to an MTKView)
+  tingra-cameras/               # Standalone "Tingra Cameras" app: a hardware picker (cameras and
+                                #   microphones) beside a live preview canvas. A native Xcode
+                                #   project, no engine package dependencies; see its own CLAUDE.md
 packages/                       # Engine libraries
   TingraHost/                   # Host/core: plug-in loader/lifecycle, registries, frame transport,
                                 #   session/state, event bus sinks, logging, secure storage, authorization

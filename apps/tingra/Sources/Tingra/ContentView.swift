@@ -97,22 +97,15 @@ struct ContentView: View {
             streamingPanel
         }
         .padding()
-        .onChange(of: model.selectedCameraID) { _, newValue in
-            let name = model.cameras.first { $0.id == newValue }?.name ?? "None"
-            model.eventBus.tap(
-                "camera.picker",
-                domain: .capture,
-                params: ["id": .string(newValue?.rawValue ?? "none"), "name": .string(name)]
-            )
+        // Only the *effect* of a selection change lives here — it must run
+        // however the value changed, including when the model assigns the
+        // default at boot. The `tap` rides the pickers' own bindings instead
+        // (``cameraSelection``), because only the control can say the
+        // operator acted.
+        .onChange(of: model.selectedCameraID) { _, _ in
             Task { await model.reconfigure() }
         }
-        .onChange(of: model.selectedDisplayID) { _, newValue in
-            let name = model.displays.first { $0.id == newValue }?.name ?? "None"
-            model.eventBus.tap(
-                "display.picker",
-                domain: .capture,
-                params: ["id": .string(newValue?.rawValue ?? "none"), "name": .string(name)]
-            )
+        .onChange(of: model.selectedDisplayID) { _, _ in
             Task { await model.reconfigure() }
         }
     }
@@ -339,7 +332,11 @@ struct ContentView: View {
 
             if !model.shots.isEmpty {
                 HStack(spacing: 12) {
-                    Picker(selection: $model.takeTransitionKind) {
+                    Picker(
+                        selection: $model.takeTransitionKind.reportingTap(
+                            to: model.eventBus, "transition.picker", domain: .composition,
+                            params: { ["kind": .string($0.rawValue)] })
+                    ) {
                         Text(
                             "Default",
                             comment: "Transition picker option: take each shot with its own default transition"
@@ -368,16 +365,13 @@ struct ContentView: View {
                     }
                     .pickerStyle(.segmented)
                     .fixedSize()
-                    .onChange(of: model.takeTransitionKind) { _, newValue in
-                        model.eventBus.tap(
-                            "transition.picker",
-                            domain: .composition,
-                            params: ["kind": .string(newValue.rawValue)]
-                        )
-                    }
 
                     if model.takeTransitionKind == .wipe {
-                        Picker(selection: $model.wipeEdge) {
+                        Picker(
+                            selection: $model.wipeEdge.reportingTap(
+                                to: model.eventBus, "wipeEdge.picker", domain: .composition,
+                                params: { ["edge": .string($0.rawValue)] })
+                        ) {
                             Text("Left", comment: "Wipe edge picker option: reveal from the left edge of the frame")
                                 .tag(WipeEdge.left)
                             Text("Right", comment: "Wipe edge picker option: reveal from the right edge of the frame")
@@ -393,17 +387,14 @@ struct ContentView: View {
                             )
                         }
                         .fixedSize()
-                        .onChange(of: model.wipeEdge) { _, newValue in
-                            model.eventBus.tap(
-                                "wipeEdge.picker",
-                                domain: .composition,
-                                params: ["edge": .string(newValue.rawValue)]
-                            )
-                        }
                     }
 
                     if model.takeTransitionKind == .shader {
-                        Picker(selection: $model.shaderName) {
+                        Picker(
+                            selection: $model.shaderName.reportingTap(
+                                to: model.eventBus, "shaderName.picker", domain: .composition,
+                                params: { ["shader": .string($0.rawValue)] })
+                        ) {
                             Text("Iris", comment: "Shader picker option: circular reveal opening from the center")
                                 .tag(TransitionShader.iris)
                             Text(
@@ -421,13 +412,6 @@ struct ContentView: View {
                             )
                         }
                         .fixedSize()
-                        .onChange(of: model.shaderName) { _, newValue in
-                            model.eventBus.tap(
-                                "shaderName.picker",
-                                domain: .composition,
-                                params: ["shader": .string(newValue.rawValue)]
-                            )
-                        }
                     }
                 }
             }
@@ -716,11 +700,65 @@ struct ContentView: View {
         .labelsHidden()
     }
 
+    /// The camera picker's selection, reporting the picker's `tap` when the
+    /// operator changes it — never when the model assigns the default during
+    /// boot (see ``Binding/reportingTap(to:_:domain:params:)``).
+    private var cameraSelection: Binding<InputID?> {
+        // Snapshotted rather than captured, so the tap names the list the
+        // picker was showing when the operator chose from it.
+        let cameras = model.cameras
+        return $model.selectedCameraID.reportingTap(to: model.eventBus, "camera.picker", domain: .capture) {
+            newValue in
+            [
+                "id": .string(newValue?.rawValue ?? "none"),
+                "name": .string(cameras.first { $0.id == newValue }?.name ?? "None"),
+            ]
+        }
+    }
+
+    /// The display picker's selection (see ``cameraSelection``).
+    private var displaySelection: Binding<InputID?> {
+        let displays = model.displays
+        return $model.selectedDisplayID.reportingTap(to: model.eventBus, "display.picker", domain: .capture) {
+            newValue in
+            [
+                "id": .string(newValue?.rawValue ?? "none"),
+                "name": .string(displays.first { $0.id == newValue }?.name ?? "None"),
+            ]
+        }
+    }
+
+    /// The selected input's id when the given choices no longer contain it —
+    /// what a picker needs its own entry for.
+    ///
+    /// A device that is unplugged **stays cast** in its role, dormant, so it
+    /// resumes when it returns — the same rule as a layer bound to an
+    /// undiscovered input and a channel strip whose device is absent. A
+    /// SwiftUI selection matching no tag is undefined behaviour, though, so
+    /// keeping the selection means the picker has to be able to draw it
+    /// (ARCHITECTURE.md, "Live device lists in the app").
+    ///
+    /// - Parameters:
+    ///   - selection: The picker's current selection.
+    ///   - choices: The inputs the picker is listing.
+    /// - Returns: The unresolvable selection, or nil when it resolves.
+    private func dormantSelection(_ selection: InputID?, among choices: [EngineModel.InputChoice]) -> InputID? {
+        guard let selection else { return nil }
+        return choices.contains { $0.id == selection } ? nil : selection
+    }
+
     /// The camera and display pickers.
     private var controls: some View {
         HStack(spacing: 20) {
-            Picker(selection: $model.selectedCameraID) {
+            Picker(selection: cameraSelection) {
                 Text("None", comment: "Picker option for no input selected").tag(InputID?.none)
+                if let dormant = dormantSelection(model.selectedCameraID, among: model.cameras) {
+                    Text(
+                        "\(model.inputName(for: dormant)) (Not connected)",
+                        comment: "Picker entry for a selected device that is not currently connected"
+                    )
+                    .tag(InputID?.some(dormant))
+                }
                 ForEach(model.cameras) { camera in
                     Text(camera.name).tag(InputID?.some(camera.id))
                 }
@@ -728,8 +766,15 @@ struct ContentView: View {
                 Text("Camera", comment: "Camera input picker label")
             }
 
-            Picker(selection: $model.selectedDisplayID) {
+            Picker(selection: displaySelection) {
                 Text("None", comment: "Picker option for no input selected").tag(InputID?.none)
+                if let dormant = dormantSelection(model.selectedDisplayID, among: model.displays) {
+                    Text(
+                        "\(model.inputName(for: dormant)) (Not connected)",
+                        comment: "Picker entry for a selected device that is not currently connected"
+                    )
+                    .tag(InputID?.some(dormant))
+                }
                 ForEach(model.displays) { display in
                     Text(display.name).tag(InputID?.some(display.id))
                 }

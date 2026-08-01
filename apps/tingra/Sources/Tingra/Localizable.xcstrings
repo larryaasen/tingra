@@ -1,6 +1,23 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "%@ (Not connected)": {
+      "comment": "Picker entry for a selected device that is not currently connected",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ (nicht verbunden)"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ (no conectado)"
+          }
+        }
+      }
+    },
     "%@ copy": {
       "comment": "Name of a duplicated shot or preset; the placeholder is the source's name",
       "localizations": {

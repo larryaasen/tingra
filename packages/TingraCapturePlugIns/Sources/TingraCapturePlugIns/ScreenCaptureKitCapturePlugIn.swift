@@ -22,10 +22,13 @@ import TingraPlugInKit
 ///
 /// Discovery lists displays through CoreGraphics, which needs no Screen
 /// Recording authorization — like camera discovery, listing never prompts;
-/// only capturing a display does. Display hot-plug events (a monitor added
-/// or removed while running) are a later addition, like the capture
-/// plug-in's `device.connected`/`device.disconnected` stream; for now the
-/// registry reflects the displays present at activation.
+/// only capturing a display does. Display **hot-plug** is reported too (added
+/// 2026-07-28): a monitor plugged in or removed while running keeps the
+/// registry current and reaches the bus as the same
+/// `device.connected`/`device.disconnected` events the AVFoundation plug-in
+/// emits, with `kind=display` — one vocabulary for every input, so
+/// `devices --watch` and the app's device-list refresh need no special case
+/// (see ``DisplayEventReporter``).
 public struct ScreenCaptureKitCapturePlugIn: PlugIn {
     /// The plug-in's stable identifier; also its event domain.
     public let id = PlugInID(rawValue: "com.moonwink.tingra.capture.screencapturekit")
@@ -38,19 +41,32 @@ public struct ScreenCaptureKitCapturePlugIn: PlugIn {
     /// is needed on runners.
     private let enumerateDisplays: @Sendable () -> [DisplayDevice]
 
+    /// The display connection/disconnection stream. Production observes
+    /// CoreGraphics' reconfiguration callback; tests inject a scripted
+    /// stream.
+    private let displayChanges: @Sendable () -> AsyncStream<DisplayChange>
+
     /// Creates the production plug-in, enumerating real CoreGraphics
-    /// displays.
+    /// displays and observing real display reconfigurations.
     public init() {
         self.init(enumerateDisplays: DisplayDiscovery.connectedDisplays)
     }
 
-    /// Creates a plug-in over an injected display enumerator (the test seam).
-    init(enumerateDisplays: @escaping @Sendable () -> [DisplayDevice]) {
+    /// Creates a plug-in over an injected display enumerator and change
+    /// stream (the test seams).
+    init(
+        enumerateDisplays: @escaping @Sendable () -> [DisplayDevice],
+        displayChanges: @escaping @Sendable () -> AsyncStream<DisplayChange> = { DisplayEventReporter.liveChanges() }
+    ) {
         self.enumerateDisplays = enumerateDisplays
+        self.displayChanges = displayChanges
     }
 
     /// Registers one input per connected display, reporting each discovery
-    /// as a `trace` event.
+    /// as a `trace` event, then keeps the registry current from display
+    /// reconfigurations, reporting each change as a `device.connected` /
+    /// `device.disconnected` event — normal events, never errors, never
+    /// polling.
     ///
     /// Throws if the registry rejects an input (a duplicate identifier); the
     /// host's loader reports that as an `error` event and the engine keeps
@@ -67,6 +83,20 @@ public struct ScreenCaptureKitCapturePlugIn: PlugIn {
                     "kind": .string(InputKind.display.rawValue),
                 ]
             )
+        }
+
+        // Fire and forget for the life of the process, exactly as the
+        // AVFoundation plug-in does: the reporter ends when its change stream
+        // does, and there is no deactivation hook yet — plug-ins live as long
+        // as the engine.
+        let eventBus = context.eventBus
+        let reporter = DisplayEventReporter(
+            changes: displayChanges(),
+            makeInput: { DisplayInput(display: $0) }
+        )
+        let inputs = context.inputs
+        Task {
+            await reporter.run(on: eventBus, inputs: inputs)
         }
     }
 }

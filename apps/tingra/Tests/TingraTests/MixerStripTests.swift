@@ -165,6 +165,47 @@ struct MixerStripTests {
         #expect(strips.allSatisfy { $0.isMuted })
     }
 
+    @Test("a device connected mid-session appends muted even when it sorts first by name")
+    @MainActor
+    func hotPluggedDeviceIsNeverSurpriseLive() {
+        // The hot-plug failure this guards: the audio list is name-sorted, so
+        // a newly connected device can arrive at the *front* of discovery.
+        // Were the refresh to fall through to `seed(from:)`, that device
+        // would be unmuted — and unmuting also starts it — putting an
+        // unasked-for microphone on the program mix and on any live stream.
+        // Every refresh goes through the authored path for exactly this
+        // reason (ARCHITECTURE.md, "Live device lists in the app").
+        let authored = AudioChannel(input: InputID(rawValue: "vocaster"), name: "Vocaster One USB", isMuted: false)
+        let discovered = [Self.choice("arrival", kind: .microphone), Self.choice("vocaster")]
+
+        let strips = MixerStrip.strips(channels: [authored], discovered: discovered)
+
+        let arrival = strips.first { $0.id.rawValue == "arrival" }
+        #expect(arrival?.isMuted == true)
+        // ...and the strip that was already live stays live.
+        #expect(strips.first { $0.id.rawValue == "vocaster" }?.isMuted == false)
+    }
+
+    @Test("a strip whose device disconnects mid-session stays on the panel with its settings")
+    @MainActor
+    func disconnectedDeviceKeepsItsStrip() {
+        // The other half of hot-plug: the device leaves discovery, but its
+        // authored channel does not leave the preset, so the strip stays —
+        // dormant under its cached name, settings intact for the device's
+        // return. The layer-bound-to-an-undiscovered-input semantic.
+        let authored = AudioChannel(
+            input: InputID(rawValue: "vocaster"), name: "Vocaster One USB",
+            level: 0.6, pan: -0.25, isMuted: false)
+
+        let strips = MixerStrip.strips(channels: [authored], discovered: [])
+
+        #expect(strips.count == 1)
+        #expect(strips[0].name == "Vocaster One USB")
+        #expect(strips[0].level == 0.6)
+        #expect(strips[0].pan == -0.25)
+        #expect(strips[0].isMuted == false)
+    }
+
     @Test("a strip converts to the authored channel the document persists")
     @MainActor
     func stripConvertsToAudioChannel() {

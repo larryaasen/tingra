@@ -267,7 +267,7 @@ public actor AVAudioEngineMonitor: AudioMonitor {
         else { return [] }
 
         return deviceIDs.compactMap { deviceID in
-            guard hasOutputChannels(deviceID),
+            guard isMonitorable(deviceID),
                 let uid = stringProperty(kAudioDevicePropertyDeviceUID, of: deviceID),
                 let name = stringProperty(kAudioObjectPropertyName, of: deviceID)
             else { return nil }
@@ -302,7 +302,73 @@ public actor AVAudioEngineMonitor: AudioMonitor {
                 AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &dataSize, &deviceIDs) == noErr
         else { return nil }
 
-        return deviceIDs.first { hasOutputChannels($0) && stringProperty(kAudioDevicePropertyDeviceUID, of: $0) == uid }
+        return deviceIDs.first { isMonitorable($0) && stringProperty(kAudioDevicePropertyDeviceUID, of: $0) == uid }
+    }
+
+    /// Whether a device belongs in the monitor picker: it can play audio out,
+    /// and it is not one of macOS's own private aggregates.
+    ///
+    /// The two tests live together so ``outputDevices()`` and
+    /// ``deviceID(forUID:)`` can never disagree — a persisted UID must not
+    /// resolve to a device the picker would not have offered.
+    ///
+    /// - Parameter deviceID: The device to test.
+    /// - Returns: Whether the operator may monitor through it.
+    private static func isMonitorable(_ deviceID: AudioObjectID) -> Bool {
+        hasOutputChannels(deviceID) && !isPrivateAggregate(deviceID)
+    }
+
+    /// Whether a device is one of macOS's **private aggregates** — the
+    /// `CADefaultDeviceAggregate-<pid>-0` devices Core Audio builds inside a
+    /// process that runs an `AVAudioEngine`.
+    ///
+    /// Ours qualifies: starting the monitor makes macOS create one, it carries
+    /// output channels, and the device-list listener fires as it appears — so
+    /// without this test the picker gains a row naming the monitor's own
+    /// plumbing a moment after the operator turns monitoring on, and offers it
+    /// as something to monitor *through*. Confirmed by instrumenting the real
+    /// HAL rather than inferred (ARCHITECTURE.md, "Private aggregate audio
+    /// devices in the monitor picker").
+    ///
+    /// - Parameter deviceID: The device to test.
+    /// - Returns: Whether the device is a private aggregate.
+    private static func isPrivateAggregate(_ deviceID: AudioObjectID) -> Bool {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioAggregateDevicePropertyComposition,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var value: CFDictionary? = nil
+        var dataSize = UInt32(MemoryLayout<CFDictionary?>.size)
+        let status = withUnsafeMutablePointer(to: &value) { pointer in
+            AudioObjectGetPropertyData(deviceID, &address, 0, nil, &dataSize, pointer)
+        }
+        // A device with no composition at all is not an aggregate — every
+        // real output device takes this path.
+        guard status == noErr, let composition = value as? [String: Any] else { return false }
+        return isPrivateComposition(composition)
+    }
+
+    /// Whether an aggregate device's composition marks it private.
+    ///
+    /// Split out from the HAL read so the rule itself is unit-testable
+    /// without any audio hardware — which matters because it is the rule that
+    /// must **not** catch a user's own aggregate. Verified in both
+    /// directions on real devices: macOS's private aggregate carries
+    /// `private = 1`, while an aggregate created the way Audio MIDI Setup
+    /// creates one carries no `private` key at all. A user-authored aggregate
+    /// is a legitimate thing to monitor through, so absence means public.
+    ///
+    /// - Parameter composition: The device's
+    ///   `kAudioAggregateDevicePropertyComposition` dictionary.
+    /// - Returns: Whether the aggregate is one of macOS's private ones.
+    static func isPrivateComposition(_ composition: [String: Any]) -> Bool {
+        switch composition[kAudioAggregateDeviceIsPrivateKey as String] {
+        case let flag as Int: return flag != 0
+        case let flag as Bool: return flag
+        case let flag as NSNumber: return flag.boolValue
+        default: return false
+        }
     }
 
     /// Whether a device carries any output channels — the test that keeps

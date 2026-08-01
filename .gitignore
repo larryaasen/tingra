@@ -3,4 +3,8 @@
 .swiftpm/
 apps/ingest-simulator/.bin/
 dist/
+# Per-user Xcode state: window layout, breakpoints, scheme ordering. Never
+# shared. `xcshareddata/` (schemes, Package.resolved) is deliberately *not*
+# ignored — that part is meant to be committed.
+xcuserdata/
 UserInterfaceState.xcuserstate

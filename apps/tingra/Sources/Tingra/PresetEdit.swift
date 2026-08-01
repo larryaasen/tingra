@@ -70,4 +70,3 @@ enum PresetEdit {
         return Preset(id: preset.id, name: trimmed, shots: preset.shots, audioChannels: preset.audioChannels)
     }
 }
-

@@ -412,7 +412,18 @@ the `Input` seam.
   reconnection) and captured via an `SCStream` (IOSurface 32BGRA, BT.709 tagged
   at the seam, host-time PTS, idle frames skipped). A separate plug-in from the
   AVFoundation one — a different framework and a different TCC permission
-  (Screen Recording, not Camera).
+  (Screen Recording, not Camera). It also keeps the registry current as
+  displays come and go, reporting each change as the same
+  `device.connected`/`device.disconnected` event with `kind=display`.
+- `DisplayChange` / `DisplayEventReporter` — the display mirror of the
+  camera/microphone reporter: one CoreGraphics reconfiguration registration
+  (`CGDisplayRegisterReconfigurationCallback`, never a poll) fanned out to its
+  observers, updating the registry before it emits so a listener always sees
+  the registry already reflecting the change. Changes come from **diffing
+  display snapshots** rather than the callback's `CGDirectDisplayID`, because
+  a removed display's id no longer resolves to the UUID that is its only
+  stable identifier — which also means a resolution or arrangement change
+  reports nothing rather than a spurious disconnect/reconnect pair.
 - `SystemDefaultInputs` — the system default camera and microphone as input
   identifiers, for resolving the `stream` defaults without importing AVFoundation
   elsewhere.
@@ -649,7 +660,13 @@ with a synthetic clock and scripted inputs (see [ARCHITECTURE.md](docs/ARCHITECT
   escape. Because the mix tick and the output device run on different clocks,
   it caps its scheduled backlog (≈85 ms) and **drops** past it rather than
   letting monitor latency grow — the mixer's intake cap mirrored at the
-  output. Seam-only, like the capture inputs' hardware paths.
+  output. Seam-only, like the capture inputs' hardware paths. It excludes
+  macOS's **private aggregate** devices (`CADefaultDeviceAggregate-<pid>-0`),
+  which Core Audio creates inside our own process the moment the monitor
+  starts — without the filter the picker offers the monitor's own plumbing as
+  something to monitor through. The test is the composition dictionary's
+  `private` flag, which a user-created aggregate does not carry, so an
+  operator's own aggregate stays offered.
 
 ### `packages/TingraEffectPlugIns`
 
@@ -880,7 +897,13 @@ machine-local `UserDefaults`, not the project document — which headphones are
 plugged into this Mac is not part of the show — and not session state, since
 headphones do not change between launches; monitoring starts off on a fresh
 install, because monitoring through speakers beside a live microphone is a
-feedback howl), `LayerTreeEditorView` (the layer-tree editor:
+feedback howl, and it caches the selected device's name so the picker can
+label a selection the device list cannot currently resolve),
+`Binding.reportingTap` (the shared helper that reports a control's `tap` from
+its **selection binding** rather than from `.onChange` — a binding setter runs
+only when the operator works the control, so a default the model assigns at
+boot no longer records a tap nobody made; see EVENTS.md, "Where a picker's tap
+is reported"), `LayerTreeEditorView` (the layer-tree editor:
 add a layer bound to any discovered camera or display, remove, reorder, and
 adjust a layer's frame and opacity with live sliders — every edit on program at
 the next tick, and autosaved to the project file), `LayerTreeEdit` (the pure,

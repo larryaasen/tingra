@@ -7,6 +7,71 @@ or two in the doc that owns them — none need a rewrite.
 
 ## Roadmap progress
 
+- [x] **App discovery gaps: all four findings** *(code complete 2026-07-28)*.
+  The four findings from the 2026-07-28 test log. The two design-shaped ones
+  — live device lists, and the private-aggregate filter — were **recorded and
+  approved before any code** under the decide-then-build rule; their full
+  records are in ARCHITECTURE.md and in "Decisions to settle" below, and the
+  go-ahead **included display hot-plug**. The two small ones needed no record
+  of their own and are below.
+  - [x] **Live device lists in the app.** The app now refreshes `cameras`,
+    `displays`, `videoInputs`, and `audioInputs` from the input registry on
+    every `device.connected`/`device.disconnected` event, sharing the bus
+    consumer that already carried stream status — attached before the
+    plug-ins activate, so no first-session event is missed. A vanished device
+    stays selected, bound, and stripped, dormant everywhere; a hot-plugged
+    one always arrives **muted**, because the refresh syncs the active preset
+    first and so can never fall through to `MixerStrip.seed`. Stops now
+    report `reason: "disconnected"` where the input has left the registry.
+  - [x] **Display hot-plug in the capture plug-in.**
+    `ScreenCaptureKitCapturePlugIn` gained `DisplayChange` /
+    `DisplayEventReporter` over `CGDisplayRegisterReconfigurationCallback` —
+    the mirror of `DeviceEventReporter`, same registry-before-event ordering,
+    same event names with `kind=display`, same injected-stream test seam.
+    Changes are read by **diffing display snapshots** rather than from the
+    callback's `CGDirectDisplayID`, because a removed display's id no longer
+    resolves to the UUID that is its only stable identifier — which also
+    means a resolution or arrangement change reports nothing instead of a
+    spurious disconnect/reconnect pair.
+  - [x] **The private aggregate filter.** `AVAudioEngineMonitor` now pairs
+    the has-output-channels test with a private-aggregate test in one
+    `isMonitorable(_:)`, so `outputDevices()` and `deviceID(forUID:)` cannot
+    disagree. The rule is a pure `isPrivateComposition(_:)`, unit-tested in
+    both directions with no audio hardware.
+  - [x] **The phantom `camera.picker` tap at boot.** `ContentView`'s
+    `.onChange(of:)` handlers reported their taps, so the model assigning the
+    default camera and display during boot recorded two taps with no user
+    involved — a synthetic entry in exactly the record macro capture and
+    replay would read back (EVENTS.md, "The `tap` convention"). Fixed by a
+    shared `Binding.reportingTap(to:_:domain:params:)`: a control's binding
+    setter runs only when the control is operated, so the **tap** moves there
+    while the **effect** (`reconfigure()`) stays in `onChange`, where it must
+    run however the value changed. Applied to all five pickers, not just the
+    two that were firing — the other three (`transition`, `wipeEdge`,
+    `shaderName`) were only safe because nothing assigns them
+    programmatically *yet*, which is not a property worth relying on, and one
+    file with two mechanisms is worse than one with either. EVENTS.md's
+    convention amended: it had named `onChange` as the right place.
+  - [x] **The monitor picker's invalid selection at startup.**
+    `MixerView`'s picker bound to the persisted `monitorDeviceUID` while
+    `monitorDevices` filled asynchronously, so no tag matched on first render
+    — SwiftUI's "undefined results", logged twice. Fixed by giving the
+    picker an entry for a selection the device list cannot currently
+    resolve, labelled from a `MonitorPreferences.deviceName` cache and marked
+    "Not connected" (`de`/`es` added) — the dormant channel strip, one
+    control over. This covers the *second* way to reach an unmatched
+    selection too, which the startup race had been masking: a chosen device
+    that is unplugged stays deliberately selected so it resumes on return.
+    The same entry is what lets the camera and display pickers keep a
+    vanished selection under "Live device lists in the app".
+
+  Tests: `TingraAudio` 61 → 66, `TingraCapturePlugIns` 30 → 38,
+  `apps/tingra` 123 → 131 — **795 across 13 targets**, warning-clean.
+  `check-format` was **not** clean at `e1c9f59` — a stray trailing blank line
+  in `PresetEdit.swift`, unrelated and now removed. `integration-test.sh` not
+  re-run: nothing in the streamed path changed, and `tingra-cli` loads only
+  the AVFoundation plug-in, so it never installs the display callback.
+
 - [x] **Step 1 — Monorepo scaffold + `tingra-cli devices`** *(complete 2026-07-04)*
   - [x] `apps/`/`packages/` split scaffolded: `TingraEventBus` (bus, redaction,
     17 tests), `TingraPlugInKit` (protocol seams: `Input`, `StreamingService`,
@@ -1086,6 +1151,59 @@ or two in the doc that owns them — none need a rewrite.
 
 ## Decisions to settle
 
+- [x] **Live device lists in the app — decided 2026-07-28, go-ahead given
+  with display hot-plug included, and built the same day.** The app never refreshes its device lists after boot: `cameras`,
+  `displays`, `videoInputs`, and `audioInputs` are computed once in the boot
+  pass, and `eventBus.events()` is consumed in exactly one place (stream
+  status only), so the `device.connected`/`device.disconnected` events the
+  capture plug-in has emitted since step 2 reach nothing. Hot-plugging does
+  nothing until relaunch; unplugging leaves a stale picker entry. The engine
+  already follows the rule the app breaks, and `devices --watch` already
+  consumes these events correctly — the design follows it. Full record in
+  ARCHITECTURE.md, "Live device lists in the app"; the shape in brief:
+  - **One bus consumer, two handlers** — the refresh rides the existing
+    `streamStatusTask`, which starts draining before the plug-ins activate, so
+    no first-session device event is missed. A `device.*` event re-reads
+    `registry.allInputs` (never the event's params — the plug-in updates the
+    registry *before* emitting) and reruns the coalescing reconfigure passes.
+    Never a poll loop.
+  - **Dormancy everywhere, consistently**: a shot's layer, a channel strip,
+    and a picker selection all keep their binding to a device that has gone
+    away, exactly as they already do for a device that was never discovered.
+    `applyConfiguration` stops such an input with `reason: "disconnected"`
+    rather than today's blanket `"unreferenced"`.
+  - **The seed becomes boot-only** — the point most worth a veto. Re-merging
+    strips with `nil` authored channels re-runs `MixerStrip.seed`, which
+    unmutes *and starts* the first non-generator strip; a hot-plugged
+    microphone sorting first by name would go live on the program mix
+    unasked. Syncing the active preset before the re-merge leaves the merge an
+    authored list by construction, so a new device always appends **muted**.
+    Same failure as the `Input` media capability's widened filter, arriving
+    through a widened timeline.
+  - **Display hot-plug joins the iteration** — the other veto point.
+    `ScreenCaptureKitCapturePlugIn` emits no device events at all, so without
+    it displays still need a relaunch. The addition mirrors
+    `DeviceEventReporter` over `CGDisplayRegisterReconfigurationCallback`,
+    reusing the existing event names with `kind=display` — no new vocabulary,
+    but a second plug-in and a second OS notification source in one iteration.
+
+- [x] **Filter macOS's private aggregate out of the monitor picker — decided
+  and built 2026-07-28.** `CADefaultDeviceAggregate-<pid>-0` is
+  created in our own process when `AVAudioEngineMonitor` starts, has output
+  channels, and so joins `outputDevices()` and appears in the master strip's
+  monitor picker moments after monitoring is turned on. **Instrumented before
+  fixing** (five throwaway probes on the development Mac, since removed),
+  which corrected the initial diagnosis: it is an **output** device, never
+  reaches microphone discovery or the connect notification, and so cannot seed
+  a channel strip — it is live today rather than latent behind the device-list
+  gap above, and the fix belongs in `packages/TingraAudio`, not
+  `TingraCapturePlugIns`. The discriminator is the composition dictionary's
+  `private` flag, proven in both directions: macOS's aggregate carries
+  `private = 1`, an Audio MIDI Setup-shaped aggregate carries no `private` key
+  at all, so a user's authored aggregate stays visible. `deviceID(forUID:)`
+  applies the same test as `outputDevices()`. Recorded in ARCHITECTURE.md,
+  "Private aggregate audio devices in the monitor picker".
+
 - [x] **UI components package — deferred (decided 2026-07-28).**
   ARCHITECTURE.md anticipates UI packages under `packages/` in phase 2;
   nothing requires one yet, and none exists. The app's reusable, model-free
@@ -1434,7 +1552,7 @@ or two in the doc that owns them — none need a rewrite.
   is nothing for either to act on until that changes, the same reason the
   monitor path took no CLI surface.
 
-  **Built as recorded, with four facts worth keeping.** (1) **The full-black
+  **Built as recorded, with five facts worth keeping.** (1) **The full-black
   shortcut turned out to be the cheap half of the iteration, not an
   optimization needing justification.** Because `Shot()` is already empty over
   opaque black, "composite nothing" is the *existing* seam call with an empty
@@ -1581,7 +1699,10 @@ or two in the doc that owns them — none need a rewrite.
 
   Tests: TingraPlugInKit 26 → 33, TingraHost 90 → 93,
   TingraGeneratorPlugIns 36 → 37, `apps/tingra` 115 → 123, `tingra-cli` 81 → 85
-  — **772 across 13 targets**, warning-clean, `check-format` clean.
+  — **772 across 13 targets**, warning-clean, `check-format` clean. *(The
+  multi-channel microphone fix that landed in the same commit added two
+  `tapFormat` cases to `TingraCapturePlugIns`, so the tree stood at 774 when
+  this iteration closed.)*
   `integration-test.sh` **not** re-run: the streamed path is untouched
   (`StreamSession`, the pacer, and the providers all unchanged, and the CLI's
   generator resolution still goes through the same

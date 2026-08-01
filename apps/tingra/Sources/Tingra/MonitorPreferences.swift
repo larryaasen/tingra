@@ -32,6 +32,9 @@ struct MonitorPreferences {
     /// The selected output device's UID key.
     private static let deviceKey = "monitor.deviceUID"
 
+    /// The selected output device's cached display name key.
+    private static let deviceNameKey = "monitor.deviceName"
+
     /// The monitor level key.
     private static let levelKey = "monitor.level"
 
@@ -55,6 +58,19 @@ struct MonitorPreferences {
     var deviceUID: String? {
         get { defaults.string(forKey: Self.deviceKey) }
         nonmutating set { defaults.set(newValue, forKey: Self.deviceKey) }
+    }
+
+    /// The selected device's display name as discovery last reported it, or
+    /// nil when nothing is selected.
+    ///
+    /// Cached beside the UID for one reason: the device list arrives
+    /// asynchronously and a chosen device can be unplugged, so the picker
+    /// needs a label for a selection it cannot currently resolve — the
+    /// dormant channel strip's cached name, one path over. It is never the
+    /// device's identity; ``deviceUID`` alone is.
+    var deviceName: String? {
+        get { defaults.string(forKey: Self.deviceNameKey) }
+        nonmutating set { defaults.set(newValue, forKey: Self.deviceNameKey) }
     }
 
     /// The monitor level, `0`...`1` — the operator's own listening volume,

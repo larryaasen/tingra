@@ -91,4 +91,29 @@ struct MonitorPreferencesTests {
         defaults.set(9.0, forKey: "monitor.level")
         #expect(preferences.level == 1)
     }
+
+    @Test("the selected device's name round-trips, so the picker can label an absent selection")
+    func deviceNameRoundTrips() throws {
+        let (preferences, defaults, name) = try makePreferences()
+        defer { defaults.removePersistentDomain(forName: name) }
+
+        #expect(preferences.deviceName == nil)
+
+        preferences.deviceUID = "uid-1"
+        preferences.deviceName = "Vocaster One USB"
+        #expect(MonitorPreferences(defaults: defaults).deviceName == "Vocaster One USB")
+    }
+
+    @Test("deselecting a device clears the cached name with the selection it labelled")
+    func deselectingClearsTheName() throws {
+        let (preferences, defaults, name) = try makePreferences()
+        defer { defaults.removePersistentDomain(forName: name) }
+
+        preferences.deviceUID = "uid-1"
+        preferences.deviceName = "Vocaster One USB"
+
+        preferences.deviceUID = nil
+        preferences.deviceName = nil
+        #expect(MonitorPreferences(defaults: defaults).deviceName == nil)
+    }
 }

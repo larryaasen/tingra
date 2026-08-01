@@ -168,6 +168,16 @@ final class EngineModel {
     /// thing to filter on.
     private(set) var videoInputs: [InputChoice] = []
 
+    /// Every input's name as discovery last reported it, keyed by id — so a
+    /// picker can label a selection whose device has gone away.
+    ///
+    /// A camera that is unplugged **stays selected**, dormant, the way a
+    /// layer bound to an undiscovered input and a strip whose device is absent
+    /// both do. A SwiftUI `Picker` whose selection matches no tag is undefined
+    /// behaviour, though, so keeping the selection requires being able to draw
+    /// it — which is what this name is for (see ``inputName(for:)``).
+    private(set) var lastKnownInputNames: [InputID: String] = [:]
+
     /// The mixer's channel strips — the level, pan, and mute the mixer panel
     /// edits (GLOSSARY.md, "Channel strip"): the active preset's authored
     /// audio channels merged with live discovery (see
@@ -193,6 +203,18 @@ final class EngineModel {
     /// program mix through speakers beside a live microphone is a feedback
     /// howl, so it is opt-in (ARCHITECTURE.md, "The monitor path").
     private(set) var monitorDeviceUID: String?
+
+    /// The selected device's name as discovery last reported it, or nil when
+    /// nothing is selected — the label the master strip's picker shows for a
+    /// selection ``monitorDevices`` cannot currently resolve.
+    ///
+    /// That happens in two situations, and the picker must be able to render
+    /// both: for a moment at launch, before the first device list arrives
+    /// (the list fills asynchronously, while ``monitorDeviceUID`` is restored
+    /// synchronously from preferences), and for as long as a chosen device is
+    /// unplugged — which the app deliberately keeps selected so it resumes on
+    /// its return.
+    private(set) var monitorDeviceName: String?
 
     /// The monitor level — the operator's own listening volume. It scales
     /// only what the monitor plays and never the program mix, so moving it
@@ -600,6 +622,7 @@ final class EngineModel {
         self.monitor = monitor
         self.monitorPreferences = monitorPreferences
         self.monitorDeviceUID = monitorPreferences.deviceUID
+        self.monitorDeviceName = monitorPreferences.deviceName
         self.monitorLevel = monitorPreferences.level
     }
 
@@ -615,10 +638,15 @@ final class EngineModel {
         logSinkTask = eventBus.attach(ConsoleEventSink())
         // Observe the bus for `stream.*` status changes before anything can
         // stream, so no status event is missed (event-driven, never polled).
-        let streamEvents = eventBus.events()
+        // One consumer, two handlers. Attached here — before the plug-ins
+        // activate — so neither a `stream.*` status change nor the session's
+        // first `device.*` event can be missed; a second subscription created
+        // later in this method could not make that promise.
+        let busEvents = eventBus.events()
         streamStatusTask = Task { [weak self] in
-            for await event in streamEvents {
+            for await event in busEvents {
                 self?.handleStreamStatusEvent(event)
+                await self?.handleDeviceEvent(event)
             }
         }
         let context = PlugInContext(
@@ -647,15 +675,7 @@ final class EngineModel {
         // filled before the compositor starts below.
         videoEffectProviders.fill(with: videoProviders)
 
-        let inputs = await registry.allInputs
-        // The camera and display pickers ask a *provenance* question —
-        // "choose a camera" — so they filter on kind; listing a generator
-        // among the cameras would be wrong. The two media-role lists below
-        // ask "what does this produce" and filter on media instead.
-        cameras = inputs.filter { $0.kind == .camera }.map { InputChoice(id: $0.id, name: $0.name, kind: .camera) }
-        displays = inputs.filter { $0.kind == .display }.map { InputChoice(id: $0.id, name: $0.name, kind: .display) }
-        videoInputs = Self.mediaChoices(from: inputs, producing: .video)
-        audioInputs = Self.mediaChoices(from: inputs, producing: .audio)
+        await readDeviceLists()
         loadProject()
         // The strips merge the loaded preset's authored audio channels with
         // discovery — the seed policy (first audio input unmuted) is the
@@ -727,6 +747,93 @@ final class EngineModel {
         await startMonitorDeviceUpdates()
 
         await reconfigure()
+        await reconfigureAudio()
+    }
+
+    // MARK: Device lists
+
+    /// Rebuilds every device list from the input registry.
+    ///
+    /// **From the registry, never from a device event's params** — the whole
+    /// reason this is sound. The capture plug-ins update the registry *before*
+    /// they emit `device.connected`/`device.disconnected`, so a listener
+    /// reacting to the event always sees the registry already reflecting it;
+    /// rebuilding from it therefore cannot drift, and one code path serves
+    /// both boot and every later change. This is what `devices --watch` does
+    /// (ARCHITECTURE.md, "Live device lists in the app").
+    private func readDeviceLists() async {
+        let inputs = await registry.allInputs
+        // The camera and display pickers ask a *provenance* question —
+        // "choose a camera" — so they filter on kind; listing a generator
+        // among the cameras would be wrong. The two media-role lists below
+        // ask "what does this produce" and filter on media instead.
+        cameras = inputs.filter { $0.kind == .camera }
+            .map { InputChoice(id: $0.id, name: $0.name, kind: .camera) }
+            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        displays = inputs.filter { $0.kind == .display }
+            .map { InputChoice(id: $0.id, name: $0.name, kind: .display) }
+            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        videoInputs = Self.mediaChoices(from: inputs, producing: .video)
+        audioInputs = Self.mediaChoices(from: inputs, producing: .audio)
+        rememberInputNames(from: inputs)
+    }
+
+    /// Records every discovered input's current name, so a picker can still
+    /// label a selection whose device has since gone away.
+    ///
+    /// Only ever *adds* — a departed device keeps the name it was last seen
+    /// under, which is exactly when the cache is needed. Session-scoped
+    /// deliberately: a device name is not part of the show, so it never
+    /// enters the project document, and an unknown id simply falls back to the
+    /// raw identifier the way the layer editor's rows already do.
+    ///
+    /// - Parameter inputs: The inputs currently in the registry.
+    private func rememberInputNames(from inputs: [any Input]) {
+        for input in inputs {
+            lastKnownInputNames[input.id] = input.name
+        }
+    }
+
+    /// Refreshes the device lists after a `device.connected` /
+    /// `device.disconnected` event, then reruns both reconfigure passes.
+    ///
+    /// Every other event is ignored, so this shares the bus consumer with the
+    /// stream-status handler at no cost. Device connection and disconnection
+    /// are **normal events, never errors** (CLAUDE.md, Data Flow Rules), so
+    /// there is nothing to surface as a failure — the lists simply change.
+    ///
+    /// - Parameter event: An event drained from the bus.
+    private func handleDeviceEvent(_ event: EventBusEvent) async {
+        guard event.name == "device.connected" || event.name == "device.disconnected" else { return }
+        await readDeviceLists()
+        await refreshMixerStrips()
+        // The video pass stops an input that has left and starts one whose
+        // device has returned; both coalesce, so a burst of arrivals (a dock
+        // carrying a camera and a display) costs one pass each.
+        await reconfigure()
+    }
+
+    /// Re-merges the mixer's strips against the refreshed audio inputs, so a
+    /// departed device's strip goes dormant and a new device appears as a
+    /// strip.
+    ///
+    /// **The active preset is synced first, and that is load-bearing rather
+    /// than tidiness.** It preserves the operator's un-autosaved level, pan,
+    /// and mute edits across the refresh — but more importantly it guarantees
+    /// the merge below is handed an *authored* channel list. Passing `nil`
+    /// would fall through to ``MixerStrip/seed(from:)``, which unmutes the
+    /// first non-generator strip — and unmuting also **starts** the device —
+    /// so a newly connected microphone that happened to sort first by name
+    /// would go live on the program mix, and on any stream, without being
+    /// asked. The seed is a boot-time fallback only; every refresh takes the
+    /// authored path, where a device the preset never authored appends
+    /// **muted** (ARCHITECTURE.md, "Live device lists in the app").
+    private func refreshMixerStrips() async {
+        syncActivePreset()
+        guard let channels = presets.first(where: { $0.id == activePresetID })?.audioChannels else { return }
+        let strips = MixerStrip.strips(channels: channels, discovered: audioInputs)
+        guard strips != mixerStrips else { return }
+        mixerStrips = strips
         await reconfigureAudio()
     }
 
@@ -806,16 +913,21 @@ final class EngineModel {
             }
         }
 
+        // Which inputs still exist at all, so a stop can say *why*. An input
+        // the registry no longer holds was unplugged; one it still holds is
+        // merely no longer referenced. Reporting both as "unreferenced" was a
+        // lie the moment the app started reacting to disconnections.
+        let registeredIDs = Set(await registry.allInputs.map(\.id))
         for (id, input) in activeInputs where desired[id] == nil {
             await input.stop()
             activeInputs[id] = nil
-            // The reason distinguishes an orderly stop from a device that
-            // went away: a video input stops here only because no shot and
-            // no picker still names it.
             eventBus.event(
                 "input.stopped",
                 domain: .capture,
-                params: ["id": .string(id.rawValue), "reason": .string("unreferenced")]
+                params: [
+                    "id": .string(id.rawValue),
+                    "reason": .string(registeredIDs.contains(id) ? "unreferenced" : "disconnected"),
+                ]
             )
         }
         for (id, input) in desired where activeInputs[id] == nil {
@@ -1033,6 +1145,7 @@ final class EngineModel {
     private func startMonitorDeviceUpdates() async {
         let updates = await monitor.deviceUpdates()
         monitorDevices = await monitor.availableDevices()
+        refreshMonitorDeviceName()
         monitorDeviceTask = Task { [weak self] in
             for await devices in updates {
                 await self?.monitorDevicesChanged(devices)
@@ -1053,6 +1166,7 @@ final class EngineModel {
     /// - Parameter devices: The system's output devices now.
     private func monitorDevicesChanged(_ devices: [AudioMonitorDevice]) async {
         monitorDevices = devices
+        refreshMonitorDeviceName()
         guard let uid = monitorDeviceUID else { return }
         let present = devices.contains { $0.uid == uid }
         if present, !isMonitoring {
@@ -1068,6 +1182,23 @@ final class EngineModel {
         }
     }
 
+    /// Refreshes ``monitorDeviceName`` from the current device list, so the
+    /// picker's label for the selection tracks the device's real name.
+    ///
+    /// Only ever *upgrades* the cached name: a device that has gone absent
+    /// keeps the name it was last seen under, because that is exactly when
+    /// the cache is needed. Nothing happens when no device is selected — the
+    /// name is cleared by ``setMonitorDevice(_:)`` instead, alongside the
+    /// selection it labels.
+    private func refreshMonitorDeviceName() {
+        guard let uid = monitorDeviceUID,
+            let name = monitorDevices.first(where: { $0.uid == uid })?.name,
+            name != monitorDeviceName
+        else { return }
+        monitorDeviceName = name
+        monitorPreferences.deviceName = name
+    }
+
     /// Selects the device the operator monitors through, or nil to stop
     /// monitoring. The choice persists in machine-local preferences, never
     /// in the project document.
@@ -1077,6 +1208,8 @@ final class EngineModel {
         guard uid != monitorDeviceUID else { return }
         monitorDeviceUID = uid
         monitorPreferences.deviceUID = uid
+        monitorDeviceName = uid.flatMap { chosen in monitorDevices.first { $0.uid == chosen }?.name }
+        monitorPreferences.deviceName = monitorDeviceName
         guard let uid else {
             guard isMonitoring else { return }
             await monitor.stop()
@@ -1875,13 +2008,16 @@ final class EngineModel {
         videoEffectChoices.first { $0.id == id }?.parameters ?? []
     }
 
-    /// The user-facing name of a discovered input, for the editor's layer
-    /// rows — falls back to the raw identifier for an input that is no
-    /// longer discovered (an edited layer can outlive its device).
+    /// The user-facing name of an input, for the editor's layer rows and for
+    /// a picker's entry for a device that has gone away.
+    ///
+    /// Falls back through the name discovery last reported, then the raw
+    /// identifier — an edited layer, and a picker selection, can both outlive
+    /// their device (see ``lastKnownInputNames``).
     ///
     /// - Parameter id: The input's stable identifier.
     func inputName(for id: InputID) -> String {
-        layerInputChoices.first { $0.id == id }?.name ?? id.rawValue
+        layerInputChoices.first { $0.id == id }?.name ?? lastKnownInputNames[id] ?? id.rawValue
     }
 
     /// Applies one layer-tree edit to the shot currently selected in the

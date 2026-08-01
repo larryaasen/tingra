@@ -7,9 +7,70 @@
 //  SPDX-License-Identifier: MIT
 //
 
+import CoreAudio
 import Testing
 
 @testable import TingraAudio
+
+@Suite("AVAudioEngineMonitor private aggregates")
+struct PrivateAggregateTests {
+    /// The private key as Core Audio spells it.
+    private let privateKey = kAudioAggregateDeviceIsPrivateKey as String
+
+    @Test("macOS's own private aggregate is excluded")
+    func privateAggregateIsExcluded() {
+        // The exact composition shape read off a live
+        // `CADefaultDeviceAggregate-<pid>-0` on real hardware.
+        let composition: [String: Any] = [
+            "name": "CADefaultDeviceAggregate-51472-0",
+            "uid": "CADefaultDeviceAggregate-51472-0",
+            "master": "BuiltInSpeakerDevice",
+            "subdevices": [["uid": "BuiltInSpeakerDevice"]],
+            privateKey: 1,
+        ]
+        #expect(AVAudioEngineMonitor.isPrivateComposition(composition))
+    }
+
+    @Test("a user-created aggregate is kept — it carries no private key at all")
+    func userCreatedAggregateIsKept() {
+        // The shape Audio MIDI Setup produces: no `private` key. Verified by
+        // creating one through `AudioHardwareCreateAggregateDevice`, reading
+        // it back, and destroying it. An operator's own aggregate is a
+        // legitimate thing to monitor through, so it must survive the filter.
+        let composition: [String: Any] = [
+            "name": "Tingra Probe Aggregate",
+            "uid": "com.moonwink.tingra.probe.useraggregate",
+            "master": "BuiltInSpeakerDevice",
+            "subdevices": [["uid": "BuiltInSpeakerDevice"]],
+        ]
+        #expect(!AVAudioEngineMonitor.isPrivateComposition(composition))
+    }
+
+    @Test("an explicit private flag of zero is kept")
+    func explicitZeroIsKept() {
+        #expect(!AVAudioEngineMonitor.isPrivateComposition([privateKey: 0]))
+    }
+
+    @Test("the private flag is read whether Core Audio hands it back as a number or a boolean")
+    func flagIsReadInEitherRepresentation() {
+        // Core Audio's composition dictionary is a CFDictionary bridged to
+        // `Any`, so the flag can arrive as an Int, an NSNumber, or a Bool
+        // depending on how it was written. All three mean the same thing, and
+        // reading only one of them would silently stop filtering.
+        #expect(AVAudioEngineMonitor.isPrivateComposition([privateKey: true]))
+        #expect(AVAudioEngineMonitor.isPrivateComposition([privateKey: NSNumber(value: 1)]))
+        #expect(!AVAudioEngineMonitor.isPrivateComposition([privateKey: false]))
+    }
+
+    @Test("a composition carrying something unreadable in the private slot is kept")
+    func unreadableFlagIsKept() {
+        // Never crash the host over a device property (CLAUDE.md): an
+        // unexpected value means "not known to be private", which keeps a
+        // real device visible rather than hiding it.
+        #expect(!AVAudioEngineMonitor.isPrivateComposition([privateKey: "yes"]))
+        #expect(!AVAudioEngineMonitor.isPrivateComposition([:]))
+    }
+}
 
 @Suite("AudioMonitorDevice")
 struct AudioMonitorDeviceTests {
