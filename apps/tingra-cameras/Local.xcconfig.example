@@ -1,0 +1,21 @@
+//
+//  Local.xcconfig.example
+//  tingra-cameras
+//
+//  Created by Larry Aasen on 2026-08-01.
+//  Copyright © 2026 Larry Aasen.
+//  SPDX-License-Identifier: MIT
+//
+//  Copy this file to `Local.xcconfig` (git-ignored) and set your own Apple
+//  Developer Team ID to build a signed, runnable app. Find it in Xcode under
+//  Settings → Accounts → your account → the Team ID column, or at
+//  developer.apple.com → Membership.
+//
+//  You do not need this to build or test without signing:
+//    xcodebuild build -project tingra-cameras.xcodeproj -scheme tingra-cameras \
+//      -destination 'platform=macOS,arch=arm64' CODE_SIGNING_ALLOWED=NO
+//
+//  You do need it for a build that actually runs, because the camera's TCC
+//  grant is keyed to a stable code signature.
+
+TINGRA_DEVELOPMENT_TEAM = ABCDE12345

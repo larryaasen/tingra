@@ -1,0 +1,2763 @@
+//
+//  EngineModel.swift
+//  tingra-app
+//
+//  Created by Larry Aasen on 2026-07-06.
+//  Copyright © 2026 Larry Aasen.
+//  SPDX-License-Identifier: MIT
+//
+
+import CoreGraphics
+import CoreVideo
+import Observation
+import Synchronization
+import TingraAudio
+import TingraCapturePlugIns
+import TingraComposition
+import TingraEffectPlugIns
+import TingraEventBus
+import TingraGeneratorPlugIns
+import TingraHost
+import TingraOutputPlugIns
+import TingraPlugInKit
+
+/// The app's engine model: the one `@Observable` that boots the host,
+/// activates the first-party plug-ins, and drives the compositor for the
+/// on-screen program preview (roadmap step 6).
+///
+/// It mirrors the CLI's engine wiring (an `InputRegistry`, a `HostClock`, a
+/// `PlugInLoader` activating the same plug-ins through the same
+/// `PlugInContext`) but ends in the ``Compositor`` and an `MTKView` rather
+/// than a streaming service — the app takes shape around the same proven
+/// engine, not a fork of it (GLOSSARY.md, "Engine").
+///
+/// `@MainActor`, per the project's `@Observable` rule: the UI reads its
+/// published input lists and selection directly, and every plug-in and
+/// compositor call is made from here.
+@MainActor
+@Observable
+final class EngineModel {
+    /// One selectable input as the pickers and media-role lists show it.
+    struct InputChoice: Identifiable, Hashable {
+        /// The input's stable identifier.
+        let id: InputID
+
+        /// The user-facing name.
+        let name: String
+
+        /// The input's provenance. Carried beside the name because a couple
+        /// of policies are about *where content comes from* rather than what
+        /// the input produces — chiefly the mixer's seed, which must never
+        /// put a synthesized tone on air by default (see
+        /// ``MixerStrip/seed(from:)``). Deliberately has no default: a
+        /// choice carrying the wrong kind would be silent bad data, and
+        /// every construction site knows the real one.
+        let kind: InputKind
+    }
+
+    /// One registered audio effect as the strip's Add Effect menu offers
+    /// it: the provider's identity and declared parameters, snapshotted
+    /// from the effect registry at boot so the UI never awaits the actor
+    /// per draw.
+    struct AudioEffectChoice: Identifiable, Equatable {
+        /// The effect's stable identifier.
+        let id: EffectID
+
+        /// The user-facing effect name, as the provider declares it
+        /// (runtime data, shown verbatim like a device name).
+        let name: String
+
+        /// The parameters the effect declares, in display order — what
+        /// the chain editor draws sliders from.
+        let parameters: [EffectParameter]
+    }
+
+    /// One registered video effect as the layer editor's Add Effect menu
+    /// offers it — the video mirror of ``AudioEffectChoice``.
+    struct VideoEffectChoice: Identifiable, Equatable {
+        /// The effect's stable identifier.
+        let id: EffectID
+
+        /// The user-facing effect name, as the provider declares it.
+        let name: String
+
+        /// The parameters the effect declares, in display order.
+        let parameters: [EffectParameter]
+    }
+
+    /// The live state of the app's one stream (v1's one-active-session rule),
+    /// derived from the `StreamSession` status events on the bus.
+    enum StreamStatus: Equatable {
+        /// Not streaming.
+        case idle
+
+        /// Connecting and starting to publish — after Start, before the
+        /// service reports `stream.started`.
+        case starting
+
+        /// Live: the program is publishing to the destination.
+        case live
+
+        /// The connection dropped and a reconnect attempt is in flight
+        /// (`attempt` of `maxAttempts`).
+        case reconnecting(attempt: Int, maxAttempts: Int)
+
+        /// The stream stopped cleanly (Stop, or an elapsed duration).
+        case stopped
+
+        /// The stream ended on a failure — a start-time rejection (bad key,
+        /// unreachable host) or a connection lost past the reconnect budget.
+        /// Carries a developer-facing message (never a secret).
+        case error(String)
+    }
+
+    /// A snapshot of the live stream's delivery counters, from a `stream.stats`
+    /// event — what the panel shows beside the Live label.
+    struct StreamStats: Equatable {
+        /// The current send bitrate in kilobits per second.
+        let bitrateKbps: Int
+
+        /// The current delivered frame rate.
+        let fps: Int
+    }
+
+    /// One destination leg's live state, derived from its own share of the
+    /// session's per-leg status events — what each row of the streaming panel
+    /// shows while the program is on air (ARCHITECTURE.md, "Multiple
+    /// destinations").
+    enum DestinationState: Equatable {
+        /// Publishing to this destination.
+        case live
+
+        /// This destination dropped and a reconnect attempt is in flight.
+        case reconnecting(attempt: Int, maxAttempts: Int)
+
+        /// This destination refused the connection at start, so it is not
+        /// being streamed to; the rest of the session is unaffected.
+        case rejected
+
+        /// This destination dropped and was not recovered within its
+        /// reconnect budget. The session continues on the others.
+        case lost
+    }
+
+    /// The discovered cameras, for the camera picker.
+    private(set) var cameras: [InputChoice] = []
+
+    /// The discovered displays, for the display picker.
+    private(set) var displays: [InputChoice] = []
+
+    /// The chosen camera, or nil for none. The display is the full-frame
+    /// background; the camera composites over it as a picture-in-picture.
+    var selectedCameraID: InputID?
+
+    /// The chosen display, or nil for none.
+    var selectedDisplayID: InputID?
+
+    /// Every discovered input that produces **audio**, seeding the mixer's
+    /// channel strips. Filtered on ``Input/media``, not on ``InputKind``:
+    /// the question "can this be a channel strip" is a media question, so an
+    /// audio generator belongs here beside the microphones (see
+    /// ARCHITECTURE.md, "The `Input` media capability").
+    private(set) var audioInputs: [InputChoice] = []
+
+    /// Every discovered input that produces **video**, for the layer-tree
+    /// editor's add-layer choices. Filtered on ``Input/media`` for the same
+    /// reason as ``audioInputs`` — which is what admits the video
+    /// generators the editor had to exclude while `InputKind` was the only
+    /// thing to filter on.
+    private(set) var videoInputs: [InputChoice] = []
+
+    /// Every input's name as discovery last reported it, keyed by id — so a
+    /// picker can label a selection whose device has gone away.
+    ///
+    /// A camera that is unplugged **stays selected**, dormant, the way a
+    /// layer bound to an undiscovered input and a strip whose device is absent
+    /// both do. A SwiftUI `Picker` whose selection matches no tag is undefined
+    /// behaviour, though, so keeping the selection requires being able to draw
+    /// it — which is what this name is for (see ``inputName(for:)``).
+    private(set) var lastKnownInputNames: [InputID: String] = [:]
+
+    /// The mixer's channel strips — the level, pan, and mute the mixer panel
+    /// edits (GLOSSARY.md, "Channel strip"): the active preset's authored
+    /// audio channels merged with live discovery (see
+    /// ``MixerStrip/strips(channels:discovered:)``). Strip edits sync back
+    /// into the active preset and autosave like shot edits, so the mix
+    /// reopens as it was; a strip whose device is absent stays on the panel,
+    /// dormant, until the device returns (ARCHITECTURE.md, "Per-strip
+    /// routing").
+    private(set) var mixerStrips: [MixerStrip] = []
+
+    /// The registered audio effects the strips' Add Effect menus offer,
+    /// in the registry's stable listing order — snapshotted at boot
+    /// (ARCHITECTURE.md, "Audio effect chains").
+    private(set) var audioEffectChoices: [AudioEffectChoice] = []
+
+    /// The audio output devices the monitor picker offers, refreshed from
+    /// the monitor's device-update stream as devices come and go — never
+    /// polled (CLAUDE.md).
+    private(set) var monitorDevices: [AudioMonitorDevice] = []
+
+    /// The device the operator monitors through, or nil for no monitoring —
+    /// the master strip's picker. Nil on a fresh install: monitoring the
+    /// program mix through speakers beside a live microphone is a feedback
+    /// howl, so it is opt-in (ARCHITECTURE.md, "The monitor path").
+    private(set) var monitorDeviceUID: String?
+
+    /// The selected device's name as discovery last reported it, or nil when
+    /// nothing is selected — the label the master strip's picker shows for a
+    /// selection ``monitorDevices`` cannot currently resolve.
+    ///
+    /// That happens in two situations, and the picker must be able to render
+    /// both: for a moment at launch, before the first device list arrives
+    /// (the list fills asynchronously, while ``monitorDeviceUID`` is restored
+    /// synchronously from preferences), and for as long as a chosen device is
+    /// unplugged — which the app deliberately keeps selected so it resumes on
+    /// its return.
+    private(set) var monitorDeviceName: String?
+
+    /// The monitor level — the operator's own listening volume. It scales
+    /// only what the monitor plays and never the program mix, so moving it
+    /// cannot change what viewers hear.
+    private(set) var monitorLevel: Double = MonitorPreferences.defaultLevel
+
+    /// Whether the monitor is currently playing. A selected device that is
+    /// not connected leaves this false while keeping the selection, so the
+    /// master strip can show the difference between "not monitoring" and
+    /// "monitoring through a device that has gone away".
+    private(set) var isMonitoring = false
+
+    /// The registered video effects the layer editor's Add Effect menu
+    /// offers, in the registry's stable listing order — the video mirror
+    /// of ``audioEffectChoices`` (ARCHITECTURE.md, "Per-layer video
+    /// effects").
+    private(set) var videoEffectChoices: [VideoEffectChoice] = []
+
+    /// The destinations the streaming panel edits, persisted in the project
+    /// document (the stream keys are not — they live in secure storage, filed
+    /// by destination id; see ARCHITECTURE.md, "Streaming the program" and
+    /// "Multiple destinations"). Empty until the operator adds one.
+    ///
+    /// Going live fans the one program out to every enabled destination with
+    /// a usable URL, as one session with one leg each.
+    private(set) var destinations: [DestinationEdit] = []
+
+    /// Whether at least one destination is ready to stream — what the Start
+    /// control enables on.
+    var hasStreamableDestination: Bool {
+        destinations.contains(where: \.isStreamable)
+    }
+
+    /// The live streaming status, driven entirely by the `stream.*` events on
+    /// the bus (never a poll) — what the Start/Stop control reflects.
+    private(set) var streamStatus: StreamStatus = .idle
+
+    /// The latest delivery stats from the last `stream.stats` event while
+    /// live, or nil when not streaming — the panel shows them beside the Live
+    /// label. Event-driven, like ``streamStatus``. With several destinations
+    /// this is the **first live leg's**, never an average across legs that
+    /// describes none of them; each leg's own is in ``destinationStats``.
+    private(set) var streamStats: StreamStats?
+
+    /// Each streaming destination's latest delivery stats, keyed by
+    /// destination id — what the panel's per-destination rows show. Driven by
+    /// the session's per-leg `stream.stats` events; cleared when the stream
+    /// ends.
+    private(set) var destinationStats: [ProjectDestinationID: StreamStats] = [:]
+
+    /// Each streaming destination's live state, keyed by destination id —
+    /// how a row shows that one destination is reconnecting or gone while the
+    /// others stay live. Empty when not streaming.
+    private(set) var destinationStates: [ProjectDestinationID: DestinationState] = [:]
+
+    /// Whether a stream is currently starting, live, or reconnecting — so the
+    /// control shows Stop and the destination fields lock.
+    var isStreaming: Bool {
+        switch streamStatus {
+        case .starting, .live, .reconnecting: return true
+        case .idle, .stopped, .error: return false
+        }
+    }
+
+    /// The project's presets, in switcher order — what the preset switcher
+    /// lists (ARCHITECTURE.md, "Multiple presets in the UI"). The active
+    /// preset's entry is refreshed from the live ``shots`` by
+    /// ``syncActivePreset()`` before every save, switch, and duplicate.
+    private(set) var presets: [Preset] = []
+
+    /// The id of the active preset — the one the shot switcher and the
+    /// layer-tree editor operate within, highlighted in the preset switcher.
+    /// Session state, like the active shot: at launch the app adopts the
+    /// document's first preset, never a persisted "active" field.
+    private(set) var activePresetID: PresetID?
+
+    /// The active preset's shots, in switcher order — what the shot switcher
+    /// lists (roadmap step 7). The live session copy: edits land here (and in
+    /// the compositor) first, and flow back into ``presets`` on save/switch.
+    private(set) var shots: [Shot] = []
+
+    /// The id of the shot currently on program, so the switcher can highlight
+    /// it. `nil` when there are no shots (no input selected).
+    private(set) var activeShotID: ShotID?
+
+    /// The id of the shot staged on preview, or `nil` when nothing is staged
+    /// — the staging bus's selection, mirrored from the compositor so the
+    /// preview row can highlight it. Session state: what is staged when the
+    /// app quits is not part of the show, so it never enters the project
+    /// document (ARCHITECTURE.md, "The preview bus").
+    private(set) var previewShotID: ShotID?
+
+    /// Whether the program is faded to black — picture *and* sound
+    /// (GLOSSARY.md, "Fade to black"). The **latch**, so it flips the moment
+    /// the operator acts rather than tracking either ramp: the button's state
+    /// and the program monitor's badge both read it, and neither should lag a
+    /// half-second behind the click.
+    ///
+    /// Session state, deliberately: it never enters the project document, so
+    /// a show never reopens black (ARCHITECTURE.md, "Fade to black").
+    private(set) var isFadedToBlack = false
+
+    /// The inputs the engine is currently running, in name order — the
+    /// multiview's tiles (GLOSSARY.md, "Multiview").
+    ///
+    /// Exactly what is running, never what is merely discovered: opening a
+    /// monitoring window must not start a device, and a camera indicator
+    /// lighting up because the operator opened a window would be a defect.
+    /// A running input that has not delivered its first frame yet still
+    /// gets a tile — a black one carrying its name — so tiles do not pop in.
+    private(set) var multiviewInputs: [InputChoice] = []
+
+    /// The inputs contributing to what is on program, for the multiview
+    /// tiles' **tally** lamps (GLOSSARY.md, "Tally"). Mirrored from
+    /// ``Compositor/programInputIDs``, which unions the outgoing shot's
+    /// inputs while a transition is in progress.
+    private(set) var programInputIDs: Set<InputID> = []
+
+    /// The inputs contributing to the shot staged on preview — the green
+    /// half of the tally (see ``programInputIDs``). Derived from the
+    /// compositor's staged shot; transitions are program-only, so there is
+    /// nothing to union here.
+    private(set) var previewInputIDs: Set<InputID> = []
+
+    /// The shot currently selected in the switcher — the one the layer-tree
+    /// editor edits. `nil` when there are no shots.
+    var activeShot: Shot? {
+        shots.first { $0.id == activeShotID }
+    }
+
+    /// The discovered inputs producing the given media, in a stable
+    /// name order so a picker does not reshuffle when another device
+    /// connects (`InputRegistry.allInputs` is dictionary-ordered).
+    ///
+    /// - Parameters:
+    ///   - inputs: The discovered inputs to filter.
+    ///   - media: The media a choice must produce to be included.
+    /// - Returns: The matching inputs as view-facing choices.
+    nonisolated static func mediaChoices(
+        from inputs: [any Input],
+        producing media: InputMedia
+    ) -> [InputChoice] {
+        inputs
+            .filter { $0.media.contains(media) }
+            .map { InputChoice(id: $0.id, name: $0.name, kind: $0.kind) }
+            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
+    /// The inputs a new layer can bind to: everything that produces video.
+    /// Generators are in — the exclusion that stood here was never about
+    /// generators as such, only about `InputKind` being unable to say
+    /// whether one produced video or audio (see ARCHITECTURE.md, "The
+    /// `Input` media capability").
+    var layerInputChoices: [InputChoice] {
+        videoInputs
+    }
+
+    /// The transition kind the next shot switcher tap takes with
+    /// (GLOSSARY.md, "Transition") — session state bound from `ContentView`'s
+    /// transition picker, never part of the saved document. Starts on
+    /// ``TakeTransitionKind/default``, so each take resolves the taken shot's
+    /// own ``Shot/defaultTransition`` until the operator overrides it with an
+    /// explicit kind (ARCHITECTURE.md, "Per-shot default transitions"). The
+    /// switcher itself still always reports the choice it used, never guesses
+    /// at intent.
+    var takeTransitionKind: TakeTransitionKind = .default
+
+    /// The frame edge the next wipe reveals the incoming shot from — session
+    /// state bound from the switcher's edge picker, read only while
+    /// ``takeTransitionKind`` is ``TakeTransitionKind/wipe``.
+    var wipeEdge: WipeEdge = .left
+
+    /// The built-in shader the next shader transition reveals the incoming
+    /// shot with — session state bound from the switcher's shader picker,
+    /// read only while ``takeTransitionKind`` is
+    /// ``TakeTransitionKind/shader``.
+    var shaderName: TransitionShader = .iris
+
+    /// The latest program frame, handed to the preview view to draw. Held
+    /// in a plain relay (not observed) so the ~30 fps program does not churn
+    /// SwiftUI — the `MTKView` samples it at display rate (CLOCK.md).
+    @ObservationIgnored let programRelay = ProgramFrameRelay()
+
+    /// The latest preview frame, for the preview monitor to sample at display
+    /// cadence — the program relay's twin, one bus over (GLOSSARY.md,
+    /// "Preview").
+    @ObservationIgnored let previewRelay = ProgramFrameRelay()
+
+    /// The latest mix tick's meter readings, handed to the strip meters to
+    /// draw — the audio mirror of ``programRelay``: the meter drain writes
+    /// it, each ``StripMeter`` samples it at display cadence, and no reading
+    /// passes through SwiftUI observation (ARCHITECTURE.md, "Per-strip
+    /// meters").
+    @ObservationIgnored let meterRelay = MeterRelay()
+
+    /// The host event bus. In this dev scaffold its events are printed to
+    /// stdout (the Xcode console) via ``ConsoleEventSink`` rather than routed
+    /// to OSLog, which does not surface in Xcode's debug console.
+    ///
+    /// Not `private`: every `tap` event is reported by the UI code that
+    /// executes the action (a `Button`'s action closure, a picker's
+    /// `onChange`), not by the model on the view's behalf — so `ContentView`
+    /// calls `model.eventBus.tap(...)` directly (EVENTS.md, "The `tap`
+    /// convention").
+    @ObservationIgnored let eventBus = EventBus()
+
+    /// The master clock (see CLOCK.md).
+    @ObservationIgnored private let clock = HostClock()
+
+    /// The input registry the plug-ins register into.
+    @ObservationIgnored private lazy var registry = InputRegistry(eventBus: eventBus)
+
+    /// The output registry the streaming plug-in registers into — the same
+    /// seam the CLI resolves a destination scheme against
+    /// (`OutputRegistry.provider(forScheme:)`).
+    @ObservationIgnored private let outputs = OutputRegistry()
+
+    /// The effect registry the effect plug-in registers into — where a
+    /// strip's persisted chain resolves each `EffectID` to its provider
+    /// (ARCHITECTURE.md, "The effect seam").
+    @ObservationIgnored private let effects = EffectRegistry()
+
+    /// The host's Keychain-backed secret store: the stream key lives only
+    /// here, keyed by the destination URL — never the project document, never
+    /// an event, never a log (CLAUDE.md, "Error Handling").
+    @ObservationIgnored private let secureStorage: any SecureStorage = KeychainSecureStorage()
+
+    /// The active stream session, or nil when not streaming (v1's one active
+    /// session — GLOSSARY.md, "Session").
+    @ObservationIgnored private var streamSession: StreamSession?
+
+    /// The task running the active session's `run()`, retained so its outcome
+    /// resolves the status and cleans up.
+    @ObservationIgnored private var streamTask: Task<Void, Never>?
+
+    /// The continuation feeding the active session its program video: the one
+    /// program drain (``programTask``) tees each composited frame here while a
+    /// stream is live, so streaming reuses the same program the preview shows
+    /// without opening a second `Compositor.programFrames()` consumer.
+    @ObservationIgnored private var streamContinuation: AsyncStream<CapturedFrame>.Continuation?
+
+    /// The continuation feeding the active session its program audio: the one
+    /// program-audio drain (``programAudioTask``) tees each mixed block here
+    /// while a stream is live — the audio mirror of ``streamContinuation``.
+    @ObservationIgnored private var streamAudioContinuation: AsyncStream<CapturedAudio>.Continuation?
+
+    /// The task observing the bus for `stream.*` status events — the stream
+    /// status is event-driven, never polled.
+    @ObservationIgnored private var streamStatusTask: Task<Void, Never>?
+
+    /// The program geometry and rate.
+    @ObservationIgnored private let format = ProgramFormat(width: 1920, height: 1080, frameRate: 30)
+
+    /// Whether the project's presets exist yet — loaded from the project file
+    /// in ``start()``, or seeded from ``ProgramLayout`` on the first
+    /// configuration pass. Nothing saves before they do.
+    private var hasSessionPreset: Bool { !presets.isEmpty }
+
+    /// The store the project document loads from and autosaves to.
+    @ObservationIgnored private let store = ProjectStore()
+
+    /// The pending debounced autosave, if any — each edit restarts the delay
+    /// so a slider drag coalesces into one write (see ``scheduleAutosave()``).
+    @ObservationIgnored private var autosaveTask: Task<Void, Never>?
+
+    /// The camera currently cast in the built-in camera role — the device the
+    /// preset's camera-bound layers were last bound to. A camera picker
+    /// change rebinds this device's layers to the new choice; picking "None"
+    /// parks it (the input stops, the layers keep their binding). Nil when no
+    /// camera has ever been cast (its layers are edited manually instead).
+    @ObservationIgnored private var boundCameraID: InputID?
+
+    /// The display currently cast in the built-in display role (see
+    /// ``boundCameraID``).
+    @ObservationIgnored private var boundDisplayID: InputID?
+
+    /// The video effect providers the renderer resolves layer chains
+    /// against — filled at boot from the effect registry, before the
+    /// compositor starts.
+    @ObservationIgnored private let videoEffectProviders = VideoEffectProviderBox()
+
+    /// The compositor producing the program frames. Its renderer resolves
+    /// each layer's authored chain through ``videoEffectProviders``, so
+    /// `TingraComposition` never depends on the host's effect registry
+    /// (ARCHITECTURE.md, "Per-layer video effects").
+    @ObservationIgnored private lazy var compositor = Compositor(
+        clock: clock,
+        format: format,
+        eventBus: eventBus,
+        makeRenderer: { [videoEffectProviders] in
+            CoreImageShotRenderer { configuration in
+                videoEffectProviders.provider(for: configuration.effect)?
+                    .makeEffect(parameters: configuration.parameters)
+            }
+        }
+    )
+
+    /// The mixer producing the program audio — every unmuted strip's device
+    /// combined into the program mix on the same master clock that paces the
+    /// compositor (GLOSSARY.md, "Mixer"; ARCHITECTURE.md, "The audio mixer").
+    @ObservationIgnored private lazy var mixer = AudioMixer(clock: clock, eventBus: eventBus)
+
+    /// The monitor: the engine's audio output path, playing the program mix
+    /// to the operator's chosen device (GLOSSARY.md, "Monitor"). A **sink**
+    /// on the program-audio drain's tee, never a second bus — so nothing it
+    /// does can change what viewers hear (ARCHITECTURE.md, "The monitor
+    /// path"). Nothing opens until a device is chosen.
+    @ObservationIgnored private let monitor: any AudioMonitor
+
+    /// Where the monitor's device and level persist: machine-local
+    /// preferences, not the project document (a project carried to another
+    /// Mac would name a device that does not exist) and not session state
+    /// (headphones do not change between launches).
+    @ObservationIgnored private let monitorPreferences: MonitorPreferences
+
+    /// The task draining the monitor's device-list updates, so a device
+    /// connected or disconnected reaches the picker as an event rather than
+    /// a poll (CLAUDE.md).
+    @ObservationIgnored private var monitorDeviceTask: Task<Void, Never>?
+
+    /// The console sink's drain task, retained so the sink keeps consuming
+    /// the bus for the app's lifetime.
+    @ObservationIgnored private var logSinkTask: Task<Void, Never>?
+
+    /// The inputs currently started, keyed by id, so selection changes start
+    /// and stop only what actually changed.
+    @ObservationIgnored private var activeInputs: [InputID: any Input] = [:]
+
+    /// The audio inputs currently started for the mixer's unmuted strips,
+    /// keyed by id — muting a strip stops its device (the microphone
+    /// indicator goes dark), unmuting starts it again.
+    @ObservationIgnored private var activeAudioInputs: [InputID: any Input] = [:]
+
+    /// The task draining the compositor's program stream into the relay.
+    @ObservationIgnored private var programTask: Task<Void, Never>?
+
+    /// The task draining the compositor's preview frames into the preview
+    /// relay. Unlike the program drain it tees nowhere: nothing on preview is
+    /// visible to viewers (GLOSSARY.md, "Preview"), so it never reaches a
+    /// stream or recording sink.
+    @ObservationIgnored private var previewTask: Task<Void, Never>?
+
+    /// The task draining the mixer's program-audio stream, teeing each mixed
+    /// block into the active session while a stream is live (there is no
+    /// audio preview yet — that monitoring slice is a later iteration).
+    @ObservationIgnored private var programAudioTask: Task<Void, Never>?
+
+    /// The task draining the mixer's meter stream into ``meterRelay`` — one
+    /// reading per mix tick, display data only, never the event bus
+    /// (EVENTS.md, control plane only).
+    @ObservationIgnored private var meterTask: Task<Void, Never>?
+
+    /// The pending one-shot tally refresh for a transition in flight, if
+    /// any (see ``scheduleTallyRefresh(after:)``).
+    @ObservationIgnored private var tallyRefreshTask: Task<Void, Never>?
+
+    /// Whether ``start()`` has run, so it boots the engine once.
+    @ObservationIgnored private var started = false
+
+    /// The display selection the last ``applyConfiguration()`` pass applied,
+    /// so a pass can tell a selection change (rebind the built-in role's
+    /// layers) from a layer-tree edit (only sync inputs).
+    @ObservationIgnored private var appliedDisplayID: InputID?
+
+    /// The camera selection the last ``applyConfiguration()`` pass applied
+    /// (see ``appliedDisplayID``).
+    @ObservationIgnored private var appliedCameraID: InputID?
+
+    /// Whether any ``applyConfiguration()`` pass has completed, so the first
+    /// pass always counts as a selection change and establishes the session
+    /// preset even when nothing is selected (a background-only program).
+    @ObservationIgnored private var hasAppliedConfiguration = false
+
+    /// Whether a ``reconfigure()`` pass is currently running. `reconfigure()`
+    /// suspends at `input.start()`/`stop()`, so without this guard the
+    /// startup selection changes (two `onChange` handlers) and the explicit
+    /// boot call would interleave and race the input start/stop.
+    @ObservationIgnored private var reconfiguring = false
+
+    /// Set whenever a reconfigure is requested while one is already running,
+    /// so the running pass loops once more and applies the latest selection —
+    /// coalescing a burst of requests into the minimum number of passes.
+    @ObservationIgnored private var reconfigureRequested = false
+
+    /// Whether a ``reconfigureAudio()`` pass is currently running — the audio
+    /// mirror of ``reconfiguring``, guarding the strip devices' start/stop.
+    @ObservationIgnored private var reconfiguringAudio = false
+
+    /// Set whenever an audio reconfigure is requested while one is already
+    /// running (see ``reconfigureRequested``).
+    @ObservationIgnored private var audioReconfigureRequested = false
+
+    /// Creates the model. The engine boots in ``start()`` when the window
+    /// appears, not here.
+    ///
+    /// - Parameters:
+    ///   - monitor: The audio output path the operator monitors through
+    ///     (the real `AVAudioEngine`-backed one by default; a double in
+    ///     tests, so no audio hardware is needed).
+    ///   - monitorPreferences: Where the monitor device and level persist.
+    init(
+        monitor: any AudioMonitor = AVAudioEngineMonitor(),
+        monitorPreferences: MonitorPreferences = MonitorPreferences()
+    ) {
+        self.monitor = monitor
+        self.monitorPreferences = monitorPreferences
+        self.monitorDeviceUID = monitorPreferences.deviceUID
+        self.monitorDeviceName = monitorPreferences.deviceName
+        self.monitorLevel = monitorPreferences.level
+    }
+
+    /// Boots the engine: attaches the log sink, activates the capture and
+    /// generator plug-ins, discovers inputs, starts the compositor, and
+    /// begins feeding the preview. Idempotent.
+    func start() async {
+        guard !started else { return }
+        started = true
+
+        // Print events to the Xcode console (stdout) rather than OSLog, which
+        // does not appear in Xcode's debug console (see ``ConsoleEventSink``).
+        logSinkTask = eventBus.attach(ConsoleEventSink())
+        // Observe the bus for `stream.*` status changes before anything can
+        // stream, so no status event is missed (event-driven, never polled).
+        // One consumer, two handlers. Attached here — before the plug-ins
+        // activate — so neither a `stream.*` status change nor the session's
+        // first `device.*` event can be missed; a second subscription created
+        // later in this method could not make that promise.
+        let busEvents = eventBus.events()
+        streamStatusTask = Task { [weak self] in
+            for await event in busEvents {
+                self?.handleStreamStatusEvent(event)
+                await self?.handleDeviceEvent(event)
+            }
+        }
+        let context = PlugInContext(
+            eventBus: eventBus,
+            clock: clock,
+            inputs: registry,
+            outputs: outputs,
+            effects: effects,
+            tools: UnusedToolRegistering()
+        )
+        await PlugInLoader().activate(
+            [
+                AVFoundationCapturePlugIn(), ScreenCaptureKitCapturePlugIn(), GeneratorPlugIn(),
+                HaishinKitOutputPlugIn(), EffectPlugIn(),
+            ],
+            in: context
+        )
+        audioEffectChoices = await effects.allAudioProviders.map {
+            AudioEffectChoice(id: $0.id, name: $0.name, parameters: $0.parameters)
+        }
+        let videoProviders = await effects.allVideoProviders
+        videoEffectChoices = videoProviders.map {
+            VideoEffectChoice(id: $0.id, name: $0.name, parameters: $0.parameters)
+        }
+        // The renderer resolves layer chains against this snapshot; it is
+        // filled before the compositor starts below.
+        videoEffectProviders.fill(with: videoProviders)
+
+        await readDeviceLists()
+        loadProject()
+        // The strips merge the loaded preset's authored audio channels with
+        // discovery — the seed policy (first audio input unmuted) is the
+        // fallback when the document authored none (a fresh project, or one
+        // written before routing landed).
+        mixerStrips = MixerStrip.strips(
+            channels: presets.first { $0.id == activePresetID }?.audioChannels,
+            discovered: audioInputs
+        )
+
+        let program = compositor.programFrames()
+        // The preview consumer is attached from boot; the compositor renders
+        // the second pass only once a shot is actually staged, so an idle
+        // preview costs nothing (ARCHITECTURE.md, "The preview bus").
+        let preview = compositor.previewFrames()
+        compositor.start()
+        previewTask = Task { [weak self] in
+            for await frame in preview {
+                self?.previewRelay.latest = frame.pixelBuffer
+            }
+        }
+        programTask = Task { [weak self] in
+            var sawFrame = false
+            for await frame in program {
+                self?.programRelay.latest = frame.pixelBuffer
+                // While a stream is live, tee the same program frame into the
+                // session — one program drain feeds both the preview and the
+                // stream, so the compositor's single-consumer contract holds.
+                self?.streamContinuation?.yield(frame)
+                if !sawFrame {
+                    sawFrame = true
+                    // A one-time milestone (not per-frame traffic): confirms the
+                    // compositor is producing program frames into the preview
+                    // relay at all — the background canvas ticks from the first
+                    // frame even before an input delivers.
+                    self?.eventBus.event("preview.firstFrame", domain: .composition)
+                }
+            }
+        }
+
+        // The program mix runs from boot like the compositor — a live canvas
+        // of silence until a strip's device delivers. Its one drain tees each
+        // mixed block into the session while a stream is live and into the
+        // monitor while the operator is listening (the audio mirror of the
+        // program-frame drain above). Both are leaves on the same tee, so
+        // neither can alter the mix the other receives.
+        let programAudio = mixer.programAudio()
+        let monitor = self.monitor
+        mixer.start()
+        programAudioTask = Task { [weak self] in
+            for await block in programAudio {
+                self?.streamAudioContinuation?.yield(block)
+                await monitor.play(block)
+            }
+        }
+
+        // The meters ride the same mix tick: one pre-fader reading per strip
+        // and the post-fader master reading per block, into the relay the
+        // meters sample at display cadence — per-block data, never the event
+        // bus (EVENTS.md).
+        let meters = mixer.meterReadings()
+        meterTask = Task { [weak self] in
+            for await block in meters {
+                self?.meterRelay.latest = block.strips
+                self?.meterRelay.master = block.master
+            }
+        }
+
+        await startMonitorDeviceUpdates()
+
+        await reconfigure()
+        await reconfigureAudio()
+    }
+
+    // MARK: Device lists
+
+    /// Rebuilds every device list from the input registry.
+    ///
+    /// **From the registry, never from a device event's params** — the whole
+    /// reason this is sound. The capture plug-ins update the registry *before*
+    /// they emit `device.connected`/`device.disconnected`, so a listener
+    /// reacting to the event always sees the registry already reflecting it;
+    /// rebuilding from it therefore cannot drift, and one code path serves
+    /// both boot and every later change. This is what `devices --watch` does
+    /// (ARCHITECTURE.md, "Live device lists in the app").
+    private func readDeviceLists() async {
+        let inputs = await registry.allInputs
+        // The camera and display pickers ask a *provenance* question —
+        // "choose a camera" — so they filter on kind; listing a generator
+        // among the cameras would be wrong. The two media-role lists below
+        // ask "what does this produce" and filter on media instead.
+        cameras = inputs.filter { $0.kind == .camera }
+            .map { InputChoice(id: $0.id, name: $0.name, kind: .camera) }
+            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        displays = inputs.filter { $0.kind == .display }
+            .map { InputChoice(id: $0.id, name: $0.name, kind: .display) }
+            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        videoInputs = Self.mediaChoices(from: inputs, producing: .video)
+        audioInputs = Self.mediaChoices(from: inputs, producing: .audio)
+        rememberInputNames(from: inputs)
+    }
+
+    /// Records every discovered input's current name, so a picker can still
+    /// label a selection whose device has since gone away.
+    ///
+    /// Only ever *adds* — a departed device keeps the name it was last seen
+    /// under, which is exactly when the cache is needed. Session-scoped
+    /// deliberately: a device name is not part of the show, so it never
+    /// enters the project document, and an unknown id simply falls back to the
+    /// raw identifier the way the layer editor's rows already do.
+    ///
+    /// - Parameter inputs: The inputs currently in the registry.
+    private func rememberInputNames(from inputs: [any Input]) {
+        for input in inputs {
+            lastKnownInputNames[input.id] = input.name
+        }
+    }
+
+    /// Refreshes the device lists after a `device.connected` /
+    /// `device.disconnected` event, then reruns both reconfigure passes.
+    ///
+    /// Every other event is ignored, so this shares the bus consumer with the
+    /// stream-status handler at no cost. Device connection and disconnection
+    /// are **normal events, never errors** (CLAUDE.md, Data Flow Rules), so
+    /// there is nothing to surface as a failure — the lists simply change.
+    ///
+    /// - Parameter event: An event drained from the bus.
+    private func handleDeviceEvent(_ event: EventBusEvent) async {
+        guard event.name == "device.connected" || event.name == "device.disconnected" else { return }
+        await readDeviceLists()
+        await refreshMixerStrips()
+        // The video pass stops an input that has left and starts one whose
+        // device has returned; both coalesce, so a burst of arrivals (a dock
+        // carrying a camera and a display) costs one pass each.
+        await reconfigure()
+    }
+
+    /// Re-merges the mixer's strips against the refreshed audio inputs, so a
+    /// departed device's strip goes dormant and a new device appears as a
+    /// strip.
+    ///
+    /// **The active preset is synced first, and that is load-bearing rather
+    /// than tidiness.** It preserves the operator's un-autosaved level, pan,
+    /// and mute edits across the refresh — but more importantly it guarantees
+    /// the merge below is handed an *authored* channel list. Passing `nil`
+    /// would fall through to ``MixerStrip/seed(from:)``, which unmutes the
+    /// first non-generator strip — and unmuting also **starts** the device —
+    /// so a newly connected microphone that happened to sort first by name
+    /// would go live on the program mix, and on any stream, without being
+    /// asked. The seed is a boot-time fallback only; every refresh takes the
+    /// authored path, where a device the preset never authored appends
+    /// **muted** (ARCHITECTURE.md, "Live device lists in the app").
+    private func refreshMixerStrips() async {
+        syncActivePreset()
+        guard let channels = presets.first(where: { $0.id == activePresetID })?.audioChannels else { return }
+        let strips = MixerStrip.strips(channels: channels, discovered: audioInputs)
+        guard strips != mixerStrips else { return }
+        mixerStrips = strips
+        await reconfigureAudio()
+    }
+
+    /// Applies the current camera and display selection to the engine.
+    ///
+    /// Called from the view whenever a picker changes, and once at boot. It
+    /// **coalesces**: only one pass runs at a time (the pass suspends at
+    /// `input.start()`/`stop()`), and a request arriving mid-pass makes the
+    /// running pass loop once more with the latest selection — so a burst of
+    /// requests never overlaps and races the input start/stop.
+    func reconfigure() async {
+        reconfigureRequested = true
+        guard !reconfiguring else { return }
+        reconfiguring = true
+        defer { reconfiguring = false }
+        while reconfigureRequested {
+            reconfigureRequested = false
+            await applyConfiguration()
+        }
+    }
+
+    /// One reconfigure pass: rebinds the built-in roles when the
+    /// camera/display **selection** changed since the last pass, then starts
+    /// newly needed inputs, stops no-longer-needed ones, and hands the active
+    /// set to the compositor. A selection change never rebuilds the shots —
+    /// layers bound to the previously cast device rebind to the new choice,
+    /// so layer-tree edits survive (see ARCHITECTURE.md, "Project
+    /// save/load"); on the first pass it instead establishes the session
+    /// preset (loading it into the compositor, seeding a fresh project when
+    /// no file supplied one).
+    ///
+    /// An input that cannot start (authorization denied, device gone) is
+    /// reported on the bus and left out — the program keeps showing whatever
+    /// else is available, never a failure state.
+    private func applyConfiguration() async {
+        let selectionChanged =
+            !hasAppliedConfiguration || selectedDisplayID != appliedDisplayID || selectedCameraID != appliedCameraID
+
+        // A picker change recasts which device plays the built-in role,
+        // before the desired-input computation below so the new device starts
+        // and the old one stops in this same pass. Picking "None" parks the
+        // role's device: no rebind, the layers keep their binding.
+        if selectionChanged, hasAppliedConfiguration {
+            var edited = false
+            if let camera = selectedCameraID, camera != boundCameraID {
+                edited = rebindLayers(from: boundCameraID, to: camera) || edited
+                boundCameraID = camera
+            }
+            if let display = selectedDisplayID, display != boundDisplayID {
+                edited = rebindLayers(from: boundDisplayID, to: display) || edited
+                boundDisplayID = display
+            }
+            if edited { scheduleAutosave() }
+        }
+
+        var desired: [InputID: any Input] = [:]
+        if let displayID = selectedDisplayID, let input = await registry.input(withID: displayID) {
+            desired[displayID] = input
+        }
+        if let cameraID = selectedCameraID, let input = await registry.input(withID: cameraID) {
+            desired[cameraID] = input
+        }
+        // Keep every input the active preset's layer trees reference running
+        // — plus whatever the program is actually rendering, which after a
+        // preset switch can be a held snapshot from outside the loaded pool
+        // (see ``switchPreset(to:)``) — except a role's device parked by its
+        // picker's "None": a stopped input's layers keep their binding and
+        // simply contribute nothing (the same semantic as a disconnected
+        // device).
+        var referenced = Set(shots.flatMap { $0.layers.map(\.input) })
+        referenced.formUnion(compositor.programShot.layers.map(\.input))
+        if selectedCameraID == nil, let boundCameraID { referenced.remove(boundCameraID) }
+        if selectedDisplayID == nil, let boundDisplayID { referenced.remove(boundDisplayID) }
+        for id in referenced where desired[id] == nil {
+            if let input = await registry.input(withID: id) {
+                desired[id] = input
+            }
+        }
+
+        // Which inputs still exist at all, so a stop can say *why*. An input
+        // the registry no longer holds was unplugged; one it still holds is
+        // merely no longer referenced. Reporting both as "unreferenced" was a
+        // lie the moment the app started reacting to disconnections.
+        let registeredIDs = Set(await registry.allInputs.map(\.id))
+        for (id, input) in activeInputs where desired[id] == nil {
+            await input.stop()
+            activeInputs[id] = nil
+            eventBus.event(
+                "input.stopped",
+                domain: .capture,
+                params: [
+                    "id": .string(id.rawValue),
+                    "reason": .string(registeredIDs.contains(id) ? "unreferenced" : "disconnected"),
+                ]
+            )
+        }
+        for (id, input) in desired where activeInputs[id] == nil {
+            do {
+                try await input.start()
+                activeInputs[id] = input
+                eventBus.event(
+                    "input.started",
+                    domain: .capture,
+                    params: ["id": .string(id.rawValue), "name": .string(input.name)]
+                )
+            } catch {
+                eventBus.error(
+                    "input.start",
+                    domain: .capture,
+                    params: [
+                        "id": .string(id.rawValue),
+                        "error": .string(String(describing: error)),
+                    ]
+                )
+            }
+        }
+
+        compositor.setInputs(Array(activeInputs.values))
+        // Multiview tiles exactly what is running — never what is merely
+        // discovered — in a stable name order, so a tile does not jump when
+        // another device connects. A tile shows picture, so the filter is
+        // the media question: everything running that produces video, which
+        // now includes the video generators (ARCHITECTURE.md, "The `Input`
+        // media capability").
+        multiviewInputs =
+            activeInputs.values
+            .filter { $0.media.contains(.video) }
+            .map { InputChoice(id: $0.id, name: $0.name, kind: $0.kind) }
+            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        // A rebind above can have changed which input a layer names.
+        syncTally()
+        eventBus.event(
+            "compositor.inputs",
+            domain: .composition,
+            params: ["ids": .string(activeInputs.keys.map(\.rawValue).sorted().joined(separator: ","))]
+        )
+        if selectionChanged {
+            appliedDisplayID = selectedDisplayID
+            appliedCameraID = selectedCameraID
+            if !hasAppliedConfiguration {
+                hasAppliedConfiguration = true
+                establishSessionPreset()
+            }
+        }
+    }
+
+    // MARK: Multiview
+
+    /// One input's latest frame, for a multiview tile to draw.
+    ///
+    /// A straight forward to ``Compositor/latestFrame(forInput:)`` — the
+    /// slot the compositor already holds, shared read-only for one draw
+    /// (ARCHITECTURE.md, "Frame ownership across the `Input` seam", clause
+    /// 4). The tile pulls it on its own draw at display cadence, so a
+    /// multiview window nobody has open costs the engine nothing at all.
+    ///
+    /// - Parameter id: The input to read.
+    /// - Returns: The input's most recent pixel buffer, or nil when it is
+    ///   not running or has not delivered one yet.
+    func latestFrame(forInput id: InputID) -> CVPixelBuffer? {
+        compositor.latestFrame(forInput: id)?.pixelBuffer
+    }
+
+    /// Re-reads the tally from the compositor: which inputs are on program,
+    /// and which are on the staged shot.
+    ///
+    /// Called from every place the app changes the program, the staged
+    /// shot, or a shot's layer bindings — the same call sites that already
+    /// mirror ``Compositor/activeShotID``/``Compositor/previewShotID`` back
+    /// from the compositor, so the tally is read from the engine rather
+    /// than second-guessed here. The one change the app cannot observe this
+    /// way is a transition *finishing*, which ``scheduleTallyRefresh(after:)``
+    /// covers.
+    private func syncTally() {
+        programInputIDs = compositor.programInputIDs
+        previewInputIDs = Set(compositor.previewShot?.layers.map(\.input) ?? [])
+    }
+
+    /// Schedules the one tally refresh the app has no other way to learn
+    /// about: the moment a transition completes and the outgoing shot's
+    /// inputs stop being on air.
+    ///
+    /// Every other tally change follows an operator action the model
+    /// already handles, but a transition ends on a compositor tick with
+    /// nothing observable attached — so a take schedules a single refresh
+    /// for its own known duration. This is **not** a poll (CLAUDE.md): it is
+    /// one shot, derived from the duration the take was made with, and a
+    /// second take supersedes it by cancelling the first. A cut schedules
+    /// nothing — it has already landed.
+    ///
+    /// - Parameter transition: The transition the take was made with.
+    private func scheduleTallyRefresh(after transition: Transition) {
+        tallyRefreshTask?.cancel()
+        let duration: TimeInterval
+        switch transition {
+        case .cut: return
+        case .dissolve(let seconds): duration = seconds
+        case .wipe(_, let seconds): duration = seconds
+        case .shader(_, let seconds): duration = seconds
+        }
+        // A tick of margin, so the refresh lands after the compositor's
+        // final blend tick rather than a frame before it: a tally that
+        // stays lit a frame too long is honest, one that darkens early is
+        // not.
+        let margin = 1.0 / Double(format.frameRate)
+        tallyRefreshTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(max(0, duration) + margin))
+            guard !Task.isCancelled else { return }
+            self?.syncTally()
+        }
+    }
+
+    // MARK: Fade to black
+
+    /// Takes the whole program off air — or brings it back — over
+    /// `duration`, and latches there (GLOSSARY.md, "Fade to black").
+    ///
+    /// **One control drives both engine surfaces**, and it lives here
+    /// because it has to: `TingraComposition` and `TingraAudio` depend on
+    /// each other in neither direction, so nothing in the engine can own a
+    /// state that spans them. The picture fades on the compositor's program
+    /// tick and the master on the mixer's block cadence — two ramps from one
+    /// duration, landing within a tick of each other (ARCHITECTURE.md,
+    /// "Fade to black").
+    ///
+    /// **Video and audio are coupled by default**, because Tingra's program
+    /// is defined as picture *and* sound: a black picture over live room
+    /// audio is dead air, which is the thing the operator reached for this
+    /// control to avoid. A video-only fade would be this method without the
+    /// mixer line.
+    ///
+    /// Everything fed from program inherits it by construction — every
+    /// streaming destination, any recording, and the app's own program
+    /// monitor. Preview, multiview, and the strip meters stay live, so the
+    /// operator keeps working behind the fade.
+    ///
+    /// - Parameters:
+    ///   - faded: `true` to take the program down, `false` to bring it up.
+    ///   - duration: The ramp length in seconds (default: the
+    ///     broadcast-typical half second both engine surfaces default to).
+    func setFadeToBlack(_ faded: Bool, duration: TimeInterval = Transition.defaultDissolveDuration) {
+        isFadedToBlack = faded
+        compositor.setFadeToBlack(faded, duration: duration)
+        mixer.setMasterFade(faded, duration: duration)
+    }
+
+    // MARK: Mixer
+
+    /// Sets one channel strip's level, applied to the program mix from the
+    /// next mix tick. Gesture-rate (a slider drag calls it many times a
+    /// second), so it reports nothing itself — the slider's drag-end `tap`
+    /// event carries the observability, the same convention as the layer
+    /// sliders (EVENTS.md) — and the autosave is debounced, so the drag
+    /// coalesces into one write (the `updateShot` rule; strip settings
+    /// persist in the active preset — ARCHITECTURE.md, "Per-strip routing").
+    ///
+    /// - Parameters:
+    ///   - level: The strip's linear gain, `0`...`1`.
+    ///   - id: The strip's input id.
+    func setStripLevel(_ level: Double, forStrip id: InputID) {
+        guard let index = mixerStrips.firstIndex(where: { $0.id == id }) else { return }
+        mixerStrips[index].level = level
+        mixer.setLevel(level, forInput: id)
+        scheduleAutosave()
+    }
+
+    /// Sets one channel strip's pan position, applied to the program mix
+    /// from the next mix tick. Gesture-rate like
+    /// ``setStripLevel(_:forStrip:)``, so it reports nothing itself — the
+    /// pan slider's drag-end `tap` event carries the observability
+    /// (EVENTS.md) — and the autosave is debounced like the level's. Pan
+    /// never touches device lifecycle, so unlike a mute there is no
+    /// reconfigure pass.
+    ///
+    /// - Parameters:
+    ///   - pan: The strip's pan position, `-1` (hard left) to `1` (hard
+    ///     right).
+    ///   - id: The strip's input id.
+    func setStripPan(_ pan: Double, forStrip id: InputID) {
+        guard let index = mixerStrips.firstIndex(where: { $0.id == id }) else { return }
+        mixerStrips[index].pan = pan
+        mixer.setPan(pan, forInput: id)
+        scheduleAutosave()
+    }
+
+    /// Mutes or unmutes one channel strip. Beyond silencing the channel in
+    /// the mix, the app ties the strip's device lifecycle to its mute:
+    /// muting stops the device (the microphone indicator goes dark — a muted
+    /// microphone is not captured), unmuting starts it again, with the mix
+    /// carrying silence for that strip either way until frames flow
+    /// (ARCHITECTURE.md, "The audio mixer").
+    ///
+    /// - Parameters:
+    ///   - isMuted: Whether the strip is muted.
+    ///   - id: The strip's input id.
+    func setStripMuted(_ isMuted: Bool, forStrip id: InputID) async {
+        guard let index = mixerStrips.firstIndex(where: { $0.id == id }) else { return }
+        mixerStrips[index].isMuted = isMuted
+        mixer.setMuted(isMuted, forInput: id)
+        scheduleAutosave()
+        await reconfigureAudio()
+    }
+
+    // MARK: The monitor
+
+    /// Reads the current output devices and begins draining the monitor's
+    /// device-update stream, then opens the persisted device if one is
+    /// selected. Called once at boot.
+    private func startMonitorDeviceUpdates() async {
+        let updates = await monitor.deviceUpdates()
+        monitorDevices = await monitor.availableDevices()
+        refreshMonitorDeviceName()
+        monitorDeviceTask = Task { [weak self] in
+            for await devices in updates {
+                await self?.monitorDevicesChanged(devices)
+            }
+        }
+        await monitor.setLevel(monitorLevel)
+        if let monitorDeviceUID {
+            await openMonitor(deviceUID: monitorDeviceUID)
+        }
+    }
+
+    /// Applies a device-list change from Core Audio: the picker refreshes,
+    /// and if the device being monitored through has gone away, monitoring
+    /// stops while **keeping the selection** — the device reappearing
+    /// resumes it, the dormant-strip semantic one path over. A device coming
+    /// and going is a normal event, never an error (CLAUDE.md).
+    ///
+    /// - Parameter devices: The system's output devices now.
+    private func monitorDevicesChanged(_ devices: [AudioMonitorDevice]) async {
+        monitorDevices = devices
+        refreshMonitorDeviceName()
+        guard let uid = monitorDeviceUID else { return }
+        let present = devices.contains { $0.uid == uid }
+        if present, !isMonitoring {
+            await openMonitor(deviceUID: uid)
+        } else if !present, isMonitoring {
+            await monitor.stop()
+            isMonitoring = false
+            eventBus.event(
+                "monitor.stopped",
+                domain: .audio,
+                params: ["device": .string(uid), "reason": .string("deviceLost")]
+            )
+        }
+    }
+
+    /// Refreshes ``monitorDeviceName`` from the current device list, so the
+    /// picker's label for the selection tracks the device's real name.
+    ///
+    /// Only ever *upgrades* the cached name: a device that has gone absent
+    /// keeps the name it was last seen under, because that is exactly when
+    /// the cache is needed. Nothing happens when no device is selected — the
+    /// name is cleared by ``setMonitorDevice(_:)`` instead, alongside the
+    /// selection it labels.
+    private func refreshMonitorDeviceName() {
+        guard let uid = monitorDeviceUID,
+            let name = monitorDevices.first(where: { $0.uid == uid })?.name,
+            name != monitorDeviceName
+        else { return }
+        monitorDeviceName = name
+        monitorPreferences.deviceName = name
+    }
+
+    /// Selects the device the operator monitors through, or nil to stop
+    /// monitoring. The choice persists in machine-local preferences, never
+    /// in the project document.
+    ///
+    /// - Parameter uid: The device's stable UID, or nil for no monitoring.
+    func setMonitorDevice(_ uid: String?) async {
+        guard uid != monitorDeviceUID else { return }
+        monitorDeviceUID = uid
+        monitorPreferences.deviceUID = uid
+        monitorDeviceName = uid.flatMap { chosen in monitorDevices.first { $0.uid == chosen }?.name }
+        monitorPreferences.deviceName = monitorDeviceName
+        guard let uid else {
+            guard isMonitoring else { return }
+            await monitor.stop()
+            isMonitoring = false
+            eventBus.event("monitor.stopped", domain: .audio, params: ["reason": .string("deselected")])
+            return
+        }
+        await openMonitor(deviceUID: uid)
+    }
+
+    /// Opens the monitor on a device, reporting the outcome. A device that
+    /// will not open is a recoverable error: the selection is kept (the
+    /// operator may unblock it), and the program mix, the stream, and the
+    /// recording are untouched — nothing downstream of the mix is involved.
+    ///
+    /// - Parameter deviceUID: The device's stable UID.
+    private func openMonitor(deviceUID: String) async {
+        guard let device = monitorDevices.first(where: { $0.uid == deviceUID }) else {
+            // Not connected right now: keep the selection dormant and stay
+            // quiet — the device-update stream resumes monitoring if it
+            // returns.
+            isMonitoring = false
+            return
+        }
+        do {
+            try await monitor.start(device: device, format: MixFormat())
+            isMonitoring = true
+            eventBus.event(
+                "monitor.started",
+                domain: .audio,
+                params: ["device": .string(device.uid), "deviceName": .string(device.name)]
+            )
+        } catch {
+            isMonitoring = false
+            eventBus.error(
+                "monitor.start",
+                domain: .audio,
+                params: [
+                    "device": .string(device.uid),
+                    "error": .string(String(describing: error)),
+                ]
+            )
+        }
+    }
+
+    /// Sets the monitor level — the operator's listening volume. Gesture-rate
+    /// like the strip faders, so it reports no event (the `setLevel` rule);
+    /// the slider's drag-end `tap` carries the observability. It scales only
+    /// what the monitor plays: the program mix, the stream, and the
+    /// recording are provably unaffected.
+    ///
+    /// - Parameter level: The linear gain, `0`...`1`.
+    func setMonitorLevel(_ level: Double) async {
+        monitorLevel = level
+        monitorPreferences.level = level
+        await monitor.setLevel(level)
+    }
+
+    /// Applies the current strips to the audio engine: starts newly unmuted
+    /// strips' devices, stops newly muted ones, and hands the running set to
+    /// the mixer. Coalesced exactly like ``reconfigure()`` — the pass
+    /// suspends at `input.start()`/`stop()`, so a burst of mute toggles
+    /// never overlaps and races the device lifecycle.
+    func reconfigureAudio() async {
+        audioReconfigureRequested = true
+        guard !reconfiguringAudio else { return }
+        reconfiguringAudio = true
+        defer { reconfiguringAudio = false }
+        while audioReconfigureRequested {
+            audioReconfigureRequested = false
+            await applyAudioConfiguration()
+        }
+    }
+
+    /// One audio reconfigure pass: the unmuted strips' devices are the
+    /// desired set; anything else stops. An input that cannot start
+    /// (authorization denied, device gone) is reported on the bus and left
+    /// out — its strip stays on the panel and simply contributes silence,
+    /// never a failure state.
+    private func applyAudioConfiguration() async {
+        var desired: [InputID: any Input] = [:]
+        for strip in mixerStrips where !strip.isMuted {
+            if let input = await registry.input(withID: strip.id) {
+                desired[strip.id] = input
+            }
+        }
+
+        for (id, input) in activeAudioInputs where desired[id] == nil {
+            await input.stop()
+            activeAudioInputs[id] = nil
+            // An audio input stops here only because its strip is muted or
+            // gone — the honest-microphone policy, where a muted strip
+            // releases the device so its capture indicator goes out.
+            eventBus.event(
+                "input.stopped",
+                domain: .capture,
+                params: ["id": .string(id.rawValue), "reason": .string("stripMutedOrRemoved")]
+            )
+        }
+        for (id, input) in desired where activeAudioInputs[id] == nil {
+            do {
+                try await input.start()
+                activeAudioInputs[id] = input
+                eventBus.event(
+                    "input.started",
+                    domain: .capture,
+                    params: ["id": .string(id.rawValue), "name": .string(input.name)]
+                )
+            } catch {
+                eventBus.error(
+                    "input.start",
+                    domain: .capture,
+                    params: [
+                        "id": .string(id.rawValue),
+                        "error": .string(String(describing: error)),
+                    ]
+                )
+            }
+        }
+
+        // The mixer gets every strip whose device is running, with its
+        // current level, pan, and mute — the engine-side strips of the mix.
+        let strips = mixerStrips.compactMap { strip -> ChannelStrip? in
+            guard let input = activeAudioInputs[strip.id] else { return nil }
+            return ChannelStrip(input: input, level: strip.level, pan: strip.pan, isMuted: strip.isMuted)
+        }
+        mixer.setChannelStrips(strips)
+        // Each running strip's authored chain is instantiated fresh and
+        // handed to its mixer channel (a reconfigure is rare — a mute
+        // toggle, a preset switch — so re-instantiating the chain's few
+        // milliseconds of filter memory is inaudible; parameter drags go
+        // through the in-place path instead).
+        for strip in mixerStrips where activeAudioInputs[strip.id] != nil && !strip.effects.isEmpty {
+            mixer.setEffects(await makeEffectChain(strip.effects), forInput: strip.id)
+        }
+        eventBus.event(
+            "mixer.channels",
+            domain: .audio,
+            params: ["ids": .string(activeAudioInputs.keys.map(\.rawValue).sorted().joined(separator: ","))]
+        )
+    }
+
+    // MARK: Effect chains
+
+    /// Appends an effect to a strip's chain at its neutral settings (an
+    /// empty payload — every parameter at its declared default). A
+    /// document edit like a layer add: the chain re-instantiates into the
+    /// mixer, the debounced autosave carries it to the project file, and
+    /// the Add Effect menu's `tap` event carries the observability
+    /// (EVENTS.md).
+    ///
+    /// - Parameters:
+    ///   - effectID: The effect to append.
+    ///   - id: The strip's input id.
+    func addEffect(_ effectID: EffectID, toStrip id: InputID) async {
+        guard let index = mixerStrips.firstIndex(where: { $0.id == id }) else { return }
+        mixerStrips[index].effects.append(EffectConfiguration(effect: effectID))
+        await pushEffectChain(forStrip: id)
+        scheduleAutosave()
+    }
+
+    /// Removes one slot from a strip's chain. An out-of-range slot is a
+    /// stale gesture, ignored.
+    ///
+    /// - Parameters:
+    ///   - effectIndex: The slot to remove.
+    ///   - id: The strip's input id.
+    func removeEffect(at effectIndex: Int, fromStrip id: InputID) async {
+        guard
+            let index = mixerStrips.firstIndex(where: { $0.id == id }),
+            mixerStrips[index].effects.indices.contains(effectIndex)
+        else { return }
+        mixerStrips[index].effects.remove(at: effectIndex)
+        await pushEffectChain(forStrip: id)
+        scheduleAutosave()
+    }
+
+    /// Moves one slot of a strip's chain to a new position — order is
+    /// signal order, so a move is an audible routing change. The
+    /// destination is clamped to the chain's bounds; a move to the slot's
+    /// current position, or of an unknown slot, is a no-op.
+    ///
+    /// - Parameters:
+    ///   - effectIndex: The slot to move.
+    ///   - destination: The destination position in the chain.
+    ///   - id: The strip's input id.
+    func moveEffect(at effectIndex: Int, to destination: Int, onStrip id: InputID) async {
+        guard
+            let index = mixerStrips.firstIndex(where: { $0.id == id }),
+            mixerStrips[index].effects.indices.contains(effectIndex)
+        else { return }
+        let to = min(max(destination, 0), mixerStrips[index].effects.count - 1)
+        guard to != effectIndex else { return }
+        let configuration = mixerStrips[index].effects.remove(at: effectIndex)
+        mixerStrips[index].effects.insert(configuration, at: to)
+        await pushEffectChain(forStrip: id)
+        scheduleAutosave()
+    }
+
+    /// Sets one parameter of one slot in a strip's chain, applied to the
+    /// mixer's live instance in place — the gesture-rate path (a slider
+    /// drag calls it many times a second), so the instance keeps its
+    /// processing state, this reports nothing itself (the slider's
+    /// drag-end `tap` carries the observability — EVENTS.md), and the
+    /// autosave is debounced like the level's.
+    ///
+    /// - Parameters:
+    ///   - value: The parameter's new value.
+    ///   - key: The parameter's persisted key.
+    ///   - effectIndex: The slot whose parameter changes.
+    ///   - id: The strip's input id.
+    func setEffectParameter(_ value: Double, forKey key: String, ofEffectAt effectIndex: Int, onStrip id: InputID) {
+        guard
+            let index = mixerStrips.firstIndex(where: { $0.id == id }),
+            mixerStrips[index].effects.indices.contains(effectIndex)
+        else { return }
+        let existing = mixerStrips[index].effects[effectIndex]
+        var parameters = existing.parameters
+        parameters[key] = .double(value)
+        mixerStrips[index].effects[effectIndex] = EffectConfiguration(effect: existing.effect, parameters: parameters)
+        mixer.setEffectParameters(parameters, forEffectAt: effectIndex, forInput: id)
+        scheduleAutosave()
+    }
+
+    /// The user-facing name of a registered audio effect, for the chain
+    /// editor's rows — falls back to the raw identifier for an effect this
+    /// build has no provider for (a document can name effects from a
+    /// missing plug-in; the chain entry survives untouched).
+    ///
+    /// - Parameter id: The effect's stable identifier.
+    func effectName(for id: EffectID) -> String {
+        audioEffectChoices.first { $0.id == id }?.name ?? id.rawValue
+    }
+
+    /// The declared parameters of a registered audio effect, for the chain
+    /// editor's sliders — empty for an effect with no provider (its
+    /// settings persist but cannot be edited until the provider returns).
+    ///
+    /// - Parameter id: The effect's stable identifier.
+    func effectParameters(for id: EffectID) -> [EffectParameter] {
+        audioEffectChoices.first { $0.id == id }?.parameters ?? []
+    }
+
+    /// Instantiates a strip's authored chain through the effect registry,
+    /// one instance per slot in signal order. A configuration whose effect
+    /// has no registered provider is reported once and instantiated as a
+    /// pass-through — never dropped, so the chain's slot indices stay
+    /// aligned with the strip's configurations (the in-place parameter
+    /// path addresses slots by index) and the authored entry keeps its
+    /// place for the provider's return.
+    ///
+    /// - Parameter configurations: The strip's authored chain.
+    /// - Returns: The live effect instances, in signal order.
+    private func makeEffectChain(_ configurations: [EffectConfiguration]) async -> [any AudioEffect] {
+        var chain: [any AudioEffect] = []
+        for configuration in configurations {
+            if let provider = await effects.audioProvider(withID: configuration.effect) {
+                chain.append(provider.makeEffect(parameters: configuration.parameters))
+            } else {
+                eventBus.error(
+                    "effect.resolve",
+                    domain: .audio,
+                    params: ["effect": .string(configuration.effect.rawValue)]
+                )
+                chain.append(PassthroughAudioEffect())
+            }
+        }
+        return chain
+    }
+
+    /// Re-instantiates one strip's chain into its mixer channel after a
+    /// structural chain edit (add, remove, move). A strip whose device is
+    /// not running is skipped by the mixer (unknown ids are ignored); its
+    /// chain lands on the next audio reconfigure pass when the device
+    /// starts.
+    ///
+    /// - Parameter id: The strip's input id.
+    private func pushEffectChain(forStrip id: InputID) async {
+        guard let strip = mixerStrips.first(where: { $0.id == id }) else { return }
+        mixer.setEffects(await makeEffectChain(strip.effects), forInput: id)
+    }
+
+    /// Takes the shot with the given id to program with the transition the
+    /// switcher currently selects — ``takeTransitionKind``, plus ``wipeEdge``
+    /// for a wipe; on Default, the taken shot's own ``Shot/defaultTransition``
+    /// (GLOSSARY.md, "Transition"). Driven by the shot switcher button; the
+    /// compositor renders it starting the next tick.
+    ///
+    /// Reports no `tap` event itself — the switcher button's action closure
+    /// in `ContentView` reports the tap before calling this, right where the
+    /// user action is executed (EVENTS.md, "The `tap` convention"); the
+    /// compositor's `program.take` event carries the resolved transition.
+    ///
+    /// - Parameter shotID: The id of the shot to take to program.
+    func take(_ shotID: ShotID) {
+        // Whether the program was holding a preset switch's snapshot — a shot
+        // outside the loaded pool (see ``switchPreset(to:)``) whose inputs
+        // can stop once this take replaces it.
+        let wasHoldingSnapshot = activeShotID == nil && hasSessionPreset
+        let transition = resolvedTransition(for: shotID)
+        compositor.take(shotID: shotID, transition: transition)
+        activeShotID = compositor.activeShotID
+        syncTally()
+        scheduleTallyRefresh(after: transition)
+        if wasHoldingSnapshot {
+            Task { await reconfigure() }
+        }
+    }
+
+    /// Stages a shot on preview — the staging bus, where the next shot is
+    /// composed and checked before being taken to program (GLOSSARY.md,
+    /// "Preview"). Staging is **not** taking: the program is untouched.
+    /// Staging the shot already staged clears preview, so the preview row's
+    /// button toggles.
+    ///
+    /// Nothing to reconfigure or autosave: every shot of the active preset
+    /// already has its inputs running (``applyConfiguration()`` references
+    /// the whole pool), and what is staged is session state that never
+    /// enters the project document.
+    ///
+    /// Reports no `tap` event itself — the preview button's action closure in
+    /// `ContentView` reports it (EVENTS.md, "The `tap` convention").
+    ///
+    /// - Parameter shotID: The id of the shot to stage.
+    func setPreview(_ shotID: ShotID) {
+        let staged = shotID == previewShotID ? nil : shotID
+        compositor.setPreview(shotID: staged)
+        previewShotID = compositor.previewShotID
+        syncTally()
+    }
+
+    /// Takes the staged shot to program, swapping the buses: what was on
+    /// program lands on preview, ready to be taken back (ARCHITECTURE.md,
+    /// "The preview bus"). Uses the same transition the switcher selects as a
+    /// direct take does — ``takeTransitionKind``, resolving Default to the
+    /// taken shot's own ``Shot/defaultTransition``.
+    ///
+    /// Does nothing while nothing is staged; the Take button is disabled
+    /// then, and the compositor reports the miss as a recoverable error if it
+    /// is called anyway.
+    ///
+    /// Reports no `tap` event itself — the Take button's action closure
+    /// reports it; the compositor's `program.take` event carries the resolved
+    /// transition and names preview as its source.
+    func takePreview() {
+        guard let staged = previewShotID else { return }
+        // The same held-snapshot bookkeeping a direct take does: a snapshot
+        // from outside the pool can stop its inputs once this take replaces it.
+        let wasHoldingSnapshot = activeShotID == nil && hasSessionPreset
+        let transition = resolvedTransition(for: staged)
+        compositor.takePreview(transition: transition)
+        activeShotID = compositor.activeShotID
+        previewShotID = compositor.previewShotID
+        syncTally()
+        scheduleTallyRefresh(after: transition)
+        if wasHoldingSnapshot {
+            Task { await reconfigure() }
+        }
+    }
+
+    /// Sets — or, passed nil, clears — a shot's default transition: the
+    /// transition the shot is taken with while the switcher's transition
+    /// picker is on Default (ARCHITECTURE.md, "Per-shot default
+    /// transitions"). A document edit like a rename: it flows through the
+    /// compositor's `updateShot` path and autosaves through the
+    /// project-document path; the context menu's `tap` event carries the
+    /// observability (EVENTS.md).
+    ///
+    /// - Parameters:
+    ///   - transition: The new default transition, or nil for none (an
+    ///     unresolved take is a cut).
+    ///   - shotID: The id of the shot to edit.
+    func setShotDefaultTransition(_ transition: Transition?, for shotID: ShotID) {
+        guard let index = shots.firstIndex(where: { $0.id == shotID }) else { return }
+        let edited = ShotEdit.settingDefaultTransition(transition, of: shots[index])
+        guard edited != shots[index] else { return }
+        shots[index] = edited
+        compositor.updateShot(edited)
+        scheduleAutosave()
+    }
+
+    /// Adds a new, empty user-authored shot (fresh UUID, localized default
+    /// name, no layers over black — see ``ShotEdit/newShot()``) at the end of
+    /// the switcher order. Adding is not taking: the program is untouched
+    /// until the operator takes the new shot (ARCHITECTURE.md, "Shot
+    /// management"). The edit autosaves through the project-document path.
+    func addShot() {
+        guard hasSessionPreset else { return }
+        let shot = ShotEdit.newShot()
+        shots.append(shot)
+        compositor.addShot(shot)
+        scheduleAutosave()
+    }
+
+    /// Duplicates a shot — the source's layer tree and background under a
+    /// fresh UUID and a "<name> copy" name — inserting the copy right after
+    /// its source in the switcher order. The duplicate references the same
+    /// inputs the source already keeps running, so no reconfigure is needed.
+    ///
+    /// - Parameter shotID: The id of the shot to duplicate.
+    func duplicateShot(_ shotID: ShotID) {
+        guard let index = shots.firstIndex(where: { $0.id == shotID }) else { return }
+        let copy = ShotEdit.duplicate(of: shots[index])
+        shots.insert(copy, at: index + 1)
+        compositor.addShot(copy, at: index + 1)
+        scheduleAutosave()
+    }
+
+    /// Renames a shot, preserving its identity and layer tree. A rename to an
+    /// empty (or whitespace-only) name is ignored — a switcher button needs a
+    /// label (see ``ShotEdit/renaming(_:to:)``). The rename flows through the
+    /// compositor's existing `updateShot` path, so the switcher and any
+    /// on-program shot reflect it at the next tick.
+    ///
+    /// - Parameters:
+    ///   - shotID: The id of the shot to rename.
+    ///   - name: The new user-facing name.
+    func renameShot(_ shotID: ShotID, to name: String) {
+        guard let index = shots.firstIndex(where: { $0.id == shotID }) else { return }
+        let renamed = ShotEdit.renaming(shots[index], to: name)
+        guard renamed != shots[index] else { return }
+        shots[index] = renamed
+        compositor.updateShot(renamed)
+        scheduleAutosave()
+    }
+
+    /// Removes a shot from the active preset. When the removed shot is on
+    /// program, the compositor cuts to the adjacent shot — never a dead
+    /// program (ARCHITECTURE.md, "Shot management") — so the model re-reads
+    /// ``Compositor/activeShotID`` rather than second-guessing which shot
+    /// that is. Then reconfigures, so an input referenced only by the removed
+    /// shot (and not by the pickers) is stopped.
+    ///
+    /// - Parameter shotID: The id of the shot to remove.
+    func removeShot(_ shotID: ShotID) async {
+        guard let index = shots.firstIndex(where: { $0.id == shotID }) else { return }
+        shots.remove(at: index)
+        compositor.removeShot(shotID: shotID)
+        activeShotID = compositor.activeShotID
+        // A removed shot cannot stay staged — re-read rather than second-guess
+        // which shot preview is left holding.
+        previewShotID = compositor.previewShotID
+        syncTally()
+        scheduleAutosave()
+        await reconfigure()
+    }
+
+    /// Moves a shot to a new position in the active preset's switcher order —
+    /// the shot-management reorder path (ARCHITECTURE.md, "Shot and preset
+    /// reordering"). Reordering is **not** taking: the program is untouched,
+    /// so no reconfigure is needed — every referenced input is already
+    /// running, only the switcher order changes. The move mirrors into the
+    /// compositor's pool (which reports the discrete `shot.moved` event) and
+    /// autosaves through the project-document path. The destination is clamped
+    /// to the switcher's bounds; a move to the shot's current position, or of
+    /// an unknown shot, is a no-op.
+    ///
+    /// - Parameters:
+    ///   - shotID: The id of the shot to move.
+    ///   - index: The destination position in the switcher order.
+    func moveShot(_ shotID: ShotID, to index: Int) {
+        guard let from = shots.firstIndex(where: { $0.id == shotID }) else { return }
+        let to = min(max(index, 0), shots.count - 1)
+        guard to != from else { return }
+        let shot = shots.remove(at: from)
+        shots.insert(shot, at: to)
+        compositor.moveShot(shotID: shotID, to: to)
+        scheduleAutosave()
+    }
+
+    // MARK: Presets
+
+    /// Switches to the preset with the given id: the shot switcher and the
+    /// layer-tree editor now operate within it, and its shots become the
+    /// compositor's pool. Switching never interrupts what is already playing
+    /// out (GLOSSARY.md, "Preset"): the on-program shot stays when its id
+    /// exists in the target preset, and otherwise keeps rendering as a held
+    /// snapshot — no highlighted shot — until the operator takes one from the
+    /// new pool (see ``Compositor/loadPreset(_:)``). The mixer adopts the
+    /// target preset's authored audio channels — levels, pans, and mutes
+    /// apply from the next mix tick, a control change, never an interruption
+    /// — or carries the session strips unchanged when the target has none
+    /// (ARCHITECTURE.md, "Per-strip routing"). The active preset itself is
+    /// session state, so a switch alone saves nothing.
+    ///
+    /// - Parameter presetID: The id of the preset to switch to.
+    func switchPreset(to presetID: PresetID) async {
+        guard presetID != activePresetID, let target = presets.first(where: { $0.id == presetID }) else { return }
+        syncActivePreset()
+        activePresetID = presetID
+        shots = target.shots
+        compositor.loadPreset(target)
+        activeShotID = compositor.activeShotID
+        // Preview follows the same by-id rule the program does across a preset
+        // switch: it survives only when the incoming preset holds the shot.
+        previewShotID = compositor.previewShotID
+        syncTally()
+        await reconfigure()
+        await adoptAudioChannels(of: target)
+    }
+
+    /// Adds a new, empty user-authored preset (fresh UUID, localized default
+    /// name, no shots — see ``PresetEdit/newPreset()``) at the end of the
+    /// switcher order. Adding is not switching, mirroring "adding a shot is
+    /// not taking it" one level up: the switcher stays on the active preset
+    /// until the operator switches. The edit autosaves through the
+    /// project-document path.
+    func addPreset() {
+        guard hasSessionPreset else { return }
+        let preset = PresetEdit.newPreset()
+        presets.append(preset)
+        eventBus.event(
+            "preset.added",
+            domain: .composition,
+            params: ["preset": .string(preset.id.rawValue), "name": .string(preset.name)]
+        )
+        scheduleAutosave()
+    }
+
+    /// Duplicates a preset — the source's shots verbatim (shot ids included,
+    /// so switching between the original and the copy holds the on-program
+    /// shot) under a fresh `PresetID` and a "<name> copy" name — inserting
+    /// the copy right after its source in the switcher order. Duplicating is
+    /// not switching, like ``addPreset()``.
+    ///
+    /// - Parameter presetID: The id of the preset to duplicate.
+    func duplicatePreset(_ presetID: PresetID) {
+        guard let index = presets.firstIndex(where: { $0.id == presetID }) else { return }
+        syncActivePreset()
+        let copy = PresetEdit.duplicate(of: presets[index])
+        presets.insert(copy, at: index + 1)
+        eventBus.event(
+            "preset.added",
+            domain: .composition,
+            params: ["preset": .string(copy.id.rawValue), "name": .string(copy.name)]
+        )
+        scheduleAutosave()
+    }
+
+    /// Renames a preset, preserving its identity and shots. A rename to an
+    /// empty (or whitespace-only) name is ignored — a switcher button needs a
+    /// label (see ``PresetEdit/renaming(_:to:)``). The compositor needs no
+    /// reload: it holds the preset's shots, and the name reaches it again on
+    /// the next switch.
+    ///
+    /// - Parameters:
+    ///   - presetID: The id of the preset to rename.
+    ///   - name: The new user-facing name.
+    func renamePreset(_ presetID: PresetID, to name: String) {
+        guard let index = presets.firstIndex(where: { $0.id == presetID }) else { return }
+        syncActivePreset()
+        let renamed = PresetEdit.renaming(presets[index], to: name)
+        guard renamed != presets[index] else { return }
+        presets[index] = renamed
+        eventBus.event(
+            "preset.renamed",
+            domain: .composition,
+            params: ["preset": .string(renamed.id.rawValue), "name": .string(renamed.name)]
+        )
+        scheduleAutosave()
+    }
+
+    /// Removes a preset from the project. The last remaining preset cannot be
+    /// removed — a project always holds at least one (the UI disables the
+    /// command). Removing the **active** preset switches to the adjacent one,
+    /// and — because the removed preset's shot must leave the air, the shot-
+    /// removal rule one level up — cuts to that preset's first shot unless a
+    /// matching shot id holds the program seamlessly, with the mixer adopting
+    /// the adjacent preset's authored audio channels the same way a switch
+    /// does; removing an inactive preset touches nothing on program.
+    ///
+    /// - Parameter presetID: The id of the preset to remove.
+    func removePreset(_ presetID: PresetID) async {
+        guard presets.count > 1, let index = presets.firstIndex(where: { $0.id == presetID }) else { return }
+        let removed = presets.remove(at: index)
+        let removedActivePreset = presetID == activePresetID
+        if removedActivePreset {
+            let adjacent = presets[min(index, presets.count - 1)]
+            activePresetID = adjacent.id
+            shots = adjacent.shots
+            compositor.loadPreset(adjacent)
+            if compositor.activeShotID == nil {
+                // No id match held the program: the removed preset's shot
+                // leaves the air — cut to the adjacent preset's first shot,
+                // or the background-only canvas when it has none (never a
+                // dead program).
+                if let first = adjacent.shots.first {
+                    compositor.take(shotID: first.id)
+                } else {
+                    compositor.setShot(Shot())
+                }
+            }
+            activeShotID = compositor.activeShotID
+            syncTally()
+        }
+        eventBus.event(
+            "preset.removed",
+            domain: .composition,
+            params: ["preset": .string(removed.id.rawValue), "name": .string(removed.name)]
+        )
+        scheduleAutosave()
+        await reconfigure()
+        if removedActivePreset, let adopted = presets.first(where: { $0.id == activePresetID }) {
+            await adoptAudioChannels(of: adopted)
+        }
+    }
+
+    /// Moves a preset to a new position in the switcher order — the reorder
+    /// path one level up from ``moveShot(_:to:)`` (ARCHITECTURE.md, "Shot and
+    /// preset reordering"). Purely app-level document state: presets are the
+    /// project's, not the compositor's (the compositor holds only the one
+    /// loaded preset), so reordering never touches the program — no
+    /// `loadPreset`, no reconfigure. Order is meaningful, though: the app
+    /// adopts the **first** preset at launch, so promoting a preset to the
+    /// front makes it the next session's default. The live session ``shots``
+    /// are synced back into the active preset first, so the reorder operates on
+    /// the operator's actual edits; the change reports the discrete
+    /// `preset.moved` event and autosaves. The destination is clamped; a move
+    /// to the preset's current position, or of an unknown preset, is a no-op.
+    ///
+    /// - Parameters:
+    ///   - presetID: The id of the preset to move.
+    ///   - index: The destination position in the switcher order.
+    func movePreset(_ presetID: PresetID, to index: Int) {
+        guard let from = presets.firstIndex(where: { $0.id == presetID }) else { return }
+        let to = min(max(index, 0), presets.count - 1)
+        guard to != from else { return }
+        syncActivePreset()
+        let preset = presets.remove(at: from)
+        presets.insert(preset, at: to)
+        eventBus.event(
+            "preset.moved",
+            domain: .composition,
+            params: [
+                "preset": .string(preset.id.rawValue),
+                "name": .string(preset.name),
+                "from": .int(from),
+                "to": .int(to),
+            ]
+        )
+        scheduleAutosave()
+    }
+
+    /// Writes the live session state back into the active preset's slot in
+    /// ``presets`` — the ``shots``, and the ``mixerStrips`` as the preset's
+    /// authored audio channels — so a save, switch, or duplicate operates on
+    /// the edits the operator actually has rather than what the preset held
+    /// when it was last made active. The session mix *is* the active
+    /// preset's audio configuration: the first sync after routing landed
+    /// authors it, growing a pre-routing document within v1 by use
+    /// (ARCHITECTURE.md, "Per-strip routing").
+    private func syncActivePreset() {
+        guard let index = presets.firstIndex(where: { $0.id == activePresetID }) else { return }
+        let active = presets[index]
+        let channels = mixerStrips.map(\.audioChannel)
+        guard active.shots != shots || active.audioChannels != channels else { return }
+        presets[index] = Preset(id: active.id, name: active.name, shots: shots, audioChannels: channels)
+    }
+
+    /// Adopts a newly active preset's authored audio configuration as the
+    /// session strips: its channels merge with live discovery (see
+    /// ``MixerStrip/strips(channels:discovered:)``) and the audio
+    /// reconfigure pass applies them — levels, pans, and mutes take effect
+    /// from the next mix tick, and devices start or stop where the mutes
+    /// differ. A preset with **no** authored audio changes nothing: the
+    /// session mix carries across the switch untouched, the pre-routing
+    /// behavior as the fallback (ARCHITECTURE.md, "Per-strip routing").
+    ///
+    /// - Parameter preset: The preset whose audio configuration to adopt.
+    private func adoptAudioChannels(of preset: Preset) async {
+        guard let channels = preset.audioChannels else { return }
+        let strips = MixerStrip.strips(channels: channels, discovered: audioInputs)
+        guard strips != mixerStrips else { return }
+        mixerStrips = strips
+        await reconfigureAudio()
+    }
+
+    /// Adds a layer bound to the given input on top of the active shot's
+    /// layer tree, then reconfigures so the input is running — a layer bound
+    /// to a not-yet-started input contributes nothing until its first frame
+    /// arrives, so the edit is visible on program the moment frames flow.
+    ///
+    /// - Parameter input: The input the new layer binds to.
+    func addLayer(boundTo input: InputID) async {
+        applyShotEdit { LayerTreeEdit.addingLayer(boundTo: input, to: $0) }
+        await reconfigure()
+    }
+
+    /// Removes the layer at the given bottom-to-top index from the active
+    /// shot, then reconfigures so an input no shot references anymore (and
+    /// that is not the selected camera or display) is stopped.
+    ///
+    /// - Parameter index: The layer's index in the shot's `layers` array.
+    func removeLayer(at index: Int) async {
+        applyShotEdit { LayerTreeEdit.removingLayer(at: index, from: $0) }
+        await reconfigure()
+    }
+
+    /// Moves the layer at the given bottom-to-top index one step through the
+    /// active shot's stack.
+    ///
+    /// - Parameters:
+    ///   - index: The layer's index in the shot's `layers` array.
+    ///   - direction: Which way it moves through the stack.
+    func moveLayer(at index: Int, _ direction: LayerTreeEdit.StackDirection) {
+        applyShotEdit { LayerTreeEdit.movingLayer(at: index, direction, in: $0) }
+    }
+
+    /// Sets the frame of the active shot's layer at the given bottom-to-top
+    /// index — its position and size in normalized, top-left-origin program
+    /// coordinates. Applied live, so a slider drag is visible on program
+    /// tick by tick.
+    ///
+    /// - Parameters:
+    ///   - frame: The new normalized destination rect.
+    ///   - index: The layer's index in the shot's `layers` array.
+    func setLayerFrame(_ frame: CGRect, at index: Int) {
+        applyShotEdit { LayerTreeEdit.settingFrame(frame, ofLayerAt: index, in: $0) }
+    }
+
+    /// Sets the opacity of the active shot's layer at the given bottom-to-top
+    /// index. Applied live, like ``setLayerFrame(_:at:)``.
+    ///
+    /// - Parameters:
+    ///   - opacity: The new opacity, `0`...`1`.
+    ///   - index: The layer's index in the shot's `layers` array.
+    func setLayerOpacity(_ opacity: Double, at index: Int) {
+        applyShotEdit { LayerTreeEdit.settingOpacity(opacity, ofLayerAt: index, in: $0) }
+    }
+
+    /// Appends a video effect to the active shot's layer at the given
+    /// index, at its neutral settings. A layer-tree edit like any other:
+    /// live on program at the next tick and autosaved debounced; the Add
+    /// Effect menu's `tap` carries the observability (EVENTS.md).
+    ///
+    /// - Parameters:
+    ///   - effect: The effect to append.
+    ///   - index: The layer's index in the shot's `layers` array.
+    func addLayerEffect(_ effect: EffectID, toLayerAt index: Int) {
+        applyShotEdit { LayerTreeEdit.addingEffect(effect, toLayerAt: index, in: $0) }
+    }
+
+    /// Removes one slot from the active shot's layer's effect chain.
+    ///
+    /// - Parameters:
+    ///   - effectIndex: The chain slot to remove.
+    ///   - index: The layer's index in the shot's `layers` array.
+    func removeLayerEffect(at effectIndex: Int, fromLayerAt index: Int) {
+        applyShotEdit { LayerTreeEdit.removingEffect(at: effectIndex, fromLayerAt: index, in: $0) }
+    }
+
+    /// Moves one slot of the active shot's layer's effect chain — order is
+    /// signal order, so a move is a visible processing change.
+    ///
+    /// - Parameters:
+    ///   - effectIndex: The chain slot to move.
+    ///   - destination: The destination position in the chain.
+    ///   - index: The layer's index in the shot's `layers` array.
+    func moveLayerEffect(at effectIndex: Int, to destination: Int, ofLayerAt index: Int) {
+        applyShotEdit {
+            LayerTreeEdit.movingEffect(at: effectIndex, to: destination, ofLayerAt: index, in: $0)
+        }
+    }
+
+    /// Sets one parameter of one slot in the active shot's layer's effect
+    /// chain, applied live tick by tick like the frame and opacity
+    /// sliders. Gesture-rate, so it reports nothing itself — the slider's
+    /// drag-end `tap` carries the observability (EVENTS.md).
+    ///
+    /// - Parameters:
+    ///   - value: The parameter's new value.
+    ///   - key: The parameter's persisted key.
+    ///   - effectIndex: The chain slot whose parameter changes.
+    ///   - index: The layer's index in the shot's `layers` array.
+    func setLayerEffectParameter(_ value: Double, forKey key: String, ofEffectAt effectIndex: Int, atLayer index: Int) {
+        applyShotEdit {
+            LayerTreeEdit.settingEffectParameter(
+                value, forKey: key, ofEffectAt: effectIndex, ofLayerAt: index, in: $0)
+        }
+    }
+
+    /// The user-facing name of a registered video effect, for the layer
+    /// chain editor's rows — falls back to the raw identifier for an
+    /// effect this build has no provider for.
+    ///
+    /// - Parameter id: The effect's stable identifier.
+    func videoEffectName(for id: EffectID) -> String {
+        videoEffectChoices.first { $0.id == id }?.name ?? id.rawValue
+    }
+
+    /// The declared parameters of a registered video effect, for the layer
+    /// chain editor's sliders — empty for an effect with no provider.
+    ///
+    /// - Parameter id: The effect's stable identifier.
+    func videoEffectParameters(for id: EffectID) -> [EffectParameter] {
+        videoEffectChoices.first { $0.id == id }?.parameters ?? []
+    }
+
+    /// The user-facing name of an input, for the editor's layer rows and for
+    /// a picker's entry for a device that has gone away.
+    ///
+    /// Falls back through the name discovery last reported, then the raw
+    /// identifier — an edited layer, and a picker selection, can both outlive
+    /// their device (see ``lastKnownInputNames``).
+    ///
+    /// - Parameter id: The input's stable identifier.
+    func inputName(for id: InputID) -> String {
+        layerInputChoices.first { $0.id == id }?.name ?? lastKnownInputNames[id] ?? id.rawValue
+    }
+
+    /// Applies one layer-tree edit to the shot currently selected in the
+    /// switcher: transforms it, stores the edited shot back into the session
+    /// preset (so it survives shot switches — GLOSSARY.md, "Preset"), pushes
+    /// it through the compositor so the change is on program at the next
+    /// tick, and schedules the debounced autosave so it reaches the project
+    /// file. A no-op edit (out-of-range index, no shot selected, no actual
+    /// change) touches nothing.
+    private func applyShotEdit(_ edit: (Shot) -> Shot) {
+        guard let activeShotID, let index = shots.firstIndex(where: { $0.id == activeShotID }) else { return }
+        let edited = edit(shots[index])
+        guard edited != shots[index] else { return }
+        shots[index] = edited
+        compositor.updateShot(edited)
+        // A layer edit can add, remove, or rebind a layer's input, which is
+        // exactly what the tally reads.
+        syncTally()
+        scheduleAutosave()
+    }
+
+    // MARK: Streaming
+
+    /// The stream key stored for a destination, or nil when none is stored.
+    ///
+    /// Read from secure storage so the streaming panel can prefill its key
+    /// field on launch without the key ever passing through the project
+    /// document. A read failure is reported and treated as "no stored key" —
+    /// never a crash.
+    ///
+    /// - Parameter id: The destination's stable id.
+    /// - Returns: The stored stream key, or nil.
+    func storedStreamKey(for id: ProjectDestinationID) -> String? {
+        do {
+            return try secureStorage.secret(forAccount: Self.secureStorageAccount(for: id))
+        } catch {
+            eventBus.error(
+                "securestore.read",
+                domain: .output,
+                params: ["error": .string(String(describing: error))]
+            )
+            return nil
+        }
+    }
+
+    // MARK: Destination editing
+
+    /// Adds an empty destination to the panel and autosaves.
+    ///
+    /// The new row saves nothing until its URL is usable
+    /// (``DestinationEdit/projectDestination``), so an abandoned row never
+    /// reaches the project file.
+    func addDestination() {
+        destinations.append(DestinationEdit())
+        eventBus.event("destination.added", domain: .output, params: ["destinations": .int(destinations.count)])
+        scheduleAutosave()
+    }
+
+    /// Removes a destination and clears its stored stream key — deleting a
+    /// destination should not leave its secret behind in the Keychain.
+    ///
+    /// - Parameter id: The destination to remove.
+    func removeDestination(_ id: ProjectDestinationID) {
+        guard let index = destinations.firstIndex(where: { $0.id == id }) else { return }
+        destinations.remove(at: index)
+        persistStreamKey("", for: id)
+        eventBus.event("destination.removed", domain: .output, params: ["destinations": .int(destinations.count)])
+        scheduleAutosave()
+    }
+
+    /// Updates a destination's typed URL and autosaves.
+    ///
+    /// The id is untouched, so the destination keeps the stream key already
+    /// filed under it — the reason keys are keyed by id and not by URL.
+    ///
+    /// - Parameters:
+    ///   - text: The URL as typed.
+    ///   - id: The destination to update.
+    func setDestinationURL(_ text: String, for id: ProjectDestinationID) {
+        updateDestination(id) { $0.urlText = text }
+    }
+
+    /// Updates a destination's operator-facing name and autosaves.
+    ///
+    /// - Parameters:
+    ///   - name: The new label.
+    ///   - id: The destination to update.
+    func setDestinationName(_ name: String, for id: ProjectDestinationID) {
+        updateDestination(id) { $0.name = name }
+    }
+
+    /// Enables or disables a destination and autosaves. A disabled
+    /// destination keeps everything it has but contributes no leg to the next
+    /// stream.
+    ///
+    /// - Parameters:
+    ///   - isEnabled: Whether it is streamed to.
+    ///   - id: The destination to update.
+    func setDestinationEnabled(_ isEnabled: Bool, for id: ProjectDestinationID) {
+        updateDestination(id) { $0.isEnabled = isEnabled }
+    }
+
+    /// Applies an edit to one destination, resets a stale terminal status,
+    /// and schedules the debounced autosave. A no-op for an unknown id.
+    ///
+    /// - Parameters:
+    ///   - id: The destination to update.
+    ///   - edit: The mutation to apply.
+    private func updateDestination(_ id: ProjectDestinationID, _ edit: (inout DestinationEdit) -> Void) {
+        guard let index = destinations.firstIndex(where: { $0.id == id }) else { return }
+        edit(&destinations[index])
+        // An edit after a failed or finished run clears the stale banner, so
+        // the panel does not keep reporting the previous attempt's fate.
+        if !isStreaming { streamStatus = .idle }
+        scheduleAutosave()
+    }
+
+    /// The secure-storage account a destination's stream key is filed under.
+    ///
+    /// Keyed by the destination's **id**, not its URL: two destinations can
+    /// share an ingest URL with different keys, and editing a URL would
+    /// orphan a key stored under the old one (ARCHITECTURE.md, "Multiple
+    /// destinations"). The prefix keeps these items distinct from any other
+    /// secret the host files later.
+    ///
+    /// - Parameter id: The destination's stable id.
+    /// - Returns: The account string.
+    private static func secureStorageAccount(for id: ProjectDestinationID) -> String {
+        "destination:\(id.rawValue)"
+    }
+
+    /// Puts the program on air: resolves every enabled destination to its
+    /// streaming provider, stores each key in secure storage, and drives one
+    /// ``StreamSession`` fanning the compositor's program frames and the
+    /// mixer's program audio out to all of them — reusing the CLI's proven
+    /// reconnect/stability/stats machinery (ARCHITECTURE.md, "Streaming the
+    /// program", "Multiple destinations"). One active session (the v1 rule,
+    /// now one session with N legs): a second call while streaming is ignored.
+    ///
+    /// The start is **best effort**: a destination that refuses the
+    /// connection is reported and skipped while the others go live; only a
+    /// clean sweep of refusals fails the run.
+    ///
+    /// Each stream key is used to build its ``Destination`` and to seed
+    /// secure storage; none ever becomes an event param, a log line, or part
+    /// of the project document. An empty key streams keyless (some servers
+    /// embed the key in the URL path) and clears that destination's stored
+    /// key.
+    ///
+    /// - Parameter keys: The stream key the operator entered for each
+    ///   destination, by destination id. A destination with no entry streams
+    ///   keyless.
+    func startStreaming(keys: [ProjectDestinationID: String]) async {
+        guard streamSession == nil else { return }
+        let streamable = destinations.filter(\.isStreamable)
+        guard !streamable.isEmpty else {
+            streamStatus = .error(
+                String(
+                    localized: "Add a destination with an rtmp://, rtmps://, or srt:// URL, then start again.",
+                    comment: "Stream error shown when no destination is enabled and has a usable URL"
+                )
+            )
+            return
+        }
+
+        // The stream always carries the program mix — an all-muted mixer
+        // streams silence, the way an empty shot streams the background
+        // canvas (ARCHITECTURE.md, "The audio mixer"). Every leg encodes with
+        // these settings; per-destination compression is a later iteration.
+        let configuration = StreamConfiguration(
+            width: format.width,
+            height: format.height,
+            frameRate: format.frameRate,
+            includesVideo: true,
+            includesAudio: true
+        )
+
+        var legs: [StreamSession.DestinationLeg] = []
+        for destination in streamable {
+            guard let url = destination.url, let scheme = url.scheme?.lowercased() else { continue }
+            guard let provider = await outputs.provider(forScheme: scheme) else {
+                streamStatus = .error(
+                    String(
+                        localized: "No streaming output serves \(scheme) destinations. Use rtmp, rtmps, or srt.",
+                        comment: "Stream error when a destination's URL scheme has no registered output"
+                    )
+                )
+                return
+            }
+            // The key goes only into secure storage (or is cleared when
+            // blank), filed under the destination id — a best-effort write: a
+            // Keychain error is reported but does not block the stream, which
+            // still holds the key in memory for this session.
+            let key = keys[destination.id] ?? ""
+            persistStreamKey(key, for: destination.id)
+            legs.append(
+                StreamSession.DestinationLeg(
+                    id: destination.id.rawValue,
+                    destination: Destination(url: url, streamKey: key.isEmpty ? nil : key),
+                    service: provider.makeStreamingService(configuration: configuration)
+                )
+            )
+        }
+
+        // Tee the program into a fresh stream: the drains in `start()` forward
+        // each composited frame and each mixed block here while the
+        // continuations are set.
+        let (programStream, continuation) = AsyncStream.makeStream(of: CapturedFrame.self)
+        streamContinuation = continuation
+        let (programAudioStream, audioContinuation) = AsyncStream.makeStream(of: CapturedAudio.self)
+        streamAudioContinuation = audioContinuation
+
+        let session = StreamSession(
+            programVideo: programStream,
+            programAudio: programAudioStream,
+            destinations: legs,
+            configuration: configuration,
+            policy: StreamSession.Policy(),
+            clock: clock,
+            eventBus: eventBus
+        )
+        streamSession = session
+        streamStatus = .starting
+        streamStats = nil
+        destinationStats = [:]
+        destinationStates = [:]
+
+        streamTask = Task { [weak self] in
+            do {
+                _ = try await session.run()
+                // Terminal status is set by the `stream.stopped` observer; the
+                // task only tears the plumbing down.
+            } catch {
+                // A start-time failure (bad key, unreachable host) throws
+                // before `stream.started`, so the observer never saw it.
+                self?.eventBus.error(
+                    "stream.start",
+                    domain: .output,
+                    params: [
+                        "identifier": .string(ErrorIdentifier.connectionFailed.rawValue),
+                        "message": .string(String(describing: error)),
+                    ]
+                )
+                self?.streamStatus = .error(String(describing: error))
+            }
+            self?.teardownStream()
+        }
+    }
+
+    /// Takes the program off air: requests a clean stop of the active session
+    /// (flush compression, close the connection). The `stream.stopped` event
+    /// settles the status; ``teardownStream()`` releases the plumbing when
+    /// `run()` returns. A no-op when not streaming.
+    func stopStreaming() async {
+        await streamSession?.stop()
+    }
+
+    /// Stores the stream key for a destination, or clears it when the key is
+    /// empty — best effort. A secure-storage error is reported on the bus (no
+    /// secret in the message) and swallowed: the in-memory key still drives
+    /// this session's stream.
+    ///
+    /// - Parameters:
+    ///   - streamKey: The key to store, or empty to clear the stored key.
+    ///   - id: The destination whose key this is.
+    private func persistStreamKey(_ streamKey: String, for id: ProjectDestinationID) {
+        let account = Self.secureStorageAccount(for: id)
+        do {
+            if streamKey.isEmpty {
+                try secureStorage.removeSecret(forAccount: account)
+            } else {
+                try secureStorage.setSecret(streamKey, forAccount: account)
+            }
+        } catch {
+            eventBus.error(
+                "securestore.write",
+                domain: .output,
+                params: ["error": .string(String(describing: error))]
+            )
+        }
+    }
+
+    /// Releases the finished session's plumbing: finishes the program tees
+    /// and drops the session references so a new stream can start.
+    private func teardownStream() {
+        streamContinuation?.finish()
+        streamContinuation = nil
+        streamAudioContinuation?.finish()
+        streamAudioContinuation = nil
+        streamSession = nil
+        streamTask = nil
+    }
+
+    /// Updates ``streamStatus`` and the per-destination state from a
+    /// `stream.*` bus event — the event-driven status the CLI's
+    /// `StreamSession` already emits (`stream.started`, the per-leg
+    /// `stream.destination.*`, `stream.reconnecting`, `stream.reconnected`,
+    /// `stream.stopped`); no polling. Non-stream events are ignored.
+    ///
+    /// The session-level status answers "are we on air"; a leg's own events
+    /// answer "is *this* destination on air", so one destination reconnecting
+    /// colors its row without claiming the whole stream is in trouble
+    /// (ARCHITECTURE.md, "Multiple destinations").
+    ///
+    /// - Parameter event: An event drained from the bus.
+    private func handleStreamStatusEvent(_ event: EventBusEvent) {
+        let destination = event.params?["destination"].flatMap(Self.stringValue).map(ProjectDestinationID.init)
+        switch event.name {
+        case "stream.started":
+            streamStatus = .live
+        case "stream.destination.started":
+            setDestinationState(.live, for: destination)
+        case "stream.destination.rejected":
+            setDestinationState(.rejected, for: destination)
+        case "stream.destination.lost":
+            setDestinationState(.lost, for: destination)
+            if let destination { destinationStats[destination] = nil }
+        case "stream.reconnected":
+            // The session as a whole is live again as soon as any leg is; a
+            // leg still down keeps its own row's state.
+            streamStatus = .live
+            setDestinationState(.live, for: destination)
+        case "stream.stats":
+            // Bitrate arrives in bits per second; the panel shows kbps.
+            let bitrate = event.params?["bitrate"].flatMap(Self.intValue) ?? 0
+            let fps = event.params?["fps"].flatMap(Self.intValue) ?? 0
+            let stats = StreamStats(bitrateKbps: bitrate / 1000, fps: fps)
+            if let destination {
+                destinationStats[destination] = stats
+                setDestinationState(.live, for: destination)
+            }
+            // The headline figure is the first live leg's, never an average.
+            if isFirstLiveDestination(destination) { streamStats = stats }
+        case "stream.reconnecting":
+            let attempt = event.params?["attempt"].flatMap(Self.intValue) ?? 0
+            let maxAttempts = event.params?["maxAttempts"].flatMap(Self.intValue) ?? 0
+            setDestinationState(.reconnecting(attempt: attempt, maxAttempts: maxAttempts), for: destination)
+            if let destination { destinationStats[destination] = nil }
+            // The session banner reports trouble only when nothing is left
+            // delivering; one leg of several reconnecting is that leg's news.
+            if !destinationStates.values.contains(.live) {
+                streamStatus = .reconnecting(attempt: attempt, maxAttempts: maxAttempts)
+                streamStats = nil
+            }
+        case "stream.stopped":
+            // The session reports its outcome as the stop reason; every leg
+            // being lost past its reconnect budget is the failure case.
+            let reason = event.params?["reason"].flatMap(Self.stringValue)
+            streamStatus =
+                reason == StreamSession.Outcome.connectionLost.rawValue
+                ? .error(
+                    String(
+                        localized: "Every destination was lost and not recovered.",
+                        comment: "Stream error shown when the last live destination was lost"
+                    )
+                )
+                : .stopped
+            streamStats = nil
+            destinationStats = [:]
+        default:
+            break
+        }
+    }
+
+    /// Records one destination's live state, ignoring an event that names no
+    /// destination (or one no longer in the panel).
+    ///
+    /// - Parameters:
+    ///   - state: The state to record.
+    ///   - id: The destination the event named, if any.
+    private func setDestinationState(_ state: DestinationState, for id: ProjectDestinationID?) {
+        guard let id else { return }
+        destinationStates[id] = state
+    }
+
+    /// Whether a destination is the first one currently delivering — the leg
+    /// whose counters stand as the session's headline figures.
+    ///
+    /// - Parameter id: The destination an event named, if any.
+    /// - Returns: Whether its stats should drive ``streamStats``.
+    private func isFirstLiveDestination(_ id: ProjectDestinationID?) -> Bool {
+        guard let id else { return true }
+        let firstLive = destinations.first { destinationStates[$0.id] == .live }
+        return firstLive?.id == id
+    }
+
+    /// The `Int` inside an event value, when it is one.
+    private static func intValue(_ value: EventValue) -> Int? {
+        if case .int(let int) = value { return int }
+        return nil
+    }
+
+    /// The `String` inside an event value, when it is one.
+    private static func stringValue(_ value: EventValue) -> String? {
+        if case .string(let string) = value { return string }
+        return nil
+    }
+
+    // MARK: Lifecycle
+
+    /// Stops the compositor, the program and preview drains, and every active
+    /// input, flushing any pending autosave first so the last edits reach disk.
+    func stop() async {
+        await stopStreaming()
+        streamStatusTask?.cancel()
+        streamStatusTask = nil
+        if autosaveTask != nil { saveProject() }
+        programTask?.cancel()
+        programTask = nil
+        previewTask?.cancel()
+        previewTask = nil
+        programAudioTask?.cancel()
+        programAudioTask = nil
+        meterTask?.cancel()
+        meterTask = nil
+        monitorDeviceTask?.cancel()
+        monitorDeviceTask = nil
+        await monitor.stop()
+        isMonitoring = false
+        compositor.stop()
+        mixer.stop()
+        for input in activeInputs.values {
+            await input.stop()
+        }
+        activeInputs.removeAll()
+        for input in activeAudioInputs.values {
+            await input.stop()
+        }
+        activeAudioInputs.removeAll()
+        eventBus.shutdown()
+    }
+
+    /// Loads the project document at boot, adopting its first preset as the
+    /// active preset (the active preset is session state — the document
+    /// records no "active" field) and pointing the pickers at the devices its
+    /// layers reference; with no file (or a file holding no presets), it
+    /// leaves the presets unseeded — ``establishSessionPreset()`` seeds them
+    /// from the built-in arrangement on the first configuration pass — and
+    /// defaults the pickers to the first discovered devices. An unreadable
+    /// file is reported and set aside, never silently overwritten (see
+    /// ARCHITECTURE.md, "Project save/load").
+    private func loadProject() {
+        let path = store.fileURL.path(percentEncoded: false)
+        do {
+            if let project = try store.load() {
+                presets = project.presets
+                // Restore the destinations (each key stays in secure storage,
+                // read lazily when the panel prefills that row's field).
+                destinations = DestinationEdit.edits(from: project.destinations)
+            }
+        } catch {
+            eventBus.error(
+                "project.load",
+                domain: .composition,
+                params: ["path": .string(path), "error": .string(String(describing: error))]
+            )
+            do {
+                let setAside = try store.setAsideUnreadableFile()
+                eventBus.event(
+                    "project.setAside",
+                    domain: .composition,
+                    params: ["path": .string(setAside.path(percentEncoded: false))]
+                )
+            } catch {
+                eventBus.error(
+                    "project.setAside",
+                    domain: .composition,
+                    params: ["path": .string(path), "error": .string(String(describing: error))]
+                )
+            }
+        }
+
+        guard let loadedPreset = presets.first else {
+            // A fresh project: default to the first discovered devices; the
+            // first configuration pass seeds the built-in arrangement from
+            // whatever actually starts.
+            selectedDisplayID = displays.first?.id
+            selectedCameraID = cameras.first?.id
+            return
+        }
+
+        activePresetID = loadedPreset.id
+        shots = loadedPreset.shots
+
+        // The pickers reflect the loaded document: the first referenced input
+        // of each kind that is currently discovered plays that built-in role.
+        // A referenced input that is not discovered stays bound — its layers
+        // contribute nothing until it returns (or the operator removes and
+        // re-adds the layer in the layer-tree editor).
+        let referenced = shots.flatMap { $0.layers.map(\.input) }
+        boundCameraID = referenced.first { id in cameras.contains { $0.id == id } }
+        boundDisplayID = referenced.first { id in displays.contains { $0.id == id } }
+        selectedCameraID = boundCameraID
+        selectedDisplayID = boundDisplayID
+        eventBus.event(
+            "project.loaded",
+            domain: .composition,
+            params: [
+                "path": .string(path),
+                "presets": .int(presets.count),
+                "shots": .int(shots.count),
+            ]
+        )
+    }
+
+    /// Completes the first configuration pass: when no project file supplied
+    /// a preset, seeds one from the built-in ``ProgramLayout`` arrangement
+    /// (using only the inputs that actually started) and saves the fresh
+    /// project immediately so the file exists from first launch; then loads
+    /// the active preset into the compositor, which cuts to its first shot —
+    /// nothing is on program yet, the one case where loading cuts (the active
+    /// shot, like the active preset, is session state, never part of the
+    /// document).
+    private func establishSessionPreset() {
+        if !hasSessionPreset {
+            let displayID = selectedDisplayID.flatMap { activeInputs[$0] != nil ? $0 : nil }
+            let cameraID = selectedCameraID.flatMap { activeInputs[$0] != nil ? $0 : nil }
+            shots = ProgramLayout.shots(displayID: displayID, cameraID: cameraID)
+            boundDisplayID = displayID
+            boundCameraID = cameraID
+            let seeded = Preset(
+                id: PresetID(rawValue: "default"),
+                name: String(localized: "Default", comment: "Name of a fresh project's seeded preset"),
+                shots: shots
+            )
+            presets = [seeded]
+            activePresetID = seeded.id
+            eventBus.event(
+                "project.seeded",
+                domain: .composition,
+                params: ["path": .string(store.fileURL.path(percentEncoded: false))]
+            )
+            saveProject()
+        }
+        if let active = presets.first(where: { $0.id == activePresetID }) {
+            compositor.loadPreset(Preset(id: active.id, name: active.name, shots: shots))
+        }
+        activeShotID = compositor.activeShotID
+        syncTally()
+    }
+
+    /// Rebinds every layer bound to one device to another across all the
+    /// active preset's shots — how a picker change recasts which device
+    /// plays the built-in role — pushing each changed shot through the
+    /// compositor so the recast is on program at the next tick.
+    ///
+    /// - Parameters:
+    ///   - previous: The device the role's layers are currently bound to, or
+    ///     nil when the role was never cast (nothing to rebind).
+    ///   - input: The newly chosen device.
+    /// - Returns: Whether any shot changed.
+    private func rebindLayers(from previous: InputID?, to input: InputID) -> Bool {
+        guard let previous, previous != input else { return false }
+        var changed = false
+        for index in shots.indices {
+            let rebound = LayerTreeEdit.rebindingLayers(boundTo: previous, to: input, in: shots[index])
+            guard rebound != shots[index] else { continue }
+            shots[index] = rebound
+            compositor.updateShot(rebound)
+            changed = true
+        }
+        if changed {
+            eventBus.event(
+                "preset.rebound",
+                domain: .composition,
+                params: ["from": .string(previous.rawValue), "to": .string(input.rawValue)]
+            )
+        }
+        return changed
+    }
+
+    /// Saves the project document now — every preset in switcher order, the
+    /// active one refreshed with its live layer-tree edits first — cancelling
+    /// any pending autosave. A save that cannot write is reported on the bus
+    /// and the session continues: the edits are still live on program, only
+    /// unsaved.
+    private func saveProject() {
+        guard hasSessionPreset else { return }
+        autosaveTask?.cancel()
+        autosaveTask = nil
+        syncActivePreset()
+        // The destinations join the document; their stream keys are excluded
+        // — those live only in secure storage, filed by destination id. A row
+        // whose URL is not yet usable is left out rather than saved half-typed.
+        let project = Project(
+            presets: presets,
+            destinations: DestinationEdit.projectDestinations(from: destinations)
+        )
+        do {
+            try store.save(project)
+            eventBus.event(
+                "project.saved",
+                domain: .composition,
+                params: ["path": .string(store.fileURL.path(percentEncoded: false))]
+            )
+        } catch {
+            eventBus.error(
+                "project.save",
+                domain: .composition,
+                params: [
+                    "path": .string(store.fileURL.path(percentEncoded: false)),
+                    "error": .string(String(describing: error)),
+                ]
+            )
+        }
+    }
+
+    /// Schedules the debounced autosave: the write lands one second after the
+    /// last edit, so a slider drag's many per-gesture edits coalesce into a
+    /// single save (the same reasoning that keeps successful `updateShot`
+    /// calls off the event bus; see ARCHITECTURE.md, "Project save/load").
+    private func scheduleAutosave() {
+        autosaveTask?.cancel()
+        autosaveTask = Task { [weak self] in
+            do {
+                try await Task.sleep(for: .seconds(1))
+            } catch {
+                return  // Cancelled: a newer edit rescheduled, or a save flushed it.
+            }
+            self?.saveProject()
+        }
+    }
+
+    /// The concrete transition ``take(_:)`` passes to the compositor for the
+    /// shot being taken: the switcher's explicitly selected kind at its
+    /// default duration (with the selected edge for a wipe) — or, on Default,
+    /// the taken shot's own ``Shot/defaultTransition``, falling back to a cut
+    /// for a shot with no default (today's behavior for every shot that never
+    /// set one). Resolution lives here in the app, not the compositor: the
+    /// override source is switcher session state, and
+    /// `take(shotID:transition:)` keeps its caller-states-the-transition
+    /// contract (ARCHITECTURE.md, "Per-shot default transitions").
+    ///
+    /// - Parameter shotID: The id of the shot being taken.
+    /// - Returns: The transition to take it with.
+    private func resolvedTransition(for shotID: ShotID) -> Transition {
+        switch takeTransitionKind {
+        case .default: shots.first { $0.id == shotID }?.defaultTransition ?? .cut
+        case .cut: .cut
+        case .dissolve: .dissolve
+        case .wipe: .wipe(edge: wipeEdge)
+        case .shader: .shader(name: shaderName)
+        }
+    }
+}
+
+/// The transition kinds the shot switcher's picker offers (GLOSSARY.md,
+/// "Transition") — the UI's session-state selection, mapped to a concrete
+/// ``Transition`` (with the selected wipe edge or shader, and the default
+/// durations) at take time.
+enum TakeTransitionKind: String, CaseIterable {
+    /// The taken shot's own ``Shot/defaultTransition`` (a cut when it has
+    /// none) — the initial selection, so per-shot defaults are effective
+    /// out of the box.
+    case `default`
+
+    /// An instant cut, regardless of the taken shot's default.
+    case cut
+
+    /// A crossfade at the default dissolve duration.
+    case dissolve
+
+    /// A directional reveal from ``EngineModel/wipeEdge`` at the default
+    /// wipe duration.
+    case wipe
+
+    /// A custom-shader reveal with ``EngineModel/shaderName`` at the
+    /// default shader-transition duration.
+    case shader
+}
+
+/// A plain, `@MainActor` holder for the latest program pixel buffer: the
+/// writer (the ``EngineModel``'s program drain) and the reader (the
+/// `MTKView` coordinator) share one instance, so the preview samples the
+/// program at display rate without pushing 30 fps of state changes through
+/// SwiftUI.
+@MainActor
+final class ProgramFrameRelay: MonitorFrameSource {
+    /// The most recent program frame's pixel buffer, or nil before the
+    /// first frame. Under the frame ownership rule the relay is the one
+    /// holder; the coordinator only reads it to draw.
+    var latest: CVPixelBuffer?
+
+    /// Creates an empty relay.
+    init() {}
+}
+
+/// A no-op `ToolRegistering`: the app does not host the MCP tool surface
+/// (the daemon does), but the shared `PlugInContext` still requires the seam.
+private struct UnusedToolRegistering: ToolRegistering {
+    func register(_ tool: any Tool) async throws {}
+}
+
+/// The video effect providers the compositor's renderer resolves layer
+/// chains against, shared between the main actor (which fills it at boot
+/// from the effect registry) and the compositor's tick task (which reads
+/// it per chain rebuild).
+///
+/// A reference box because the renderer factory is `@Sendable` and a
+/// `Mutex` is non-copyable, so the lock cannot be captured directly; the
+/// box is filled once, before the compositor starts.
+///
+/// `nonisolated` because the module compiles under main-actor default
+/// isolation: the box carries its own `Mutex`, and the tick task reads it
+/// off the main actor.
+private nonisolated final class VideoEffectProviderBox: Sendable {
+    /// The providers, keyed by effect id.
+    private let providers = Mutex<[EffectID: any VideoEffectProvider]>([:])
+
+    /// Creates an empty box.
+    init() {}
+
+    /// Stores the registry's video providers, keyed by id.
+    ///
+    /// - Parameter registered: The registered video effect providers.
+    func fill(with registered: [any VideoEffectProvider]) {
+        providers.withLock { providers in
+            for provider in registered {
+                providers[provider.id] = provider
+            }
+        }
+    }
+
+    /// The provider for an effect id, or nil when this build has none —
+    /// the chain slot then renders as pass-through.
+    ///
+    /// - Parameter id: The effect's stable identifier.
+    func provider(for id: EffectID) -> (any VideoEffectProvider)? {
+        providers.withLock { $0[id] }
+    }
+}
+
+/// The stand-in for a chain slot whose effect has no registered provider:
+/// passes the block through unchanged, holding the slot's index so the
+/// chain stays aligned with its authored configurations (see
+/// `EngineModel.makeEffectChain(_:)`).
+private struct PassthroughAudioEffect: AudioEffect {
+    /// Ignores every payload — there is nothing to configure.
+    func setParameters(_ parameters: [String: JSONValue]) {}
+
+    /// Leaves the block unchanged.
+    func process(_ channels: inout [[Float]], sampleRate: Double) {}
+}

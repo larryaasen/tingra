@@ -1151,6 +1151,131 @@ or two in the doc that owns them — none need a rewrite.
 
 ## Decisions to settle
 
+- [x] **Convert the app from an SPM executable to the Xcode project
+  `apps/tingra-app` — planned 2026-07-29, built 2026-08-01.** Recorded nowhere in
+  the repo until 2026-07-31, which is why it slipped. The plan had two parts, **Part A first so
+  the UI work is built and verified once, in the app's final home**; Part B (the
+  main window's two sections) was built first anyway and landed 2026-07-31, so
+  Part A now inherits one extra file to move and nothing else changes.
+
+  **Why.** `apps/tingra` is an SPM executable, so it has no bundle, no
+  Info.plist, and an ad-hoc signature whose designated requirement is the
+  binary's cdhash — which changes every build, so macOS TCC re-prompts for
+  Screen Recording, Camera, and Microphone on every run.
+  `scripts/run-app.sh` + `scripts/sign-app.sh` work around exactly this by
+  wrapping the executable in a minimal `tingra.app` and re-signing it with a
+  stable identity; a real app target makes the workaround unnecessary. It also
+  makes the deferred packaging (signed, notarized `.app`) an ordinary build
+  setting rather than a script, and it is the trigger the UI-package deferral
+  named: once the app builds via `xcodebuild`, code in a package keeps fast
+  `swift test` and full warning visibility (Xcode hides package warnings —
+  CLAUDE.md, "Strict Compilation").
+
+  **The shell already exists, unfinished.** `apps/tingra-app` was created
+  2026-07-12 (Xcode 26.6, folder-synchronized groups, so files dropped into
+  `apps/tingra-app/tingra-app/` join the target automatically) and has sat as a
+  stub since: `TingraApp.swift` is an empty `WindowGroup` with `ContentView()`
+  commented out. Use it as the base rather than regenerating it, and fix its
+  defaults: `ENABLE_APP_SANDBOX = NO` (Tingra is not sandboxed; hardened runtime
+  stays on — the `tingra-cameras` lesson, where the sandbox blocked the mach
+  lookups CMIO camera extensions need), `MACOSX_DEPLOYMENT_TARGET = 15.0`
+  (currently 26.5), `SWIFT_VERSION = 6.0` (currently 5.0, keeping
+  `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`),
+  `PRODUCT_BUNDLE_IDENTIFIER = com.moonwink.tingra.app` (currently
+  `com.moonwink.tingra-app`), `PRODUCT_NAME = Tingra` with
+  `PRODUCT_MODULE_NAME = TingraApp`, Info.plist `NSCameraUsageDescription` and
+  `NSMicrophoneUsageDescription` plus copyright and app category, `de` and `es`
+  added to `knownRegions`, and the empty `tingra-appUITests` target deleted
+  (this repo is Swift Testing only).
+
+  **The migration.** `git mv` `apps/tingra/Sources/Tingra/` into
+  `apps/tingra-app/tingra-app/` keeping the flat layout and the
+  `LayerTreeEditor/` subdirectory; carry `Localizable.xcstrings` across and
+  verify the `de`/`es` entries survive; move `Tests/TingraTests/` onto the unit
+  test target, where `@testable import Tingra` becomes `@testable import
+  TingraApp`; replace the shell's two package references (`../tingra` and a lone
+  `TingraAudio`) with the nine from CLAUDE.md's dependency graph and link their
+  products; update `.github/workflows/ci.yml` so the app's step becomes
+  `xcodebuild build`/`test` (scheme `tingra-app`,
+  `-destination 'platform=macOS,arch=arm64'`, `CODE_SIGNING_ALLOWED=NO`) while
+  the per-package `swift build` jobs stay; update `scripts/format-swift.sh` and
+  `check-format.sh`; and delete `apps/tingra` once the project builds and tests
+  green. **End state: one app folder, `apps/tingra-app`.**
+
+  **Two loose ends to close in the same pass.** `apps/tingra-app` is an Xcode
+  project missing from both README's listing and CLAUDE.md's project tree, and
+  its Xcode user-state files (`UserInterfaceState.xcuserstate`,
+  `xcschememanagement.plist`) are **tracked** — they need `git rm --cached`
+  alongside the ignore rule, since ignoring a tracked file does nothing.
+
+  **The open question, settled 2026-08-01: both scripts survive, repointed.**
+  The recommendation was to delete `sign-app.sh` and slim `run-app.sh` down to a
+  build-and-exec; Larry kept both. `run-app.sh` now drives `xcodebuild` into a
+  fixed derived-data path under `apps/tingra-app/.build` (already git-ignored, so
+  the product path is deterministic without parsing build settings) and execs
+  `Tingra.app/Contents/MacOS/Tingra` in the foreground — the one thing the app
+  target does not provide, since `xcodebuild` alone will not stream
+  `ConsoleEventSink` to a terminal. `sign-app.sh` re-signs that bundle with the
+  stable identity under `com.moonwink.tingra.app`, preserving the build's
+  entitlements; on a configured Mac Xcode's automatic signing has already done
+  the job, so it now earns its place only where automatic signing produces no
+  usable signature — a `CODE_SIGNING_ALLOWED=NO` build, or a checkout on a Mac
+  whose keychain holds no certificate for the team.
+
+  **Built as recorded, with four things worth keeping.** (1) **The move really
+  was a move**: the source diff is five mechanical categories and no logic —
+  the header module line (`tingra` → `tingra-app`, matching the `tingra-cli`
+  convention), `@testable import Tingra` → `TingraApp`, seven added imports,
+  fifteen `bundle: .module` arguments dropped, and one `nonisolated`. (2) **Three
+  build settings the shell already carried turned out to have teeth**, and each
+  cost exactly one kind of edit: `SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY`
+  wanted `import TingraEventBus` in the five views that call `eventBus.tap(...)`
+  (plus `TingraAudio` in `MixerView` and `Foundation` in one test);
+  `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` wanted `nonisolated` on
+  `VideoEffectProviderBox`, the `Mutex`-guarded box the compositor's tick task
+  reads off the main actor — one type, because the app is otherwise main-actor
+  code all the way down, which is the trade the setting is meant to make; and
+  `Bundle.module`, being SwiftPM-generated, does not exist in an app target at
+  all, so localized-string call sites simply drop the argument and read the app's
+  own catalog from `Bundle.main`. (3) **The hardened runtime needed an
+  entitlements file the plan did not name.** Keeping `ENABLE_HARDENED_RUNTIME`
+  while dropping the sandbox is not enough: the hardened runtime denies camera
+  and microphone access unless the binary opts in, so
+  `tingra-app/tingra-app.entitlements` carries the same three keys
+  `apps/tingra-cli` and `apps/tingra-cameras` already needed —
+  `device.camera`, `device.audio-input`, and `cs.disable-library-validation`
+  (without the last, a camera's CMIOExtension never starts its graph). Verified
+  on the built bundle: the designated requirement is certificate-based rather
+  than cdhash-based, which is the whole point of the conversion. (4) **CI needed
+  a job, not a matrix row.** The app leaves the per-package `swift build` matrix
+  for its own `xcodebuild test` job, and its warning check excludes three things
+  that are not our code: `SourcePackages` checkouts (the matrix already builds
+  each package warning-clean), `appintentsmetadataprocessor`'s note that the app
+  declares no App Intents, and the unsigned-build complaint about Apple's own
+  `XCTAutomationSupport`/`XCUIAutomation` binaries. 131 tests in 14 suites, green.
+
+  **Signing moved out of the tracked project files (2026-08-01, Larry's call as
+  the repo heads for GitHub).** The conversion had carried
+  a hard-coded `DEVELOPMENT_TEAM` into the `.pbxproj` six times, and
+  `apps/tingra-cameras` already had it four times. A Team ID is not a credential
+  — it is visible in any signed app — but it is an Apple Developer *account*
+  identifier, and a tracked one makes every other contributor's build fail with
+  "No signing certificate found for team …" against a file they must edit. Both
+  projects now read `DEVELOPMENT_TEAM = $(TINGRA_DEVELOPMENT_TEAM)` from a
+  committed `Tingra.xcconfig` whose first line is `#include? "Local.xcconfig"` —
+  an *optional* include, so a checkout without the git-ignored `Local.xcconfig`
+  still builds, which is exactly what CI does. `Local.xcconfig.example` is
+  committed beside it. `sign-app.sh` no longer names a certificate holder. The
+  policy is written into CLAUDE.md, "Signing: nothing personal in a tracked
+  file", including the trap that Xcode silently re-adds `DEVELOPMENT_TEAM` to
+  the `.pbxproj` whenever a team is picked in Signing & Capabilities. Audited
+  the rest of the tree at the same time: no keys, no absolute home paths, no
+  certificate hashes; `Package.resolved` is public dependencies only, and the
+  `live_xxxx` strings in README/CLI.md are documentation placeholders. Verified
+  three ways — the signed local build is byte-for-byte the same identity, an
+  unsigned build with `Local.xcconfig` moved aside succeeds, and
+  `tingra-cameras` still builds signed.
+
 - [x] **Live device lists in the app — decided 2026-07-28, go-ahead given
   with display hot-plug included, and built the same day.** The app never refreshes its device lists after boot: `cameras`,
   `displays`, `videoInputs`, and `audioInputs` are computed once in the boot

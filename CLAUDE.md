@@ -14,8 +14,12 @@ apps/                           # Runnable products
   tingra-cli/                   # Headless front end over the engine; ships first, v1 (see CLI.md)
   ingest-simulator/             # Local RTMP/SRT ingest server for tests (see SIMULATOR.md):
                                 #   pinned MediaMTX + sim.sh; test-only, never linked into the product
-  tingra/                       # Phase 3 — the assembled SwiftUI/AppKit app; scaffolded at
-                                #   roadmap step 6 (camera + display composited to an MTKView)
+  tingra-app/                   # Phase 3 — the assembled SwiftUI/AppKit app; scaffolded at
+                                #   roadmap step 6 (camera + display composited to an MTKView).
+                                #   A native Xcode project (scheme tingra-app, product Tingra.app,
+                                #   module TingraApp) linking the engine packages, so the bundle,
+                                #   Info.plist, and a stable signature are build settings — which
+                                #   is what makes one TCC grant survive a rebuild
   tingra-cameras/               # Standalone "Tingra Cameras" app: a hardware picker (cameras and
                                 #   microphones) beside a live preview canvas. A native Xcode
                                 #   project, no engine package dependencies; see its own CLAUDE.md
@@ -61,7 +65,7 @@ The package names are **finalized** (reviewed 2026-07-03; also recorded in "Repo
 
 **Key facts:**
 - Within each package's or app's `Sources/`, keep files flat by default; use a named subdirectory only for features with **more than one UI or implementation file**. Do not create generic folders like `Views/`, `Components/`, or `Helpers/`.
-- `packages/` holds local SPM library packages (the engine); `apps/` holds the runnable products (`tingra-cli`, `ingest-simulator`, and the phase-3 `tingra` app) that consume them.
+- `packages/` holds local SPM library packages (the engine); `apps/` holds the runnable products (`tingra-cli`, `ingest-simulator`, and the phase-3 `tingra-app`) that consume them.
 - Companion docs, each authoritative for its area: [README.md](README.md) (project overview), [ARCHITECTURE.md](docs/ARCHITECTURE.md) (technical plan and engine design), [GLOSSARY.md](docs/GLOSSARY.md) (canonical vocabulary), [CLI.md](docs/CLI.md) (`tingra-cli` spec), [SIMULATOR.md](docs/SIMULATOR.md) (local RTMP/SRT test server), [CLOCK.md](docs/CLOCK.md) (master clock, program tick, and A/V sync model), [EVENTS.md](docs/EVENTS.md) (event bus, sinks, and logging/redaction policy), [MCP.md](docs/MCP.md) (engine daemon, socket transport, and the agent-facing MCP server).
 - **Vocabulary is not optional.** Use [GLOSSARY.md](docs/GLOSSARY.md) terms exactly — in code, comments, commit messages, and UI text: `input`, `generator`, `shot`, `preset`, `project`, `program`, `preview`, `compression`, `output`, `destination`, `plug-in` (always hyphenated), `host`, `registry`. Never use terminology (`source`, `scene`, `encoder`, `ingest`, `egress`) except at an explicit external protocol boundary (e.g., an RTSP "source" stays a source in that protocol's own terms).
 - `AGENTS.md` is a pointer to this file and should not be edited separately.
@@ -75,7 +79,7 @@ The package names are **finalized** (reviewed 2026-07-03; also recorded in "Repo
 - Prioritize readability and maintainability over clever code.
 - Never use periodic polling — the engine and its session state are event-driven (device connect/disconnect, stream status, etc.); model changes as events, not poll loops.
 - Don't ever use hacks to solve a problem.
-- **UI work has begun (phase 3, from roadmap step 6).** `apps/tingra` is scaffolded — a SwiftUI app with an `MTKView` program preview — so the UI-facing rules below (SwiftUI, Localization) are now in force for that target. The engine (`packages/`) and `tingra-cli` remain the bulk of the work; keep UI confined to `apps/tingra` and keep engine packages UI-free (they must stay importable by the CLI and the daemon). Build the app with `swift build` in `apps/tingra` while it is an SPM executable; switch to `xcodebuild` once an Xcode app target/bundle exists.
+- **UI work has begun (phase 3, from roadmap step 6).** `apps/tingra-app` is the assembled SwiftUI app — so the UI-facing rules below (SwiftUI, Localization) are now in force for that target. The engine (`packages/`) and `tingra-cli` remain the bulk of the work; keep UI confined to `apps/tingra-app` and keep engine packages UI-free (they must stay importable by the CLI and the daemon). The app is an **Xcode project**, so build it with `xcodebuild` (see the table below), never `swift build`. Two consequences worth knowing before writing code there: the target compiles with `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`, so a type that must run off the main actor says `nonisolated` explicitly; and with `SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY`, using a member means importing the module that defines it, even when another import already re-exports it. `Bundle.module` does not exist in an app target — `String(localized:)` reads the app's own catalog from `Bundle.main` by default.
 - **Prefer native Apple frameworks; add third-party dependencies only behind a seam and with justification.** The only sanctioned third-party dependencies are **HaishinKit** (RTMP/SRT output, isolated behind `StreamingService` in `TingraOutputPlugIns` — the only package that imports it; its **Logboard** logging façade rides along there solely to reroute HaishinKit's internal console logging into OSLog, keeping stdout clean for the `--json` contract), **MediaMTX** (the `ingest-simulator`, a test-only binary, not linked into the product), and **swift-argument-parser** (Apple-authored, effectively first party; command/option parsing in `tingra-cli` per [CLI.md](docs/CLI.md) — confined to the CLI target, no seam required). Don't introduce a new third-party dependency without a clear reason and a protocol seam that keeps the rest of the code from importing it directly. **The MCP server takes no third-party dependency:** the JSON-RPC/MCP layer is hand-rolled in `TingraMCP` behind the MCP/Control seam rather than using the official `modelcontextprotocol/swift-sdk`, whose transitive SwiftNIO/swift-log/`eventsource` stack is server-side weight for a Mac-only app and would reintroduce the swift-log dependency EVENTS.md rejected (decided 2026-07-05; rationale in [MCP.md](docs/MCP.md), "Implementation: a hand-rolled JSON-RPC layer").
 
 ## Code Quality
@@ -121,10 +125,20 @@ Start every Swift source file with this header. `<ModuleName>` is the containing
 | Test a library package | `cd packages/<PackageName> && swift test` |
 | Build/test the CLI | `cd apps/tingra-cli && swift build` / `swift test` |
 | Run the CLI locally | `cd apps/tingra-cli && swift run tingra-cli <subcommand> [options]` (see [CLI.md](docs/CLI.md)) |
+| Build the app | `cd apps/tingra-app && xcodebuild build -project tingra-app.xcodeproj -scheme tingra-app -destination 'platform=macOS,arch=arm64'` (add `CODE_SIGNING_ALLOWED=NO` if you have no `Local.xcconfig` — see Signing below) |
+| Test the app | same with `test` in place of `build` (Swift Testing, run through the app host) |
+| Run the app from a terminal | `scripts/run-app.sh` (builds, signs, and runs it in the foreground so the event log streams to the terminal; `--release`, `--no-run`) |
 | Start the local ingest simulator | `apps/ingest-simulator/sim.sh start` (see [SIMULATOR.md](docs/SIMULATOR.md)) |
 | Run the streaming integration tests | `scripts/integration-test.sh` (generators → simulator, verified server side with ffprobe; needs ffmpeg installed) |
 | Format all Swift files | `scripts/format-swift.sh` (swift-format over every package and app; config in the root `.swift-format`) |
 | Check formatting (CI) | `scripts/check-format.sh` (read-only; exits nonzero if `format-swift.sh` would change anything) |
+
+### Signing: nothing personal in a tracked file
+This repository is public, so **no app secret and nothing personal to one developer may be committed** — not stream keys, not certificates, and not an Apple Developer Team ID. Both Xcode projects (`apps/tingra-app`, `apps/tingra-cameras`) therefore carry `DEVELOPMENT_TEAM = $(TINGRA_DEVELOPMENT_TEAM)` in a committed `Tingra.xcconfig`, which optionally includes a **git-ignored `Local.xcconfig`** holding that one value. Copy `Local.xcconfig.example` and fill in your team.
+
+- `#include?` is an *optional* include, so a checkout without `Local.xcconfig` still builds — that is exactly what CI does, passing `CODE_SIGNING_ALLOWED=NO` and needing no team at all.
+- **Never write a Team ID, certificate name, or keychain identity into a tracked file** — not the `.pbxproj`, not a script, not a workflow. Xcode will silently re-add `DEVELOPMENT_TEAM` to the `.pbxproj` if you pick a team in the target editor's Signing & Capabilities tab; if a diff shows that line coming back, move it to `Local.xcconfig` instead of committing it.
+- Release signing and notarization credentials stay in GitHub Actions secrets and the `TINGRA_SIGN_ID`/`TINGRA_INSTALLER_SIGN_ID`/`TINGRA_NOTARY_PROFILE`/`TINGRA_SIGN_IDENTITY` environment variables, never in the repo (see [CLI.md](docs/CLI.md) "Distribution").
 
 ## Toolchain & CI
 - **Toolchain floor: Xcode 26.6 and Swift 6.3.3.** Develop and build with these minimums; every `Package.swift` declares `swift-tools-version: 6.3.3` (see Swift Language & Idioms). This is the *development* toolchain floor — the *deployment* target (macOS 15.0+, Apple Silicon only) is separate; see Platform Support.
@@ -203,14 +217,16 @@ packages/  TingraMCP              →  TingraHost + TingraPlugInKit + TingraEven
 apps/      tingra-cli             →  TingraHost + TingraCapturePlugIns + TingraGeneratorPlugIns
                                      + TingraOutputPlugIns + TingraRecordingPlugIns + TingraMCP
                                      (+ swift-argument-parser)
-apps/      tingra (phase 3)       →  TingraHost + TingraComposition + TingraAudio
+apps/      tingra-app (phase 3)   →  TingraHost + TingraComposition + TingraAudio
                                      + TingraCapturePlugIns + TingraGeneratorPlugIns
                                      + TingraOutputPlugIns + TingraEffectPlugIns
                                      + TingraPlugInKit + TingraEventBus
                                      (scaffolded at step 6; gained TingraOutputPlugIns at the
                                      step-7 streaming iteration, TingraAudio at the mixer
                                      iteration, and TingraEffectPlugIns at the audio effect
-                                     chain iteration; more feature plug-ins + UI packages later)
+                                     chain iteration; more feature plug-ins + UI packages later.
+                                     An Xcode project, so these nine arrive as local package
+                                     references on the app target, not a Package.swift)
 apps/      ingest-simulator       →  none of the above (wraps MediaMTX; see SIMULATOR.md)
 ```
 

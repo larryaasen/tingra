@@ -51,7 +51,6 @@ jobs:
           - packages/TingraRecordingPlugIns
           - packages/TingraMCP
           - apps/tingra-cli
-          - apps/tingra
     steps:
       - uses: actions/checkout@v4
       - name: Build (warning-clean, including tests)
@@ -68,3 +67,37 @@ jobs:
       - name: Test
         working-directory: ${{ matrix.package }}
         run: swift test --skip-build
+
+  app:
+    name: Build & test (apps/tingra-app)
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      # The app is an Xcode project, not an SPM package, so it builds with
+      # xcodebuild rather than joining the matrix above. CODE_SIGNING_ALLOWED=NO
+      # because runners hold no certificate for the project's team; the app's
+      # entitlements and hardened runtime are exercised by the release
+      # packaging job, not here.
+      - name: Build & test (warning-clean)
+        working-directory: apps/tingra-app
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project tingra-app.xcodeproj \
+            -scheme tingra-app \
+            -destination 'platform=macOS,arch=arm64' \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee "$RUNNER_TEMP/app-build.log"
+          # Warning-clean per CLAUDE.md "Strict Compilation". Three exclusions,
+          # none of them our code: package checkouts under SourcePackages (the
+          # matrix job above already builds each package warning-clean),
+          # appintentsmetadataprocessor's note that the app declares no App
+          # Intents, and the unsigned-build complaint about Apple's own
+          # XCTAutomationSupport/XCUIAutomation binaries.
+          if grep "warning:" "$RUNNER_TEMP/app-build.log" \
+            | grep -v "SourcePackages" \
+            | grep -v "appintentsmetadataprocessor" \
+            | grep -v "Failed to parse executable"; then
+            echo "::error::xcodebuild produced warnings (listed above)"
+            exit 1
+          fi

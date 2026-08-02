@@ -1,0 +1,25 @@
+//
+//  Tingra.xcconfig
+//  tingra-app
+//
+//  Created by Larry Aasen on 2026-08-01.
+//  Copyright © 2026 Larry Aasen.
+//  SPDX-License-Identifier: MIT
+//
+//  The project's base configuration. It exists to keep the signing team — an
+//  Apple Developer account identifier, personal to whoever builds — out of the
+//  tracked project file, so this repository can be public without carrying one
+//  developer's account into everyone else's checkout.
+//
+//  `Local.xcconfig` is git-ignored and holds that one value. The `#include?`
+//  form is an *optional* include: the build works with the file absent, which
+//  is what CI does (it passes CODE_SIGNING_ALLOWED=NO and needs no team at
+//  all). To build a signed, runnable app locally, copy Local.xcconfig.example
+//  to Local.xcconfig and fill in your team.
+//
+//  The include must come first — in an xcconfig the last assignment wins, so
+//  DEVELOPMENT_TEAM below reads whatever Local.xcconfig set.
+
+#include? "Local.xcconfig"
+
+DEVELOPMENT_TEAM = $(TINGRA_DEVELOPMENT_TEAM)

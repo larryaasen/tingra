@@ -8,3 +8,7 @@ dist/
 # ignored — that part is meant to be committed.
 xcuserdata/
 UserInterfaceState.xcuserstate
+# Per-developer signing configuration: the Apple Developer Team ID is an
+# account identifier personal to whoever builds, so it stays out of the tracked
+# project files. Copy Local.xcconfig.example (committed) to Local.xcconfig.
+Local.xcconfig

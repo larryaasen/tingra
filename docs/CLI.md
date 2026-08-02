@@ -20,7 +20,7 @@ Display/window inputs, shot composition, and transitions are app roadmap items; 
 
 ## Repository and package layout
 
-`tingra-cli` lives in the Tingra monorepo at `apps/tingra-cli`, one of the runnable products under `apps/` (alongside `apps/ingest-simulator` and, in phase 3, the `apps/tingra` app). It builds on the engine libraries under `packages/`: `TingraHost`, `TingraPlugInKit`, `TingraEventBus`, and the first party feature plug-ins `TingraCapturePlugIns` and `TingraGeneratorPlugIns` (names finalized; see "Repository structure" in ARCHITECTURE.md). In the CLI era, bundled plug-ins are compiled into the binary but register through the same code path the external bundle loader will use.
+`tingra-cli` lives in the Tingra monorepo at `apps/tingra-cli`, one of the runnable products under `apps/` (alongside `apps/ingest-simulator` and, in phase 3, `apps/tingra-app`). It builds on the engine libraries under `packages/`: `TingraHost`, `TingraPlugInKit`, `TingraEventBus`, and the first party feature plug-ins `TingraCapturePlugIns` and `TingraGeneratorPlugIns` (names finalized; see "Repository structure" in ARCHITECTURE.md). In the CLI era, bundled plug-ins are compiled into the binary but register through the same code path the external bundle loader will use.
 
 Argument parsing uses Apple's [swift-argument-parser](https://github.com/apple/swift-argument-parser), which generates `--help` text and completion scripts.
 

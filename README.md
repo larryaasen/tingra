@@ -810,14 +810,20 @@ The local RTMP/SRT ingest server used for integration testing (see
 (`mediamtx.yml`, `keys.env`). Test-only — never linked into the product. The
 streaming integration scenarios run against it via `scripts/integration-test.sh`.
 
-### `apps/tingra`
+### `apps/tingra-app`
 
 The assembled SwiftUI/AppKit app (phase 3), scaffolded at roadmap step 6: it
 takes shape around the proven engine — a camera input and a display input
 composited by `TingraComposition` and shown live in an on-screen `MTKView`, the
 audio inputs mixed by `TingraAudio` into the program mix, and both streamed to
 an RTMP(S) destination through the same `TingraOutputPlugIns` HaishinKit output
-the CLI uses. An executable, so it exposes no public API beyond its `@main`
+the CLI uses. A native Xcode project (`tingra-app.xcodeproj`, scheme
+`tingra-app`, product `Tingra.app`, module `TingraApp`) rather than an SPM
+package, so the bundle, the Info.plist usage descriptions, and a stable
+code signature are build settings rather than scripts — which is what lets one
+TCC grant for Screen Recording, Camera, and Microphone survive a rebuild. It
+links the nine engine packages as local package references. An app, so it
+exposes no public API beyond its `@main`
 entry; its internal surface is `EngineModel` (the `@Observable @MainActor`
 model that boots the host, activates the capture, generator, and streaming
 plug-ins through the same `PlugInContext` the CLI uses, drives the compositor
@@ -950,8 +956,16 @@ carries a second switcher row that stages a shot on preview, with a Take button
 promoting it (`EngineModel.setPreview(_:)`/`takePreview()`); what is staged is
 session state and never enters the project document.
 User-facing strings are localized (`Localizable.xcstrings`, en/de/es).
-Bundling into a signed, notarized `.app` is deferred packaging, tracked alongside
-the CLI's distribution recipe.
+To build a signed, runnable copy, copy `apps/tingra-app/Local.xcconfig.example`
+to `Local.xcconfig` (git-ignored) and set your own Apple Developer Team ID; the
+tracked project file carries no one's team, so an unsigned
+`CODE_SIGNING_ALLOWED=NO` build needs nothing at all.
+The app is not sandboxed and uses the hardened runtime instead, so
+`tingra-app/tingra-app.entitlements` grants camera and audio-input resource
+access plus `disable-library-validation` — the same combination
+`apps/tingra-cli` and `apps/tingra-cameras` need, and without which a camera's
+CMIOExtension never starts streaming. Notarizing the `.app` for release is
+deferred packaging, tracked alongside the CLI's distribution recipe.
 
 ### `apps/tingra-cameras`
 
