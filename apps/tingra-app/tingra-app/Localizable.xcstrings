@@ -172,7 +172,7 @@
       }
     },
     "Camera": {
-      "comment": "Camera input picker label",
+      "comment": "Camera input picker label\nShot: camera full-frame",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -257,7 +257,7 @@
       }
     },
     "Default": {
-      "comment": "Name of a fresh project's seeded preset; also the transition picker option taking each shot with its own default transition",
+      "comment": "Name of a fresh project's seeded preset\nTransition picker option: take each shot with its own default transition",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -325,7 +325,7 @@
       }
     },
     "Display": {
-      "comment": "Display input picker label",
+      "comment": "Display input picker label\nShot: display full-frame",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -717,6 +717,7 @@
     },
     "Microphone": {
       "comment": "Microphone input picker label",
+      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -989,6 +990,7 @@
     },
     "No audio": {
       "comment": "Microphone picker option: stream video only",
+      "extractionState": "stale",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -1017,6 +1019,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "No se encontraron entradas de audio"
+          }
+        }
+      }
+    },
+    "No cameras": {
+      "comment": "Shown in place of the camera row when none is discovered",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keine Kameras"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sin cámaras"
           }
         }
       }
@@ -1068,6 +1087,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "Sin monitorización"
+          }
+        }
+      }
+    },
+    "No other inputs": {
+      "comment": "Shown in place of the generator and display row when none is discovered",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keine weiteren Eingänge"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sin otras entradas"
           }
         }
       }
@@ -1464,7 +1500,7 @@
       }
     },
     "Shader": {
-      "comment": "Transition picker option: reveal the next shot taken through a built-in custom shader",
+      "comment": "Label of the picker choosing the built-in shader a shader transition reveals with\nTransition picker option: reveal the next shot taken through a built-in custom shader",
       "localizations": {
         "de": {
           "stringUnit": {
@@ -1476,6 +1512,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "Shader"
+          }
+        }
+      }
+    },
+    "Stage on preview": {
+      "comment": "Tooltip on an input tile that stages it on preview",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Auf Vorschau vorbereiten"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preparar en previsualización"
           }
         }
       }
@@ -1532,7 +1585,7 @@
       }
     },
     "Stream key": {
-      "comment": "Stream key field label and placeholder",
+      "comment": "Placeholder for the stream key field\nStream key field label",
       "localizations": {
         "de": {
           "stringUnit": {

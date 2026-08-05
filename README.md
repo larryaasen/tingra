@@ -448,6 +448,14 @@ permanent CI test surface.
 - `PlugeStrictGenerator` — stricter broadcast-style PLUGE pattern
   (`--video-generator pluge-strict`): a sparse reference-black field with the
   classic below-black / reference-black / above-black trio.
+- `BlackGenerator` — full-frame opaque black (`--video-generator black`): the
+  **black generator** a switcher carries as a selectable input on its rows.
+  Upstream of fade to black and complementary to it — an ordinary input bound
+  into a layer, so overlays, keys, and titles composite over it, where FTB is a
+  downstream master stage that obscures everything. Black-only rather than a
+  colour parameter: `Layer` has no per-layer parameter dictionary, so a settable
+  colour would need a new persisted document key, and a shot's own `background`
+  already provides an arbitrary solid — what it cannot be is stacked as a layer.
 - `ToneGenerator` — the 440 Hz test tone (`--audio-generator tone`): mono
   float32 buffers with phase continuity, one per clock tick.
 
@@ -843,9 +851,13 @@ and takes the whole program off air with `setFadeToBlack(_:duration:)` — the
 one control driving both engine surfaces, which lives here because
 `TingraComposition` and `TingraAudio` depend on each other in neither
 direction), `ContentView` (the main window in two sections — a monitoring
-section across the top, the input grid on the left and the preview and program
+section across the top, the input rows on the left and the preview and program
 monitors on the right, over a control section holding everything the operator
-works: camera/display
+works. The whole column scrolls, and the monitoring section's height is derived
+from the window's width — two 16:9 monitors have no use for surplus vertical
+room, and a plain stack resolved a shortfall by collapsing the monitors and
+pushing the pickers off the bottom edge. The control section holds the
+camera/display
 pickers, a streaming panel — the destination list, live status, Start/Stop —
 and a preset switcher that switches and
 manages the project's presets — an Add Preset button plus a per-preset context
@@ -936,20 +948,27 @@ which is what tells a program monitor faded to black apart from a dead one —
 shared by the main window's two monitors and every multiview tile),
 `MonitorRenderContext` (the one Metal
 device, command queue, and `CIContext` every monitor draws through, rather than
-one per view), `InputGridView` (the input grid: one tile per running input,
-name-badged and tally-bordered — red on air, green staged, no border idle —
-shared by the main window's top-left strip and the multiview window, so the two
-surfaces cannot read a tally differently. The tiles are deliberately inert: a
-tile is an *input* while preview stages a *shot*, and a guess one click from air
-is exactly what the preview bus refused), `MultiviewView` (the multiview window:
-program and preview across the top with the same input grid beneath, at full
-tile size on a display of its own. Not a bus: nothing is fed from it and nothing
-is promoted out of it, so it adds no engine surface beyond two read accessors),
-`InputFrameSource` (one input's tile frames, pulled from the compositor's
-latest-wins slot on each draw — a read-only share, drawn and dropped),
-`MultiviewTile` (the pure, unit-tested tile derivation and its tally rule, red
-winning over green), `MultiviewCommands` (the View-menu command that opens the
-window, ⌥⌘M), and `ProgramLayout` (the
+one per view), `InputGridView` (the multiview window's input grid: one tile per
+*running* input, name-badged and tally-bordered — red on air, green staged, no
+border idle. The tiles are deliberately inert: a tile is an *input* while preview
+stages a *shot*, and a guess one click from air is exactly what the preview bus
+refused), `InputRowsView` (the main window's top-left pane: every available
+camera in a horizontal row, the generators and displays in a second row beneath
+it, split by provenance because cameras are what an operator reaches for. Every
+tile is live — the engine runs every discovered video input for monitoring, a
+deliberate exception to the multiview rule, paid for in camera indicator lights
+and an awake Continuity Camera — and clicking a tile stages that input on
+preview, resolving the input-versus-shot question in favour of an authored shot
+that already shows it and only inventing one when none does), `MultiviewView`
+(the multiview window: program and preview across the top with the input grid
+beneath, at full tile size on a display of its own. Not a bus: nothing is fed
+from it and nothing is promoted out of it, so it adds no engine surface beyond
+two read accessors), `InputFrameSource` (one input's tile frames, pulled from the
+compositor's latest-wins slot on each draw — a read-only share, drawn and
+dropped), `MultiviewTile` (the pure, unit-tested tile derivation and its tally
+rule, red winning over green, plus the `Tally` tint pair both tile surfaces draw
+from so they cannot read a lamp differently), `MultiviewCommands` (the View-menu
+command that opens the window, ⌥⌘M), and `ProgramLayout` (the
 pure, unit-tested arrangement that seeds a fresh project's picture-in-picture,
 display, and camera shots). The window monitors preview beside program and
 carries a second switcher row that stages a shot on preview, with a Take button

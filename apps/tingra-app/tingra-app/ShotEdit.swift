@@ -9,6 +9,7 @@
 
 import Foundation
 import TingraComposition
+import TingraPlugInKit
 
 /// The pure shot-management operations the switcher applies to the session
 /// preset: create a new shot, duplicate one, and rename one (removal needs no
@@ -30,6 +31,24 @@ enum ShotEdit {
     /// - Returns: The new shot.
     static func newShot() -> Shot {
         Shot(name: String(localized: "New Shot", comment: "Default name of a newly added shot"))
+    }
+
+    /// A new shot showing one input full frame, named after it.
+    ///
+    /// What clicking a tile in the main window's input rows needs when no
+    /// authored shot shows that input yet: preview stages a **shot**, never an
+    /// input (GLOSSARY.md, "Preview", "Shot"), so an input the operator clicks
+    /// has to be resolved to one. A single full-frame layer over the default
+    /// opaque-black background is the shot that shows exactly that input and
+    /// nothing else.
+    ///
+    /// - Parameters:
+    ///   - input: The input the shot's one layer binds to.
+    ///   - name: The shot's user-facing name — the input's own name, so the
+    ///     switcher button reads as the thing the operator clicked.
+    /// - Returns: The new shot.
+    static func shot(showing input: InputID, named name: String) -> Shot {
+        LayerTreeEdit.addingLayer(boundTo: input, to: Shot(name: name))
     }
 
     /// A duplicate of a shot: the source's layer tree, background, and

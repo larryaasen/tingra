@@ -21,13 +21,15 @@ import SwiftUI
 /// preview-sampling rule). Nothing here runs while the window is closed, and
 /// the engine's tick task is untouched by its existence.
 ///
-/// The main window now carries the same ``InputGridView`` in its top section,
-/// which is what this window is: the grid beneath the two monitors. It still
-/// earns its place — a multiview's conventional home is a second display,
-/// which a window gives for free, and there its tiles are as large as the
-/// screen rather than as large as the space the switcher leaves them
-/// (ARCHITECTURE.md, "The main window's two sections"). The tiles are inert
-/// on both surfaces, for the reason recorded on ``InputGridView``.
+/// The main window carries its own input tiles in its top section, but a
+/// different arrangement: ``InputRowsView`` lists what is *available* in two
+/// provenance-ordered rows, where this window's ``InputGridView`` tiles what is
+/// *running* in one adaptive grid. This window still earns its place — a
+/// multiview's conventional home is a second display, which a window gives for
+/// free, and there its tiles are as large as the screen rather than as large as
+/// the space the switcher leaves them (ARCHITECTURE.md, "The main window's two
+/// sections"). The tiles are inert on both surfaces, for the reason recorded on
+/// ``InputGridView``.
 struct MultiviewView: View {
     /// The engine model — read only: multiview changes nothing.
     let model: EngineModel

@@ -79,24 +79,113 @@ struct ContentView: View {
     /// row's key at once.
     @State private var streamKeys: [ProjectDestinationID: String] = [:]
 
-    /// The window body: the monitoring section on top, the controls beneath.
+    /// The padding around the window's column of surfaces.
+    private static let columnPadding: CGFloat = 20
+
+    /// The gap between stacked surfaces — and, in the monitoring section,
+    /// between the input grid and the monitors and between the two monitors.
+    private static let sectionSpacing: CGFloat = 12
+
+    /// The share of the window's content width the input rows take, leaving
+    /// the rest to the two monitors.
+    ///
+    /// A fixed share rather than a layout priority or an `HSplitView`, because
+    /// both of those levers do the opposite of what they sound like here: a
+    /// priority hands one group everything except the *minimum* of the others,
+    /// so it can pin a pane at its narrowest forever, and an `HSplitView` opens
+    /// with its first pane collapsed to that pane's minimum and needs a stored
+    /// divider position to do better — one more piece of window state to
+    /// persist, for a section an operator reads rather than adjusts. A share
+    /// keeps both panes growing together, and leaves the monitors the larger
+    /// surface at every window size, which is what the multiview window (⌥⌘M)
+    /// is for when the wall-of-tiles reading is the one wanted.
+    private static let inputRowsWidthFraction: CGFloat = 0.42
+
+    /// The shortest the monitoring section may be, so both monitors stay
+    /// readable in a window near the 640-point minimum width.
+    private static let minimumTopSectionHeight: CGFloat = 150
+
+    /// The width inside the column's padding.
+    ///
+    /// - Parameter width: The window's width.
+    /// - Returns: The usable content width.
+    private static func contentWidth(forWindowWidth width: CGFloat) -> CGFloat {
+        width - columnPadding * 2
+    }
+
+    /// The width the input rows take at a given window width.
+    ///
+    /// - Parameter width: The window's width.
+    /// - Returns: The input rows' width.
+    private static func inputRowsWidth(forWindowWidth width: CGFloat) -> CGFloat {
+        contentWidth(forWindowWidth: width) * inputRowsWidthFraction
+    }
+
+    /// The monitoring section's height for a given window width: exactly what
+    /// two side-by-side 16:9 monitors need at that width.
+    ///
+    /// Derived from the **width** rather than taken as a share of the height
+    /// because 16:9 monitors have no use for surplus vertical room — a taller
+    /// section only grows the letterbox bars above and below the picture. This
+    /// way the monitors grow when the window widens, waste nothing when it
+    /// heightens, and the surfaces below scroll into reach either way. The
+    /// input rows beside them take the same height, splitting it in two.
+    ///
+    /// - Parameter width: The window's width.
+    /// - Returns: The section height, floored at ``minimumTopSectionHeight``.
+    private static func topSectionHeight(forWindowWidth width: CGFloat) -> CGFloat {
+        // The rows' share and the gap beside them come off the top; the
+        // remaining room splits between the two monitors.
+        let monitorsWidth =
+            contentWidth(forWindowWidth: width) - inputRowsWidth(forWindowWidth: width) - sectionSpacing
+        let eachMonitorWidth = (monitorsWidth - sectionSpacing) / 2
+        return max(minimumTopSectionHeight, eachMonitorWidth * 9 / 16)
+    }
+
+    /// The window body: the monitoring section on top, the controls beneath,
+    /// the whole column scrollable.
+    ///
+    /// **Why it scrolls, and why the top section is measured rather than
+    /// flexible.** The column stacks seven surfaces — the monitors, both
+    /// switcher rows, the layer editor, the device pickers, the mixer, and the
+    /// streaming panel — and a plain `VStack` resolves a shortfall by
+    /// compressing whatever yields first. That is always the monitors, because
+    /// they are the only surface with no intrinsic height to defend. At
+    /// ordinary window sizes they collapsed to a sliver *and* pushed the camera
+    /// and display pickers below the bottom edge, so the operator could neither
+    /// read the program nor choose what fed it — the two things this window
+    /// exists to do.
+    ///
+    /// A `ScrollView` gives the column its natural height and lets the window
+    /// show a portion of it. That in turn makes the top section's height a
+    /// decision rather than a leftover, which it has to be: a scroll view
+    /// proposes an **unbounded** height, and under that proposal
+    /// ``InputRowsView``'s own scroll views and the monitors'
+    /// `maxHeight: .infinity` have nothing to resolve against. So the section
+    /// takes a definite height, derived from the window's width, which is also
+    /// what makes the monitors grow when the window does rather than merely
+    /// stop shrinking.
     var body: some View {
-        VStack(spacing: 12) {
-            topSection
+        GeometryReader { proxy in
+            ScrollView {
+                VStack(spacing: Self.sectionSpacing) {
+                    topSection(windowWidth: proxy.size.width)
 
-            presetSwitcher
+                    presetSwitcher
 
-            shotSwitcher
+                    shotSwitcher
 
-            LayerTreeEditorView(model: model)
+                    LayerTreeEditorView(model: model)
 
-            controls
+                    controls
 
-            MixerView(model: model)
+                    MixerView(model: model)
 
-            streamingPanel
+                    streamingPanel
+                }
+                .padding(Self.columnPadding)
+            }
         }
-        .padding()
         // Only the *effect* of a selection change lives here — it must run
         // however the value changed, including when the model assigns the
         // default at boot. The `tap` rides the pickers' own bindings instead
@@ -110,40 +199,31 @@ struct ContentView: View {
         }
     }
 
-    /// The monitoring section: the input grid on the left, the preview and
+    /// The monitoring section: the input rows on the left, the preview and
     /// program monitors on the right.
     ///
-    /// A plain `HStack` rather than an `HSplitView`, and a **width cap**
-    /// rather than a layout priority. Both were measured rather than assumed,
-    /// because `HStack`'s two obvious levers each do the opposite of what
-    /// they sound like:
+    /// The left pane is two rows — every available camera above, the
+    /// generators and displays below (``InputRowsView``) — rather than one
+    /// adaptive grid. Splitting cameras onto their own line is what makes the
+    /// pane scannable: cameras are what an operator reaches for and the row
+    /// that changes as hardware comes and goes, so mixing them in among the
+    /// patterns costs a search every time.
     ///
-    /// - A **layout priority** on the monitors hands their group everything
-    ///   except the *minimum* of the others, so it would pin the grid at its
-    ///   narrowest forever — a priority cannot express "take the surplus".
-    /// - An **`HSplitView`** opens with its first pane collapsed to that
-    ///   pane's minimum (180 of 1400 measured) and needs a stored divider
-    ///   position to do better — one more piece of window state to persist,
-    ///   for a section an operator reads rather than adjusts.
+    /// Both panes take their width from ``inputRowsWidthFraction`` and their
+    /// height from ``topSectionHeight(forWindowWidth:)``, so the section is
+    /// laid out by arithmetic rather than by negotiation — see those two for
+    /// why a fixed share beats a layout priority or an `HSplitView` here, and
+    /// why the height comes from the width.
     ///
-    /// So the two panes are ordinary flexible subviews, and the cap is what
-    /// makes the grid yield: a constrained subview is offered half the width
-    /// and keeps only what its `maxWidth` allows, leaving the rest to the
-    /// monitors. The cap is deliberately narrow enough that the monitors stay
-    /// the larger surface at every window size — the grid holds a steady
-    /// one-column strip while each monitor runs from 198 points at the
-    /// narrowest usable window to 648 at 1600 — because the wall-of-tiles
-    /// reading is what the multiview window is for (⌥⌘M), on a display of
-    /// its own.
-    private var topSection: some View {
-        HStack(spacing: 12) {
-            // A smaller tile minimum than the multiview window's, so a tile
-            // stays whole in a strip this narrow rather than being the width
-            // that forces the column count down.
-            InputGridView(model: model, minimumTileWidth: 160)
-                .frame(minWidth: 180, maxWidth: 260)
+    /// - Parameter windowWidth: The window's width, from the body's geometry.
+    /// - Returns: The monitoring section.
+    private func topSection(windowWidth: CGFloat) -> some View {
+        let height = Self.topSectionHeight(forWindowWidth: windowWidth)
+        return HStack(spacing: Self.sectionSpacing) {
+            InputRowsView(model: model, height: height)
+                .frame(width: Self.inputRowsWidth(forWindowWidth: windowWidth))
 
-            HStack(spacing: 12) {
+            HStack(spacing: Self.sectionSpacing) {
                 // Preview left of program, the switcher convention: the
                 // operator reads left to right, staging then taking.
                 MonitorTile(source: model.previewRelay, label: previewLabel, badgeTint: .green)
@@ -155,6 +235,7 @@ struct ContentView: View {
                 )
             }
         }
+        .frame(height: height)
     }
 
     /// The localized name of the program bus, shared by its monitor's badge

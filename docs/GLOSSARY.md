@@ -42,7 +42,7 @@ A project is the saved file for an entire show. A project contains presets. A pr
 
 **Multiview** — a single view that tiles program, preview, and all inputs at once for monitoring. It is a monitor, not a bus: nothing is fed from it and nothing is taken out of it, and it tiles only the inputs already running — opening it never starts a device.
 
-**Tally** — the lamp on a multiview tile saying where that input is: **red** when it is contributing to what viewers see (including the outgoing half of a transition still on screen), **green** when it is contributing to the shot staged on preview, unlit when it is running but on neither bus. Red wins over green. Borrowed from the tally light on a studio camera, and it answers the same question.
+**Tally** — the lamp on an input's tile saying where that input is, wherever tiles are shown (the multiview window and the main window's input rows): **red** when it is contributing to what viewers see (including the outgoing half of a transition still on screen), **green** when it is contributing to the shot staged on preview, unlit when it is running but on neither bus. Red wins over green. Borrowed from the tally light on a studio camera, and it answers the same question.
 
 **Monitor** — an operator-facing view or output of a bus: the on-screen program and preview monitors, and the **audio monitor** — the program mix played to an output device the operator chooses, at a monitor level, so they hear what viewers hear. Nothing a monitor shows or plays reaches viewers, and no monitor control changes what does: the monitor level is the operator's own listening volume, never a stage of the program.
 

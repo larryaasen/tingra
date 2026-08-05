@@ -151,6 +151,7 @@ Note that no reconnect attempt is ever made for the **initial** connection, on a
 | `--video-generator alignment` | Industry-standard-style alignment pattern instead of a camera. The pattern image is generated once at runtime, then reused for subsequent frames. |
 | `--video-generator pluge` | PLUGE (Picture Line-Up Generation Equipment) black-level calibration pattern instead of a camera. Useful for checking shadow detail and crushed blacks. |
 | `--video-generator pluge-strict` | Stricter broadcast-style PLUGE pattern instead of a camera. Uses a sparse reference-black field with the classic below-black / reference-black / above-black trio. |
+| `--video-generator black` | Full-frame opaque black instead of a camera. The **black generator** a switcher carries as a selectable input on its rows — upstream of fade to black, so overlays and keys composite over it, where FTB is a downstream master stage that obscures everything. |
 | `--audio-generator tone` | 440 Hz tone generator instead of a microphone. |
 
 #### Compression

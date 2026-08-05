@@ -1151,6 +1151,64 @@ or two in the doc that owns them — none need a rewrite.
 
 ## Decisions to settle
 
+- [x] **The main window's input rows — built 2026-08-04, recorded after the
+  fact (ARCHITECTURE.md, "The main window's input rows").** The top-left pane
+  stopped being a strip of the multiview's grid and became its own surface: two
+  rows of every **available** video input, every one of them live, each one
+  clickable to stage on preview.
+
+  **Recorded after the fact, against the decide-then-build rule the effect seam
+  set, and that is the note worth keeping.** Three decisions recorded as settled
+  were reversed by the code before anything was written down — the tiles being
+  inert, monitoring never starting a device, and the grid being one shared view.
+  Two of the three were reversals a reader of the docs alone would have had no
+  way to see coming, which is exactly the failure mode the rule exists to
+  prevent. The records are now narrowed in place rather than rewritten, so the
+  original reasoning and what overturned it both stay readable.
+
+  **What was reversed, and what answered each objection.** (1) *Inert tiles*:
+  the multiview record refused a click because a tile is an **input** while
+  preview stages a **shot**, and "synthesize the shot showing only this input"
+  is a heuristic one click from air. Answered by inverting the bridge — **an
+  authored shot wins**, and one is invented only when no authored shot shows
+  the input at all, so the common case stages something the operator wrote.
+  Nothing reaches program either way; Take is still the one step to air.
+  (2) *Monitoring never starts a device*: the main window now runs every
+  discovered video input, which the multiview window still does not. The rule
+  was written for a window that can be **closed**, where the cost was
+  avoidable; the main window cannot be, so the price is stated rather than
+  absorbed — every camera holds its indicator light on and a Continuity Camera
+  keeps its iPhone awake for as long as the app runs. Audio is untouched: a
+  strip still starts its device on unmute. (3) *One extracted view*: superseded
+  once the two surfaces stopped answering the same question (available versus
+  running). They still share the `MultiviewTile` derivation, `MonitorTile`, and
+  the newly extracted `Tally` tint pair — the layer that was actually carrying
+  the anti-drift guarantee.
+
+  **Also in the same change:** the column became a `ScrollView` — a plain
+  `VStack` resolved a shortfall by collapsing the monitors *and* pushing the
+  camera and display pickers past the bottom edge — which in turn forced the
+  monitoring section's height to become arithmetic derived from the window's
+  **width**, since a scroll view proposes an unbounded height that
+  `maxHeight: .infinity` cannot resolve against.
+
+  **The `DisplayInput` bug this iteration surfaced, which was not a UI bug at
+  all.** `SCStream` retains neither its delegate nor an added stream output, so
+  `DisplayStreamOutput` deallocated the moment `makeRunningStream` returned. The
+  stream kept running and kept the screen-recording indicator lit while
+  delivering **zero frames**: `start()` succeeded, nothing errored, and every
+  display tile and display layer was silently black. This reached the program
+  bus and anything streamed from it, not just the tiles — it was visible here
+  only because the rows made every display live at once. Both are now held as
+  `RunningStream` for the capture's lifetime.
+
+  **Verification.** App build warning-clean, `apps/tingra-app` **133 tests in 14
+  suites**, `TingraCapturePlugIns` **38 tests in 9 suites**, `check-format`
+  clean. `integration-test.sh` **was** re-run — unlike the two step-9 iterations
+  but like the fade-to-black one — because the `DisplayInput` fix changes what
+  display capture delivers into the program and therefore what reaches a sink:
+  **37 checks across 11 scenarios, all passing, the baseline unchanged.**
+
 - [x] **Convert the app from an SPM executable to the Xcode project
   `apps/tingra-app` — planned 2026-07-29, built 2026-08-01.** Recorded nowhere in
   the repo until 2026-07-31, which is why it slipped. The plan had two parts, **Part A first so
@@ -1735,8 +1793,9 @@ or two in the doc that owns them — none need a rewrite.
   it, because this one does change what `programFrames()` yields to a sink:
   **37 checks across 11 scenarios, all passing**, the baseline unchanged.
 
-- [ ] **A black source: a first-party solid-colour generator.** Queued
-  2026-07-27 by the fade-to-black record, which is careful that the two are
+- [x] **The black generator** *(queued 2026-07-27 as "a black source"; decided
+  and built 2026-08-04; recorded in ARCHITECTURE.md, "The black generator")*.
+  Queued 2026-07-27 by the fade-to-black record, which is careful that the two are
   **complementary, not alternatives**: a black source is **upstream**, so
   overlays, keys, and titles composite over it (cut the background to black and
   keep a lower third up), where FTB is a downstream master stage that obscures
@@ -1744,20 +1803,78 @@ or two in the doc that owns them — none need a rewrite.
   Program/Preview rows and ATEM the same on its M/E bus *while also* shipping
   FTB; Tingra now has FTB and still has no black source.
 
-  **Shape, if it is wanted:** a solid-colour generator in
-  `TingraGeneratorPlugIns` beside bars and tone, bound into a layer like any
-  other input — **no new seam, no new engine surface, and no document change**,
-  which is what makes it small. Two things to settle when it is taken up: (1)
-  whether it is black-only or a colour picker (a solid generator is barely more
-  work than a black one, and a colour is occasionally what an operator wants
-  behind a key), and (2) that the layer-tree editor's add-layer choices
-  currently exclude `InputKind.generator` on purpose — `InputKind` cannot say
-  whether a generator produces video or audio, and a video/audio capability on
-  the `Input` seam is a deliberate protocol addition (recorded under "The
-  layer-tree editor"). That protocol question, not the generator, is the real
-  work — and it is the same question a media-file input will ask.
-  *(That protocol question was taken up first and separately — see "The `Input`
-  media capability" below. This item is unblocked by it, not bundled into it.)*
+  **Shape:** a solid-colour generator in `TingraGeneratorPlugIns` beside bars
+  and tone, bound into a layer like any other input — **no new seam, no new
+  engine surface, and no document change**, which is what makes it small.
+
+  **The blocker is gone, and it was the whole of the work.** This item was
+  queued behind the layer-tree editor excluding `InputKind.generator` from its
+  add-layer choices, on the grounds that `InputKind` cannot say whether a
+  generator produces video or audio — and that protocol question, not the
+  generator, was named as the real work. It was taken up first and separately
+  (see "The `Input` media capability" above) and it landed: `EngineModel`'s
+  add-layer choices now come from `videoInputs`, filtered on
+  `media.contains(.video)`, and the Add Layer menu lists every video input,
+  generators included. **Verified 2026-08-04** in code and in the running app.
+  What remains is the generator itself, which the media record predicted would
+  be the cheap part.
+
+  **GLOSSARY.md needs no new entry — but this item's own name breaks the
+  vocabulary rule.** **Generator** already reads "an input that synthesizes its
+  content rather than capturing it: test patterns, color bars, **solids**,
+  counters, placeholder frames", so a solid-colour generator is a thing the
+  glossary already names and a "black source" entry would only duplicate it.
+  The problem is the word *source*, which is on the "Words Tingra does not use"
+  list with **input** as its replacement — the TriCaster/ATEM phrasing above is
+  a boundary reference to those products' vocabulary, which is legitimate when
+  describing *them*, but Tingra's own feature cannot be called a black source.
+  It is a **black generator** (or a **solid generator**, if it takes a colour).
+  Renaming this item is the fix; the title is kept here only so the queue stays
+  searchable against the fade-to-black record that queued it.
+
+  **Settled: BLACK-ONLY, registered `black`** — Larry's call 2026-08-04, taking
+  a reversal of the previous session's colour-with-parameter recommendation.
+  **The code decided it.** `Layer` carries an input, a frame, an opacity, and an
+  effect chain and **has no per-layer parameter dictionary**, so a settable
+  colour needs a new persisted document key — the one cost this item was scoped
+  to avoid. Hanging the colour off the single registered instance is worse, not
+  cheaper: every layer bound to it would share one value, so setting it in one
+  shot silently changes every other shot using it. And **arbitrary solids
+  already exist** — `Shot.background` is a full persisted RGBA defaulting to
+  opaque black — so what was genuinely missing was never a colour but **a solid
+  that can be stacked as a layer**. If white or grey are ever wanted, the shape
+  is more registered generators beside this one: additive, no seam, no document
+  change, no shared-mutable state.
+
+  **Built as recorded, and it landed as small as promised.** One generator file
+  (`BlackGenerator` + a private `BlackRenderer`), one line in `GeneratorPlugIn`,
+  one `VideoGeneratorKind` case, and the docs. **It cost the app nothing**: the
+  main window's second input row and the layer editor's Add Layer menu both come
+  from `videoInputs` filtered on `media.contains(.video)` and sorted by name, so
+  `black` appears in both the moment it is registered — the media capability's
+  demonstration paying a second time. **GLOSSARY.md needed no entry** (see
+  above), and the item's name changed from "black source" to "black generator"
+  to stop breaking the vocabulary rule.
+
+  **Two things worth keeping.** (1) **The fill runs every tick, not once**:
+  `CVPixelBufferPool` recycles buffers and guarantees nothing about their
+  contents, and the **alpha matters as much as the colour** — a layer
+  composites with it, so a transparent "black" frame would reveal the layers
+  beneath instead of hiding them. (2) **The CLI agreement test fired for the
+  first time and in the direction it was built for**: it checks that every
+  *registered* video generator is *offered* by `--video-generator`, so
+  registering `black` without adding the enum case is a test failure rather
+  than a silent gap — exactly the case the media-capability record said it
+  existed to catch.
+
+  **Verification.** `TingraGeneratorPlugIns` **37 → 46 tests in 7 suites**
+  (a new `BlackGenerator` suite: tick/PTS pairing, working format, BT.709
+  attachments, every pixel opaque black, all four corners, opacity across a
+  long run including pool-recycled buffers, distinct buffer per frame,
+  `stop()`, and identity/media), `tingra-cli` **85 tests** still green with the
+  agreement test now covering `black`. The suite was **mutation-checked**:
+  removing the fill makes it fail with 29 issues, so the tests have teeth
+  rather than merely passing.
 
 - [x] **The `Input` media capability** *(decided 2026-07-28, go-ahead given and
   built the same day; recorded in ARCHITECTURE.md, "The `Input` media

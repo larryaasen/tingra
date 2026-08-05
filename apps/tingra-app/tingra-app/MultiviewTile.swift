@@ -7,6 +7,7 @@
 //  SPDX-License-Identifier: MIT
 //
 
+import SwiftUI
 import TingraPlugInKit
 
 /// One input's tile in the multiview: which input it shows and what its
@@ -75,6 +76,33 @@ struct MultiviewTile: Identifiable, Equatable {
                     .idle
                 }
             return MultiviewTile(id: input.id, name: input.name, tally: tally)
+        }
+    }
+}
+
+extension MultiviewTile.Tally {
+    /// The name badge's tint for this tally state — the broadcast convention,
+    /// with a neutral badge for an input on neither bus.
+    ///
+    /// Held on the tally rather than in a view so the two surfaces that draw
+    /// tiles — the multiview's ``InputGridView`` and the main window's
+    /// ``InputRowsView`` — cannot drift in what a lamp means, the same reason
+    /// ``MonitorTile`` itself is shared.
+    var badgeTint: Color {
+        switch self {
+        case .onAir: .red
+        case .staged: .green
+        case .idle: .gray
+        }
+    }
+
+    /// The tally border's tint for this state, or nil for an input on neither
+    /// bus (an unlit lamp is no border, not a gray one).
+    var borderTint: Color? {
+        switch self {
+        case .onAir: .red
+        case .staged: .green
+        case .idle: nil
         }
     }
 }

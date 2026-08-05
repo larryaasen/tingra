@@ -68,7 +68,7 @@ struct Stream: AsyncParsableCommand {
 
     @Option(
         help:
-            "A video generator instead of a camera (bars: SMPTE color bars with timecode; alignment: cached alignment pattern; pluge: black-level calibration pattern; pluge-strict: stricter broadcast-style PLUGE)."
+            "A video generator instead of a camera (bars: SMPTE color bars with timecode; alignment: cached alignment pattern; pluge: black-level calibration pattern; pluge-strict: stricter broadcast-style PLUGE; black: full-frame opaque black)."
     )
     var videoGenerator: VideoGeneratorKind?
 

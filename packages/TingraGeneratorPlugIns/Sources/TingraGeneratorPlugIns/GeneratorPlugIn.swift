@@ -10,8 +10,8 @@
 import TingraPlugInKit
 
 /// The first party generator plug-in: contributes the SMPTE color bars,
-/// alignment, and PLUGE calibration video generators, plus the 440 Hz tone
-/// audio generator as inputs.
+/// alignment, PLUGE calibration, and black video generators, plus the 440 Hz
+/// tone audio generator as inputs.
 ///
 /// Generators synthesize their content from the injected clock, so they run
 /// anywhere — no camera, no microphone, no TCC authorization. They are the
@@ -40,6 +40,7 @@ public struct GeneratorPlugIn: PlugIn {
             AlignmentGenerator(clock: context.clock),
             PlugeGenerator(clock: context.clock),
             PlugeStrictGenerator(clock: context.clock),
+            BlackGenerator(clock: context.clock),
             ToneGenerator(clock: context.clock),
         ]
         for generator in generators {

@@ -106,20 +106,24 @@ final class DisplayInput: Input, Sendable {
         }
         try await withCheckedThrowingContinuation { (ready: CheckedContinuation<Void, any Error>) in
             Task {
-                let stream: SCStream
+                let running: RunningStream
                 do {
-                    stream = try await Self.makeRunningStream(for: display, id: inputID, deliver: deliver)
+                    running = try await Self.makeRunningStream(for: display, id: inputID, deliver: deliver)
                 } catch {
                     ready.resume(throwing: error)
                     return
                 }
                 ready.resume()
                 // Park until stop() finishes the signal (or the task is
-                // cancelled); the stream and its output stay alive and
-                // task-confined for the duration — never crossing an
-                // isolation boundary, so no `@unchecked Sendable` is needed.
+                // cancelled). Holding `running` across this await is what
+                // keeps **both** the stream and its output alive for the
+                // capture's lifetime — `SCStream` retains neither, and an
+                // output that deallocates silently stops every frame while
+                // leaving the stream apparently healthy (``RunningStream``).
+                // Both stay task-confined, never crossing an isolation
+                // boundary, so no `@unchecked Sendable` is needed.
                 for await _ in stopSignal {}
-                try? await stream.stopCapture()
+                try? await running.stream.stopCapture()
             }
         }
         state.withLock { $0.stopSignal = stopContinuation }
@@ -152,17 +156,41 @@ final class DisplayInput: Input, Sendable {
         continuation?.finish()
     }
 
+    /// A running capture stream together with the output object it delivers
+    /// through.
+    ///
+    /// The two travel as a pair because `SCStream` holds **neither** its
+    /// delegate nor an added stream output strongly. Keeping only the stream
+    /// alive lets the output deallocate the moment the call that built it
+    /// returns — after which the stream keeps running and keeps the system's
+    /// screen-recording indicator lit while delivering **no frames at all**,
+    /// which is a hard failure to read from the outside: `start()` succeeds,
+    /// nothing errors, and every tile bound to the display simply stays black.
+    /// Holding both for the stream's lifetime is what makes the capture
+    /// actually produce pixels.
+    private struct RunningStream {
+        /// The capture stream.
+        let stream: SCStream
+
+        /// The output the stream delivers through, held solely to keep it
+        /// alive — `SCStream` will not.
+        let output: DisplayStreamOutput
+    }
+
     /// Builds, configures, and starts the capture stream for a display.
     ///
     /// Resolves the display's current `CGDirectDisplayID` from its stable
     /// UUID (the ID changes across reconnects; the UUID does not), matches
     /// it against ScreenCaptureKit's shareable content, and starts an
     /// `SCStream` delivering 32BGRA frames at native pixel size.
+    ///
+    /// - Returns: The started stream and its output, which the caller must
+    ///   keep alive together (see ``RunningStream``).
     private static func makeRunningStream(
         for display: DisplayDevice,
         id: InputID,
         deliver: @escaping @Sendable (CapturedFrame) -> Void
-    ) async throws -> SCStream {
+    ) async throws -> RunningStream {
         guard let displayID = currentDisplayID(forUUID: display.uniqueID) else {
             throw CaptureInputError.deviceUnavailable(id)
         }
@@ -211,7 +239,7 @@ final class DisplayInput: Input, Sendable {
                 "the display capture stream did not start: \(error.localizedDescription)"
             )
         }
-        return stream
+        return RunningStream(stream: stream, output: output)
     }
 
     /// Translates a display UUID into its current `CGDirectDisplayID`, or

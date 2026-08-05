@@ -47,6 +47,27 @@ struct ShotEditTests {
         #expect(ShotEdit.newShot().id != ShotEdit.newShot().id)
     }
 
+    @Test("a shot showing one input carries a single full-frame layer bound to it, under the given name")
+    func shotShowingInputHasOneFullFrameLayer() {
+        let input = InputID(rawValue: "camera-1")
+        let shot = ShotEdit.shot(showing: input, named: "FaceTime HD Camera")
+
+        #expect(shot.name == "FaceTime HD Camera")
+        #expect(shot.background == .black)
+        #expect(shot.layers.count == 1)
+        #expect(shot.layers.first?.input == input)
+        // Full frame in normalized coordinates: the tile the operator clicked
+        // fills preview rather than sitting in a corner of it.
+        #expect(shot.layers.first?.frame == CGRect(x: 0, y: 0, width: 1, height: 1))
+    }
+
+    @Test("every shot showing an input gets its own fresh id")
+    func shotsShowingInputHaveDistinctIDs() {
+        let input = InputID(rawValue: "camera-1")
+
+        #expect(ShotEdit.shot(showing: input, named: "A").id != ShotEdit.shot(showing: input, named: "A").id)
+    }
+
     @Test("a duplicate copies the source's layer tree, background, and default transition under a fresh id")
     func duplicateCopiesLayersUnderFreshID() {
         let source = makeShot()

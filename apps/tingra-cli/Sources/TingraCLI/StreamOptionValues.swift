@@ -115,6 +115,9 @@ enum VideoGeneratorKind: String, Sendable, ExpressibleByArgument, CaseIterable {
 
     /// Stricter broadcast-style PLUGE black-level calibration pattern.
     case plugeStrict = "pluge-strict"
+
+    /// Full-frame opaque black.
+    case black
 }
 
 /// The audio generators `--audio-generator` accepts (CLI.md, "Input

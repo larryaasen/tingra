@@ -15,12 +15,13 @@ import TingraPlugInKit
 /// name badge and its **tally** border — red on air, green staged, no border
 /// idle (GLOSSARY.md, "Multiview", "Tally").
 ///
-/// Shared by the two surfaces that show it: the main window's top-left area,
-/// beside the preview and program monitors (``ContentView/topSection``), and
-/// the ``MultiviewView`` window beneath them. One view rather than two, so the
-/// grids cannot drift in how a tile reads — the same reason ``MonitorTile`` is
-/// shared by both windows' monitors (the `MeterCapsule` lesson, one media
-/// over).
+/// The ``MultiviewView`` window's grid, beneath its two monitors. The main
+/// window used to carry this same grid in its top-left area; it now carries
+/// ``InputRowsView`` there instead — two provenance-ordered rows rather than
+/// one adaptive grid, listing what is *available* where this grid tiles what
+/// is *running*. The two surfaces still cannot drift in how a tile **reads**,
+/// because both draw ``MonitorTile`` and both take their lamp colours from
+/// ``MultiviewTile/Tally`` (the `MeterCapsule` lesson, one media over).
 ///
 /// Each tile pulls that input's latest frame straight from the compositor's
 /// latest-wins slot at display cadence (``InputFrameSource``), so the grid
@@ -41,9 +42,8 @@ struct InputGridView: View {
     let model: EngineModel
 
     /// The narrowest a tile may be before the grid drops a column. The
-    /// multiview window takes the default; the main window passes a smaller
-    /// value, because its grid shares the top section with the two monitors
-    /// and would otherwise fall to a single column.
+    /// multiview window, the grid's one caller, takes the default — a window
+    /// of its own is exactly the case that can afford wide tiles.
     var minimumTileWidth: CGFloat = 220
 
     /// The tiles in an adaptive grid, or the placeholder when nothing is
@@ -66,8 +66,8 @@ struct InputGridView: View {
                         MonitorTile(
                             source: InputFrameSource(model: model, id: tile.id),
                             label: Text(verbatim: tile.name),
-                            badgeTint: badgeTint(for: tile.tally),
-                            borderTint: borderTint(for: tile.tally)
+                            badgeTint: tile.tally.badgeTint,
+                            borderTint: tile.tally.borderTint
                         )
                     }
                 }
@@ -85,29 +85,6 @@ struct InputGridView: View {
         )
     }
 
-    /// The name badge's tint for a tally state — the broadcast convention,
-    /// with a neutral badge for an input on neither bus.
-    ///
-    /// - Parameter tally: What the tile's lamp reads.
-    private func badgeTint(for tally: MultiviewTile.Tally) -> Color {
-        switch tally {
-        case .onAir: .red
-        case .staged: .green
-        case .idle: .gray
-        }
-    }
-
-    /// The tally border's tint for a tally state, or nil for an input on
-    /// neither bus (an unlit lamp is no border, not a gray one).
-    ///
-    /// - Parameter tally: What the tile's lamp reads.
-    private func borderTint(for tally: MultiviewTile.Tally) -> Color? {
-        switch tally {
-        case .onAir: .red
-        case .staged: .green
-        case .idle: nil
-        }
-    }
 }
 
 /// One input's frames for a tile in the input grid, read straight from the

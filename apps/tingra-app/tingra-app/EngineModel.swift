@@ -868,6 +868,11 @@ final class EngineModel {
     /// An input that cannot start (authorization denied, device gone) is
     /// reported on the bus and left out — the program keeps showing whatever
     /// else is available, never a failure state.
+    ///
+    /// The running set is the union of three things: the devices cast in the
+    /// built-in camera and display roles, every input the active preset's
+    /// layers reference, and — so the monitoring rows are live — every
+    /// discovered **video** input.
     private func applyConfiguration() async {
         let selectionChanged =
             !hasAppliedConfiguration || selectedDisplayID != appliedDisplayID || selectedCameraID != appliedCameraID
@@ -913,11 +918,28 @@ final class EngineModel {
             }
         }
 
+        // Every video input the monitoring rows list also runs, so each tile
+        // carries live picture rather than its name over black
+        // (``InputRowsView``). This is the one place the app starts a device
+        // for **monitoring** rather than for the program, and it is a
+        // deliberate exception to the rule the multiview window still keeps:
+        // the rows are the operator's "what can I cut to" surface, and a black
+        // rectangle answers that question only in the negative. The cost is
+        // real and accepted — every camera holds its indicator light on and a
+        // Continuity Camera keeps its iPhone awake for as long as the app runs.
+        //
+        // Audio inputs are untouched: a channel strip starts its device when
+        // the operator unmutes it, and there is no audio tile to keep live.
+        let registered = await registry.allInputs
+        for input in registered where input.media.contains(.video) && desired[input.id] == nil {
+            desired[input.id] = input
+        }
+
         // Which inputs still exist at all, so a stop can say *why*. An input
         // the registry no longer holds was unplugged; one it still holds is
         // merely no longer referenced. Reporting both as "unreferenced" was a
         // lie the moment the app started reacting to disconnections.
-        let registeredIDs = Set(await registry.allInputs.map(\.id))
+        let registeredIDs = Set(registered.map(\.id))
         for (id, input) in activeInputs where desired[id] == nil {
             await input.stop()
             activeInputs[id] = nil
@@ -1602,6 +1624,44 @@ final class EngineModel {
         shots.append(shot)
         compositor.addShot(shot)
         scheduleAutosave()
+    }
+
+    /// Stages an **input** on the preview bus — what clicking a tile in the
+    /// main window's input rows does (``InputRowsView``).
+    ///
+    /// Preview stages a **shot**, never an input (GLOSSARY.md), which is the
+    /// objection that kept the tiles inert until now: a click could only guess
+    /// at which shot the operator meant. The guess is resolved rather than
+    /// avoided — **an authored shot wins**. The first shot of the active
+    /// preset whose layers already reference the input is staged as-is, so
+    /// clicking a camera stages the shot that camera appears in, keys, lower
+    /// thirds and all, rather than a bare full-frame version of it. Only when
+    /// no shot shows the input at all is one created for it, appended to the
+    /// preset and saved, so the switcher gains a button matching what was
+    /// clicked instead of a shot the operator cannot get back to.
+    ///
+    /// Reusing before creating is also what keeps repeated clicks from filling
+    /// the switcher with near-duplicates.
+    ///
+    /// Reports no `tap` event itself — the tile's action closure reports it
+    /// (EVENTS.md, "The `tap` convention").
+    ///
+    /// - Parameter input: The input to stage.
+    func stagePreview(showing input: InputID) async {
+        guard hasSessionPreset else { return }
+        if let authored = shots.first(where: { $0.layers.contains { $0.input == input } }) {
+            setPreview(authored.id)
+            return
+        }
+        let shot = ShotEdit.shot(showing: input, named: inputName(for: input))
+        shots.append(shot)
+        compositor.addShot(shot)
+        scheduleAutosave()
+        setPreview(shot.id)
+        // The new shot may name an input nothing was running yet — a camera
+        // whose start was refused earlier, say — so the pass that starts it has
+        // to run before its layer can contribute.
+        await reconfigure()
     }
 
     /// Duplicates a shot — the source's layer tree and background under a
