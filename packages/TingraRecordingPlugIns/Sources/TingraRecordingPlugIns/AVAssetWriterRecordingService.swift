@@ -7,6 +7,7 @@
 //  SPDX-License-Identifier: MIT
 //
 
+import Foundation
 import TingraPlugInKit
 
 /// The `AVAssetWriter`-backed ``RecordingService``: writes the program to a
@@ -29,6 +30,10 @@ public actor AVAssetWriterRecordingService: RecordingService {
     /// The file-writer backend (the real `AVAssetWriter` in production, a
     /// mock in tests).
     private let backend: any RecordingWriterBackend
+
+    /// How the volume's free space is measured for the pre-flight check
+    /// (the real volume in production, a scripted value in tests).
+    private let capacityProbe: RecordingCapacityProbe
 
     /// Whether the recording is accepting media — false before start, after
     /// a failure, and after stop.
@@ -65,17 +70,59 @@ public actor AVAssetWriterRecordingService: RecordingService {
     /// - Parameters:
     ///   - configuration: The program's compression settings.
     ///   - backend: The file-writer backend to drive.
-    init(configuration: StreamConfiguration, backend: any RecordingWriterBackend) {
+    ///   - capacityProbe: How to measure the target volume's free space;
+    ///     the real volume by default.
+    init(
+        configuration: StreamConfiguration,
+        backend: any RecordingWriterBackend,
+        capacityProbe: @escaping RecordingCapacityProbe = RecordingCapacity.measure(at:)
+    ) {
         self.configuration = configuration
         self.backend = backend
+        self.capacityProbe = capacityProbe
         (self.eventStream, self.eventContinuation) = AsyncStream.makeStream(of: RecordingServiceEvent.self)
     }
 
     /// Opens the file and begins recording. Throws ``RecordingServiceError``
     /// on a setup failure — before any media is appended.
+    ///
+    /// The free space is checked **before** the writer is opened: a volume
+    /// that cannot hold ``RecordingCapacity/minimumRecordableSeconds`` at
+    /// these settings is refused now rather than reported as a write failure
+    /// partway through the show (ARCHITECTURE.md, "Recording in the app").
     public func start(to file: RecordingFile) async throws {
+        try checkCapacity(for: file)
         try await backend.open(file: file, configuration: configuration)
         active = true
+    }
+
+    /// Refuses a recording the target volume cannot hold.
+    ///
+    /// A volume that cannot be measured does **not** refuse: an unmeasurable
+    /// volume is the writer's problem to report rather than this check's
+    /// problem to guess at.
+    ///
+    /// - Parameter file: Where the recording would be written.
+    /// - Throws: ``RecordingServiceError/unwritableDestination(_:)`` naming
+    ///   the space available and how long it would record. The existing case
+    ///   is reused deliberately — a volume with no room *is* an unwritable
+    ///   destination, and adding a case to a public enum in the plug-in
+    ///   protocol package would break exhaustive switches in third-party
+    ///   code (ARCHITECTURE.md, "Plug-in API stability and versioning").
+    private func checkCapacity(for file: RecordingFile) throws {
+        guard let capacity = capacityProbe(file.url), !capacity.hasRoom(for: configuration) else { return }
+        let available = capacity.availableBytes.formatted(.byteCount(style: .file))
+        let minimum = Duration.seconds(RecordingCapacity.minimumRecordableSeconds)
+            .formatted(.units(allowed: [.minutes], width: .wide))
+        guard let seconds = capacity.recordableSeconds(at: configuration) else { return }
+        let recordable = Duration.seconds(seconds).formatted(.units(allowed: [.minutes, .seconds], width: .wide))
+        throw RecordingServiceError.unwritableDestination(
+            """
+            There is not enough free space to record to \(file.url.path): \(available) available holds about \
+            \(recordable) at these settings, and a recording needs room for at least \(minimum). Free up space \
+            or choose a volume with more room.
+            """
+        )
     }
 
     /// Appends one program video frame; reports a terminal write error once.

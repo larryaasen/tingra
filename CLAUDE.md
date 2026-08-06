@@ -219,14 +219,16 @@ apps/      tingra-cli             →  TingraHost + TingraCapturePlugIns + Tingr
                                      (+ swift-argument-parser)
 apps/      tingra-app (phase 3)   →  TingraHost + TingraComposition + TingraAudio
                                      + TingraCapturePlugIns + TingraGeneratorPlugIns
-                                     + TingraOutputPlugIns + TingraEffectPlugIns
-                                     + TingraPlugInKit + TingraEventBus
+                                     + TingraOutputPlugIns + TingraRecordingPlugIns
+                                     + TingraEffectPlugIns + TingraPlugInKit + TingraEventBus
                                      (scaffolded at step 6; gained TingraOutputPlugIns at the
                                      step-7 streaming iteration, TingraAudio at the mixer
-                                     iteration, and TingraEffectPlugIns at the audio effect
-                                     chain iteration; more feature plug-ins + UI packages later.
-                                     An Xcode project, so these nine arrive as local package
-                                     references on the app target, not a Package.swift)
+                                     iteration, TingraEffectPlugIns at the audio effect
+                                     chain iteration, and TingraRecordingPlugIns at the
+                                     recording-in-the-app iteration; more feature plug-ins +
+                                     UI packages later. An Xcode project, so these ten arrive
+                                     as local package references on the app target, not a
+                                     Package.swift)
 apps/      ingest-simulator       →  none of the above (wraps MediaMTX; see SIMULATOR.md)
 ```
 

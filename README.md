@@ -745,6 +745,11 @@ streaming. AVFoundation is imported only inside this package (behind the
 - `AVAssetWriterRecordingService` — the concrete service: orchestrates open,
   append, finalize, and terminal-failure reporting over a writer backend, so its
   lifecycle is unit-testable without touching disk.
+- `RecordingCapacity` — how much recording a volume still holds, in time rather
+  than bytes; the pre-flight free-space check refuses a recording the volume
+  cannot hold for at least five minutes, and the app shows the same reading.
+- `RecordingCapacityProbe` — how a recording service measures a volume,
+  injected so the check is testable without a disk.
 
 ### `packages/TingraMCP`
 
@@ -830,7 +835,10 @@ the CLI uses. A native Xcode project (`tingra-app.xcodeproj`, scheme
 package, so the bundle, the Info.plist usage descriptions, and a stable
 code signature are build settings rather than scripts — which is what lets one
 TCC grant for Screen Recording, Camera, and Microphone survive a rebuild. It
-links the nine engine packages as local package references. An app, so it
+links the ten engine packages as local package references — recording the
+program to a local file through the same `TingraRecordingPlugIns`
+`RecordingService` the CLI's `--record` drives, in its own session so it starts
+and stops independently of the stream. An app, so it
 exposes no public API beyond its `@main`
 entry; its internal surface is `EngineModel` (the `@Observable @MainActor`
 model that boots the host, activates the capture, generator, and streaming
@@ -920,7 +928,19 @@ headphones do not change between launches; monitoring starts off on a fresh
 install, because monitoring through speakers beside a live microphone is a
 feedback howl, and it caches the selected device's name so the picker can
 label a selection the device list cannot currently resolve),
-`Binding.reportingTap` (the shared helper that reports a control's `tap` from
+`RecordingPanel` (the recording panel: the folder the program is written to,
+a container picker, how much room the volume still holds, and the Record
+control with its own elapsed time and file name — its own panel beside the
+streaming one because recording is its own session, so stopping the stream
+leaves a recording rolling and vice versa), `RecordingPreferences` (where the
+recordings folder and container persist: machine-local `UserDefaults` for the
+same reasons as `MonitorPreferences`, defaulting to `~/Movies`, which needs no
+TCC prompt where Desktop and Documents would), `RecordingFilename` (the pure,
+unit-tested naming rule: a date-stamped name, and a numeric suffix rather than
+overwriting when one is taken — a recording must never destroy an earlier
+take), `TingraAppDelegate` (the one AppKit hook: it answers `.terminateLater`
+so a recording open at quit is finalized into a playable file instead of
+truncated), `Binding.reportingTap` (the shared helper that reports a control's `tap` from
 its **selection binding** rather than from `.onChange` — a binding setter runs
 only when the operator works the control, so a default the model assigns at
 boot no longer records a tap nobody made; see EVENTS.md, "Where a picker's tap

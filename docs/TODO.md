@@ -1151,6 +1151,86 @@ or two in the doc that owns them — none need a rewrite.
 
 ## Decisions to settle
 
+- [x] **Recording in the app — decided and recorded 2026-08-06, go-ahead given
+  and built the same day** (the full record is in ARCHITECTURE.md, "Recording
+  in the app"). The scoping call for the first iteration after step 9
+  closed: the app can go live, fade to black, monitor, and multiview, and it
+  cannot record the show. `--record` has shipped on the CLI's `stream` since
+  step 5; `apps/tingra-app` never linked `TingraRecordingPlugIns`. **The last
+  CLI-only capability.**
+
+  **The shape, in one line each.** Recording in the app is a **second
+  `StreamSession` carrying no destinations**, a leaf on the program tee beside
+  the streaming session (the monitor path's tee shape) — not a recording bolted
+  onto the streaming session, which would weld the two together so that ending
+  the stream finalizes the file, and not a `RecordingService` the app drives
+  itself, which would re-implement the `T0` rebase CLOCK.md says happens once.
+  A session with **no destinations and a recording becomes legal** (the
+  `connectLegs()` guard is a CLI-era artifact and the only code that assumes a
+  leg exists); neither destinations nor recording stays an error. A **recording
+  failure ends a record-only session**, the companion the "recording never ends
+  the stream" rule has been missing, adding an `Outcome.recordingFailed` that
+  appends one value to `stream.stopped`'s documented `reason` list. The folder
+  is a **machine-local preference** defaulting to `~/Movies` (`MonitorPreferences`
+  precedent; Desktop and Documents are TCC-protected and would prompt), with a
+  date-stamped name that never overwrites an earlier take.
+
+  **What it deliberately does not do.** No `TingraPlugInKit` change, no document
+  change and so **no version bump**, and **no MCP surface** — the 2026-07-05
+  deferral of `record_start`/`record_stop` stands, and this iteration is why it
+  can: the app writes under the operator's identity, so the
+  daemon-writes-files-under-its-own-identity consideration that deferral named
+  stays untouched. The CLI still requires `--url`, so a record-only run is newly
+  possible in the engine and deliberately not offered. `StreamSession` keeps its
+  name (`OutputSession` is honest but not worth the diff — considered, declined,
+  written down).
+
+  **The open sub-question, answered 2026-08-06 — the free-space check is IN**
+  (Larry's call, folded into the record before the build). A recording refuses
+  to open when the volume cannot hold **five minutes** at the configured
+  bitrate: a duration threshold rather than a gigabyte one, since the bitrate is
+  known and duration is the unit an operator thinks in. It lives in the
+  recording service's `start(to:)` so the CLI inherits it with no CLI change,
+  reuses `RecordingServiceError.unwritableDestination` rather than adding an
+  enum case (which would break exhaustive switches in third-party code), and
+  puts `RecordingCapacity` in `TingraRecordingPlugIns` — so the promise that
+  `TingraPlugInKit` gains nothing still holds.
+
+  **Two things the record missed, found in the build and written back into it.**
+  (1) **Two sessions had no way to be told apart.** Both emit `stream.started`
+  and `stream.stopped`, which the record approved of — and then had the app run
+  two at once, where the streaming panel would have read the recording's stop as
+  the stream's and told the operator they were off air mid-broadcast.
+  `StreamSession` gained an optional `label`, emitted as a `session` param on
+  exactly those two events (every other session event already carries a
+  `destination`, and a record-only session emits none). Nil for the CLI and the
+  daemon, so `--json` output is byte-identical. (2) **Quitting needed the app's
+  first AppKit hook.** `EngineModel.stop()` was never called at quit — harmless
+  for a stream, fatal for a recording, since an unfinalized movie is an
+  unplayable one. `TingraAppDelegate` answers `.terminateLater` while the file
+  is closed.
+
+  **Built and verified.** Engine: the `connectLegs()` guard, `Outcome.recordingFailed`,
+  the record-only end rule (both **mutation-checked** — reverting either fails
+  its test), and the free-space check behind the seam. App: `RecordingPanel`,
+  `RecordingPreferences`, `RecordingFilename`, the second tee leaf, and the quit
+  hook. Tests **843 across 13 targets** (TingraHost 93 → 98, TingraRecordingPlugIns
+  11 → 24, `apps/tingra-app` 115 → 147), warning-clean, `check-format` clean.
+  `integration-test.sh` **was re-run** — the record said it must not be skipped,
+  because changing the `connectLegs()` guard edits a line every CLI stream
+  executes. **Larry's run on the final state: "All integration scenarios
+  passed", 37 `PASS` lines, no `FAIL` line — the 37-check / 11-scenario baseline
+  exactly held**, recording included (ffprobe verifying an H.264 + AAC file of
+  the expected duration). That is what proves the guard change is inert for the
+  case that has always worked. *(An earlier count of 36 during this session was
+  my own miscount — taken by grepping `PASS` without also grepping `FAIL`, on a
+  run whose full output was never captured. The baseline was never actually in
+  question; the lesson is to capture one run to a file and read it, rather than
+  re-running the script per statistic.)*
+
+  **Still deferred and named:** per-destination compression settings, a record
+  button on the multiview window, and recording something other than program.
+
 - [x] **The main window's input rows — built 2026-08-04, recorded after the
   fact (ARCHITECTURE.md, "The main window's input rows").** The top-left pane
   stopped being a strip of the multiview's grid and became its own surface: two

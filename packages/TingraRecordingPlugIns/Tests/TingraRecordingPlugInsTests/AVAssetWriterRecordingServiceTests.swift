@@ -28,7 +28,8 @@ struct AVAssetWriterRecordingServiceTests {
     @Test("Start opens the backend and appends flow through to it")
     func startOpensAndAppends() async throws {
         let backend = MockRecordingWriter()
-        let service = AVAssetWriterRecordingService(configuration: StreamConfiguration(), backend: backend)
+        let service = AVAssetWriterRecordingService(
+            configuration: StreamConfiguration(), backend: backend, capacityProbe: roomyProbe)
 
         try await service.start(to: Self.makeFile())
         let opened = await backend.opened
@@ -43,7 +44,8 @@ struct AVAssetWriterRecordingServiceTests {
     @Test("Media sent before start is ignored")
     func mediaBeforeStartIgnored() async throws {
         let backend = MockRecordingWriter()
-        let service = AVAssetWriterRecordingService(configuration: StreamConfiguration(), backend: backend)
+        let service = AVAssetWriterRecordingService(
+            configuration: StreamConfiguration(), backend: backend, capacityProbe: roomyProbe)
         await service.send(video: try #require(makeFrame(pts: .zero)))
         #expect(await backend.videoPTS.isEmpty)
     }
@@ -51,7 +53,8 @@ struct AVAssetWriterRecordingServiceTests {
     @Test("A setup failure throws from start and is an identified recording error")
     func startFailureThrows() async {
         let backend = MockRecordingWriter(openError: .unwritableDestination("no such directory"))
-        let service = AVAssetWriterRecordingService(configuration: StreamConfiguration(), backend: backend)
+        let service = AVAssetWriterRecordingService(
+            configuration: StreamConfiguration(), backend: backend, capacityProbe: roomyProbe)
         await #expect(throws: RecordingServiceError.unwritableDestination("no such directory")) {
             try await service.start(to: Self.makeFile())
         }
@@ -61,7 +64,8 @@ struct AVAssetWriterRecordingServiceTests {
     @Test("Stop finalizes the file and finishes the events stream")
     func stopFinalizes() async throws {
         let backend = MockRecordingWriter()
-        let service = AVAssetWriterRecordingService(configuration: StreamConfiguration(), backend: backend)
+        let service = AVAssetWriterRecordingService(
+            configuration: StreamConfiguration(), backend: backend, capacityProbe: roomyProbe)
         try await service.start(to: Self.makeFile())
 
         let collector = Task { await Self.collect(service.events) }
@@ -74,7 +78,8 @@ struct AVAssetWriterRecordingServiceTests {
     @Test("Stop is safe to call more than once and finalizes only once")
     func stopIsIdempotent() async throws {
         let backend = MockRecordingWriter()
-        let service = AVAssetWriterRecordingService(configuration: StreamConfiguration(), backend: backend)
+        let service = AVAssetWriterRecordingService(
+            configuration: StreamConfiguration(), backend: backend, capacityProbe: roomyProbe)
         try await service.start(to: Self.makeFile())
         await service.stop()
         await service.stop()
@@ -85,7 +90,8 @@ struct AVAssetWriterRecordingServiceTests {
     func writeErrorReportsOnce() async throws {
         // Fail on the second append (the first audio buffer after one video).
         let backend = MockRecordingWriter(failAtAppend: 2)
-        let service = AVAssetWriterRecordingService(configuration: StreamConfiguration(), backend: backend)
+        let service = AVAssetWriterRecordingService(
+            configuration: StreamConfiguration(), backend: backend, capacityProbe: roomyProbe)
         try await service.start(to: Self.makeFile())
         let collector = Task { await Self.collect(service.events) }
 
@@ -106,7 +112,8 @@ struct AVAssetWriterRecordingServiceTests {
     @Test("A finalize failure surfaced only at stop reports failed once")
     func finalizeFailureReported() async throws {
         let backend = MockRecordingWriter(finishFailureReason: "disk full on finalize")
-        let service = AVAssetWriterRecordingService(configuration: StreamConfiguration(), backend: backend)
+        let service = AVAssetWriterRecordingService(
+            configuration: StreamConfiguration(), backend: backend, capacityProbe: roomyProbe)
         try await service.start(to: Self.makeFile())
         let collector = Task { await Self.collect(service.events) }
         await service.stop()

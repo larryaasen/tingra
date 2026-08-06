@@ -210,6 +210,16 @@ public actor StreamSession {
         /// The connection dropped and was not recovered within the
         /// reconnect policy. Maps to `connectionLost`, exit 75.
         case connectionLost
+
+        /// The recording stopped and the session had nothing else to do — a
+        /// record-only session (no destinations) whose file sink failed.
+        /// Maps to `recordingFailed`, exit 70.
+        ///
+        /// A session with a live destination never ends this way: recording
+        /// stays independent of streaming (CLI.md), and this is the one case
+        /// that rule never had to cover (see ARCHITECTURE.md, "Recording in
+        /// the app").
+        case recordingFailed
     }
 
     /// How the program video is produced, or nil under `--no-video`.
@@ -252,6 +262,19 @@ public actor StreamSession {
 
     /// The host's event bus, carrying the session's status events.
     private let eventBus: EventBus
+
+    /// What this session calls itself on the two events that name the
+    /// session rather than a destination (`stream.started`,
+    /// `stream.stopped`), or nil to leave them as they have always been.
+    ///
+    /// A caller running **two** sessions at once needs to tell their events
+    /// apart, and the app does exactly that: a streaming session beside a
+    /// record-only one (ARCHITECTURE.md, "Recording in the app"). Every
+    /// other session event already carries a `destination`, and a
+    /// record-only session emits none of those, so these two are the whole
+    /// ambiguity. Nil for the CLI and the daemon, which run one session and
+    /// whose `--json` output is unchanged by an absent param.
+    private let label: String?
 
     /// The session's finished signal: ``finish(_:)`` yields exactly one
     /// outcome and ``run()`` awaits it.
@@ -378,7 +401,8 @@ public actor StreamSession {
         clock: any EngineClock,
         eventBus: EventBus,
         recording: (any RecordingService)? = nil,
-        recordingFile: RecordingFile? = nil
+        recordingFile: RecordingFile? = nil,
+        label: String? = nil
     ) {
         self.init(
             videoSource: programVideo.map(VideoSource.program),
@@ -389,7 +413,8 @@ public actor StreamSession {
             clock: clock,
             eventBus: eventBus,
             recording: recording,
-            recordingFile: recordingFile
+            recordingFile: recordingFile,
+            label: label
         )
     }
 
@@ -466,7 +491,8 @@ public actor StreamSession {
         clock: any EngineClock,
         eventBus: EventBus,
         recording: (any RecordingService)?,
-        recordingFile: RecordingFile?
+        recordingFile: RecordingFile?,
+        label: String? = nil
     ) {
         self.videoSource = videoSource
         self.audioSource = audioSource
@@ -478,6 +504,7 @@ public actor StreamSession {
         self.eventBus = eventBus
         self.recording = recording
         self.recordingFile = recordingFile
+        self.label = label
         (self.outcome, self.outcomeContinuation) = AsyncStream.makeStream(of: Outcome.self)
     }
 
@@ -572,11 +599,9 @@ public actor StreamSession {
         // delivered, however the session ended (stop, duration, or a lost
         // connection).
         await finalizeRecording()
-        eventBus.event(
-            "stream.stopped",
-            domain: .output,
-            params: ["reason": .string(result.rawValue)]
-        )
+        var stoppedParams: [String: EventValue] = ["reason": .string(result.rawValue)]
+        if let label { stoppedParams["session"] = .string(label) }
+        eventBus.event("stream.stopped", domain: .output, params: stoppedParams)
         return result
     }
 
@@ -590,11 +615,18 @@ public actor StreamSession {
     /// - Throws: The first leg's error when *every* leg was rejected (the
     ///   whole start failed, so the caller maps it to `connectionFailed`),
     ///   or ``StreamingServiceError/unsupportedDestination(_:)`` when the
-    ///   session was given no destinations at all.
+    ///   session was given nothing to feed at all.
+    ///
+    /// **No destinations is legal when there is a recording** — that is the
+    /// app's record-only session, a session whose only sink is a file
+    /// (ARCHITECTURE.md, "Recording in the app"). What is refused is a
+    /// session with no sink of any kind, which would pump the program into
+    /// nothing.
     private func connectLegs() async throws {
         guard !legs.isEmpty else {
+            guard recording == nil else { return }
             throw StreamingServiceError.unsupportedDestination(
-                "A stream session needs at least one destination; none was configured."
+                "A session needs at least one destination or a recording; neither was configured."
             )
         }
         var firstError: (any Error)?
@@ -815,7 +847,17 @@ public actor StreamSession {
         }
     }
 
-    /// Emits the `recordingFailed` error event for a recording write failure.
+    /// Emits the `recordingFailed` error event for a recording write failure,
+    /// and ends the session when the failure leaves it with nothing to do.
+    ///
+    /// The rule that recording never ends a stream is unchanged: a session
+    /// with any live destination keeps running, exactly as before. What is
+    /// added is the case that rule never had to cover — a **record-only**
+    /// session, whose failed file sink was its only one. Left running it
+    /// would pump the program into nothing while the operator watches a
+    /// control that claims a stopped file is still growing, so it finishes
+    /// with ``Outcome/recordingFailed`` (ARCHITECTURE.md, "Recording in the
+    /// app").
     private func reportRecordingFailure(_ reason: String) {
         eventBus.error(
             "recording.write",
@@ -825,6 +867,13 @@ public actor StreamSession {
                 "message": .string("The recording stopped and could not continue: \(reason)"),
             ]
         )
+        // Only a session with no live leg left has run out of reasons to
+        // exist. `recordingStarted` deliberately stays set: teardown still
+        // finalizes the file, capturing whatever was written before the
+        // failure, exactly as it did before this case existed.
+        if liveLegCount == 0 {
+            finish(.recordingFailed)
+        }
     }
 
     /// Runs the reconnect attempts for one leg's connection loss.
@@ -950,6 +999,7 @@ public actor StreamSession {
     /// and `stream.destination.rejected`, so the flat event contract holds.
     private var startedParams: [String: EventValue] {
         var params: [String: EventValue] = [:]
+        if let label { params["session"] = .string(label) }
         if let firstLive = legs.indices.first(where: { legStates[$0].isLive }) {
             params["url"] = .string(legs[firstLive].destination.url.absoluteString)
         }

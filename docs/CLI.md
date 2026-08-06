@@ -186,9 +186,11 @@ The `--json` status events are bus events on the standard NDJSON stream (EVENTS.
 | `stream.stats` | Every `--stats-interval` seconds, **once per live destination**. | `destination`, `destinationUrl`, `elapsed`, `bytesSent`, `bitrate` (bits/second), `fps`. |
 | `stream.reconnecting` | A reconnect attempt is starting for one destination. | `destination`, `destinationUrl`, `attempt`, `maxAttempts`, `delay`, `reason`. |
 | `stream.reconnected` | A reconnect attempt succeeded for one destination. | `destination`, `destinationUrl`, `attempt`. |
-| `stream.stopped` | The stream ended, however it ended. | `reason`: `stopRequested` (Ctrl-C/SIGTERM), `durationElapsed`, or `connectionLost`. |
+| `stream.stopped` | The stream ended, however it ended. | `reason`: `stopRequested` (Ctrl-C/SIGTERM), `durationElapsed`, `connectionLost`, or `recordingFailed`. Optional `session`: present only when the caller labelled the session, so a caller running two at once can tell their events apart (the app's record-only session; never set by the CLI). |
 | `recording.started` | `--record` opened the file and began writing (before `stream.started`). | `path`, `container` (`mov`/`mp4`). |
 | `recording.stopped` | The recording was finalized on teardown. | `path`. |
+
+The `recordingFailed` stop reason is **not reachable from the CLI**: it ends a session whose only sink was the recording, and `stream` still requires at least one `--url`. It exists because the engine now allows a session with no destination when a recording is configured — the app's record-only session (ARCHITECTURE.md, "Recording in the app") — and the value is listed here because `reason` is a scripting contract, so a caller must be able to see the whole set. A CLI run with `--record` behaves exactly as it always has: a write failure is reported and the stream carries on.
 
 Two `error`-group events report a destination the run continues without (see "Multiple destinations"): **`stream.destination.rejected`** (`destination`, `destinationUrl`, `identifier` `connectionFailed`, `message`) when a destination refuses the connection at start, and **`stream.destination.lost`** (same params, `identifier` `connectionLost`) when one exhausts its reconnect budget mid-stream. Neither ends a run that still has a live destination — the `recordingFailed` precedent: reported with a stable identifier, without changing the run's fate.
 

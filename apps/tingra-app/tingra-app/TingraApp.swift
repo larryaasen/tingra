@@ -22,6 +22,10 @@ struct TingraApp: App {
     /// The engine model, owned for the app's lifetime.
     @State private var model = EngineModel()
 
+    /// The delegate that holds quitting open until a recording in flight is
+    /// finalized (see ``TingraAppDelegate``).
+    @NSApplicationDelegateAdaptor(TingraAppDelegate.self) private var appDelegate
+
     /// The identifier the View menu's Multiview command opens.
     static let multiviewWindowID = "multiview"
 
@@ -30,7 +34,10 @@ struct TingraApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView(model: model)
-                .task { await model.start() }
+                .task {
+                    appDelegate.model = model
+                    await model.start()
+                }
                 .frame(minWidth: 640, minHeight: 480)
         }
         .commands {
@@ -54,6 +61,36 @@ struct TingraApp: App {
             MultiviewView(model: model)
                 .frame(minWidth: 640, minHeight: 400)
         }
+    }
+}
+
+/// Holds quitting open until a recording in flight has been finalized.
+///
+/// SwiftUI gives a scene no async hook that runs before the process exits, and
+/// a recording that is not finalized is an **unplayable file** — the one piece
+/// of the operator's work the app can actually destroy by quitting. AppKit's
+/// `applicationShouldTerminate(_:)` is the sanctioned way to ask for that time:
+/// answer `.terminateLater`, close the file, then let the quit proceed
+/// (ARCHITECTURE.md, "Recording in the app").
+///
+/// A quit with nothing recording is unchanged — it terminates immediately.
+final class TingraAppDelegate: NSObject, NSApplicationDelegate {
+    /// The engine model, handed over once the main window's task runs.
+    var model: EngineModel?
+
+    /// Lets a quit through immediately unless a recording is open, in which
+    /// case the file is finalized first.
+    ///
+    /// - Parameter sender: The application quitting.
+    /// - Returns: `.terminateNow` when nothing is recording, `.terminateLater`
+    ///   while the file is being closed.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard let model, model.isRecording else { return .terminateNow }
+        Task {
+            await model.finishRecording()
+            sender.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
     }
 }
 

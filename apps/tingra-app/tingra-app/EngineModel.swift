@@ -9,6 +9,7 @@
 
 import CoreGraphics
 import CoreVideo
+import Foundation
 import Observation
 import Synchronization
 import TingraAudio
@@ -20,6 +21,7 @@ import TingraGeneratorPlugIns
 import TingraHost
 import TingraOutputPlugIns
 import TingraPlugInKit
+import TingraRecordingPlugIns
 
 /// The app's engine model: the one `@Observable` that boots the host,
 /// activates the first-party plug-ins, and drives the compositor for the
@@ -108,6 +110,32 @@ final class EngineModel {
         /// The stream ended on a failure — a start-time rejection (bad key,
         /// unreachable host) or a connection lost past the reconnect budget.
         /// Carries a developer-facing message (never a secret).
+        case error(String)
+    }
+
+    /// The live state of the app's local recording, derived from the
+    /// `recording.*` events its own session emits on the bus.
+    ///
+    /// Deliberately separate from ``StreamStatus``: recording runs in its own
+    /// session, so it starts and stops independently of the stream
+    /// (ARCHITECTURE.md, "Recording in the app"). Ending a stream leaves a
+    /// recording rolling, and vice versa.
+    enum RecordingStatus: Equatable {
+        /// Not recording.
+        case idle
+
+        /// Opening the file — after Record, before `recording.started`.
+        case starting
+
+        /// Writing: the program is going to disk.
+        case recording
+
+        /// Flushing and closing the file after Stop, so it is playable.
+        case finalizing
+
+        /// The recording ended on a failure — it could not be opened (an
+        /// unwritable folder, a volume without room) or a write failed
+        /// partway through. Carries a developer-facing message.
         case error(String)
     }
 
@@ -269,6 +297,56 @@ final class EngineModel {
     /// how a row shows that one destination is reconnecting or gone while the
     /// others stay live. Empty when not streaming.
     private(set) var destinationStates: [ProjectDestinationID: DestinationState] = [:]
+
+    /// The live recording status, driven entirely by the `recording.*` events
+    /// on the bus (never a poll) — what the Record control reflects.
+    private(set) var recordingStatus: RecordingStatus = .idle
+
+    /// Where the current recording is being written, or nil when not
+    /// recording — what the panel names beside the elapsed time.
+    private(set) var recordingURL: URL?
+
+    /// When the current recording started on the master clock, or nil when not
+    /// recording. The panel's elapsed time is drawn from this at display
+    /// cadence rather than pushed per tick — the meters' rule, one surface
+    /// over.
+    private(set) var recordingStartedAt: Date?
+
+    /// The folder recordings are written into, from machine-local preferences
+    /// (ARCHITECTURE.md, "Recording in the app").
+    private(set) var recordingFolder: URL
+
+    /// The container format recordings are muxed into.
+    private(set) var recordingContainer: RecordingFile.Container
+
+    /// How much recording the chosen folder's volume still holds at the
+    /// program's settings, or nil when it cannot be measured — shown beside
+    /// the folder so the operator sees the room they have before pressing
+    /// Record, from the same reading the pre-flight check refuses on.
+    private(set) var recordingCapacity: RecordingCapacity?
+
+    /// The compression settings a recording is written with — the program's
+    /// own geometry and rate, the same settings the free-space estimate is
+    /// computed from, so the room the panel shows and the room the pre-flight
+    /// check enforces cannot disagree.
+    var recordingConfiguration: StreamConfiguration {
+        StreamConfiguration(
+            width: format.width,
+            height: format.height,
+            frameRate: format.frameRate,
+            includesVideo: true,
+            includesAudio: true
+        )
+    }
+
+    /// Whether a recording is currently starting or writing — so the control
+    /// shows Stop and the folder locks.
+    var isRecording: Bool {
+        switch recordingStatus {
+        case .starting, .recording: return true
+        case .idle, .finalizing, .error: return false
+        }
+    }
 
     /// Whether a stream is currently starting, live, or reconnecting — so the
     /// control shows Stop and the destination fields lock.
@@ -465,6 +543,31 @@ final class EngineModel {
     /// status is event-driven, never polled.
     @ObservationIgnored private var streamStatusTask: Task<Void, Never>?
 
+    /// The active recording session, or nil when not recording.
+    ///
+    /// A **second** `StreamSession` carrying no destinations, running beside
+    /// ``streamSession`` rather than inside it, so the recording and the
+    /// stream start and stop independently (ARCHITECTURE.md, "Recording in
+    /// the app"). This is not a second *stream*: v1's one-active-session rule
+    /// governs what is on air, and a session with no destination puts nothing
+    /// on air.
+    @ObservationIgnored private var recordSession: StreamSession?
+
+    /// The task running the recording session's `run()`.
+    @ObservationIgnored private var recordTask: Task<Void, Never>?
+
+    /// The continuation feeding the recording session its program video — the
+    /// second leaf on the same program tee ``streamContinuation`` is the first
+    /// leaf of.
+    @ObservationIgnored private var recordContinuation: AsyncStream<CapturedFrame>.Continuation?
+
+    /// The continuation feeding the recording session its program audio — the
+    /// audio mirror of ``recordContinuation``.
+    @ObservationIgnored private var recordAudioContinuation: AsyncStream<CapturedAudio>.Continuation?
+
+    /// Where the operator's recording folder and container live.
+    @ObservationIgnored private let recordingPreferences = RecordingPreferences()
+
     /// The program geometry and rate.
     @ObservationIgnored private let format = ProgramFormat(width: 1920, height: 1080, frameRate: 30)
 
@@ -624,6 +727,8 @@ final class EngineModel {
         self.monitorDeviceUID = monitorPreferences.deviceUID
         self.monitorDeviceName = monitorPreferences.deviceName
         self.monitorLevel = monitorPreferences.level
+        self.recordingFolder = recordingPreferences.folder
+        self.recordingContainer = recordingPreferences.container
     }
 
     /// Boots the engine: attaches the log sink, activates the capture and
@@ -660,10 +765,14 @@ final class EngineModel {
         await PlugInLoader().activate(
             [
                 AVFoundationCapturePlugIn(), ScreenCaptureKitCapturePlugIn(), GeneratorPlugIn(),
-                HaishinKitOutputPlugIn(), EffectPlugIn(),
+                HaishinKitOutputPlugIn(), EffectPlugIn(), RecordingPlugIn(),
             ],
             in: context
         )
+        // The recordings folder's free space is read once the engine is up and
+        // again whenever the folder, the container, or a finished recording
+        // can have changed the answer — never on a timer.
+        refreshRecordingCapacity()
         audioEffectChoices = await effects.allAudioProviders.map {
             AudioEffectChoice(id: $0.id, name: $0.name, parameters: $0.parameters)
         }
@@ -704,7 +813,11 @@ final class EngineModel {
                 // While a stream is live, tee the same program frame into the
                 // session — one program drain feeds both the preview and the
                 // stream, so the compositor's single-consumer contract holds.
+                // The recording session is the second leaf on the same tee,
+                // fed the identical frame: both sinks record the same program
+                // (ARCHITECTURE.md, "Recording in the app").
                 self?.streamContinuation?.yield(frame)
+                self?.recordContinuation?.yield(frame)
                 if !sawFrame {
                     sawFrame = true
                     // A one-time milestone (not per-frame traffic): confirms the
@@ -728,6 +841,7 @@ final class EngineModel {
         programAudioTask = Task { [weak self] in
             for await block in programAudio {
                 self?.streamAudioContinuation?.yield(block)
+                self?.recordAudioContinuation?.yield(block)
                 await monitor.play(block)
             }
         }
@@ -2360,6 +2474,179 @@ final class EngineModel {
         }
     }
 
+    // MARK: - Recording
+
+    /// What the recording session calls itself on the two events that name a
+    /// session rather than a destination, so the streaming panel can ignore
+    /// them (see `StreamSession.label`).
+    static let recordSessionLabel = "record"
+
+    /// Starts recording the program to a local file: resolves the recording
+    /// provider by the chosen container's extension and drives a **second**
+    /// `StreamSession` carrying no destinations, fed by the same program tee
+    /// the stream is (ARCHITECTURE.md, "Recording in the app").
+    ///
+    /// Independent of streaming by construction: recording can start before,
+    /// during, or after a stream, and stopping one never stops the other. A
+    /// second call while already recording is ignored.
+    ///
+    /// The file is named for the moment it starts and never overwrites an
+    /// earlier take (see ``RecordingFilename``). A folder that cannot be
+    /// created, or a volume without room for a usable take, surfaces as a
+    /// recoverable error rather than a crash — the free-space refusal comes
+    /// from the recording service itself, so the CLI enforces the same rule.
+    func startRecording() async {
+        guard recordSession == nil else { return }
+
+        guard let provider = await outputs.recordingProvider(forFileExtension: recordingContainer.rawValue) else {
+            recordingStatus = .error(
+                String(
+                    localized: "No recording output writes .\(recordingContainer.rawValue) files.",
+                    comment: "Recording error when the chosen container has no registered recording output"
+                )
+            )
+            return
+        }
+
+        // Create the folder if the operator has picked one that is not there
+        // yet; a folder that cannot be created is reported rather than
+        // silently falling back to somewhere they did not choose.
+        do {
+            try FileManager.default.createDirectory(at: recordingFolder, withIntermediateDirectories: true)
+        } catch {
+            reportRecordingError(
+                String(
+                    localized: "The recordings folder could not be created: \(error.localizedDescription)",
+                    comment: "Recording error when the chosen folder cannot be created"
+                )
+            )
+            return
+        }
+
+        let url = RecordingFilename.url(in: recordingFolder, container: recordingContainer, at: .now)
+        let configuration = recordingConfiguration
+
+        let (programStream, continuation) = AsyncStream.makeStream(of: CapturedFrame.self)
+        recordContinuation = continuation
+        let (programAudioStream, audioContinuation) = AsyncStream.makeStream(of: CapturedAudio.self)
+        recordAudioContinuation = audioContinuation
+
+        let session = StreamSession(
+            programVideo: programStream,
+            programAudio: programAudioStream,
+            destinations: [],
+            configuration: configuration,
+            policy: StreamSession.Policy(),
+            clock: clock,
+            eventBus: eventBus,
+            recording: provider.makeRecordingService(configuration: configuration),
+            recordingFile: RecordingFile(url: url, container: recordingContainer),
+            // Both sessions emit `stream.started`/`stream.stopped` for their
+            // own life; the label is what keeps the streaming panel from
+            // reading the recording's.
+            label: Self.recordSessionLabel
+        )
+        recordSession = session
+        recordingStatus = .starting
+        recordingURL = url
+
+        recordTask = Task { [weak self] in
+            do {
+                _ = try await session.run()
+                // A clean end settles through the `recording.stopped`
+                // observer, like the stream's.
+            } catch {
+                // A setup failure — an unwritable folder, or a volume without
+                // room — throws before any media is written.
+                self?.reportRecordingError(String(describing: error))
+            }
+            self?.teardownRecording()
+        }
+    }
+
+    /// Stops the recording: finalizes the file so it is playable. The
+    /// `recording.stopped` event settles the status. A no-op when not
+    /// recording.
+    func stopRecording() async {
+        guard recordSession != nil else { return }
+        recordingStatus = .finalizing
+        await recordSession?.stop()
+    }
+
+    /// Stops a recording in flight and waits for the file to be finalized.
+    ///
+    /// The waiting is the point, and it is why quitting is not simply
+    /// ``stopRecording()``: `stop()` only *requests* the end, where the file
+    /// becomes playable when the session's teardown finishes writing the
+    /// index. A no-op when not recording.
+    func finishRecording() async {
+        guard let task = recordTask else { return }
+        await stopRecording()
+        await task.value
+    }
+
+    /// Reports a recording error on the bus and shows it on the control.
+    ///
+    /// - Parameter message: The developer-facing description (never a secret;
+    ///   a recording path is not one).
+    private func reportRecordingError(_ message: String) {
+        eventBus.error(
+            "recording.start",
+            domain: .output,
+            params: [
+                "identifier": .string(ErrorIdentifier.recordingFailed.rawValue),
+                "message": .string(message),
+            ]
+        )
+        recordingStatus = .error(message)
+    }
+
+    /// Releases the finished recording session's plumbing so a new recording
+    /// can start.
+    private func teardownRecording() {
+        recordContinuation?.finish()
+        recordContinuation = nil
+        recordAudioContinuation?.finish()
+        recordAudioContinuation = nil
+        recordSession = nil
+        recordTask = nil
+        recordingStartedAt = nil
+        refreshRecordingCapacity()
+    }
+
+    /// Points recordings at a different folder, persisting the choice as a
+    /// machine-local preference. Ignored while recording, so a take's file
+    /// cannot move out from under it.
+    ///
+    /// - Parameter folder: The folder to record into.
+    func setRecordingFolder(_ folder: URL) {
+        guard !isRecording else { return }
+        recordingFolder = folder
+        recordingPreferences.folder = folder
+        refreshRecordingCapacity()
+        eventBus.event("recording.folderChanged", domain: .output)
+    }
+
+    /// Changes the container recordings are muxed into, persisting the choice.
+    /// Ignored while recording.
+    ///
+    /// - Parameter container: The container format.
+    func setRecordingContainer(_ container: RecordingFile.Container) {
+        guard !isRecording else { return }
+        recordingContainer = container
+        recordingPreferences.container = container
+        refreshRecordingCapacity()
+    }
+
+    /// Re-reads how much recording the chosen folder's volume holds.
+    ///
+    /// Called when the folder or container changes and when a recording ends
+    /// — the moments the answer can have changed — never on a timer
+    /// (CLAUDE.md: no polling).
+    func refreshRecordingCapacity() {
+        recordingCapacity = RecordingCapacity.measure(at: recordingFolder)
+    }
+
     /// Releases the finished session's plumbing: finishes the program tees
     /// and drops the session references so a new stream can start.
     private func teardownStream() {
@@ -2384,6 +2671,14 @@ final class EngineModel {
     ///
     /// - Parameter event: An event drained from the bus.
     private func handleStreamStatusEvent(_ event: EventBusEvent) {
+        // The recording runs its own session, which reports its own life with
+        // the same two session-level event names. Its events belong to the
+        // Record control, never to the streaming panel.
+        if event.params?["session"].flatMap(Self.stringValue) == Self.recordSessionLabel {
+            handleRecordingSessionEvent(event)
+            return
+        }
+        handleRecordingEvent(event)
         let destination = event.params?["destination"].flatMap(Self.stringValue).map(ProjectDestinationID.init)
         switch event.name {
         case "stream.started":
@@ -2442,6 +2737,71 @@ final class EngineModel {
         }
     }
 
+    /// Settles the Record control from the recording session's own
+    /// session-level events — the events the streaming panel must not read.
+    ///
+    /// `stream.stopped` from this session is the recording's own end, and
+    /// its reason distinguishes a clean stop from the sink dying with nothing
+    /// left to feed (`recordingFailed`, the record-only outcome). The
+    /// `recording.*` events that carry the file's own news are handled in
+    /// ``handleRecordingEvent(_:)``.
+    ///
+    /// - Parameter event: An event drained from the bus carrying the record
+    ///   session's label.
+    private func handleRecordingSessionEvent(_ event: EventBusEvent) {
+        guard event.name == "stream.stopped" else { return }
+        let reason = event.params?["reason"].flatMap(Self.stringValue)
+        if reason == StreamSession.Outcome.recordingFailed.rawValue {
+            // The write failure itself was already reported with its own
+            // message by `recording.write`; leave that message standing.
+            if case .error = recordingStatus {
+            } else {
+                recordingStatus = .error(
+                    String(
+                        localized: "The recording stopped and could not continue.",
+                        comment: "Recording error shown when the file sink failed and the recording ended"
+                    )
+                )
+            }
+        } else if case .error = recordingStatus {
+            // A start-time failure already settled the status.
+        } else {
+            recordingStatus = .idle
+        }
+    }
+
+    /// Updates the Record control from the `recording.*` events the session
+    /// emits for the file itself — event-driven, never polled, and the same
+    /// events the CLI's `--json` output carries.
+    ///
+    /// - Parameter event: An event drained from the bus.
+    private func handleRecordingEvent(_ event: EventBusEvent) {
+        switch event.name {
+        case "recording.started":
+            recordingStatus = .recording
+            recordingStartedAt = .now
+            if let path = event.params?["path"].flatMap(Self.stringValue) {
+                recordingURL = URL(filePath: path)
+            }
+        case "recording.stopped":
+            // A recording that failed keeps its error showing; the file was
+            // still finalized, which is what this event reports.
+            if case .error = recordingStatus {} else { recordingStatus = .idle }
+            recordingStartedAt = nil
+        case "recording.write":
+            let message =
+                event.params?["message"].flatMap(Self.stringValue)
+                ?? String(
+                    localized: "The recording stopped and could not continue.",
+                    comment: "Recording error shown when the file sink failed and the recording ended"
+                )
+            recordingStatus = .error(message)
+            recordingStartedAt = nil
+        default:
+            break
+        }
+    }
+
     /// Records one destination's live state, ignoring an event that names no
     /// destination (or one no longer in the panel).
     ///
@@ -2481,6 +2841,10 @@ final class EngineModel {
     /// Stops the compositor, the program and preview drains, and every active
     /// input, flushing any pending autosave first so the last edits reach disk.
     func stop() async {
+        // The recording goes first, and is *waited* for: an unfinalized movie
+        // is an unplayable one, so the file is closed before anything that
+        // feeds it is torn down.
+        await finishRecording()
         await stopStreaming()
         streamStatusTask?.cancel()
         streamStatusTask = nil

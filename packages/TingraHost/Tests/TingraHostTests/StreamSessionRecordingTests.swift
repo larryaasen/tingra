@@ -183,4 +183,126 @@ struct StreamSessionRecordingTests {
         #expect(outcome == .stopRequested)
         #expect(recording.stops == 1)
     }
+
+    // MARK: - Record-only sessions (no destinations)
+
+    /// Builds a record-only session: program streams in, a file out, and no
+    /// destination at all (ARCHITECTURE.md, "Recording in the app").
+    private static func makeRecordOnlySession(
+        recording: MockRecordingService,
+        clock: any EngineClock,
+        eventBus: EventBus,
+        video: AsyncStream<CapturedFrame>? = AsyncStream { _ in },
+        recordingFile: RecordingFile? = makeFile()
+    ) -> StreamSession {
+        StreamSession(
+            programVideo: video,
+            programAudio: nil,
+            destinations: [],
+            configuration: StreamConfiguration(),
+            policy: StreamSession.Policy(statsIntervalSeconds: 0),
+            clock: clock,
+            eventBus: eventBus,
+            recording: recording,
+            recordingFile: recordingFile
+        )
+    }
+
+    @Test("A session with no destinations records, reports, and finalizes on stop")
+    func recordOnlySessionRuns() async throws {
+        let clock = ManualClock()
+        let eventBus = EventBus()
+        let events = Collected()
+        let eventsTask = events.consume(eventBus.events())
+        defer { eventsTask.cancel() }
+
+        let recording = MockRecordingService()
+        let session = Self.makeRecordOnlySession(recording: recording, clock: clock, eventBus: eventBus)
+        let runTask = Task { try await session.run() }
+
+        #expect(await eventually { recording.startedFile != nil })
+        #expect(await eventually { !events.named("recording.started").isEmpty })
+        // The session's own life is still bracketed, with no destination to
+        // name: `stream.started` reports zero of them.
+        #expect(await eventually { !events.named("stream.started").isEmpty })
+        let started = try #require(events.named("stream.started").first)
+        #expect(started.params?["destinations"] == .int(0))
+        #expect(started.params?["url"] == nil)
+
+        await session.stop()
+        let outcome = try await runTask.value
+        #expect(outcome == .stopRequested)
+        #expect(recording.stops == 1)
+        #expect(await eventually { !events.named("recording.stopped").isEmpty })
+    }
+
+    @Test("A session with neither a destination nor a recording throws")
+    func sessionWithNoSinkThrows() async throws {
+        let session = StreamSession(
+            programVideo: AsyncStream { _ in },
+            programAudio: nil,
+            destinations: [],
+            configuration: StreamConfiguration(),
+            policy: StreamSession.Policy(statsIntervalSeconds: 0),
+            clock: ManualClock(),
+            eventBus: EventBus()
+        )
+        await #expect(throws: StreamingServiceError.self) {
+            _ = try await session.run()
+        }
+    }
+
+    @Test("A recording failure ends a record-only session, and the file is still finalized")
+    func recordingFailureEndsRecordOnlySession() async throws {
+        let clock = ManualClock()
+        let eventBus = EventBus()
+        let events = Collected()
+        let eventsTask = events.consume(eventBus.events())
+        defer { eventsTask.cancel() }
+
+        let recording = MockRecordingService()
+        let session = Self.makeRecordOnlySession(recording: recording, clock: clock, eventBus: eventBus)
+        // The outcome is published rather than awaited: if this rule ever
+        // regresses, `run()` never returns, and awaiting it would hang the
+        // suite instead of reporting the regression.
+        let outcome = Mutex<StreamSession.Outcome?>(nil)
+        let runTask = Task {
+            let result = try await session.run()
+            outcome.withLock { $0 = result }
+        }
+        defer { runTask.cancel() }
+        #expect(await eventually { recording.startedFile != nil })
+
+        recording.reportFailure(reason: "disk full")
+
+        // Nothing is left to feed, so the session ends rather than pumping the
+        // program into nothing.
+        #expect(await eventually { outcome.withLock { $0 } != nil })
+        #expect(outcome.withLock { $0 } == .recordingFailed)
+        #expect(events.named("recording.write").isEmpty == false)
+        // Teardown still finalized whatever was written before the failure.
+        #expect(recording.stops == 1)
+        let stopped = try #require(events.named("stream.stopped").first)
+        #expect(stopped.params?["reason"] == .string("recordingFailed"))
+    }
+
+    @Test("A recording setup failure on a record-only session throws from run")
+    func recordOnlySetupFailureThrows() async throws {
+        let recording = MockRecordingService(startError: .unwritableDestination("not enough free space"))
+        let session = Self.makeRecordOnlySession(
+            recording: recording,
+            clock: ManualClock(),
+            eventBus: EventBus()
+        )
+        await #expect(throws: RecordingServiceError.unwritableDestination("not enough free space")) {
+            _ = try await session.run()
+        }
+    }
+
+    @Test("The recordingFailed outcome carries its own stable reason string")
+    func recordingFailedOutcomeRawValue() {
+        // `stream.stopped`'s `reason` is a scripting contract (CLI.md), so the
+        // value is pinned here the way the error identifiers are.
+        #expect(StreamSession.Outcome.recordingFailed.rawValue == "recordingFailed")
+    }
 }

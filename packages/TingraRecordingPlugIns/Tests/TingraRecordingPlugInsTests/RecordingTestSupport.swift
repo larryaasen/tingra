@@ -9,7 +9,23 @@
 
 import CoreMedia
 import CoreVideo
+import Foundation
 import TingraPlugInKit
+
+@testable import TingraRecordingPlugIns
+
+/// A capacity probe reporting a volume with plenty of room, so a test of the
+/// recording lifecycle never depends on the disk the suite happens to run on
+/// (the package rule: unit tests touch neither disk nor hardware encoder).
+let roomyProbe: RecordingCapacityProbe = { _ in RecordingCapacity(availableBytes: 1_000_000_000_000) }
+
+/// A capacity probe reporting a volume with the given bytes free.
+///
+/// - Parameter bytes: The free space to report.
+/// - Returns: A probe that always reports that reading.
+func probe(reporting bytes: Int64) -> RecordingCapacityProbe {
+    { _ in RecordingCapacity(availableBytes: bytes) }
+}
 
 /// Creates a small IOSurface-backed 32BGRA frame with the given PTS.
 func makeFrame(pts: CMTime) -> CapturedFrame? {

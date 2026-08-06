@@ -35,6 +35,23 @@
         }
       }
     },
+    "%@ of room left": {
+      "comment": "How much recording time the chosen volume still holds",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Noch %@ Platz"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Queda espacio para %@"
+          }
+        }
+      }
+    },
     "Add Destination": {
       "comment": "Button that adds a stream destination",
       "localizations": {
@@ -201,6 +218,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "Cancelar"
+          }
+        }
+      }
+    },
+    "Choose Folder…": {
+      "comment": "Button that picks the folder recordings are written to",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ordner wählen…"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Elegir carpeta…"
           }
         }
       }
@@ -490,6 +524,40 @@
           "stringUnit": {
             "state": "translated",
             "value": "Fundido a negro activo"
+          }
+        }
+      }
+    },
+    "Finishing…": {
+      "comment": "Recording status: the file is being closed so it is playable",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wird abgeschlossen…"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Finalizando…"
+          }
+        }
+      }
+    },
+    "Format": {
+      "comment": "Recording container format picker label",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Format"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Formato"
           }
         }
       }
@@ -1108,6 +1176,23 @@
         }
       }
     },
+    "No recording output writes .%@ files.": {
+      "comment": "Recording error when the chosen container has no registered recording output",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keine Aufnahme-Ausgabe schreibt .%@-Dateien."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ninguna salida de grabación escribe archivos .%@."
+          }
+        }
+      }
+    },
     "No streaming output serves %@ destinations. Use rtmp, rtmps, or srt.": {
       "comment": "Stream error when a destination's URL scheme has no registered output",
       "localizations": {
@@ -1291,6 +1376,40 @@
           "stringUnit": {
             "state": "translated",
             "value": "Reconectando…"
+          }
+        }
+      }
+    },
+    "Record": {
+      "comment": "Button that starts recording the program to a local file",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aufnehmen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Grabar"
+          }
+        }
+      }
+    },
+    "Recording": {
+      "comment": "Section heading over the recording folder and Record control",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aufnahme"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Grabación"
           }
         }
       }
@@ -1550,6 +1669,40 @@
         }
       }
     },
+    "Starting…": {
+      "comment": "Recording status: the file is being opened",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wird gestartet…"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Iniciando…"
+          }
+        }
+      }
+    },
+    "Stop Recording": {
+      "comment": "Button that stops the local recording",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aufnahme stoppen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Detener grabación"
+          }
+        }
+      }
+    },
     "Stop Streaming": {
       "comment": "Button that takes the program off air",
       "localizations": {
@@ -1648,6 +1801,40 @@
           "stringUnit": {
             "state": "translated",
             "value": "Tomar"
+          }
+        }
+      }
+    },
+    "The recording stopped and could not continue.": {
+      "comment": "Recording error shown when the file sink failed and the recording ended",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Die Aufnahme wurde gestoppt und konnte nicht fortgesetzt werden."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La grabación se detuvo y no pudo continuar."
+          }
+        }
+      }
+    },
+    "The recordings folder could not be created: %@": {
+      "comment": "Recording error when the chosen folder cannot be created",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Der Aufnahmeordner konnte nicht erstellt werden: %@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se pudo crear la carpeta de grabaciones: %@"
           }
         }
       }
@@ -1869,6 +2056,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "● En vivo"
+          }
+        }
+      }
+    },
+    "● Recording": {
+      "comment": "Recording status: the program is being written to a file",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "● Aufnahme"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "● Grabando"
           }
         }
       }

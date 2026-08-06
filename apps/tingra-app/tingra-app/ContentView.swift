@@ -182,6 +182,8 @@ struct ContentView: View {
                     MixerView(model: model)
 
                     streamingPanel
+
+                    RecordingPanel(model: model)
                 }
                 .padding(Self.columnPadding)
             }
