@@ -127,16 +127,43 @@ struct ProgramPacerTests {
         let pacer = ProgramPacer(clock: clock, frameRate: 30)
         let older = try #require(makeTestPixelBuffer())
         let newer = try #require(makeTestPixelBuffer())
-        let (source, sourceContinuation) = AsyncStream.makeStream(of: CapturedFrame.self)
+        let scripted = [
+            CapturedFrame(pixelBuffer: older, presentationTime: .zero),
+            CapturedFrame(pixelBuffer: newer, presentationTime: CMTime(value: 1, timescale: 60)),
+        ]
+
+        // A pull-driven source, so the test can tell when both frames have
+        // reached the pacer's slot. Yielding two frames into a buffered
+        // stream cannot: the pacer's fill task stores them from its own
+        // task, so a tick can land between the two and emit the older
+        // frame — correct pacer behavior (latest *ingested* wins), but it
+        // leaves the assertion below racing the fill task. Here the fill
+        // task's loop body stores each frame before requesting the next,
+        // so a third request proves both frames already landed.
+        let pulls = Mutex(0)
+        let source = AsyncStream<CapturedFrame> {
+            let index = pulls.withLock { count in
+                let current = count
+                count += 1
+                return current
+            }
+            guard index < scripted.count else {
+                // Go quiet rather than finish: a finished source ends the
+                // paced stream before a tick can emit anything. The park
+                // ends when the pacer cancels the fill task on teardown.
+                try? await Task.sleep(for: .seconds(60))
+                return nil
+            }
+            return scripted[index]
+        }
 
         let output = PacedFrames()
         let consumer = output.consume(pacer.frames(from: source))
         defer { consumer.cancel() }
 
-        sourceContinuation.yield(CapturedFrame(pixelBuffer: older, presentationTime: .zero))
-        sourceContinuation.yield(
-            CapturedFrame(pixelBuffer: newer, presentationTime: CMTime(value: 1, timescale: 60))
-        )
+        let ingested = await eventually { pulls.withLock { $0 } > scripted.count }
+        #expect(ingested)
+
         let tick = Mutex(1)
         let produced = await eventually {
             let next = tick.withLock { value in
@@ -144,14 +171,15 @@ struct ProgramPacerTests {
                 return value
             }
             clock.advance(to: CMTime(value: CMTimeValue(next), timescale: 30))
-            // Both source frames precede the first landed tick read, so
+            // Both source frames landed before this first tick, so
             // whichever frame emerges must be the newer one.
             return !output.collected.isEmpty
         }
         #expect(produced)
         let first = try #require(output.collected.first)
         #expect(first.pixelBuffer === newer)
-        sourceContinuation.finish()
+        // The older frame is skipped, not queued: no tick ever drains it.
+        #expect(!output.collected.contains { $0.pixelBuffer === older })
     }
 
     @Test("The paced stream finishes after the source finishes")
