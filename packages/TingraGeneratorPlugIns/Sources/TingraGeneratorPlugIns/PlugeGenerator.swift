@@ -11,6 +11,7 @@ import CoreGraphics
 import CoreMedia
 import CoreVideo
 import Foundation
+import TingraEventBus
 import TingraPlugInKit
 
 /// The PLUGE (Picture Line-Up Generation Equipment) video generator
@@ -57,6 +58,11 @@ public final class PlugeGenerator: Input, Sendable {
     /// Frames synthesized per second.
     private let frameRate: Int
 
+    /// The event bus, for reporting a synthesis stall and its recovery.
+    /// Optional so unit tests construct a generator without one; when absent
+    /// the generator simply reports nothing.
+    private let eventBus: EventBus?
+
     /// The shared continuation/task plumbing every consumer's frame stream
     /// runs through.
     private let stream = GeneratorStreamCoordinator<CapturedFrame>()
@@ -66,11 +72,20 @@ public final class PlugeGenerator: Input, Sendable {
     ///
     /// - Parameters:
     ///   - clock: The clock that paces synthesis and stamps frames.
+    ///   - eventBus: The host's event bus, for synthesis diagnostics. Omit it
+    ///     where those are not wanted (tests).
     ///   - width: Frame width in pixels.
     ///   - height: Frame height in pixels.
     ///   - frameRate: Frames per second.
-    public init(clock: any EngineClock, width: Int = 1920, height: Int = 1080, frameRate: Int = 30) {
+    public init(
+        clock: any EngineClock,
+        eventBus: EventBus? = nil,
+        width: Int = 1920,
+        height: Int = 1080,
+        frameRate: Int = 30
+    ) {
         self.clock = clock
+        self.eventBus = eventBus
         self.width = width
         self.height = height
         self.frameRate = frameRate
@@ -90,8 +105,12 @@ public final class PlugeGenerator: Input, Sendable {
         return stream.makeStream(
             clock: clock,
             tickInterval: CMTime(value: 1, timescale: CMTimeScale(frameRate)),
+            inputID: id,
+            eventBus: eventBus,
             makeRenderer: { PlugeRenderer(width: width, height: height, style: .practical) },
-            render: { renderer, tickTime in renderer.render(at: tickTime) }
+            render: { (renderer, tickTime) throws(GeneratorSynthesisFailure) in
+                try renderer.render(at: tickTime)
+            }
         )
     }
 
@@ -145,6 +164,11 @@ public final class PlugeStrictGenerator: Input, Sendable {
     /// Frames synthesized per second.
     private let frameRate: Int
 
+    /// The event bus, for reporting a synthesis stall and its recovery.
+    /// Optional so unit tests construct a generator without one; when absent
+    /// the generator simply reports nothing.
+    private let eventBus: EventBus?
+
     /// The shared continuation/task plumbing every consumer's frame stream
     /// runs through.
     private let stream = GeneratorStreamCoordinator<CapturedFrame>()
@@ -154,11 +178,20 @@ public final class PlugeStrictGenerator: Input, Sendable {
     ///
     /// - Parameters:
     ///   - clock: The clock that paces synthesis and stamps frames.
+    ///   - eventBus: The host's event bus, for synthesis diagnostics. Omit it
+    ///     where those are not wanted (tests).
     ///   - width: Frame width in pixels.
     ///   - height: Frame height in pixels.
     ///   - frameRate: Frames per second.
-    public init(clock: any EngineClock, width: Int = 1920, height: Int = 1080, frameRate: Int = 30) {
+    public init(
+        clock: any EngineClock,
+        eventBus: EventBus? = nil,
+        width: Int = 1920,
+        height: Int = 1080,
+        frameRate: Int = 30
+    ) {
         self.clock = clock
+        self.eventBus = eventBus
         self.width = width
         self.height = height
         self.frameRate = frameRate
@@ -178,8 +211,12 @@ public final class PlugeStrictGenerator: Input, Sendable {
         return stream.makeStream(
             clock: clock,
             tickInterval: CMTime(value: 1, timescale: CMTimeScale(frameRate)),
+            inputID: id,
+            eventBus: eventBus,
             makeRenderer: { PlugeRenderer(width: width, height: height, style: .strict) },
-            render: { renderer, tickTime in renderer.render(at: tickTime) }
+            render: { (renderer, tickTime) throws(GeneratorSynthesisFailure) in
+                try renderer.render(at: tickTime)
+            }
         )
     }
 
@@ -227,30 +264,28 @@ private final class PlugeRenderer {
     /// The pixel buffer pool frames are drawn into: `IOSurface`-backed
     /// 32BGRA, CG-compatible for CPU drawing (acceptable for a calibration
     /// pattern; capture inputs stay GPU-resident).
-    private let pool: CVPixelBufferPool?
+    private let pool: GeneratorPixelBufferPool
 
     /// Creates a renderer and its buffer pool for the given geometry.
     init(width: Int, height: Int, style: Style) {
         self.width = width
         self.height = height
         self.style = style
-        self.pool = GeneratorPixelBuffer.makePool(width: width, height: height)
+        self.pool = GeneratorPixelBufferPool(width: width, height: height)
     }
 
-    /// Renders one frame for the given master clock time, or nil if a
-    /// buffer or drawing context could not be created — a generator
-    /// problem must never take down the pipeline, so a failed frame is
-    /// simply skipped.
-    func render(at time: CMTime) -> CapturedFrame? {
-        guard let pool else { return nil }
-        var bufferOut: CVPixelBuffer?
-        CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, pool, &bufferOut)
-        guard let buffer = bufferOut else { return nil }
+    /// Renders one frame for the given master clock time.
+    ///
+    /// - Throws: A ``GeneratorSynthesisFailure`` if a buffer or drawing
+    ///   context could not be created. The caller skips the tick — a
+    ///   generator problem must never take down the pipeline — and reports
+    ///   the stall.
+    func render(at time: CMTime) throws(GeneratorSynthesisFailure) -> CapturedFrame {
+        let buffer = try pool.buffer()
 
         CVPixelBufferLockBaseAddress(buffer, [])
         defer { CVPixelBufferUnlockBaseAddress(buffer, []) }
-        guard let context = GeneratorPixelBuffer.makeDrawingContext(width: width, height: height, buffer: buffer)
-        else { return nil }
+        let context = try GeneratorPixelBuffer.makeDrawingContext(width: width, height: height, buffer: buffer)
 
         drawBackground(in: context)
         switch style {

@@ -2712,30 +2712,64 @@ Each lists its trigger condition:
 ## Generator plug-ins
 
 Issues found in a 2026-07-07 review of `packages/TingraGeneratorPlugIns` (see
-GeneratorPlugIn.swift and the Bars/Alignment/Pluge/Tone generators).
+GeneratorPlugIn.swift and the Bars/Alignment/Pluge/Tone generators). All three
+fixed together on 2026-08-06.
 
-- [ ] **Synthesis failures are silently dropped, never reported.**
-  `CVPixelBufferPoolCreate` (now in `GeneratorPixelBuffer.makePool`),
-  `CVPixelBufferPoolCreatePixelBuffer`, `CMAudioFormatDescriptionCreate`, and
-  the `CMBlockBuffer`/`CMSampleBuffer` calls in `BarsRenderer`, `AlignmentRenderer`,
-  `PlugeRenderer`, and `ToneSynthesizer` all discard their `OSStatus`/failure and
-  just return nil, skipping the frame or buffer (correctly, per ARCHITECTURE.md
-  — a generator problem must never take down the pipeline). But nothing reports it
-  as an `error` event on the bus (EVENTS.md), so a persistently failing generator
-  (e.g., pool exhaustion) would silently produce zero output with no diagnosable
-  signal — it would look like a hang rather than a reported failure.
+- [x] **Synthesis failures are silently dropped, never reported** *(fixed
+  2026-08-06)*. `CVPixelBufferPoolCreate`, `CVPixelBufferPoolCreatePixelBuffer`,
+  `CMAudioFormatDescriptionCreate`, and the `CMBlockBuffer`/`CMSampleBuffer`
+  calls all discarded their `OSStatus` and returned nil, skipping the frame or
+  buffer (correctly, per ARCHITECTURE.md — a generator problem must never take
+  down the pipeline) with nothing on the bus, so a persistently broken generator
+  produced zero output and no signal: a hang, not a reported failure.
 
-- [ ] **`GeneratorPlugIn.activate` has no rollback on partial registration.** If
-  any generator in its array throws from `context.inputs.register(_:)` partway
-  through the loop (e.g., a duplicate identifier), the generators registered
-  earlier in the same call stay registered while the rest are never attempted.
-  The host's loader reports the throw as an `error` event and keeps running, but
-  the partially-registered state persists silently.
+  The reporting rule was **settled in EVENTS.md before any code** ("Reporting a
+  repeating failure"), because the naive fix collides head-on with principle 3:
+  a failure on the frame path repeats every tick, so reporting occurrences is
+  exactly the flood the control-plane rule forbids. The rule reports the
+  **episode** instead — one `error` (`generator.stalled`) on the first tick that
+  produces nothing, one `event` (`generator.resumed`) on the first tick that
+  recovers, carrying the count of ticks lost. Two events per episode however
+  long it runs; an episode that never resolves emits its one error and the
+  missing resume line is the standing signal. A second cause inside an open
+  episode is deliberately not re-reported — that would reopen the unbounded
+  case. The rule is written generically for any tick-paced producer, not for
+  generators specifically.
 
-- [ ] **Confirm `BarsRenderer.timecode(at:)`'s hours modulus.** It uses `% 100`
-  for the hours component rather than the conventional `% 24` for burned-in
-  `HH:MM:SS:FF` timecode. Confirm whether supporting runs beyond 24 hours is
-  intentional, or whether it should match standard SMPTE timecode wraparound.
+  Implementation: a typed `GeneratorSynthesisFailure` (internal — it reaches the
+  world only as `reason` and `status` params, never as API) that every renderer
+  now throws instead of returning nil, carrying the framework status the call
+  actually returned; `StallReporter`, which holds the episode state and is
+  task-local because the failing resource belongs to one consumer's renderer;
+  and `GeneratorPixelBufferPool`, which exists so a pool refused in a renderer's
+  initializer — where there is nothing to report to yet — can still say *why* on
+  the first tick that skips. Every generator gained an optional `eventBus:`
+  parameter, matching `MicrophoneInput`'s existing idiom.
+
+- [x] **`GeneratorPlugIn.activate` has no rollback on partial registration**
+  *(fixed 2026-08-06)*. Registration is now all or nothing: the identifiers that
+  landed are unregistered in reverse before the error propagates, and the
+  rollback is itself reported (`input.registrationRolledBack`) so the loader's
+  error is not the only record that something half-activated. Rollback cannot
+  mask the original error — `InputRegistering.unregister` is non-throwing and
+  removing an unregistered identifier is harmless by contract.
+
+- [x] **`BarsRenderer.timecode(at:)`'s hours modulus** *(settled 2026-08-06:
+  `% 24`)*. It used `% 100`. A two-digit hours field in `HH:MM:SS:FF` has one
+  established meaning — SMPTE 12M — and wrapping at 100 matched neither that nor
+  a true elapsed run time; it just moved the wrap to a point no reader expects.
+  A run longer than a day is a legitimate thing to want to see, but it wants a
+  display that says so. Extracted as `BarsTimecode.string(at:frameRate:)` — pure,
+  so the wraparound is verifiable without drawing a frame.
+
+  Tests: `TingraGeneratorPlugIns` 46 → 77 (the new `StallReporter`,
+  `GeneratorSynthesisFailure`, coordinator-stall, rollback, and timecode suites)
+  — **874 across 13 targets**, warning-clean, format clean. The stall path is
+  covered by a scripted renderer through `GeneratorStreamCoordinator`, since a
+  real Core Video allocation failure is the one condition a unit test cannot
+  arrange on demand — which is why this went unreported as long as it did.
+  `integration-test.sh` not re-run: the generators' output path is unchanged on
+  every tick that succeeds, which is every tick the simulator ever sees.
 
 ## Housekeeping
 

@@ -12,6 +12,7 @@ import CoreMedia
 import CoreText
 import CoreVideo
 import Foundation
+import TingraEventBus
 import TingraPlugInKit
 
 /// The SMPTE color bars video generator with burned in timecode
@@ -59,6 +60,11 @@ public final class BarsGenerator: Input, Sendable {
     /// Frames synthesized per second; also the timecode's frame base.
     private let frameRate: Int
 
+    /// The event bus, for reporting a synthesis stall and its recovery.
+    /// Optional so unit tests construct a generator without one; when absent
+    /// the generator simply reports nothing.
+    private let eventBus: EventBus?
+
     /// The shared continuation/task plumbing every consumer's frame stream
     /// runs through.
     private let stream = GeneratorStreamCoordinator<CapturedFrame>()
@@ -68,11 +74,20 @@ public final class BarsGenerator: Input, Sendable {
     ///
     /// - Parameters:
     ///   - clock: The clock that paces synthesis and stamps frames.
+    ///   - eventBus: The host's event bus, for synthesis diagnostics. Omit it
+    ///     where those are not wanted (tests).
     ///   - width: Frame width in pixels.
     ///   - height: Frame height in pixels.
     ///   - frameRate: Frames per second.
-    public init(clock: any EngineClock, width: Int = 1920, height: Int = 1080, frameRate: Int = 30) {
+    public init(
+        clock: any EngineClock,
+        eventBus: EventBus? = nil,
+        width: Int = 1920,
+        height: Int = 1080,
+        frameRate: Int = 30
+    ) {
         self.clock = clock
+        self.eventBus = eventBus
         self.width = width
         self.height = height
         self.frameRate = frameRate
@@ -92,8 +107,12 @@ public final class BarsGenerator: Input, Sendable {
         return stream.makeStream(
             clock: clock,
             tickInterval: CMTime(value: 1, timescale: CMTimeScale(frameRate)),
+            inputID: id,
+            eventBus: eventBus,
             makeRenderer: { BarsRenderer(width: width, height: height, frameRate: frameRate) },
-            render: { renderer, tickTime in renderer.render(at: tickTime) }
+            render: { (renderer, tickTime) throws(GeneratorSynthesisFailure) in
+                try renderer.render(at: tickTime)
+            }
         )
     }
 
@@ -131,7 +150,7 @@ private final class BarsRenderer {
     /// The pixel buffer pool frames are drawn into: `IOSurface`-backed
     /// 32BGRA, CG-compatible for CPU drawing (acceptable for a test
     /// pattern; capture inputs stay GPU-resident).
-    private let pool: CVPixelBufferPool?
+    private let pool: GeneratorPixelBufferPool
 
     /// The timecode font, sized relative to the frame height.
     private let font: CTFont
@@ -141,27 +160,25 @@ private final class BarsRenderer {
         self.width = width
         self.height = height
         self.frameRate = frameRate
-        self.pool = GeneratorPixelBuffer.makePool(width: width, height: height)
+        self.pool = GeneratorPixelBufferPool(width: width, height: height)
         self.font = CTFontCreateWithName("Menlo-Bold" as CFString, CGFloat(height) / 12, nil)
     }
 
-    /// Renders one frame for the given master clock time, or nil if a
-    /// buffer or drawing context could not be created — a generator
-    /// problem must never take down the pipeline, so a failed frame is
-    /// simply skipped.
-    func render(at time: CMTime) -> CapturedFrame? {
-        guard let pool else { return nil }
-        var bufferOut: CVPixelBuffer?
-        CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, pool, &bufferOut)
-        guard let buffer = bufferOut else { return nil }
+    /// Renders one frame for the given master clock time.
+    ///
+    /// - Throws: A ``GeneratorSynthesisFailure`` if a buffer or drawing
+    ///   context could not be created. The caller skips the tick — a
+    ///   generator problem must never take down the pipeline — and reports
+    ///   the stall.
+    func render(at time: CMTime) throws(GeneratorSynthesisFailure) -> CapturedFrame {
+        let buffer = try pool.buffer()
 
         CVPixelBufferLockBaseAddress(buffer, [])
         defer { CVPixelBufferUnlockBaseAddress(buffer, []) }
-        guard let context = GeneratorPixelBuffer.makeDrawingContext(width: width, height: height, buffer: buffer)
-        else { return nil }
+        let context = try GeneratorPixelBuffer.makeDrawingContext(width: width, height: height, buffer: buffer)
 
         drawBars(in: context)
-        drawTimecode(timecode(at: time), in: context)
+        drawTimecode(BarsTimecode.string(at: time, frameRate: frameRate), in: context)
         buffer.tagBT709()
         return CapturedFrame(pixelBuffer: buffer, presentationTime: time)
     }
@@ -213,13 +230,28 @@ private final class BarsRenderer {
         CTLineDraw(line, context)
     }
 
-    /// The `HH:MM:SS:FF` timecode for a master clock time, using the
-    /// generator's frame rate as the frame base.
-    private func timecode(at time: CMTime) -> String {
+}
+
+/// The burned in timecode's formatting, split out from the renderer because
+/// it is pure — a master clock time and a frame base in, a string out, with
+/// no buffer, font, or geometry involved — so the wraparound below is
+/// verifiable without drawing a frame.
+enum BarsTimecode {
+    /// The `HH:MM:SS:FF` timecode for a master clock time, using the given
+    /// frame rate as the frame base. Times before zero clamp to `00:00:00:00`.
+    ///
+    /// Hours wrap at 24, the SMPTE 12M convention (settled 2026-08-06; it had
+    /// been `% 100`). A two-digit hours field in `HH:MM:SS:FF` has one
+    /// established meaning, and wrapping at 100 matched neither that nor a
+    /// true elapsed run time — it merely moved the wrap to a point no reader
+    /// expects. A run longer than a day is a legitimate thing to want to see,
+    /// but it wants a display that says so, not a timecode quietly counting
+    /// past the only place anyone reads one.
+    static func string(at time: CMTime, frameRate: Int) -> String {
         let totalFrames = max(0, Int((time.seconds * Double(frameRate)).rounded()))
         let totalSeconds = totalFrames / frameRate
         let components = [
-            (totalSeconds / 3600) % 100,
+            (totalSeconds / 3600) % 24,
             (totalSeconds / 60) % 60,
             totalSeconds % 60,
             totalFrames % frameRate,

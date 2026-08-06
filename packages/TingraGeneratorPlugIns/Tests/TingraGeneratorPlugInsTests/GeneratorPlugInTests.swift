@@ -28,6 +28,37 @@ private actor MockInputRegistrar: InputRegistering {
     }
 }
 
+/// Rejects the input at a chosen position, standing in for a registry that
+/// already holds one of these identifiers — the only way `register` throws.
+private actor RejectingInputRegistrar: InputRegistering {
+    /// The inputs currently registered, in registration order.
+    private(set) var registered: [any Input] = []
+
+    /// The zero-based registration attempt that is rejected.
+    private let rejectAt: Int
+
+    /// Attempts made so far, accepted or not.
+    private var attempts = 0
+
+    /// The error a rejected registration throws.
+    struct DuplicateIdentifier: Error {}
+
+    /// Creates a registrar that rejects the `rejectAt`-th registration.
+    init(rejectAt: Int) {
+        self.rejectAt = rejectAt
+    }
+
+    func register(_ input: any Input) throws {
+        defer { attempts += 1 }
+        guard attempts != rejectAt else { throw DuplicateIdentifier() }
+        registered.append(input)
+    }
+
+    func unregister(_ id: InputID) {
+        registered.removeAll { $0.id == id }
+    }
+}
+
 /// A no-op output registration seam — the generator plug-in never
 /// registers outputs.
 private struct UnusedOutputRegistrar: OutputRegistering {
@@ -147,6 +178,107 @@ struct GeneratorPlugInTests {
         #expect(received.dropFirst(3).first?.params?["id"] == .string("pluge-strict"))
         #expect(received.dropFirst(4).first?.params?["id"] == .string("black"))
         #expect(received.last?.params?["id"] == .string("tone"))
+    }
+
+    @Test("a rejection partway through leaves nothing registered")
+    func rejectionRollsBackEarlierRegistrations() async throws {
+        // The fourth generator is rejected: three are already in the registry
+        // by then, which is exactly the partially-activated state the plug-in
+        // used to leave behind.
+        let registrar = RejectingInputRegistrar(rejectAt: 3)
+        let plugIn = GeneratorPlugIn()
+        let context = PlugInContext(
+            eventBus: EventBus(),
+            clock: SyntheticClock(),
+            inputs: registrar,
+            outputs: UnusedOutputRegistrar(),
+            effects: UnusedEffectRegistrar(),
+            tools: UnusedToolRegistrar()
+        )
+
+        await #expect(throws: RejectingInputRegistrar.DuplicateIdentifier.self) {
+            try await plugIn.activate(in: context)
+        }
+
+        let registered = await registrar.registered
+        #expect(registered.isEmpty)
+    }
+
+    @Test("a rejection on the very first generator leaves the registry untouched")
+    func rejectionOnFirstRegistrationRollsBackNothing() async throws {
+        let registrar = RejectingInputRegistrar(rejectAt: 0)
+        let plugIn = GeneratorPlugIn()
+        let context = PlugInContext(
+            eventBus: EventBus(),
+            clock: SyntheticClock(),
+            inputs: registrar,
+            outputs: UnusedOutputRegistrar(),
+            effects: UnusedEffectRegistrar(),
+            tools: UnusedToolRegistrar()
+        )
+
+        await #expect(throws: RejectingInputRegistrar.DuplicateIdentifier.self) {
+            try await plugIn.activate(in: context)
+        }
+
+        let registered = await registrar.registered
+        #expect(registered.isEmpty)
+    }
+
+    @Test("the rollback is reported, so the loader's error is not the only record")
+    func rollbackIsReported() async throws {
+        let eventBus = EventBus()
+        let events = eventBus.events()
+        let plugIn = GeneratorPlugIn()
+        let context = PlugInContext(
+            eventBus: eventBus,
+            clock: SyntheticClock(),
+            inputs: RejectingInputRegistrar(rejectAt: 2),
+            outputs: UnusedOutputRegistrar(),
+            effects: UnusedEffectRegistrar(),
+            tools: UnusedToolRegistrar()
+        )
+
+        await #expect(throws: RejectingInputRegistrar.DuplicateIdentifier.self) {
+            try await plugIn.activate(in: context)
+        }
+        eventBus.shutdown()
+
+        var received: [EventBusEvent] = []
+        for await event in events {
+            received.append(event)
+        }
+        // Two registrations landed and were reported, then the rollback.
+        #expect(received.count == 3)
+        let rollback = received.last
+        #expect(rollback?.group == .trace)
+        #expect(rollback?.domain == .capture)
+        #expect(rollback?.name == "input.registrationRolledBack")
+        #expect(rollback?.params?["removed"] == .int(2))
+    }
+
+    @Test("a successful activation reports no rollback")
+    func successfulActivationDoesNotReportRollback() async throws {
+        let eventBus = EventBus()
+        let events = eventBus.events()
+        let plugIn = GeneratorPlugIn()
+        let context = PlugInContext(
+            eventBus: eventBus,
+            clock: SyntheticClock(),
+            inputs: MockInputRegistrar(),
+            outputs: UnusedOutputRegistrar(),
+            effects: UnusedEffectRegistrar(),
+            tools: UnusedToolRegistrar()
+        )
+
+        try await plugIn.activate(in: context)
+        eventBus.shutdown()
+
+        var received: [EventBusEvent] = []
+        for await event in events {
+            received.append(event)
+        }
+        #expect(received.allSatisfy { $0.name == "input.registered" })
     }
 
     @Test("the plug-in carries its stable reverse-DNS identifier")

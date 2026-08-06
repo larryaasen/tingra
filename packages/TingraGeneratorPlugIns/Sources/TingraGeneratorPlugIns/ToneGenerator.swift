@@ -9,6 +9,7 @@
 
 import CoreMedia
 import Foundation
+import TingraEventBus
 import TingraPlugInKit
 
 /// The 440 Hz test tone audio generator (`--audio-generator tone`, see
@@ -57,6 +58,11 @@ public final class ToneGenerator: Input, Sendable {
     /// Peak amplitude of the tone, comfortably below full scale.
     private let amplitude: Float
 
+    /// The event bus, for reporting a synthesis stall and its recovery.
+    /// Optional so unit tests construct a generator without one; when absent
+    /// the generator simply reports nothing.
+    private let eventBus: EventBus?
+
     /// The shared continuation/task plumbing every consumer's audio stream
     /// runs through.
     private let stream = GeneratorStreamCoordinator<CapturedAudio>()
@@ -66,16 +72,20 @@ public final class ToneGenerator: Input, Sendable {
     ///
     /// - Parameters:
     ///   - clock: The clock that paces synthesis and stamps buffers.
+    ///   - eventBus: The host's event bus, for synthesis diagnostics. Omit it
+    ///     where those are not wanted (tests).
     ///   - frequency: The tone frequency in Hertz.
     ///   - sampleRate: Samples per second.
     ///   - samplesPerBuffer: Samples per synthesized buffer.
     public init(
         clock: any EngineClock,
+        eventBus: EventBus? = nil,
         frequency: Double = 440,
         sampleRate: Int = 48_000,
         samplesPerBuffer: Int = 1024
     ) {
         self.clock = clock
+        self.eventBus = eventBus
         self.frequency = frequency
         self.sampleRate = sampleRate
         self.samplesPerBuffer = samplesPerBuffer
@@ -98,6 +108,8 @@ public final class ToneGenerator: Input, Sendable {
         return stream.makeStream(
             clock: clock,
             tickInterval: tickDuration,
+            inputID: id,
+            eventBus: eventBus,
             makeRenderer: {
                 ToneSynthesizer(
                     frequency: frequency,
@@ -106,7 +118,9 @@ public final class ToneGenerator: Input, Sendable {
                     amplitude: amplitude
                 )
             },
-            render: { synthesizer, tickTime in synthesizer.nextBuffer(at: tickTime) }
+            render: { (synthesizer, tickTime) throws(GeneratorSynthesisFailure) in
+                try synthesizer.nextBuffer(at: tickTime)
+            }
         )
     }
 
@@ -137,9 +151,13 @@ private final class ToneSynthesizer {
     private var samplePosition = 0
 
     /// The PCM format description shared by every buffer: mono float32 at
-    /// the configured sample rate. Nil if creation failed; synthesis then
-    /// yields nothing.
+    /// the configured sample rate. Nil if creation was refused, in which case
+    /// every tick throws ``GeneratorSynthesisFailure/audioFormatDescriptionUnavailable(_:)``.
     private let formatDescription: CMAudioFormatDescription?
+
+    /// The `CMAudioFormatDescriptionCreate` status, kept so a synthesizer
+    /// that never got a format description can still say why on every tick.
+    private let formatStatus: OSStatus
 
     /// Creates a synthesizer and its shared format description.
     init(frequency: Double, sampleRate: Int, samplesPerBuffer: Int, amplitude: Float) {
@@ -159,7 +177,7 @@ private final class ToneSynthesizer {
             mReserved: 0
         )
         var formatOut: CMAudioFormatDescription?
-        CMAudioFormatDescriptionCreate(
+        formatStatus = CMAudioFormatDescriptionCreate(
             allocator: kCFAllocatorDefault,
             asbd: &asbd,
             layoutSize: 0,
@@ -172,11 +190,13 @@ private final class ToneSynthesizer {
         self.formatDescription = formatOut
     }
 
-    /// Synthesizes the next buffer with the given PTS, or nil if a Core
-    /// Media allocation failed — a generator problem must never take down
-    /// the pipeline, so a failed buffer is simply skipped.
-    func nextBuffer(at time: CMTime) -> CapturedAudio? {
-        guard let formatDescription else { return nil }
+    /// Synthesizes the next buffer with the given PTS.
+    ///
+    /// - Throws: A ``GeneratorSynthesisFailure`` if a Core Media allocation
+    ///   was refused. The caller skips the tick — a generator problem must
+    ///   never take down the pipeline — and reports the stall.
+    func nextBuffer(at time: CMTime) throws(GeneratorSynthesisFailure) -> CapturedAudio {
+        guard let formatDescription else { throw .audioFormatDescriptionUnavailable(formatStatus) }
         let samples = (0..<samplesPerBuffer).map { offset in
             Float(sin(2 * .pi * frequency * Double(samplePosition + offset) / Double(sampleRate))) * amplitude
         }
@@ -184,20 +204,20 @@ private final class ToneSynthesizer {
 
         let dataLength = samples.count * MemoryLayout<Float32>.size
         var blockOut: CMBlockBuffer?
-        guard
-            CMBlockBufferCreateWithMemoryBlock(
-                allocator: kCFAllocatorDefault,
-                memoryBlock: nil,
-                blockLength: dataLength,
-                blockAllocator: kCFAllocatorDefault,
-                customBlockSource: nil,
-                offsetToData: 0,
-                dataLength: dataLength,
-                flags: kCMBlockBufferAssureMemoryNowFlag,
-                blockBufferOut: &blockOut
-            ) == noErr,
-            let block = blockOut
-        else { return nil }
+        let blockStatus = CMBlockBufferCreateWithMemoryBlock(
+            allocator: kCFAllocatorDefault,
+            memoryBlock: nil,
+            blockLength: dataLength,
+            blockAllocator: kCFAllocatorDefault,
+            customBlockSource: nil,
+            offsetToData: 0,
+            dataLength: dataLength,
+            flags: kCMBlockBufferAssureMemoryNowFlag,
+            blockBufferOut: &blockOut
+        )
+        guard blockStatus == noErr, let block = blockOut else {
+            throw .audioBlockBufferUnavailable(blockStatus)
+        }
         let replaceStatus = samples.withUnsafeBytes { bytes -> OSStatus in
             guard let baseAddress = bytes.baseAddress else { return kCMBlockBufferBadPointerParameterErr }
             return CMBlockBufferReplaceDataBytes(
@@ -207,21 +227,21 @@ private final class ToneSynthesizer {
                 dataLength: dataLength
             )
         }
-        guard replaceStatus == noErr else { return nil }
+        guard replaceStatus == noErr else { throw .audioBlockBufferUnavailable(replaceStatus) }
 
         var sampleBufferOut: CMSampleBuffer?
-        guard
-            CMAudioSampleBufferCreateReadyWithPacketDescriptions(
-                allocator: kCFAllocatorDefault,
-                dataBuffer: block,
-                formatDescription: formatDescription,
-                sampleCount: samples.count,
-                presentationTimeStamp: time,
-                packetDescriptions: nil,
-                sampleBufferOut: &sampleBufferOut
-            ) == noErr,
-            let sampleBuffer = sampleBufferOut
-        else { return nil }
+        let sampleStatus = CMAudioSampleBufferCreateReadyWithPacketDescriptions(
+            allocator: kCFAllocatorDefault,
+            dataBuffer: block,
+            formatDescription: formatDescription,
+            sampleCount: samples.count,
+            presentationTimeStamp: time,
+            packetDescriptions: nil,
+            sampleBufferOut: &sampleBufferOut
+        )
+        guard sampleStatus == noErr, let sampleBuffer = sampleBufferOut else {
+            throw .audioSampleBufferUnavailable(sampleStatus)
+        }
         return CapturedAudio(sampleBuffer: sampleBuffer)
     }
 }

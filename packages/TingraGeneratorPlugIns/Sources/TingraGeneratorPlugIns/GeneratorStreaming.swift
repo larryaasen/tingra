@@ -12,6 +12,7 @@ import CoreMedia
 import CoreVideo
 import Foundation
 import Synchronization
+import TingraEventBus
 import TingraPlugInKit
 
 /// Shared plumbing for every clock-paced generator `Input`: registers each
@@ -35,19 +36,29 @@ final class GeneratorStreamCoordinator<Output: Sendable>: Sendable {
     /// Creates a new tick-paced output stream, registering its continuation
     /// so ``stopAll()`` can finish it later.
     ///
+    /// A tick whose renderer throws is skipped rather than propagated — a
+    /// generator problem must never take down the pipeline (ARCHITECTURE.md)
+    /// — but the *episode* is reported on the bus, one `error` on the first
+    /// skipped tick and one `event` on the first tick that recovers (see
+    /// ``StallReporter`` and EVENTS.md, "Reporting a repeating failure").
+    ///
     /// - Parameters:
     ///   - clock: The clock that paces synthesis and stamps output times.
     ///   - tickInterval: The clock tick cadence (one output per tick).
+    ///   - inputID: The generator's identifier, reported with a stall.
+    ///   - eventBus: The host's event bus; when absent nothing is reported
+    ///     and skipping behaves exactly as before.
     ///   - makeRenderer: Creates the per-stream renderer, called once
     ///     inside the synthesis task.
-    ///   - render: Synthesizes one output for a tick's master clock time,
-    ///     or nil to skip a failed tick — a generator problem must never
-    ///     take down the pipeline.
+    ///   - render: Synthesizes one output for a tick's master clock time, or
+    ///     throws to skip the tick and open (or continue) a stall episode.
     func makeStream<Renderer>(
         clock: any EngineClock,
         tickInterval: CMTime,
+        inputID: InputID,
+        eventBus: EventBus?,
         makeRenderer: @escaping @Sendable () -> Renderer,
-        render: @escaping @Sendable (Renderer, CMTime) -> Output?
+        render: @escaping @Sendable (Renderer, CMTime) throws(GeneratorSynthesisFailure) -> Output
     ) -> AsyncStream<Output> {
         AsyncStream { continuation in
             let id = UUID()
@@ -55,12 +66,19 @@ final class GeneratorStreamCoordinator<Output: Sendable>: Sendable {
             let task = Task {
                 // The renderer lives entirely inside this task; output
                 // leaves it only through the yield, per the frame
-                // ownership rule (ARCHITECTURE.md).
+                // ownership rule (ARCHITECTURE.md). The stall reporter is
+                // task-local for the same reason it is per stream: the
+                // resource that fails belongs to this renderer alone.
                 let renderer = makeRenderer()
+                var stall = StallReporter(inputID: inputID, eventBus: eventBus)
                 for await tickTime in clock.tick(every: tickInterval) {
                     guard !Task.isCancelled else { break }
-                    if let output = render(renderer, tickTime) {
+                    do throws(GeneratorSynthesisFailure) {
+                        let output = try render(renderer, tickTime)
+                        stall.recordOutput()
                         continuation.yield(output)
+                    } catch {
+                        stall.recordFailure(error)
                     }
                 }
                 continuation.finish()
@@ -85,13 +103,27 @@ final class GeneratorStreamCoordinator<Output: Sendable>: Sendable {
     }
 }
 
-/// Shared pixel-buffer plumbing for the video generators' CPU-drawn test
-/// patterns (acceptable for test patterns; capture inputs stay
-/// GPU-resident, see ARCHITECTURE.md "Color and pixel format conventions").
-enum GeneratorPixelBuffer {
-    /// Creates an `IOSurface`-backed 32BGRA pixel buffer pool, CG-compatible
-    /// for CPU drawing, at the given geometry.
-    static func makePool(width: Int, height: Int) -> CVPixelBufferPool? {
+/// The buffer pool every video generator draws its CPU-rendered test pattern
+/// into (acceptable for test patterns; capture inputs stay GPU-resident, see
+/// ARCHITECTURE.md "Color and pixel format conventions").
+///
+/// A type rather than a bare `CVPixelBufferPool?` so the status of the failed
+/// call survives to the tick that reports it: pool creation happens in a
+/// renderer's initializer, which has no way to report anything — nothing
+/// consumes a renderer until its first tick — so the failure is held here and
+/// thrown from ``buffer()`` instead.
+struct GeneratorPixelBufferPool {
+    /// The pool, or nil if creation was refused.
+    private let pool: CVPixelBufferPool?
+
+    /// The `CVPixelBufferPoolCreate` status, kept so a renderer that never
+    /// got a pool can still say why on every tick it skips.
+    private let creationStatus: CVReturn
+
+    /// Creates an `IOSurface`-backed 32BGRA pool, CG-compatible for CPU
+    /// drawing, at the given geometry. Never throws — a refused pool surfaces
+    /// at the first ``buffer()`` call.
+    init(width: Int, height: Int) {
         let attributes: [CFString: Any] = [
             kCVPixelBufferPixelFormatTypeKey: kCVPixelFormatType_32BGRA,
             kCVPixelBufferWidthKey: width,
@@ -100,23 +132,50 @@ enum GeneratorPixelBuffer {
             kCVPixelBufferCGBitmapContextCompatibilityKey: true,
         ]
         var pool: CVPixelBufferPool?
-        CVPixelBufferPoolCreate(kCFAllocatorDefault, nil, attributes as CFDictionary, &pool)
-        return pool
+        creationStatus = CVPixelBufferPoolCreate(kCFAllocatorDefault, nil, attributes as CFDictionary, &pool)
+        self.pool = pool
     }
 
-    /// Creates a `CGContext` that draws directly into `buffer`'s bytes, or
-    /// nil if Core Graphics could not create one. The caller must have
-    /// already locked the buffer's base address.
-    static func makeDrawingContext(width: Int, height: Int, buffer: CVPixelBuffer) -> CGContext? {
-        CGContext(
-            data: CVPixelBufferGetBaseAddress(buffer),
-            width: width,
-            height: height,
-            bitsPerComponent: 8,
-            bytesPerRow: CVPixelBufferGetBytesPerRow(buffer),
-            space: CGColorSpaceCreateDeviceRGB(),
-            bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
-        )
+    /// A fresh buffer from the pool.
+    ///
+    /// - Throws: ``GeneratorSynthesisFailure/pixelBufferPoolUnavailable(_:)``
+    ///   if there was never a pool, or
+    ///   ``GeneratorSynthesisFailure/pixelBufferUnavailable(_:)`` if the pool
+    ///   would not vend one — the exhaustion case, and the reason a stall is
+    ///   worth reporting as an episode that can end.
+    func buffer() throws(GeneratorSynthesisFailure) -> CVPixelBuffer {
+        guard let pool else { throw .pixelBufferPoolUnavailable(creationStatus) }
+        var bufferOut: CVPixelBuffer?
+        let status = CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, pool, &bufferOut)
+        guard let buffer = bufferOut else { throw .pixelBufferUnavailable(status) }
+        return buffer
+    }
+}
+
+/// Shared drawing plumbing for the video generators' CPU-drawn test patterns.
+enum GeneratorPixelBuffer {
+    /// Creates a `CGContext` that draws directly into `buffer`'s bytes. The
+    /// caller must have already locked the buffer's base address.
+    ///
+    /// - Throws: ``GeneratorSynthesisFailure/drawingContextUnavailable`` if
+    ///   Core Graphics would not create one.
+    static func makeDrawingContext(
+        width: Int,
+        height: Int,
+        buffer: CVPixelBuffer
+    ) throws(GeneratorSynthesisFailure) -> CGContext {
+        guard
+            let context = CGContext(
+                data: CVPixelBufferGetBaseAddress(buffer),
+                width: width,
+                height: height,
+                bitsPerComponent: 8,
+                bytesPerRow: CVPixelBufferGetBytesPerRow(buffer),
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
+            )
+        else { throw .drawingContextUnavailable }
+        return context
     }
 }
 

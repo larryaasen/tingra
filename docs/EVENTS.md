@@ -10,8 +10,25 @@ The design adopts the `EventBusBasics` pattern (a proven personal package of Lar
 
 1. **Code emits events; sinks decide what becomes a log line.** No engine or plug-in code ever formats a log message, opens a log file, or imports a logging framework. It calls the bus. Every destination for that information — OSLog, the CLI console, a file, an MCP tool result — is a subscriber.
 2. **Two orthogonal axes: group and domain.** The **group** says what kind of event it is (error, trace, tap, …) and drives routing and severity in every sink. The **domain** says which part of the system emitted it (capture, output, a plug-in) and drives filtering and attribution. Neither axis leaks into the other: groups stay generic across any app; domains stay Tingra specific.
-3. **Control plane only.** The bus carries session, stream, device, and error events plus periodic stats — never per frame traffic. At 30 fps across several inputs, frame events would flood every sink; frames belong to the host's frame transport, full stop.
+3. **Control plane only.** The bus carries session, stream, device, and error events plus periodic stats — never per frame traffic. At 30 fps across several inputs, frame events would flood every sink; frames belong to the host's frame transport, full stop. A failure that repeats on the frame path is per frame traffic too — see "Reporting a repeating failure" below for how it becomes control plane.
 4. **Secrets never ride the bus.** See Redaction below.
+
+### Reporting a repeating failure (decided 2026-08-06, after a stalled generator proved indistinguishable from a hang)
+
+Principle 3 bans per frame traffic, and a failure *on* the frame path is per frame traffic: a generator whose pixel buffer pool is exhausted fails on every tick, so reporting each occurrence would put 30 error events per second per input on the bus — precisely the flood the principle exists to prevent. The generators' original answer was to drop the failure silently and skip the tick, and that is the worse end of the trade: an input producing nothing, with nothing on the bus, looks exactly like a hang. An observability spine may bound what it reports, but it may never leave a stopped thing unnamed.
+
+**Report the state transition, not the occurrence.** A repeating failure is an *episode* with two edges, and only the edges are control plane:
+
+- **Entering the stalled state** — the first tick that produces no output — emits one `error` event naming the cause.
+- **Resuming** — the first tick that produces output again — emits one `event` carrying how many ticks were skipped while stalled.
+
+That is two events per episode however long it runs, so the cost is bounded no matter how badly or how often something breaks. An episode that never resolves emits its one `error` and then stays quiet, which is right: the operator has been told once, with a reason, and the missing resume line is itself the standing signal that it is still down.
+
+**The cause recorded is the first one.** A second cause appearing inside an open episode is not re-reported — re-reporting on every change of cause would reintroduce the unbounded case this rule exists to close, and the first cause is the one that actually started the episode. Recovery closes the episode; the next stall reports its own cause afresh.
+
+**Tracking is per stream, not per input.** The failing resource — a buffer pool, a format description — belongs to the renderer living inside one consumer's synthesis task, so two consumers of the same generator stall and recover independently, and each reports for itself.
+
+First applied to the generators as `generator.stalled` and `generator.resumed` in the `capture` domain (params: `id`, `reason`, and a numeric `status` where the framework gave one; `skipped` on resume). The shape is deliberately generic — it suits any tick-paced producer that can fail the same way on every tick, not generators specifically.
 
 ## The event
 

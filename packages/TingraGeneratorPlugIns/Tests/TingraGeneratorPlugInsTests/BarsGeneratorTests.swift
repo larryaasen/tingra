@@ -158,3 +158,66 @@ struct BarsGeneratorTests {
         return bytes
     }
 }
+
+@Suite("BarsTimecode")
+struct BarsTimecodeTests {
+    /// The generator's default frame base.
+    private static let frameRate = 30
+
+    /// The timecode for a whole number of seconds at the default frame base.
+    private func timecode(seconds: Double) -> String {
+        BarsTimecode.string(
+            at: CMTime(seconds: seconds, preferredTimescale: 600),
+            frameRate: Self.frameRate
+        )
+    }
+
+    @Test("the session start reads as all zeroes")
+    func startOfSession() {
+        #expect(timecode(seconds: 0) == "00:00:00:00")
+    }
+
+    @Test("each field advances at its own base")
+    func fieldsAdvance() {
+        #expect(timecode(seconds: 0.5) == "00:00:00:15")
+        #expect(timecode(seconds: 1) == "00:00:01:00")
+        #expect(timecode(seconds: 61) == "00:01:01:00")
+        #expect(timecode(seconds: 3661) == "01:01:01:00")
+    }
+
+    @Test("the last moment before a day reads 23:59:59:29")
+    func lastFrameOfTheDay() {
+        let almostADay = 24.0 * 3600 - 1.0 / 30
+        #expect(timecode(seconds: almostADay) == "23:59:59:29")
+    }
+
+    @Test("hours wrap at 24, the SMPTE convention")
+    func hoursWrapAtTwentyFour() {
+        #expect(timecode(seconds: 24 * 3600) == "00:00:00:00")
+        #expect(timecode(seconds: 25 * 3600) == "01:00:00:00")
+        // The old modulus put this at 47:00:00:00 — a two-digit hours field
+        // that matched neither SMPTE nor a plain elapsed count.
+        #expect(timecode(seconds: 47 * 3600) == "23:00:00:00")
+        #expect(timecode(seconds: 48 * 3600) == "00:00:00:00")
+    }
+
+    @Test("a time before zero clamps to the session start rather than going negative")
+    func negativeTimeClamps() {
+        #expect(timecode(seconds: -5) == "00:00:00:00")
+    }
+
+    @Test("every field is zero padded to two digits")
+    func fieldsAreZeroPadded() {
+        let value = timecode(seconds: 3661.1)
+        #expect(value.count == 11)
+        #expect(value.split(separator: ":").allSatisfy { $0.count == 2 })
+    }
+
+    @Test("the frame field counts to the frame base and no further")
+    func frameFieldRespectsTheFrameBase() {
+        let sixty = BarsTimecode.string(at: CMTime(seconds: 1.5, preferredTimescale: 600), frameRate: 60)
+        #expect(sixty == "00:00:01:30")
+        let twentyFive = BarsTimecode.string(at: CMTime(seconds: 0.96, preferredTimescale: 600), frameRate: 25)
+        #expect(twentyFive == "00:00:00:24")
+    }
+}

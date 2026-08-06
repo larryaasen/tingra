@@ -7,6 +7,7 @@
 //  SPDX-License-Identifier: MIT
 //
 
+import TingraEventBus
 import TingraPlugInKit
 
 /// The first party generator plug-in: contributes the SMPTE color bars,
@@ -34,26 +35,54 @@ public struct GeneratorPlugIn: PlugIn {
     /// Throws if the registry rejects an input (a duplicate identifier);
     /// the host's loader reports that as an `error` event and the engine
     /// keeps running.
+    ///
+    /// **Registration is all or nothing.** A rejection partway through the
+    /// list used to leave the generators registered before it in the registry
+    /// while the ones after it were never attempted — a half-activated
+    /// plug-in, silently, since the throw the loader reports says nothing
+    /// about what did land. The already-registered ones are now removed
+    /// before the error propagates, so a plug-in that cannot activate leaves
+    /// the registry exactly as it found it.
     public func activate(in context: PlugInContext) async throws {
         let generators: [any Input] = [
-            BarsGenerator(clock: context.clock),
-            AlignmentGenerator(clock: context.clock),
-            PlugeGenerator(clock: context.clock),
-            PlugeStrictGenerator(clock: context.clock),
-            BlackGenerator(clock: context.clock),
-            ToneGenerator(clock: context.clock),
+            BarsGenerator(clock: context.clock, eventBus: context.eventBus),
+            AlignmentGenerator(clock: context.clock, eventBus: context.eventBus),
+            PlugeGenerator(clock: context.clock, eventBus: context.eventBus),
+            PlugeStrictGenerator(clock: context.clock, eventBus: context.eventBus),
+            BlackGenerator(clock: context.clock, eventBus: context.eventBus),
+            ToneGenerator(clock: context.clock, eventBus: context.eventBus),
         ]
-        for generator in generators {
-            try await context.inputs.register(generator)
+        var registered: [InputID] = []
+        do {
+            for generator in generators {
+                try await context.inputs.register(generator)
+                registered.append(generator.id)
+                context.eventBus.trace(
+                    "input.registered",
+                    domain: .capture,
+                    params: [
+                        "id": .string(generator.id.rawValue),
+                        "name": .string(generator.name),
+                        "kind": .string(generator.kind.rawValue),
+                    ]
+                )
+            }
+        } catch {
+            // Unregistering is non-throwing and removing an identifier that
+            // is not registered is harmless (InputRegistering), so rollback
+            // cannot itself fail and mask the original error.
+            for id in registered.reversed() {
+                await context.inputs.unregister(id)
+            }
             context.eventBus.trace(
-                "input.registered",
+                "input.registrationRolledBack",
                 domain: .capture,
                 params: [
-                    "id": .string(generator.id.rawValue),
-                    "name": .string(generator.name),
-                    "kind": .string(generator.kind.rawValue),
+                    "removed": .int(registered.count),
+                    "reason": .string(String(describing: error)),
                 ]
             )
+            throw error
         }
     }
 }

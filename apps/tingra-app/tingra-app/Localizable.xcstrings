@@ -1,2082 +1,2082 @@
 {
-  "sourceLanguage": "en",
-  "strings": {
-    "%@ (Not connected)": {
-      "comment": "Picker entry for a selected device that is not currently connected",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@ (nicht verbunden)"
+  "sourceLanguage" : "en",
+  "strings" : {
+    "%@ (Not connected)" : {
+      "comment" : "Picker entry for a selected device that is not currently connected",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ (nicht verbunden)"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@ (no conectado)"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ (no conectado)"
           }
         }
       }
     },
-    "%@ copy": {
-      "comment": "Name of a duplicated shot or preset; the placeholder is the source's name",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@ Kopie"
+    "%@ copy" : {
+      "comment" : "Name of a duplicated shot or preset; the placeholder is the source's name",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Kopie"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@ copia"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ copia"
           }
         }
       }
     },
-    "%@ of room left": {
-      "comment": "How much recording time the chosen volume still holds",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Noch %@ Platz"
+    "%@ of room left" : {
+      "comment" : "How much recording time the chosen volume still holds",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noch %@ Platz"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Queda espacio para %@"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Queda espacio para %@"
           }
         }
       }
     },
-    "Add Destination": {
-      "comment": "Button that adds a stream destination",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ziel hinzufügen"
+    "● Live" : {
+      "comment" : "Stream status: the program is on air",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "● Live"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Añadir destino"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "● En vivo"
           }
         }
       }
     },
-    "Add Effect": {
-      "comment": "Menu adding an effect to a channel strip's chain",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Effekt hinzufügen"
+    "● Recording" : {
+      "comment" : "Recording status: the program is being written to a file",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "● Aufnahme"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Añadir efecto"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "● Grabando"
           }
         }
       }
     },
-    "Add Layer": {
-      "comment": "Menu adding a layer bound to an input",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ebene hinzufügen"
+    "Add a destination with an rtmp://, rtmps://, or srt:// URL, then start again." : {
+      "comment" : "Stream error shown when no destination is enabled and has a usable URL",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fügen Sie ein Ziel mit einer rtmp://-, rtmps://- oder srt://-URL hinzu und starten Sie erneut."
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Añadir capa"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Añada un destino con una URL rtmp://, rtmps:// o srt:// y vuelva a iniciar."
           }
         }
       }
     },
-    "Add Preset": {
-      "comment": "Button adding a new empty preset to the project",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Voreinstellung hinzufügen"
+    "Add Destination" : {
+      "comment" : "Button that adds a stream destination",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ziel hinzufügen"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Añadir preajuste"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Añadir destino"
           }
         }
       }
     },
-    "Add Shot": {
-      "comment": "Button adding a new empty shot to the preset",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Einstellung hinzufügen"
+    "Add Effect" : {
+      "comment" : "Menu adding an effect to a channel strip's chain",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Effekt hinzufügen"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Añadir toma"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Añadir efecto"
           }
         }
       }
     },
-    "Add a destination with an rtmp://, rtmps://, or srt:// URL, then start again.": {
-      "comment": "Stream error shown when no destination is enabled and has a usable URL",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Fügen Sie ein Ziel mit einer rtmp://-, rtmps://- oder srt://-URL hinzu und starten Sie erneut."
+    "Add Layer" : {
+      "comment" : "Menu adding a layer bound to an input",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ebene hinzufügen"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Añada un destino con una URL rtmp://, rtmps:// o srt:// y vuelva a iniciar."
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Añadir capa"
           }
         }
       }
     },
-    "Blinds": {
-      "comment": "Shader picker option: horizontal bands revealing in parallel",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Jalousie"
+    "Add Preset" : {
+      "comment" : "Button adding a new empty preset to the project",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Voreinstellung hinzufügen"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Persiana"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Añadir preajuste"
           }
         }
       }
     },
-    "Bottom": {
-      "comment": "Wipe edge picker option: reveal from the bottom edge of the frame",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Unten"
+    "Add Shot" : {
+      "comment" : "Button adding a new empty shot to the preset",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einstellung hinzufügen"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Abajo"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Añadir toma"
           }
         }
       }
     },
-    "Camera": {
-      "comment": "Camera input picker label\nShot: camera full-frame",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Kamera"
+    "Blinds" : {
+      "comment" : "Shader picker option: horizontal bands revealing in parallel",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jalousie"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Cámara"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Persiana"
           }
         }
       }
     },
-    "Cancel": {
-      "comment": "Rename dialog cancel button, for a shot or a preset",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Abbrechen"
+    "Bottom" : {
+      "comment" : "Wipe edge picker option: reveal from the bottom edge of the frame",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unten"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Cancelar"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abajo"
           }
         }
       }
     },
-    "Choose Folder…": {
-      "comment": "Button that picks the folder recordings are written to",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ordner wählen…"
+    "Camera" : {
+      "comment" : "Camera input picker label\nShot: camera full-frame",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kamera"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Elegir carpeta…"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cámara"
           }
         }
       }
     },
-    "Choose a camera or a display to see it here.": {
-      "comment": "Input grid placeholder guidance when no input is running",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Wählen Sie eine Kamera oder ein Display, um es hier zu sehen."
+    "Cancel" : {
+      "comment" : "Rename dialog cancel button, for a shot or a preset",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abbrechen"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Elija una cámara o una pantalla para verla aquí."
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cancelar"
           }
         }
       }
     },
-    "Connecting…": {
-      "comment": "Stream status: connecting to the destination",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Verbinden…"
+    "Choose a camera or a display to see it here." : {
+      "comment" : "Input grid placeholder guidance when no input is running",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wählen Sie eine Kamera oder ein Display, um es hier zu sehen."
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Conectando…"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Elija una cámara o una pantalla para verla aquí."
           }
         }
       }
     },
-    "Cut": {
-      "comment": "Transition picker option: switch to the next shot taken instantly",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Schnitt"
+    "Choose Folder…" : {
+      "comment" : "Button that picks the folder recordings are written to",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ordner wählen…"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Corte"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Elegir carpeta…"
           }
         }
       }
     },
-    "Default": {
-      "comment": "Name of a fresh project's seeded preset\nTransition picker option: take each shot with its own default transition",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Standard"
+    "Connecting…" : {
+      "comment" : "Stream status: connecting to the destination",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verbinden…"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Predeterminado"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conectando…"
           }
         }
       }
     },
-    "Default Transition": {
-      "comment": "Shot context menu: submenu setting this shot's default transition",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Standardübergang"
+    "Cut" : {
+      "comment" : "Transition picker option: switch to the next shot taken instantly",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schnitt"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Transición predeterminada"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Corte"
           }
         }
       }
     },
-    "Destination": {
-      "comment": "Destination URL field label",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ziel"
+    "Default" : {
+      "comment" : "Name of a fresh project's seeded preset\nTransition picker option: take each shot with its own default transition",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Standard"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Destino"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Predeterminado"
           }
         }
       }
     },
-    "Diagonal": {
-      "comment": "Shader picker option: diagonal sweep from the top-left corner",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Diagonal"
+    "Default Transition" : {
+      "comment" : "Shot context menu: submenu setting this shot's default transition",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Standardübergang"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Diagonal"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transición predeterminada"
           }
         }
       }
     },
-    "Display": {
-      "comment": "Display input picker label\nShot: display full-frame",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Bildschirm"
+    "Destination" : {
+      "comment" : "Destination URL field label",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ziel"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Pantalla"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Destino"
           }
         }
       }
     },
-    "Dissolve": {
-      "comment": "Transition picker option: crossfade to the next shot taken",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Überblendung"
+    "Diagonal" : {
+      "comment" : "Shader picker option: diagonal sweep from the top-left corner",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diagonal"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Disolución"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diagonal"
           }
         }
       }
     },
-    "Duplicate": {
-      "comment": "Context menu: duplicate this shot or preset",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Duplizieren"
+    "Display" : {
+      "comment" : "Display input picker label\nShot: display full-frame",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bildschirm"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Duplicar"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pantalla"
           }
         }
       }
     },
-    "Edge": {
-      "comment": "Label of the picker choosing the frame edge a wipe reveals the next shot from",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Kante"
+    "Dissolve" : {
+      "comment" : "Transition picker option: crossfade to the next shot taken",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Überblendung"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Borde"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Disolución"
           }
         }
       }
     },
-    "Effect not available": {
-      "comment": "Note on a chain slot whose effect plug-in is not installed",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Effekt nicht verfügbar"
+    "Duplicate" : {
+      "comment" : "Context menu: duplicate this shot or preset",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Duplizieren"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Efecto no disponible"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Duplicar"
           }
         }
       }
     },
-    "Effects": {
-      "comment": "Heading of a channel strip's audio effect chain popover",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Effekte"
+    "Edge" : {
+      "comment" : "Label of the picker choosing the frame edge a wipe reveals the next shot from",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kante"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Efectos"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Borde"
           }
         }
       }
     },
-    "Error": {
-      "comment": "Stream status: the stream ended on a failure",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Fehler"
+    "Effect not available" : {
+      "comment" : "Note on a chain slot whose effect plug-in is not installed",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Effekt nicht verfügbar"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Error"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Efecto no disponible"
           }
         }
       }
     },
-    "Every destination was lost and not recovered.": {
-      "comment": "Stream error shown when the last live destination was lost",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Alle Ziele gingen verloren und konnten nicht wiederhergestellt werden."
+    "Effects" : {
+      "comment" : "Heading of a channel strip's audio effect chain popover",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Effekte"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Se perdieron todos los destinos y no se recuperaron."
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Efectos"
           }
         }
       }
     },
-    "Fade to Black": {
-      "comment": "Button taking the whole program — picture and sound — off air, and back",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Schwarzblende"
+    "Error" : {
+      "comment" : "Recording status: the recording could not start or could not continue\nStream status: the stream ended on a failure",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fehler"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Fundido a negro"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Error"
           }
         }
       }
     },
-    "Faded to Black": {
-      "comment": "Badge on the program monitor while the program is faded to black",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Schwarzblende aktiv"
+    "Every destination was lost and not recovered." : {
+      "comment" : "Stream error shown when the last live destination was lost",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alle Ziele gingen verloren und konnten nicht wiederhergestellt werden."
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Fundido a negro activo"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se perdieron todos los destinos y no se recuperaron."
           }
         }
       }
     },
-    "Finishing…": {
-      "comment": "Recording status: the file is being closed so it is playable",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Wird abgeschlossen…"
+    "Fade to Black" : {
+      "comment" : "Button taking the whole program — picture and sound — off air, and back",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schwarzblende"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Finalizando…"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fundido a negro"
           }
         }
       }
     },
-    "Format": {
-      "comment": "Recording container format picker label",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Format"
+    "Faded to Black" : {
+      "comment" : "Badge on the program monitor while the program is faded to black",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schwarzblende aktiv"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Formato"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fundido a negro activo"
           }
         }
       }
     },
-    "Height": {
-      "comment": "Layer frame slider label",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Höhe"
+    "Finishing…" : {
+      "comment" : "Recording status: the file is being closed so it is playable",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wird abgeschlossen…"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Alto"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Finalizando…"
           }
         }
       }
     },
-    "Idle": {
-      "comment": "Stream status: not streaming",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Inaktiv"
+    "Format" : {
+      "comment" : "Recording container format picker label",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Format"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Inactivo"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Formato"
           }
         }
       }
     },
-    "Include this destination when streaming": {
-      "comment": "Tooltip for the destination toggle",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Dieses Ziel beim Streamen einbeziehen"
+    "Height" : {
+      "comment" : "Layer frame slider label",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Höhe"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Incluir este destino al transmitir"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alto"
           }
         }
       }
     },
-    "Iris": {
-      "comment": "Shader picker option: circular reveal opening from the center",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Iris"
+    "Idle" : {
+      "comment" : "Recording status: not recording\nStream status: not streaming",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inaktiv"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Iris"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inactivo"
           }
         }
       }
     },
-    "L": {
-      "comment": "Left label beside a channel strip's pan slider",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "L"
+    "Include this destination when streaming" : {
+      "comment" : "Tooltip for the destination toggle",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieses Ziel beim Streamen einbeziehen"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "I"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Incluir este destino al transmitir"
           }
         }
       }
     },
-    "Layers": {
-      "comment": "Layer editor section title",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ebenen"
+    "Iris" : {
+      "comment" : "Shader picker option: circular reveal opening from the center",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Iris"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Capas"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Iris"
           }
         }
       }
     },
-    "Left": {
-      "comment": "Wipe edge picker option: reveal from the left edge of the frame",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Links"
+    "L" : {
+      "comment" : "Left label beside a channel strip's pan slider",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "L"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Izquierda"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "I"
           }
         }
       }
     },
-    "Level": {
-      "comment": "Accessibility label of a channel strip's level slider",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Pegel"
+    "Layers" : {
+      "comment" : "Layer editor section title",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ebenen"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Nivel"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Capas"
           }
         }
       }
     },
-    "Live": {
-      "comment": "Per-destination state: this destination is publishing",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Live"
+    "Left" : {
+      "comment" : "Wipe edge picker option: reveal from the left edge of the frame",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Links"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "En vivo"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Izquierda"
           }
         }
       }
     },
-    "Lost": {
-      "comment": "Per-destination state: the destination dropped and did not recover",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Verloren"
+    "Level" : {
+      "comment" : "Accessibility label of a channel strip's level slider",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pegel"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Perdido"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nivel"
           }
         }
       }
     },
-    "Master": {
-      "comment": "Label of the mixer's master strip",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Summe"
+    "Live" : {
+      "comment" : "Per-destination state: this destination is publishing",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Live"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Máster"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "En vivo"
           }
         }
       }
     },
-    "Master meter": {
-      "comment": "Help tag and accessibility label of the master's meter",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Summenanzeige"
+    "Lost" : {
+      "comment" : "Per-destination state: the destination dropped and did not recover",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verloren"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Medidor máster"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Perdido"
           }
         }
       }
     },
-    "Meter": {
-      "comment": "Help tag and accessibility label of a channel strip's meter",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Pegelanzeige"
+    "Master" : {
+      "comment" : "Label of the mixer's master strip",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Summe"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Medidor de nivel"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Máster"
           }
         }
       }
     },
-    "Microphone": {
-      "comment": "Microphone input picker label",
-      "extractionState": "stale",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Mikrofon"
+    "Master meter" : {
+      "comment" : "Help tag and accessibility label of the master's meter",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Summenanzeige"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Micrófono"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Medidor máster"
           }
         }
       }
     },
-    "Mixer": {
-      "comment": "Section heading over the audio channel strips",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Mischpult"
+    "Meter" : {
+      "comment" : "Help tag and accessibility label of a channel strip's meter",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pegelanzeige"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Mezclador"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Medidor de nivel"
           }
         }
       }
     },
-    "Monitor": {
-      "comment": "Label of the master strip's monitor device picker",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Monitor"
+    "Microphone" : {
+      "comment" : "Microphone input picker label",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mikrofon"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Monitor"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Micrófono"
           }
         }
       }
     },
-    "Monitor level": {
-      "comment": "Accessibility label of the master strip's monitor level slider",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Monitorpegel"
+    "Mixer" : {
+      "comment" : "Section heading over the audio channel strips",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mischpult"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Nivel de monitorización"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mezclador"
           }
         }
       }
     },
-    "Move Down": {
-      "comment": "Button moving the selected layer toward the bottom of the stack",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Nach unten"
+    "Monitor" : {
+      "comment" : "Label of the master strip's monitor device picker",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Monitor"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Bajar"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Monitor"
           }
         }
       }
     },
-    "Move Left": {
-      "comment": "Context menu: move this shot or preset earlier in the switcher order",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Nach links"
+    "Monitor level" : {
+      "comment" : "Accessibility label of the master strip's monitor level slider",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Monitorpegel"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Mover a la izquierda"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nivel de monitorización"
           }
         }
       }
     },
-    "Move Right": {
-      "comment": "Context menu: move this shot or preset later in the switcher order",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Nach rechts"
+    "Move Down" : {
+      "comment" : "Button moving the selected layer toward the bottom of the stack",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nach unten"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Mover a la derecha"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bajar"
           }
         }
       }
     },
-    "Move Up": {
-      "comment": "Button moving the selected layer toward the top of the stack",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Nach oben"
+    "Move Left" : {
+      "comment" : "Context menu: move this shot or preset earlier in the switcher order",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nach links"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Subir"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mover a la izquierda"
           }
         }
       }
     },
-    "Multiview": {
-      "comment": "Title of the multiview monitoring window, and its View-menu command",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Multiview"
+    "Move Right" : {
+      "comment" : "Context menu: move this shot or preset later in the switcher order",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nach rechts"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Multivista"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mover a la derecha"
           }
         }
       }
     },
-    "Mute": {
-      "comment": "Help tag on a channel strip's mute toggle",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Stummschalten"
+    "Move Up" : {
+      "comment" : "Button moving the selected layer toward the top of the stack",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nach oben"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Silenciar"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Subir"
           }
         }
       }
     },
-    "Name": {
-      "comment": "Name text field label — for a shot, a preset, or a destination",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Name"
+    "Multiview" : {
+      "comment" : "Title of the multiview monitoring window, and its View-menu command",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Multiview"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Nombre"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Multivista"
           }
         }
       }
     },
-    "New Preset": {
-      "comment": "Default name of a newly added preset",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Neue Voreinstellung"
+    "Mute" : {
+      "comment" : "Help tag on a channel strip's mute toggle",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stummschalten"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Nuevo preajuste"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Silenciar"
           }
         }
       }
     },
-    "New Shot": {
-      "comment": "Default name of a newly added shot",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Neue Einstellung"
+    "Name" : {
+      "comment" : "Name text field label — for a shot, a preset, or a destination",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Name"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Nueva toma"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nombre"
           }
         }
       }
     },
-    "New destination": {
-      "comment": "Placeholder label for a destination with no name or URL yet",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Neues Ziel"
+    "New destination" : {
+      "comment" : "Placeholder label for a destination with no name or URL yet",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neues Ziel"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Nuevo destino"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nuevo destino"
           }
         }
       }
     },
-    "No Default": {
-      "comment": "Default transition option: this shot has no default, so it is taken as set",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Kein Standard"
+    "New Preset" : {
+      "comment" : "Default name of a newly added preset",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neue Voreinstellung"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sin predeterminada"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nuevo preajuste"
           }
         }
       }
     },
-    "No Inputs Running": {
-      "comment": "Input grid placeholder title when no input is running",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Keine Eingänge aktiv"
+    "New Shot" : {
+      "comment" : "Default name of a newly added shot",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neue Einstellung"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ninguna entrada activa"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nueva toma"
           }
         }
       }
     },
-    "No audio": {
-      "comment": "Microphone picker option: stream video only",
-      "extractionState": "stale",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Kein Audio"
+    "No audio" : {
+      "comment" : "Microphone picker option: stream video only",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kein Audio"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sin audio"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sin audio"
           }
         }
       }
     },
-    "No audio inputs found": {
-      "comment": "Mixer placeholder when no audio input is discovered",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Keine Audioeingänge gefunden"
+    "No audio inputs found" : {
+      "comment" : "Mixer placeholder when no audio input is discovered",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Audioeingänge gefunden"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "No se encontraron entradas de audio"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se encontraron entradas de audio"
           }
         }
       }
     },
-    "No cameras": {
-      "comment": "Shown in place of the camera row when none is discovered",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Keine Kameras"
+    "No cameras" : {
+      "comment" : "Shown in place of the camera row when none is discovered",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Kameras"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sin cámaras"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sin cámaras"
           }
         }
       }
     },
-    "No destinations yet. Add one to stream.": {
-      "comment": "Empty state under the streaming panel's destination list",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Noch keine Ziele. Fügen Sie eines zum Streamen hinzu."
+    "No Default" : {
+      "comment" : "Default transition option: this shot has no default, so it is taken as set",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kein Standard"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Aún no hay destinos. Añada uno para transmitir."
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sin predeterminada"
           }
         }
       }
     },
-    "No effects": {
-      "comment": "Placeholder in an empty audio effect chain",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Keine Effekte"
+    "No destinations yet. Add one to stream." : {
+      "comment" : "Empty state under the streaming panel's destination list",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noch keine Ziele. Fügen Sie eines zum Streamen hinzu."
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sin efectos"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aún no hay destinos. Añada uno para transmitir."
           }
         }
       }
     },
-    "No monitoring": {
-      "comment": "Monitor device picker entry for monitoring nothing",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Kein Monitoring"
+    "No effects" : {
+      "comment" : "Placeholder in an empty audio effect chain",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Effekte"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sin monitorización"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sin efectos"
           }
         }
       }
     },
-    "No other inputs": {
-      "comment": "Shown in place of the generator and display row when none is discovered",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Keine weiteren Eingänge"
+    "No Inputs Running" : {
+      "comment" : "Input grid placeholder title when no input is running",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Eingänge aktiv"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sin otras entradas"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ninguna entrada activa"
           }
         }
       }
     },
-    "No recording output writes .%@ files.": {
-      "comment": "Recording error when the chosen container has no registered recording output",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Keine Aufnahme-Ausgabe schreibt .%@-Dateien."
+    "No monitoring" : {
+      "comment" : "Monitor device picker entry for monitoring nothing",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kein Monitoring"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ninguna salida de grabación escribe archivos .%@."
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sin monitorización"
           }
         }
       }
     },
-    "No streaming output serves %@ destinations. Use rtmp, rtmps, or srt.": {
-      "comment": "Stream error when a destination's URL scheme has no registered output",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Keine Streaming-Ausgabe bedient %@-Ziele. Verwenden Sie rtmp, rtmps oder srt."
+    "No other inputs" : {
+      "comment" : "Shown in place of the generator and display row when none is discovered",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine weiteren Eingänge"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ninguna salida de transmisión sirve destinos %@. Use rtmp, rtmps o srt."
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sin otras entradas"
           }
         }
       }
     },
-    "None": {
-      "comment": "Picker option for no input selected",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Keine"
+    "No recording output writes .%@ files." : {
+      "comment" : "Recording error when the chosen container has no registered recording output",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Aufnahme-Ausgabe schreibt .%@-Dateien."
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ninguno"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ninguna salida de grabación escribe archivos .%@."
           }
         }
       }
     },
-    "Not connected": {
-      "comment": "Help tag on a channel strip whose device is absent",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Nicht verbunden"
+    "No streaming output serves %@ destinations. Use rtmp, rtmps, or srt." : {
+      "comment" : "Stream error when a destination's URL scheme has no registered output",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Streaming-Ausgabe bedient %@-Ziele. Verwenden Sie rtmp, rtmps oder srt."
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "No conectado"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ninguna salida de transmisión sirve destinos %@. Use rtmp, rtmps o srt."
           }
         }
       }
     },
-    "Opacity": {
-      "comment": "Layer opacity slider label",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Deckkraft"
+    "None" : {
+      "comment" : "Picker option for no input selected",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Opacidad"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ninguno"
           }
         }
       }
     },
-    "Pan": {
-      "comment": "Label of a channel strip's pan slider",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Panorama"
+    "Not connected" : {
+      "comment" : "Help tag on a channel strip whose device is absent",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht verbunden"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Panorámica"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No conectado"
           }
         }
       }
     },
-    "Picture in Picture": {
-      "comment": "Shot: display with camera inset",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Bild im Bild"
+    "Opacity" : {
+      "comment" : "Layer opacity slider label",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deckkraft"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Imagen en imagen"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Opacidad"
           }
         }
       }
     },
-    "Presets": {
-      "comment": "Label leading the preset switcher row",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Voreinstellungen"
+    "Pan" : {
+      "comment" : "Label of a channel strip's pan slider",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Panorama"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Preajustes"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Panorámica"
           }
         }
       }
     },
-    "Preview": {
-      "comment": "Name of the preview bus — labels its monitor and its switcher row",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Vorschau"
+    "Picture in Picture" : {
+      "comment" : "Shot: display with camera inset",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bild im Bild"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Previo"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Imagen en imagen"
           }
         }
       }
     },
-    "Program": {
-      "comment": "Name of the program bus — labels its monitor and its switcher row",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Programm"
+    "Presets" : {
+      "comment" : "Label leading the preset switcher row",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Voreinstellungen"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Programa"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Preajustes"
           }
         }
       }
     },
-    "R": {
-      "comment": "Right label beside a channel strip's pan slider",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "R"
+    "Preview" : {
+      "comment" : "Name of the preview bus — labels its monitor and its switcher row",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorschau"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "D"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Previo"
           }
         }
       }
     },
-    "Reconnecting…": {
-      "comment": "Stream status: a reconnect attempt is in flight",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Erneut verbinden…"
+    "Program" : {
+      "comment" : "Name of the program bus — labels its monitor and its switcher row",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Programm"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Reconectando…"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Programa"
           }
         }
       }
     },
-    "Record": {
-      "comment": "Button that starts recording the program to a local file",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Aufnehmen"
+    "R" : {
+      "comment" : "Right label beside a channel strip's pan slider",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "R"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Grabar"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "D"
           }
         }
       }
     },
-    "Recording": {
-      "comment": "Section heading over the recording folder and Record control",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Aufnahme"
+    "Reconnecting…" : {
+      "comment" : "Stream status: a reconnect attempt is in flight",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erneut verbinden…"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Grabación"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reconectando…"
           }
         }
       }
     },
-    "Refused": {
-      "comment": "Per-destination state: the destination refused the connection at start",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Abgelehnt"
+    "Record" : {
+      "comment" : "Button that starts recording the program to a local file",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufnehmen"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Rechazado"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grabar"
           }
         }
       }
     },
-    "Remove Destination": {
-      "comment": "Button that deletes a stream destination",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ziel entfernen"
+    "Recording" : {
+      "comment" : "Section heading over the recording folder and Record control",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufnahme"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Eliminar destino"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grabación"
           }
         }
       }
     },
-    "Remove Effect": {
-      "comment": "Button removing an effect from a channel strip's chain",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Effekt entfernen"
+    "Refused" : {
+      "comment" : "Per-destination state: the destination refused the connection at start",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abgelehnt"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Quitar efecto"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rechazado"
           }
         }
       }
     },
-    "Remove Layer": {
-      "comment": "Button removing the selected layer",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ebene entfernen"
+    "Remove Destination" : {
+      "comment" : "Button that deletes a stream destination",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ziel entfernen"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Quitar capa"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eliminar destino"
           }
         }
       }
     },
-    "Remove Preset": {
-      "comment": "Preset context menu: remove this preset from the project",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Voreinstellung entfernen"
+    "Remove Effect" : {
+      "comment" : "Button removing an effect from a channel strip's chain",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Effekt entfernen"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Quitar preajuste"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quitar efecto"
           }
         }
       }
     },
-    "Remove Shot": {
-      "comment": "Shot context menu: remove this shot from the preset",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Einstellung entfernen"
+    "Remove Layer" : {
+      "comment" : "Button removing the selected layer",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ebene entfernen"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Quitar toma"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quitar capa"
           }
         }
       }
     },
-    "Rename": {
-      "comment": "Rename dialog confirm button, for a shot or a preset",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Umbenennen"
+    "Remove Preset" : {
+      "comment" : "Preset context menu: remove this preset from the project",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Voreinstellung entfernen"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Renombrar"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quitar preajuste"
           }
         }
       }
     },
-    "Rename Preset": {
-      "comment": "Rename preset dialog title",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Voreinstellung umbenennen"
+    "Remove Shot" : {
+      "comment" : "Shot context menu: remove this shot from the preset",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einstellung entfernen"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Renombrar preajuste"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quitar toma"
           }
         }
       }
     },
-    "Rename Shot": {
-      "comment": "Rename shot dialog title",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Einstellung umbenennen"
+    "Rename" : {
+      "comment" : "Rename dialog confirm button, for a shot or a preset",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Umbenennen"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Renombrar toma"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Renombrar"
           }
         }
       }
     },
-    "Rename…": {
-      "comment": "Context menu: rename this shot or preset",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Umbenennen…"
+    "Rename Preset" : {
+      "comment" : "Rename preset dialog title",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Voreinstellung umbenennen"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Renombrar…"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Renombrar preajuste"
           }
         }
       }
     },
-    "Right": {
-      "comment": "Wipe edge picker option: reveal from the right edge of the frame",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Rechts"
+    "Rename Shot" : {
+      "comment" : "Rename shot dialog title",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einstellung umbenennen"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Derecha"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Renombrar toma"
           }
         }
       }
     },
-    "Select a layer to edit its frame and opacity.": {
-      "comment": "Layer editor empty-selection hint",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Wähle eine Ebene aus, um ihren Rahmen und ihre Deckkraft zu bearbeiten."
+    "Rename…" : {
+      "comment" : "Context menu: rename this shot or preset",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Umbenennen…"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Selecciona una capa para editar su marco y opacidad."
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Renombrar…"
           }
         }
       }
     },
-    "Shader": {
-      "comment": "Label of the picker choosing the built-in shader a shader transition reveals with\nTransition picker option: reveal the next shot taken through a built-in custom shader",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Shader"
+    "Right" : {
+      "comment" : "Wipe edge picker option: reveal from the right edge of the frame",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rechts"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Shader"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Derecha"
           }
         }
       }
     },
-    "Stage on preview": {
-      "comment": "Tooltip on an input tile that stages it on preview",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Auf Vorschau vorbereiten"
+    "rtmp://server/app" : {
+      "comment" : "Placeholder for the destination URL field",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "rtmp://server/app"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Preparar en previsualización"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "rtmp://server/app"
           }
         }
       }
     },
-    "Start Streaming": {
-      "comment": "Button that puts the program on air",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Streaming starten"
+    "Select a layer to edit its frame and opacity." : {
+      "comment" : "Layer editor empty-selection hint",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wähle eine Ebene aus, um ihren Rahmen und ihre Deckkraft zu bearbeiten."
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Iniciar transmisión"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Selecciona una capa para editar su marco y opacidad."
           }
         }
       }
     },
-    "Starting…": {
-      "comment": "Recording status: the file is being opened",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Wird gestartet…"
+    "Shader" : {
+      "comment" : "Label of the picker choosing the built-in shader a shader transition reveals with\nTransition picker option: reveal the next shot taken through a built-in custom shader",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shader"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Iniciando…"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shader"
           }
         }
       }
     },
-    "Stop Recording": {
-      "comment": "Button that stops the local recording",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Aufnahme stoppen"
+    "Stage on preview" : {
+      "comment" : "Tooltip on an input tile that stages it on preview",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auf Vorschau vorbereiten"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Detener grabación"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Preparar en previsualización"
           }
         }
       }
     },
-    "Stop Streaming": {
-      "comment": "Button that takes the program off air",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Streaming stoppen"
+    "Start Streaming" : {
+      "comment" : "Button that puts the program on air",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Streaming starten"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Detener transmisión"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Iniciar transmisión"
           }
         }
       }
     },
-    "Stopped": {
-      "comment": "Stream status: the stream ended cleanly",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Gestoppt"
+    "Starting…" : {
+      "comment" : "Recording status: the file is being opened",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wird gestartet…"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Detenido"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Iniciando…"
           }
         }
       }
     },
-    "Stream key": {
-      "comment": "Placeholder for the stream key field\nStream key field label",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Streamschlüssel"
+    "Stop Recording" : {
+      "comment" : "Button that stops the local recording",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufnahme stoppen"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Clave de transmisión"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Detener grabación"
           }
         }
       }
     },
-    "Stream to this destination": {
-      "comment": "Accessibility label for a destination's enable toggle",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Zu diesem Ziel streamen"
+    "Stop Streaming" : {
+      "comment" : "Button that takes the program off air",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Streaming stoppen"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Transmitir a este destino"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Detener transmisión"
           }
         }
       }
     },
-    "Streaming": {
-      "comment": "Section heading over the destination and Start/Stop controls",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Streaming"
+    "Stopped" : {
+      "comment" : "Stream status: the stream ended cleanly",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gestoppt"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Transmisión"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Detenido"
           }
         }
       }
     },
-    "Take": {
-      "comment": "Button taking the shot staged on preview to program",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Übernehmen"
+    "Stream key" : {
+      "comment" : "Placeholder for the stream key field\nStream key field label",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Streamschlüssel"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tomar"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clave de transmisión"
           }
         }
       }
     },
-    "The recording stopped and could not continue.": {
-      "comment": "Recording error shown when the file sink failed and the recording ended",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Die Aufnahme wurde gestoppt und konnte nicht fortgesetzt werden."
+    "Stream to this destination" : {
+      "comment" : "Accessibility label for a destination's enable toggle",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zu diesem Ziel streamen"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "La grabación se detuvo y no pudo continuar."
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transmitir a este destino"
           }
         }
       }
     },
-    "The recordings folder could not be created: %@": {
-      "comment": "Recording error when the chosen folder cannot be created",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Der Aufnahmeordner konnte nicht erstellt werden: %@"
+    "Streaming" : {
+      "comment" : "Section heading over the destination and Start/Stop controls",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Streaming"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "No se pudo crear la carpeta de grabaciones: %@"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transmisión"
           }
         }
       }
     },
-    "Top": {
-      "comment": "Wipe edge picker option: reveal from the top edge of the frame",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Oben"
+    "Take" : {
+      "comment" : "Button taking the shot staged on preview to program",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Übernehmen"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Arriba"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tomar"
           }
         }
       }
     },
-    "Transition": {
-      "comment": "Label of the picker choosing the transition kind for the next shot take",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Übergang"
+    "The recording stopped and could not continue." : {
+      "comment" : "Recording error shown when the file sink failed and the recording ended",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Aufnahme wurde gestoppt und konnte nicht fortgesetzt werden."
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Transición"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La grabación se detuvo y no pudo continuar."
           }
         }
       }
     },
-    "Viewers see and hear nothing. Preview and multiview stay live.": {
-      "comment": "Hint beside the fade to black control while the program is off air",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Zuschauer sehen und hören nichts. Vorschau und Multiview bleiben live."
+    "The recordings folder could not be created: %@" : {
+      "comment" : "Recording error when the chosen folder cannot be created",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Aufnahmeordner konnte nicht erstellt werden: %@"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Los espectadores no ven ni oyen nada. La previsualización y el multivista siguen activos."
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo crear la carpeta de grabaciones: %@"
           }
         }
       }
     },
-    "Width": {
-      "comment": "Layer frame slider label",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Breite"
+    "Top" : {
+      "comment" : "Wipe edge picker option: reveal from the top edge of the frame",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Oben"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ancho"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Arriba"
           }
         }
       }
     },
-    "Wipe": {
-      "comment": "Transition picker option: reveal the next shot taken across the frame from an edge",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Wischblende"
+    "Transition" : {
+      "comment" : "Label of the picker choosing the transition kind for the next shot take",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Übergang"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Cortinilla"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transición"
           }
         }
       }
     },
-    "Wipe from Bottom": {
-      "comment": "Default transition option: wipe revealing this shot from the bottom edge",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Wischblende von unten"
+    "Viewers see and hear nothing. Preview and multiview stay live." : {
+      "comment" : "Hint beside the fade to black control while the program is off air",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zuschauer sehen und hören nichts. Vorschau und Multiview bleiben live."
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Cortinilla desde abajo"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Los espectadores no ven ni oyen nada. La previsualización y el multivista siguen activos."
           }
         }
       }
     },
-    "Wipe from Left": {
-      "comment": "Default transition option: wipe revealing this shot from the left edge",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Wischblende von links"
+    "Width" : {
+      "comment" : "Layer frame slider label",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Breite"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Cortinilla desde la izquierda"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ancho"
           }
         }
       }
     },
-    "Wipe from Right": {
-      "comment": "Default transition option: wipe revealing this shot from the right edge",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Wischblende von rechts"
+    "Wipe" : {
+      "comment" : "Transition picker option: reveal the next shot taken across the frame from an edge",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wischblende"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Cortinilla desde la derecha"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cortinilla"
           }
         }
       }
     },
-    "Wipe from Top": {
-      "comment": "Default transition option: wipe revealing this shot from the top edge",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Wischblende von oben"
+    "Wipe from Bottom" : {
+      "comment" : "Default transition option: wipe revealing this shot from the bottom edge",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wischblende von unten"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Cortinilla desde arriba"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cortinilla desde abajo"
           }
         }
       }
     },
-    "X": {
-      "comment": "Layer frame slider label: horizontal position",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "X"
+    "Wipe from Left" : {
+      "comment" : "Default transition option: wipe revealing this shot from the left edge",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wischblende von links"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "X"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cortinilla desde la izquierda"
           }
         }
       }
     },
-    "Y": {
-      "comment": "Layer frame slider label: vertical position",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Y"
+    "Wipe from Right" : {
+      "comment" : "Default transition option: wipe revealing this shot from the right edge",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wischblende von rechts"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Y"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cortinilla desde la derecha"
           }
         }
       }
     },
-    "rtmp://server/app": {
-      "comment": "Placeholder for the destination URL field",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "rtmp://server/app"
+    "Wipe from Top" : {
+      "comment" : "Default transition option: wipe revealing this shot from the top edge",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wischblende von oben"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "rtmp://server/app"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cortinilla desde arriba"
           }
         }
       }
     },
-    "● Live": {
-      "comment": "Stream status: the program is on air",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "● Live"
+    "X" : {
+      "comment" : "Layer frame slider label: horizontal position",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "X"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "● En vivo"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "X"
           }
         }
       }
     },
-    "● Recording": {
-      "comment": "Recording status: the program is being written to a file",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "● Aufnahme"
+    "Y" : {
+      "comment" : "Layer frame slider label: vertical position",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Y"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "● Grabando"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Y"
           }
         }
       }
     }
   },
-  "version": "1.0"
+  "version" : "1.0"
 }
