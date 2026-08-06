@@ -58,11 +58,13 @@ Defining only the known key paths means an incorrect key fails the publish, whic
 
 ### sim.sh
 
-- `sim.sh start` — download/locate the pinned MediaMTX release for macOS arm64 (cached under `apps/ingest-simulator/.bin/`, gitignored), launch it with `mediamtx.yml`, wait for ports.
+- `sim.sh start` — download/locate the pinned MediaMTX release for macOS arm64 (cached under `apps/ingest-simulator/.bin/`, gitignored), launch it with `mediamtx.yml`, wait for ports, then print the destination to publish with.
 - `sim.sh verify [path]` — `ffprobe` the readback URL and print codec/resolution/fps; nonzero exit if no stream.
-- `sim.sh stop` / `sim.sh status`.
+- `sim.sh stop` / `sim.sh status` — `status` reprints the destination.
 
 The MediaMTX version is pinned in `sim.sh` so test behavior is reproducible.
+
+**`start` and `status` print the URL and key as a pair**, because that is how both front ends take them: the app's streaming panel has separate destination and key fields, and `tingra-cli stream` has separate `--url` and `--key` options. A single concatenated `rtmp://host/app/key` string — the shape Twitch and YouTube show in their dashboards — is the one thing neither accepts. The key itself is read from `keys.env` rather than repeated in the script, so `sim.sh` can never name a key the paths in `mediamtx.yml` do not define. The SRT pair looks asymmetric on purpose: SRT has no publish name, so the key field carries the whole `streamid` value (`publish:live/<key>`), which the service places literally.
 
 ## Test scenarios enabled
 

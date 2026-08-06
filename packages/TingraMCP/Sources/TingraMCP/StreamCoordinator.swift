@@ -65,6 +65,16 @@ struct RequestedDestination: Sendable {
     let url: String
 
     /// The stream key, read from the tool arguments; never logged or returned.
+    ///
+    /// **Transient by policy** (MCP.md, "Sessions and concurrency"): the
+    /// daemon holds a key only for the life of the session it starts and
+    /// never writes it to secure storage, so it outlives neither the session
+    /// nor the process. The value lives here and in the leg's `Destination`
+    /// for the duration, and both are released together when
+    /// ``StreamCoordinator/clear(id:)`` drops the active session. Persisting
+    /// a key belongs to the destination model, not to the daemon — the app
+    /// persists because a saved destination is a document with an owner,
+    /// while this caller already holds the key it is passing.
     let streamKey: String?
 }
 
@@ -118,11 +128,31 @@ public actor StreamCoordinator {
         let runTask: Task<Void, Never>
 
         /// The destinations the session fans out to, for `stream_status`.
+        ///
+        /// This is the only thing holding each leg's stream key while the
+        /// session runs, so clearing `active` is what makes the daemon's
+        /// transient-key policy true — see
+        /// ``RequestedDestination/streamKey`` and ``clear(id:)``.
         let destinations: [RequestedDestination]
     }
 
     /// The active stream, or nil when nothing is streaming.
     private var active: Active?
+
+    /// Whether a `start` is between its conflict check and installing
+    /// ``active``.
+    ///
+    /// The conflict check reads `active`, but resolving the destinations and
+    /// inputs immediately after it suspends. Without this flag two concurrent
+    /// `stream_start` calls both pass the check while `active` is still nil,
+    /// both build a session, and both install — the second overwriting the
+    /// first, whose destinations keep publishing under an id that no longer
+    /// resolves to anything, so it can never be stopped and its stream key is
+    /// never released. Claimed synchronously right after the check and
+    /// released in a `defer`, so the "one active stream" rule (MCP.md,
+    /// "Sessions and concurrency") covers the whole of startup rather than
+    /// only its tail.
+    private var startInProgress = false
 
     /// The input registry inputs resolve against.
     private let inputs: InputRegistry
@@ -185,6 +215,20 @@ public actor StreamCoordinator {
                     + "before starting another — v1 supports one active stream."
             )
         }
+        if startInProgress {
+            throw ToolError(
+                identifier: .invalidArgument,
+                message:
+                    "A stream is already starting. Wait for that stream_start to return — it reports "
+                    + "the session id once the stream is live — then use stream_stop before starting "
+                    + "another; v1 supports one active stream."
+            )
+        }
+        // Claimed synchronously, before the first suspension below, so a
+        // concurrent call cannot slip past both checks while this one is
+        // still resolving its destinations and inputs.
+        startInProgress = true
+        defer { startInProgress = false }
 
         let legs = try await makeDestinationLegs(request)
         let videoInput = try await resolve(request.video, kind: .camera, defaultID: defaults.cameraID())
@@ -224,15 +268,36 @@ public actor StreamCoordinator {
             await self?.clear(id: id)
         }
 
+        // Install *before* awaiting the gate, not after. `clear(id:)` runs
+        // from the run task and can land during that suspension: a session
+        // that ends between emitting `stream.started` and this waiter
+        // resuming would be cleared before it was ever installed, so the
+        // clear would no-op on a nil `active` and the install would then
+        // resurrect a dead session — retaining its stream key for the life
+        // of the daemon (contradicting the transient-key policy), refusing
+        // every later `stream_start` as a conflict with a session that is
+        // over, and pinning `isStreaming` true so the idle-exit guard never
+        // fires. There is no suspension point between the run task's
+        // creation and this line, so the run task cannot reach the actor
+        // before the install — which is what closes the window rather than
+        // merely narrowing it.
+        active = Active(id: id, session: session, runTask: runTask, destinations: request.destinations)
+
         do {
             try await gate.wait()
         } catch {
-            // Start failed: the run task already finished and cleared nothing
-            // (active was never set). Surface the identifier-keyed error.
+            // Start failed. The run task's own `clear` may or may not have
+            // landed yet, so drop it here too — both are id-matched, so
+            // whichever runs second is a no-op.
+            clear(id: id)
             throw Self.toolError(from: error)
         }
 
-        active = Active(id: id, session: session, runTask: runTask, destinations: request.destinations)
+        // A session that went live and ended within this window is already
+        // cleared, and deliberately stays that way: `stream_status` and
+        // `stream_stop` on the returned id report an unknown session, which
+        // is the defined answer for a session that is not active, and the
+        // `stream.stopped` event on the bus carries the reason.
         return id
     }
 
@@ -310,9 +375,36 @@ public actor StreamCoordinator {
         ])
     }
 
+    /// Waits for a session to end and its state to be released, without
+    /// stopping it.
+    ///
+    /// A seam for the teardown paths that are *not* an explicit
+    /// `stream_stop` — a duration elapse and a lost connection. Those end the
+    /// session from inside its own run task, which clears the coordinator one
+    /// actor hop **after** `stream.stopped` reaches the event bus, so an
+    /// observer that awaits the event alone cannot know the release has
+    /// happened. Awaiting the run task closes that gap, because
+    /// ``clear(id:)`` runs inside it — the same guarantee
+    /// ``stop(sessionId:)`` already relies on.
+    ///
+    /// Returns immediately when the id is not the active session, which is
+    /// the already-ended case rather than an error.
+    ///
+    /// - Parameter sessionId: The session to wait for.
+    func waitForEnd(sessionId: String) async {
+        guard let active, active.id == sessionId else { return }
+        await active.runTask.value
+    }
+
     /// Clears the active stream once its run task ends (a stop, a duration
-    /// elapse, or a start failure). Only clears if the id still matches, so a
-    /// late clear from a superseded session cannot wipe a newer one.
+    /// elapse, a lost connection, or a start failure). Only clears if the id
+    /// still matches, so a late clear from a superseded session cannot wipe a
+    /// newer one.
+    ///
+    /// This is also where the session's stream keys go: they are held only in
+    /// `Active.destinations`, so dropping it is what enforces the daemon's
+    /// transient-key policy on *every* teardown path rather than only on an
+    /// explicit `stream_stop` (MCP.md, "Sessions and concurrency").
     private func clear(id: String) {
         if active?.id == id {
             active = nil

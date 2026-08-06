@@ -101,6 +101,14 @@ final class MockStreamingService: StreamingService, Sendable {
 
     /// How many times the service was stopped.
     var stops: Int { stopCount.withLock { $0 } }
+
+    /// Reports a lost connection, the shape a destination takes when it
+    /// accepts the publish and then drops it. With reconnect disabled the
+    /// session ends on this, which is one of the teardown paths that is not
+    /// an explicit stop.
+    func reportConnectionLoss(reason: String = "injected by a test") {
+        eventContinuation.yield(.connectionLost(reason: reason))
+    }
 }
 
 /// A provider that hands out a fixed mock service — so a test can inspect the

@@ -115,11 +115,15 @@ This implements the "never log secrets" rule in CLAUDE.md end to end.
 
 ## Package and porting notes
 
-The bus ships as a **zero dependency leaf package** under `packages/` (as `EventBusBasics` is today in AutoCareCloud). The plug-in protocol package depends on it so third party plug-ins can emit events — which works precisely because the bus depends on nothing. Whether it lands as an evolution of the shared personal `EventBusBasics` package or a Tingra named port is open; the changes below are generic enough to be upstreamed.
+The bus ships as a **zero dependency leaf package** under `packages/` (as `EventBusBasics` is today in AutoCareCloud). The plug-in protocol package depends on it so third party plug-ins can emit events — which works precisely because the bus depends on nothing.
 
-Deltas from today's `EventBusBasics`, driven by Tingra's rules in CLAUDE.md:
+**`TingraEventBus` stays a Tingra named port (decided 2026-08-05).** The scaffold started it as a port with the alternative left open — evolve the shared personal `EventBusBasics` package upstream and depend on it — and the table below is why the answer is no. Every implementation choice in the original was replaced, so what the two packages share is the *pattern* and the six group names, not code; there is no diff left to upstream. Upstreaming would also be breaking in both directions that matter for the existing consumers, since dropping `[String: Any]` and moving off Combine changes every call site. And it would convert a zero dependency leaf into an external dependency of a public, notarized product, putting a coordinated two repository release in front of every plug-in API change — under the SemVer and `swift package diagnose-api-breaking-changes` obligation ARCHITECTURE.md places on this package. That obligation therefore lands on `TingraEventBus`, which is where CI already points it.
 
-| Today | Tingra port |
+None of this argues the pattern was not worth having: it supplied the group taxonomy, the sink idea, and the tap line format, which is most of the design. Carrying the Swift 6 lessons *back* into `EventBusBasics` stays worthwhile — as that package's own work, on its own schedule, with no coupling to Tingra.
+
+The table is therefore a provenance record rather than a list of changes to upstream — what the pattern contributed, and what Tingra's rules in CLAUDE.md changed:
+
+| `EventBusBasics` today | Tingra port |
 | :---- | :---------- |
 | Combine (`PassthroughSubject` / `AnyPublisher`) | `AsyncStream<EventBusEvent>` with multi subscriber support |
 | `params: [String: Any]?` (not `Sendable`) | `[String: EventValue]?` with `EventValue: Sendable, Codable` — also what makes NDJSON serialization trivial |
@@ -132,6 +136,5 @@ Deltas from today's `EventBusBasics`, driven by Tingra's rules in CLAUDE.md:
 
 ## Open questions
 
-- Package identity: evolve `EventBusBasics` upstream (shared across Larry's projects) vs. a Tingra named fork under `packages/`.
 - Buffering policy per sink when a subscriber is slow (drop oldest vs. suspend emitter — a slow sink must never back pressure the engine).
 - Whether the status sink's retained state is the same store the session manager uses, or a read model derived from it.

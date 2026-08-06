@@ -8,9 +8,11 @@
 # the product.
 #
 #   sim.sh start          Download/locate the pinned MediaMTX, launch it
-#                         with mediamtx.yml, wait for the ingest ports.
+#                         with mediamtx.yml, wait for the ingest ports, and
+#                         print the destination URL and key to publish with.
 #   sim.sh stop           Stop the running server.
-#   sim.sh status         Report whether the server is running.
+#   sim.sh status         Report whether the server is running, and reprint
+#                         the destination URL and key.
 #   sim.sh verify [path]  ffprobe the RTSP readback of a path (default
 #                         live/tingra_test_key) and print codec, resolution,
 #                         and fps; nonzero exit if no stream is there.
@@ -24,11 +26,13 @@ BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BIN_DIR="$BASE_DIR/.bin"
 BINARY="$BIN_DIR/mediamtx-$MEDIAMTX_VERSION"
 CONFIG="$BASE_DIR/mediamtx.yml"
+KEYS_FILE="$BASE_DIR/keys.env"
 PID_FILE="$BIN_DIR/mediamtx.pid"
 LOG_FILE="$BIN_DIR/mediamtx.log"
 
 RTMP_PORT=1935
 RTSP_PORT=8554
+SRT_PORT=8890
 
 # Prints the MediaMTX release asset name for this machine (macOS arm64 for
 # development; Linux for CI runners).
@@ -83,9 +87,59 @@ running_pid() {
     fi
 }
 
+# Prints the valid test key, read from keys.env — the one place it is
+# defined, so this script can never name a key the paths in mediamtx.yml do
+# not accept. Prints nothing if the file is missing or defines no key.
+test_key() {
+    if [[ -r "$KEYS_FILE" ]]; then
+        (
+            # shellcheck source=keys.env
+            . "$KEYS_FILE"
+            echo "${TINGRA_TEST_KEY:-}"
+        )
+    fi
+}
+
+# Prints the destination URL and stream key to publish with.
+#
+# The app's streaming panel takes the URL and the key as two separate
+# fields, and so does `tingra-cli stream` (--url/--key), so a single
+# concatenated rtmp://host/app/key string is exactly what neither can use —
+# printing the pair is the whole point of this block.
+destinations() {
+    # Only when a person is watching: the integration tests call `start` and
+    # `status` repeatedly, and a paste-ready block in the middle of their
+    # output is noise nobody reads.
+    if [[ ! -t 1 ]]; then
+        return
+    fi
+    local key
+    key="$(test_key)"
+    if [[ -z "$key" ]]; then
+        echo "sim: warning: no TINGRA_TEST_KEY in $KEYS_FILE; see docs/SIMULATOR.md" >&2
+        return
+    fi
+    cat << EOF
+
+  Publish to it — URL and key are separate fields in the app's streaming panel:
+
+    RTMP   URL  rtmp://localhost:$RTMP_PORT/live
+           Key  $key
+
+    SRT    URL  srt://localhost:$SRT_PORT
+           Key  publish:live/$key
+
+  The same pair as CLI options:
+    --url rtmp://localhost:$RTMP_PORT/live --key $key
+
+  Then check it arrived: sim.sh verify
+EOF
+}
+
 start() {
     if [[ -n "$(running_pid)" ]]; then
         echo "sim: already running (pid $(running_pid))"
+        destinations
         return
     fi
     fetch_binary
@@ -95,7 +149,8 @@ start() {
     local i
     for i in $(seq 1 50); do
         if nc -z localhost "$RTMP_PORT" 2> /dev/null && nc -z localhost "$RTSP_PORT" 2> /dev/null; then
-            echo "sim: running (pid $(cat "$PID_FILE")) — RTMP :$RTMP_PORT, SRT :8890, RTSP :$RTSP_PORT, HLS :8888"
+            echo "sim: running (pid $(cat "$PID_FILE")) — RTMP :$RTMP_PORT, SRT :$SRT_PORT, RTSP :$RTSP_PORT, HLS :8888"
+            destinations
             return
         fi
         sleep 0.2
@@ -122,6 +177,7 @@ status() {
     pid="$(running_pid)"
     if [[ -n "$pid" ]]; then
         echo "sim: running (pid $pid)"
+        destinations
     else
         echo "sim: not running"
         exit 1

@@ -1334,6 +1334,19 @@ or two in the doc that owns them — none need a rewrite.
   unsigned build with `Local.xcconfig` moved aside succeeds, and
   `tingra-cameras` still builds signed.
 
+  **The conversion's premise proved on the machine (2026-08-05).** Everything
+  above verifies the *signature*; whether a TCC grant actually survives a
+  rebuild is a claim only the real Mac can settle, and it stayed unexercised
+  for a week. Now closed, all four authorization-touching paths confirmed by
+  hand: camera (tiles live), **microphone — granted, captured, then rebuilt
+  and relaunched with no second prompt**, which is the conversion's whole
+  reason for existing; multiview (⌥⌘M); and streaming from the app, verified
+  server side against the local simulator. `integration-test.sh` passed in the
+  same pass, which also covers the black generator — the one thing that had
+  landed since its previous run. Recording the result here because the gate
+  was tracked in no file: an unexercised TCC path leaves no trace in a build
+  log, a test run, or a diff, so nothing in CI can ever close it.
+
 - [x] **Live device lists in the app — decided 2026-07-28, go-ahead given
   with display hot-plug included, and built the same day.** The app never refreshes its device lists after boot: `cameras`,
   `displays`, `videoInputs`, and `audioInputs` are computed once in the boot
@@ -2075,11 +2088,35 @@ or two in the doc that owns them — none need a rewrite.
   `apps/tingra-cli`. Recorded in ARCHITECTURE.md "Repository structure" and
   CLAUDE.md "Project Structure".
 
-- [ ] **EventBusBasics identity.** Decide: evolve the shared personal
-  `EventBusBasics` package upstream, or keep the Tingra-named port. The scaffold
-  starts `TingraEventBus` as a port; the deltas in EVENTS.md are generic enough
-  to upstream later. The SemVer/API-diff CI obligation from ARCHITECTURE.md lands
-  on whichever package wins.
+- [x] **EventBusBasics identity — decided 2026-08-05** (recorded in EVENTS.md,
+  "Package and porting notes"). **Keep the Tingra-named port**; do not evolve
+  the shared personal `EventBusBasics` package upstream and depend on it.
+
+  The scaffold started `TingraEventBus` as a port on the reading that the
+  deltas were "generic enough to upstream later" — and they are, individually.
+  What that framing missed is that there are no deltas *left*: the port
+  replaced every implementation choice in the original (Combine →
+  `AsyncStream`, `[String: Any]` → `[String: EventValue]`, unisolated class →
+  `Sendable`, `Thread.callStackSymbols` → `#fileID`, `DateFormatter` →
+  `FormatStyle`, one `EventBusLogger` → sinks behind a protocol, plus a new
+  `domain` axis and a narrowing to macOS). What the two share is the pattern
+  and the six group names, not code, so "upstream the diff" has no diff to
+  apply — it would be a rewrite of `EventBusBasics` that breaks its existing
+  consumers, since dropping `[String: Any]` and leaving Combine changes every
+  call site.
+
+  The cost on Tingra's side is the decisive one: it would convert a **zero
+  dependency leaf package** into an external dependency of a public, notarized
+  product whose CLAUDE.md sanctions exactly three third-party dependencies, and
+  put a coordinated two-repository release in front of every plug-in API
+  change. The SemVer/API-diff obligation lands on `TingraEventBus`, which is
+  where CI already points it. A corroborating signal: `EventBusBasics` already
+  exists in Dart as well as Swift, so the pattern is what travels between
+  Larry's projects, not the package.
+
+  **Not folded in:** porting the Swift 6 lessons *back* into `EventBusBasics`
+  is worth doing and is that package's own work, on its own schedule, with no
+  coupling to Tingra.
 
 - [x] **Frame ownership rule for the `Input` seam.** Decided 2026-07-04: the draft
   rule stands — transfer at yield, one holder at a time, immutable after transfer
@@ -2089,11 +2126,129 @@ or two in the doc that owns them — none need a rewrite.
   restate it briefly. *(Flagged for Larry's veto in the step-2 summary before
   more work stacks on it.)*
 
-- [ ] **Stream-key retention policy in the daemon.** MCP.md says keys pass through
-  tool input into Keychain-backed secure storage, but not whether they persist.
-  Recommendation: transient in v1 (key required per `stream_start`, deleted when
-  the stream stops); persistence arrives with the destination model. One sentence
-  in MCP.md.
+- [x] **Stream-key retention policy in the daemon — decided 2026-08-05**
+  (recorded in MCP.md, "Sessions and concurrency"). **Transient**, which
+  ratifies the behavior the daemon already has rather than changing it.
+
+  The item was raised as "MCP.md says keys pass through tool input into
+  Keychain-backed secure storage, but not whether they persist." Reading the
+  code first turned that premise around: **the daemon never writes a key to
+  secure storage at all** — `TingraMCP` does not reference `SecureStorage`
+  anywhere. A key arrives as `stream_start` input, becomes
+  `RequestedDestination.streamKey`, is copied into each leg's
+  `Destination(url:streamKey:)`, and is retained in `StreamCoordinator.Active`
+  only because `stream_status` needs the leg list. `clear(id:)` drops it, and
+  the run task calls that on **every** teardown path — stop, duration elapse,
+  connection loss, and a start that never went live — not merely on the
+  explicit stop. So the sentence in MCP.md was not vague about persistence; it
+  asserted a Keychain write that does not happen, in the document that
+  specifies the daemon.
+
+  The policy is therefore what the code does, now stated: key required per
+  `stream_start`, held for the session, released on every teardown path, never
+  written to secure storage, and supplied again by the next call. Durable keys
+  arrive with the destination model.
+
+  **Why the app is deliberately the other way.** The app persists keys in
+  secure storage keyed by destination id because an operator authors a
+  destination once and returns to it — the secret belongs to a document with
+  an owner. The daemon's caller is an agent already holding the key it passes,
+  so persisting there would create a secret at rest with no owner and no
+  lifecycle. The asymmetry is the decision, not an inconsistency to resolve
+  later.
+
+  Work: the MCP.md correction above, the lifetime stated on the three types
+  that hold or drop the key (`RequestedDestination.streamKey`,
+  `Active.destinations`, `clear(id:)`), and two regression tests —
+  a stopped session is *forgotten entirely* (its `statusReport` throws, which
+  is the observable form of "the legs are gone"; asserting `isStreaming`
+  alone would pin only the flag), and a refused start retains nothing and
+  leaves the coordinator usable rather than wedged. `TingraMCP` 56 → 58.
+
+  **All four teardown paths are now tested** (`TingraMCP` 59 → 61). The two
+  that are not an explicit stop — a duration elapse and a lost connection —
+  were initially left to inspection because `clear(id:)` runs an actor hop
+  *after* `stream.stopped` reaches the bus, so a test awaiting the event
+  cannot know the release has landed. The fix was one seam rather than the
+  controllable clock first imagined: **`waitForEnd(sessionId:)`, which awaits
+  the session's run task** — `clear` runs inside that task, which is the same
+  guarantee `stop(sessionId:)` already relied on, so the gap closes with no
+  new timing machinery. The finishing clock elapses a duration at once, and
+  `MockStreamingService.reportConnectionLoss()` plus `reconnectAttempts: 0`
+  produces the accept-then-drop shape, so both run without a wall-clock wait.
+  Each asserts release the same three ways through a shared helper: nothing
+  streaming, the id resolving to nothing (so the legs holding the key are
+  gone), and a fresh start accepted rather than refused. **Mutation-checked**
+  — with `clear(id:)` neutered both report `isStreaming == false` violated
+  and then "A stream is already active (session 'stream-af0e37ca')".
+
+  **A window where a key was retained forever — found while reading, fixed
+  2026-08-05 on Larry's go-ahead.** `start` installed `active` *after*
+  `await gate.wait()`, while the run task's `clear(id:)` could run during
+  that suspension. A session ending between emitting `stream.started` and the
+  waiter resuming was therefore cleared before it was ever installed: the
+  clear no-oped on a nil `active`, and the install then resurrected a dead
+  session. The stream key stayed for the life of the daemon (contradicting
+  the policy above), every later `stream_start` was refused as a conflict
+  with a session that was over, and `isStreaming` stayed true so the
+  idle-exit guard could never fire. The window was microseconds, but the
+  shape that reaches it is documented: a destination that accepts the publish
+  and drops it moments later (MediaMTX's bad-key behavior, SIMULATOR.md) with
+  reconnect disabled.
+
+  **The fix is the ordering, and it closes rather than narrows the window.**
+  `active` is installed before the gate wait, and the failure path clears it
+  (both clears are id-matched, so whichever runs second is a no-op). What
+  makes it airtight is that **there is no suspension point between the run
+  task's creation and the install**, so the run task cannot reach the actor
+  until `start` suspends at the gate — by which time the install has
+  happened. A session that goes live and ends inside that window is now
+  simply already cleared, and stays that way: `stream_status`/`stream_stop`
+  on the returned id report an unknown session, which is the defined answer
+  for a session that is not active, with `stream.stopped` on the bus carrying
+  the reason.
+
+  **This one stays untested, and it is the only one that does.** Its race is
+  decided by actor *scheduling* — whether the run task reaches the actor
+  before the install — so any test would be timing-dependent, and a
+  probabilistically-passing test is worse than none. Contrast the two races
+  fixed around it, both of which are decided by the actor's own
+  *serialization* and are therefore deterministic in outcome even when the
+  winner varies: the concurrent-start hole below, and the teardown paths
+  above. That distinction is the rule to apply next time — serialization is
+  testable, scheduling is not. Regression cover here is the surrounding
+  suite plus repeat runs (12× clean at the time of the change).
+
+- [x] **A second `stream_start` hole in the same guard — found 2026-08-05
+  while fixing the one above, fixed the same day.** The "one active stream"
+  check read `active` at the top of `start`, but the next three statements
+  (`makeDestinationLegs` and the two `resolve` calls) are `await`s. Two
+  concurrent `stream_start` calls therefore *both* passed the check while
+  `active` was still nil, both built a session, and both installed — the
+  second overwriting the first. The first was then never stopped and never
+  reachable: its destinations kept publishing, its stream key stayed retained
+  under an id that resolved to nothing, and `stream_stop` could only take
+  down the second. Distinct from the ordering gap above, and not fixed by it:
+  installing early narrows the window to the resolution `await`s but cannot
+  close it, because the conflict has to be rejected *before* the first
+  suspension. Reachable because MCP.md contemplates many MCP sessions onto
+  one engine, so two agents can call at once.
+
+  **Fix:** a `startInProgress` flag claimed synchronously right after the
+  check and released in a `defer`, with a second check testing it — so the
+  one-active-stream rule covers the whole of startup rather than only its
+  tail. The refusal names the situation rather than a session id, since the
+  in-flight start has not minted one yet.
+
+  **Tested, and mutation-checked** (`TingraMCP` 58 → 59): two concurrent
+  starts must leave exactly one installed session, one `invalidArgument`
+  refusal, and a survivor that is live and stoppable. With the claim disabled
+  the test reports `started.count → 2` and the stop then reports *"No active
+  stream has the id 'stream-072d297e' (the active stream is
+  'stream-bf2c2514')"* — the orphaned session, reproduced exactly. Unlike the
+  ordering gap, this race is decided by the actor's own serialization rather
+  than by scheduling luck, which is why it takes a real test: whichever call
+  wins, exactly one wins. Suite run 10× clean.
 
 - [ ] **Bundled plug-in shipping next to a bare binary** (referenced from CLI.md
   "Distribution"). ARCHITECTURE.md settles the CLI era — first-party plug-ins are

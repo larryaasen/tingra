@@ -56,6 +56,70 @@ struct StreamCoordinatorTests {
         )
     }
 
+    /// A request that ends itself once its duration elapses — which the
+    /// finishing clock does at once, so the duration teardown path runs
+    /// without any wall-clock wait.
+    private var durationLimitedRequest: StreamRequest {
+        StreamRequest(
+            destinations: [
+                RequestedDestination(id: "destination-1", url: "rtmp://localhost/live", streamKey: "test_key")
+            ],
+            video: .generator(InputID(rawValue: "bars")),
+            audio: .generator(InputID(rawValue: "tone")),
+            configuration: StreamConfiguration(),
+            policy: StreamSession.Policy(statsIntervalSeconds: 0, durationSeconds: 1)
+        )
+    }
+
+    /// A request with reconnect disabled, so a single reported connection
+    /// loss ends the session instead of starting a reconnect cycle.
+    private var noReconnectRequest: StreamRequest {
+        StreamRequest(
+            destinations: [
+                RequestedDestination(id: "destination-1", url: "rtmp://localhost/live", streamKey: "test_key")
+            ],
+            video: .generator(InputID(rawValue: "bars")),
+            audio: .generator(InputID(rawValue: "tone")),
+            configuration: StreamConfiguration(),
+            policy: StreamSession.Policy(reconnectAttempts: 0, statsIntervalSeconds: 0)
+        )
+    }
+
+    /// Asserts that a session the coordinator has released is gone in every
+    /// way that matters: nothing is streaming, the id resolves to nothing —
+    /// so the legs holding its stream key are gone with it — and a fresh
+    /// start is accepted rather than refused as a conflict.
+    private func expectFullyReleased(_ coordinator: StreamCoordinator, endedSession id: String) async throws {
+        #expect(await coordinator.isStreaming == false)
+        do {
+            _ = try await coordinator.statusReport(sessionId: id)
+            Issue.record("status for an ended session should have thrown")
+        } catch let error as ToolError {
+            #expect(error.identifier == .invalidArgument)
+        }
+        let next = try await coordinator.start(generatorRequest)
+        _ = try await coordinator.stop(sessionId: next)
+    }
+
+    @Test("a session that ends on its own duration releases the coordinator")
+    func durationElapseReleasesSession() async throws {
+        let (coordinator, _, _) = try await makeCoordinator()
+        let id = try await coordinator.start(durationLimitedRequest)
+        await coordinator.waitForEnd(sessionId: id)
+        try await expectFullyReleased(coordinator, endedSession: id)
+    }
+
+    @Test("a lost connection with reconnect disabled releases the coordinator")
+    func connectionLossReleasesSession() async throws {
+        let (coordinator, service, _) = try await makeCoordinator()
+        let id = try await coordinator.start(noReconnectRequest)
+        // The accept-then-drop shape: the publish is accepted, then the
+        // destination drops it (MediaMTX's bad-key behavior, SIMULATOR.md).
+        service.reportConnectionLoss()
+        await coordinator.waitForEnd(sessionId: id)
+        try await expectFullyReleased(coordinator, endedSession: id)
+    }
+
     @Test("start goes live and returns a session id")
     func startReturnsSessionID() async throws {
         let (coordinator, _, _) = try await makeCoordinator()
@@ -166,6 +230,86 @@ struct StreamCoordinatorTests {
         #expect(result["stopped"] == .bool(true))
         #expect(await coordinator.isStreaming == false)
         #expect(service.stops >= 1)
+    }
+
+    @Test("two concurrent starts install exactly one session, and the other is refused")
+    func concurrentStartsInstallOneSession() async throws {
+        let (coordinator, _, _) = try await makeCoordinator()
+        let request = generatorRequest
+
+        /// Runs one start and reports its outcome, so both can be gathered
+        /// without either throwing out of the test.
+        func attempt() async -> Result<String, any Error> {
+            do {
+                return .success(try await coordinator.start(request))
+            } catch {
+                return .failure(error)
+            }
+        }
+
+        // The conflict check reads `active`, which stays nil across the
+        // destination and input resolution that follows it — so without the
+        // `startInProgress` claim both of these pass the check, both build a
+        // session, and both install, the second overwriting the first.
+        async let first = attempt()
+        async let second = attempt()
+        let outcomes = await [first, second]
+
+        let started = outcomes.compactMap { try? $0.get() }
+        #expect(started.count == 1)
+        let refusals = outcomes.compactMap { outcome -> ToolError? in
+            guard case .failure(let error) = outcome else { return nil }
+            return error as? ToolError
+        }
+        #expect(refusals.count == 1)
+        #expect(refusals.first?.identifier == .invalidArgument)
+
+        // The survivor is a real, stoppable session — an overwritten first
+        // session would leave a live stream no id resolves to.
+        let id = try #require(started.first)
+        #expect(try await coordinator.statusReport(sessionId: id)["state"] == .string("live"))
+        _ = try await coordinator.stop(sessionId: id)
+        #expect(await coordinator.isStreaming == false)
+    }
+
+    @Test("a stopped session is forgotten entirely, so it retains no stream key")
+    func stopReleasesTheRequestedDestinations() async throws {
+        let (coordinator, _, _) = try await makeCoordinator()
+        let id = try await coordinator.start(generatorRequest)
+        // While live, the coordinator holds the requested legs — which is
+        // where the stream key lives for the session's lifetime.
+        #expect(try await coordinator.statusReport(sessionId: id)["state"] == .string("live"))
+        _ = try await coordinator.stop(sessionId: id)
+        // After the stop, the session id resolves to nothing. This is the
+        // observable form of the transient-key policy (MCP.md, "Sessions and
+        // concurrency"): `Active.destinations` is the only thing holding the
+        // key, so a session the coordinator can no longer report on is a key
+        // it can no longer be holding. Asserting `isStreaming == false` alone
+        // would only pin the flag, which could go false with the legs still
+        // retained.
+        do {
+            _ = try await coordinator.statusReport(sessionId: id)
+            Issue.record("status for a stopped session should have thrown")
+        } catch let error as ToolError {
+            #expect(error.identifier == .invalidArgument)
+        }
+        #expect(await coordinator.isStreaming == false)
+    }
+
+    @Test("a start that never goes live retains nothing")
+    func refusedStartRetainsNothing() async throws {
+        let (coordinator, _, _) = try await makeCoordinator(startError: .connectionRejected("bad key"))
+        await #expect(throws: ToolError.self) {
+            _ = try await coordinator.start(generatorRequest)
+        }
+        // The refused start never reached `active`, so the key it carried
+        // went out of scope with the request — the second of the teardown
+        // paths that is not an explicit `stream_stop`.
+        #expect(await coordinator.isStreaming == false)
+        // And the coordinator is usable again rather than wedged: a key that
+        // stayed retained would also refuse this as "already streaming".
+        let id = try await coordinator.start(generatorRequest)
+        _ = try await coordinator.stop(sessionId: id)
     }
 
     @Test("stop for an unknown session id returns an invalidArgument error")
