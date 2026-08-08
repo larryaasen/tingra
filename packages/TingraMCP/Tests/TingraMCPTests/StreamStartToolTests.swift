@@ -7,6 +7,7 @@
 //  SPDX-License-Identifier: MIT
 //
 
+import Foundation
 import Testing
 import TingraPlugInKit
 
@@ -180,5 +181,54 @@ struct StreamStartToolTests {
         #expect(request.policy.reconnectDelaySeconds == 3)
         #expect(request.policy.statsIntervalSeconds == 10)
         #expect(request.policy.durationSeconds == 30)
+    }
+
+    // MARK: - Recording (the `record` field — MCP.md, "Tool surface")
+
+    @Test("a record path rides alongside a destination")
+    func recordAlongsideDestination() throws {
+        let request = try StreamStartTool.parse(["url": "rtmp://h/l", "record": "/Movies/show.mp4"])
+        #expect(request.destinations.count == 1)
+        #expect(request.recording?.url.path == "/Movies/show.mp4")
+        #expect(request.recording?.fileExtension == "mp4")
+    }
+
+    @Test("a record path alone is a record-only request with no destinations")
+    func recordOnlyRequest() throws {
+        let request = try StreamStartTool.parse(["record": "/Movies/show.mov"])
+        #expect(request.destinations.isEmpty)
+        #expect(request.recording?.url.path == "/Movies/show.mov")
+        #expect(request.recording?.fileExtension == "mov")
+    }
+
+    @Test("a leading tilde expands against the home directory")
+    func tildeRecordPathExpands() throws {
+        let request = try StreamStartTool.parse(["record": "~/Movies/show.mp4"])
+        let expected = URL.homeDirectory.appending(path: "Movies/show.mp4").path
+        #expect(request.recording?.url.path == expected)
+    }
+
+    @Test("a relative record path returns an invalidArgument error")
+    func relativeRecordPath() {
+        #expect(parseError(["record": "Movies/show.mp4"])?.identifier == .invalidArgument)
+    }
+
+    @Test("a record path with an unsupported extension returns an invalidArgument error")
+    func unsupportedRecordExtension() {
+        #expect(parseError(["url": "rtmp://h/l", "record": "/Movies/show.avi"])?.identifier == .invalidArgument)
+    }
+
+    @Test("a request with neither a destination nor a record returns an invalidArgument error")
+    func nothingToFeed() {
+        #expect(parseError(.object([:]))?.identifier == .invalidArgument)
+    }
+
+    @Test("the track topology carries into the configuration for the recording sink")
+    func topologyCarriesIntoConfiguration() throws {
+        let request = try StreamStartTool.parse([
+            "url": "rtmp://h/l", "noVideo": true, "record": "/Movies/audio-take.mp4",
+        ])
+        #expect(request.configuration.includesVideo == false)
+        #expect(request.configuration.includesAudio == true)
     }
 }

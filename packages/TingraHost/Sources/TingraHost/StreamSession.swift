@@ -250,6 +250,18 @@ public actor StreamSession {
     /// on teardown and only after it actually opened.
     private var recordingStarted = false
 
+    /// Whether a write failure stopped the recording mid-session. Kept apart
+    /// from ``recordingStarted``, which deliberately stays set after a
+    /// failure so teardown still finalizes whatever was written.
+    private var recordingWriteFailed = false
+
+    /// Whether the recording sink is open and writing: true from
+    /// `recording.started` until the file is finalized or a write failure
+    /// stops it. A point read for status surfaces — `stream_status`'s
+    /// `recording` object is present exactly while this is true (MCP.md,
+    /// "Tool surface") — never a poll target.
+    public var isRecordingOpen: Bool { recordingStarted && !recordingWriteFailed }
+
     /// The session's compression and program settings.
     private let configuration: StreamConfiguration
 
@@ -867,6 +879,7 @@ public actor StreamSession {
                 "message": .string("The recording stopped and could not continue: \(reason)"),
             ]
         )
+        recordingWriteFailed = true
         // Only a session with no live leg left has run out of reasons to
         // exist. `recordingStarted` deliberately stays set: teardown still
         // finalizes the file, capturing whatever was written before the

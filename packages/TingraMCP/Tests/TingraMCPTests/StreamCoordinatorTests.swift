@@ -7,6 +7,7 @@
 //  SPDX-License-Identifier: MIT
 //
 
+import Foundation
 import Testing
 import TingraEventBus
 import TingraHost
@@ -43,12 +44,72 @@ struct StreamCoordinatorTests {
         return (coordinator, service, eventBus)
     }
 
+    /// Builds a coordinator whose registry also holds a mock recording
+    /// provider, returning the mock recording service the coordinator will
+    /// drive — so no recording test touches a disk or an encoder.
+    private func makeRecordingCoordinator(
+        recordingStartError: RecordingServiceError? = nil
+    ) async throws -> (StreamCoordinator, MockRecordingService, MockStreamingService) {
+        let eventBus = EventBus()
+        let inputs = InputRegistry()
+        try await inputs.register(StubInput(id: "bars", name: "SMPTE Bars", kind: .generator))
+        try await inputs.register(StubInput(id: "tone", name: "440 Hz Tone", kind: .generator))
+        let outputs = OutputRegistry()
+        let service = MockStreamingService()
+        try await outputs.register(MockProvider(service: service))
+        let recording = MockRecordingService(startError: recordingStartError)
+        try await outputs.register(MockRecordingProvider(service: recording))
+        let coordinator = StreamCoordinator(
+            inputs: inputs,
+            outputs: outputs,
+            status: StatusSink(),
+            eventBus: eventBus,
+            clock: FinishingClock(),
+            defaults: StreamDefaults(cameraID: { nil }, microphoneID: { nil })
+        )
+        return (coordinator, recording, service)
+    }
+
+    /// The recording every recording request in this suite writes to. The
+    /// mock service never touches the path.
+    private var requestedRecording: RequestedRecording {
+        RequestedRecording(url: URL(filePath: "/Movies/show.mp4"), fileExtension: "mp4")
+    }
+
+    /// A generator request that records alongside its one destination.
+    private var recordAlongsideRequest: StreamRequest {
+        StreamRequest(
+            destinations: [
+                RequestedDestination(id: "destination-1", url: "rtmp://localhost/live", streamKey: "test_key")
+            ],
+            recording: requestedRecording,
+            video: .generator(InputID(rawValue: "bars")),
+            audio: .generator(InputID(rawValue: "tone")),
+            configuration: StreamConfiguration(),
+            policy: StreamSession.Policy(statsIntervalSeconds: 0)
+        )
+    }
+
+    /// A record-only request: a recording and no destination at all
+    /// (MCP.md, "Sessions and concurrency").
+    private var recordOnlyRequest: StreamRequest {
+        StreamRequest(
+            destinations: [],
+            recording: requestedRecording,
+            video: .generator(InputID(rawValue: "bars")),
+            audio: .generator(InputID(rawValue: "tone")),
+            configuration: StreamConfiguration(),
+            policy: StreamSession.Policy(statsIntervalSeconds: 0)
+        )
+    }
+
     /// A generator-only request to the mock destination.
     private var generatorRequest: StreamRequest {
         StreamRequest(
             destinations: [
                 RequestedDestination(id: "destination-1", url: "rtmp://localhost/live", streamKey: "test_key")
             ],
+            recording: nil,
             video: .generator(InputID(rawValue: "bars")),
             audio: .generator(InputID(rawValue: "tone")),
             configuration: StreamConfiguration(),
@@ -64,6 +125,7 @@ struct StreamCoordinatorTests {
             destinations: [
                 RequestedDestination(id: "destination-1", url: "rtmp://localhost/live", streamKey: "test_key")
             ],
+            recording: nil,
             video: .generator(InputID(rawValue: "bars")),
             audio: .generator(InputID(rawValue: "tone")),
             configuration: StreamConfiguration(),
@@ -78,6 +140,7 @@ struct StreamCoordinatorTests {
             destinations: [
                 RequestedDestination(id: "destination-1", url: "rtmp://localhost/live", streamKey: "test_key")
             ],
+            recording: nil,
             video: .generator(InputID(rawValue: "bars")),
             audio: .generator(InputID(rawValue: "tone")),
             configuration: StreamConfiguration(),
@@ -176,6 +239,7 @@ struct StreamCoordinatorTests {
                 RequestedDestination(id: "destination-1", url: "rtmp://localhost/live", streamKey: "a"),
                 RequestedDestination(id: "destination-2", url: "rtmp://localhost/backup", streamKey: "b"),
             ],
+            recording: nil,
             video: .generator(InputID(rawValue: "bars")),
             audio: .generator(InputID(rawValue: "tone")),
             configuration: StreamConfiguration(),
@@ -322,6 +386,126 @@ struct StreamCoordinatorTests {
         } catch let error as ToolError {
             #expect(error.identifier == .invalidArgument)
         }
+        _ = try await coordinator.stop(sessionId: id)
+    }
+
+    // MARK: - Recording (the `record` field — MCP.md, "Tool surface")
+
+    @Test("a session with a recording opens the file and reports it in status while it is open")
+    func recordingReportsInStatus() async throws {
+        let (coordinator, recording, _) = try await makeRecordingCoordinator()
+        let id = try await coordinator.start(recordAlongsideRequest)
+        #expect(recording.openedFile?.url.path == "/Movies/show.mp4")
+        #expect(recording.openedFile?.container == .mp4)
+
+        let report = try await coordinator.statusReport(sessionId: id)
+        let object = try #require(report["recording"]?.objectValue)
+        #expect(object["path"] == .string("/Movies/show.mp4"))
+        #expect(object["container"] == .string("mp4"))
+
+        // Stop finalizes the file with the session.
+        _ = try await coordinator.stop(sessionId: id)
+        #expect(recording.stops >= 1)
+    }
+
+    @Test("a record-only session starts, reports no url, and stops cleanly")
+    func recordOnlySessionRuns() async throws {
+        let (coordinator, recording, _) = try await makeRecordingCoordinator()
+        let id = try await coordinator.start(recordOnlyRequest)
+        // The one-session rule counts it: the idle-exit guard must not fire.
+        #expect(await coordinator.isStreaming == true)
+
+        let report = try await coordinator.statusReport(sessionId: id)
+        #expect(report["state"] == .string("live"))
+        // No destination, so no url and an empty destinations list — never
+        // a placeholder value standing in for a leg that does not exist.
+        #expect(report["url"] == nil)
+        #expect(report["destinations"] == .array([]))
+        #expect(report["recording"]?["path"] == .string("/Movies/show.mp4"))
+
+        _ = try await coordinator.stop(sessionId: id)
+        #expect(recording.stops >= 1)
+        try await expectFullyReleased(coordinator, endedSession: id)
+    }
+
+    @Test("a record-only session conflicts with a second start like any other")
+    func recordOnlySessionConflicts() async throws {
+        let (coordinator, _, _) = try await makeRecordingCoordinator()
+        let id = try await coordinator.start(recordOnlyRequest)
+        do {
+            _ = try await coordinator.start(generatorRequest)
+            Issue.record("a second start should have thrown")
+        } catch let error as ToolError {
+            #expect(error.identifier == .invalidArgument)
+            #expect(error.message.contains(id))
+        }
+        _ = try await coordinator.stop(sessionId: id)
+    }
+
+    @Test("a recording no registered output serves returns a recordingFailed error")
+    func recordingWithoutProviderReturnsAnError() async throws {
+        // The plain coordinator has no recording provider registered.
+        let (coordinator, _, _) = try await makeCoordinator()
+        do {
+            _ = try await coordinator.start(recordAlongsideRequest)
+            Issue.record("start should have thrown")
+        } catch let error as ToolError {
+            #expect(error.identifier == .recordingFailed)
+        }
+        // Nothing half-started: the coordinator accepts a fresh start.
+        #expect(await coordinator.isStreaming == false)
+        let id = try await coordinator.start(generatorRequest)
+        _ = try await coordinator.stop(sessionId: id)
+    }
+
+    @Test("a recording that cannot open returns a recordingFailed error and retains nothing")
+    func recordingSetupErrorReleasesTheSession() async throws {
+        let (coordinator, _, _) = try await makeRecordingCoordinator(
+            recordingStartError: .unwritableDestination("the volume cannot hold five minutes"))
+        do {
+            _ = try await coordinator.start(recordAlongsideRequest)
+            Issue.record("start should have thrown")
+        } catch let error as ToolError {
+            #expect(error.identifier == .recordingFailed)
+        }
+        #expect(await coordinator.isStreaming == false)
+        // Usable again: the mock refuses only its first start.
+        let id = try await coordinator.start(recordAlongsideRequest)
+        _ = try await coordinator.stop(sessionId: id)
+    }
+
+    @Test("a write error mid-session ends a record-only session and releases the coordinator")
+    func writeErrorEndsRecordOnlySession() async throws {
+        let (coordinator, recording, _) = try await makeRecordingCoordinator()
+        let id = try await coordinator.start(recordOnlyRequest)
+        recording.reportWriteFailure(reason: "disk full")
+        // The failed file sink was the session's only one, so the session
+        // ends (`stream.stopped`, reason `recordingFailed`) and releases.
+        await coordinator.waitForEnd(sessionId: id)
+        try await expectFullyReleased(coordinator, endedSession: id)
+    }
+
+    @Test("a write error mid-session leaves a streaming session live and drops recording from status")
+    func writeErrorLeavesStreamingSessionLive() async throws {
+        let (coordinator, recording, _) = try await makeRecordingCoordinator()
+        let id = try await coordinator.start(recordAlongsideRequest)
+        recording.reportWriteFailure(reason: "disk full")
+
+        // The recording object leaves the report once the write failure
+        // lands — the rejected-leg absence contract — while the session
+        // itself stays live on its destination.
+        var recordingGone = false
+        for _ in 0..<200 {
+            let report = try await coordinator.statusReport(sessionId: id)
+            if report["recording"] == nil {
+                recordingGone = true
+                #expect(report["state"] == .string("live"))
+                break
+            }
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(recordingGone)
+        #expect(await coordinator.isStreaming == true)
         _ = try await coordinator.stop(sessionId: id)
     }
 }

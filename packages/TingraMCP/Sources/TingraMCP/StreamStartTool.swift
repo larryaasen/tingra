@@ -38,7 +38,8 @@ struct StreamStartTool: Tool {
     let description =
         "Start capturing and streaming to one or more RTMP/RTMPS/SRT destinations. Mirrors `tingra-cli stream`. "
         + "Returns a session id used by stream_status and stream_stop. One active stream at a time; several "
-        + "destinations are one session fanned out, reported per destination by stream_status."
+        + "destinations are one session fanned out, reported per destination by stream_status. Pass 'record' "
+        + "to also write the program to a local file — alone, with no destination, it records without streaming."
 
     let inputSchema: JSONValue = .object([
         "type": .string("object"),
@@ -62,6 +63,12 @@ struct StreamStartTool: Tool {
                     ]),
                 ]),
             ]),
+            "record": schema(
+                "string",
+                "File path for a simultaneous local recording (.mov/.mp4 — the extension selects the "
+                    + "container). Absolute, or starting with '~/'. Prefer ~/Movies: Desktop, Documents, and "
+                    + "Downloads are privacy-protected on macOS and may prompt or refuse. With 'record' and no "
+                    + "destination, the session records without streaming."),
             "camera": schema(
                 "string", "Camera selector: index, unique name substring, or ID. Default: system default."),
             "mic": schema("string", "Microphone selector, same forms. Default: system default."),
@@ -107,6 +114,12 @@ struct StreamStartTool: Tool {
     static func parse(_ arguments: JSONValue) throws -> StreamRequest {
         let reader = ArgumentReader(arguments)
         let destinations = try parseDestinations(reader)
+        let recording = try parseRecord(reader.string("record"))
+        guard !destinations.isEmpty || recording != nil else {
+            throw invalid(
+                "stream_start needs a destination ('url' or 'destinations'), a 'record' path, or both — "
+                    + "with neither there is nothing to feed.")
+        }
 
         let noVideo = reader.bool("noVideo") ?? false
         let noAudio = reader.bool("noAudio") ?? false
@@ -170,6 +183,9 @@ struct StreamStartTool: Tool {
             duration = value
         }
 
+        // The track topology (noVideo/noAudio) is carried so a recording
+        // sink opens only the tracks the program has — the same reason the
+        // CLI's stream configuration carries it (CLI.md, "--record").
         let configuration = StreamConfiguration(
             width: width,
             height: height,
@@ -179,7 +195,9 @@ struct StreamStartTool: Tool {
             keyframeInterval: keyframeInterval,
             audioCodec: .aac,
             audioBitsPerSecond: audioBitrate,
-            audioSampleRate: audioSamplerate
+            audioSampleRate: audioSamplerate,
+            includesVideo: !noVideo,
+            includesAudio: !noAudio
         )
         let policy = StreamSession.Policy(
             reconnectAttempts: reconnect,
@@ -189,6 +207,7 @@ struct StreamStartTool: Tool {
         )
         return StreamRequest(
             destinations: destinations,
+            recording: recording,
             video: video,
             audio: audio,
             configuration: configuration,
@@ -199,13 +218,16 @@ struct StreamStartTool: Tool {
     /// Parses the destinations from either the `url`/`key` pair or the
     /// `destinations` array, validating each URL's scheme.
     ///
-    /// Exactly one of the two forms must be given: accepting both would leave
-    /// the order (and therefore each leg's identity) ambiguous.
+    /// At most one of the two forms may be given: accepting both would leave
+    /// the order (and therefore each leg's identity) ambiguous. **Neither is
+    /// legal too** — that is a record-only request, and `parse` enforces
+    /// that something (a destination or a recording) is configured.
     ///
     /// - Parameter reader: The `stream_start` arguments.
-    /// - Returns: The requested destinations, numbered by position.
-    /// - Throws: A ``ToolError`` with `invalidArgument` for a missing,
-    ///   duplicated, malformed, or unsupported destination.
+    /// - Returns: The requested destinations, numbered by position; empty
+    ///   when neither form was given.
+    /// - Throws: A ``ToolError`` with `invalidArgument` for a duplicated,
+    ///   malformed, or unsupported destination.
     private static func parseDestinations(_ reader: ArgumentReader) throws -> [RequestedDestination] {
         let single = reader.string("url")
         let list = reader.value("destinations")?.arrayValue
@@ -216,9 +238,7 @@ struct StreamStartTool: Tool {
         if let single {
             return [try makeDestination(url: single, key: reader.string("key"), index: 0)]
         }
-        guard let list else {
-            throw invalid("stream_start requires a string 'url', or a 'destinations' array of {url, key} objects.")
-        }
+        guard let list else { return [] }
         guard !list.isEmpty else {
             throw invalid("'destinations' is empty; name at least one destination to stream to.")
         }
@@ -247,6 +267,40 @@ struct StreamStartTool: Tool {
             throw invalid("The 'url' scheme '\(scheme)' is not supported; use rtmp://, rtmps://, or srt://.")
         }
         return RequestedDestination(id: "destination-\(index + 1)", url: url, streamKey: key)
+    }
+
+    /// Validates the `record` path and resolves it to a recording request.
+    ///
+    /// The path must be absolute, with a leading `~/` expanded against the
+    /// daemon's home — the operator's, since the daemon is a LaunchAgent in
+    /// their GUI session — as the one convenience (MCP.md, "Tool surface").
+    /// Anything else is refused: the daemon's working directory is
+    /// meaningless, and JSON has no shell to expand for the caller. The
+    /// extension is validated here (`mov`/`mp4`, the CLI's parse-time rule);
+    /// the coordinator resolves it against the output registry.
+    ///
+    /// - Parameter value: The `record` argument, if given.
+    /// - Returns: The validated recording request, or nil when absent.
+    /// - Throws: A ``ToolError`` with `invalidArgument` for a relative path
+    ///   or an unsupported extension.
+    private static func parseRecord(_ value: String?) throws -> RequestedRecording? {
+        guard let value else { return nil }
+        let url: URL
+        if value.hasPrefix("~/") {
+            url = URL.homeDirectory.appending(path: String(value.dropFirst(2)))
+        } else if value.hasPrefix("/") {
+            url = URL(filePath: value)
+        } else {
+            throw invalid(
+                "The 'record' path must be absolute or start with '~/': '\(value)'. The daemon has no "
+                    + "meaningful working directory to resolve a relative path against.")
+        }
+        let fileExtension = url.pathExtension.lowercased()
+        guard fileExtension == "mov" || fileExtension == "mp4" else {
+            throw invalid(
+                "The 'record' path must end in .mov or .mp4 — the extension selects the container: '\(value)'.")
+        }
+        return RequestedRecording(url: url, fileExtension: fileExtension)
     }
 
     /// Parses `WxH`, defaulting to 1920x1080.

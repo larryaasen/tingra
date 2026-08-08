@@ -16,6 +16,7 @@ import TingraHost
 import TingraMCP
 import TingraOutputPlugIns
 import TingraPlugInKit
+import TingraRecordingPlugIns
 
 /// `tingra-cli serve` — run the persistent engine process, the daemon (CLI.md
 /// and MCP.md). It owns the engine (session, pipeline, plug-ins, TCC
@@ -205,6 +206,7 @@ struct Serve: AsyncParsableCommand {
                 AVFoundationCapturePlugIn(),
                 GeneratorPlugIn(),
                 HaishinKitOutputPlugIn(),
+                RecordingPlugIn(),
                 ControlToolsPlugIn(coordinator: coordinator, inputs: inputs, outputs: outputs),
             ],
             in: context

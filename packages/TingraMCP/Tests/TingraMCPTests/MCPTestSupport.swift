@@ -126,6 +126,81 @@ struct MockProvider: StreamingServiceProvider {
     }
 }
 
+/// A recording service that records calls and can be told to refuse its
+/// start — the mock behind the recording seam for coordinator tests, so no
+/// test touches a disk or an encoder.
+final class MockRecordingService: RecordingService, Sendable {
+    /// The error the next ``start(to:)`` throws, if set.
+    private let startError: Mutex<RecordingServiceError?>
+
+    /// The file the last ``start(to:)`` opened, if any.
+    private let startedFile: Mutex<RecordingFile?>
+
+    /// How many times ``stop()`` was called.
+    private let stopCount = Mutex(0)
+
+    /// The events stream (a write failure can be injected through it).
+    private let eventStream: AsyncStream<RecordingServiceEvent>
+
+    /// Feeds ``eventStream``.
+    private let eventContinuation: AsyncStream<RecordingServiceEvent>.Continuation
+
+    /// Creates a mock, optionally refusing the first start.
+    init(startError: RecordingServiceError? = nil) {
+        self.startError = Mutex(startError)
+        self.startedFile = Mutex(nil)
+        (self.eventStream, self.eventContinuation) = AsyncStream.makeStream(of: RecordingServiceEvent.self)
+    }
+
+    var events: AsyncStream<RecordingServiceEvent> { eventStream }
+
+    func start(to file: RecordingFile) async throws {
+        if let error = startError.withLock({ value -> RecordingServiceError? in
+            defer { value = nil }
+            return value
+        }) {
+            throw error
+        }
+        startedFile.withLock { $0 = file }
+    }
+
+    func send(video frame: CapturedFrame) async {}
+
+    func send(audio buffer: CapturedAudio) async {}
+
+    func stop() async {
+        stopCount.withLock { $0 += 1 }
+        eventContinuation.finish()
+    }
+
+    /// The file the service was started to, or nil if it never opened.
+    var openedFile: RecordingFile? { startedFile.withLock { $0 } }
+
+    /// How many times the service was stopped.
+    var stops: Int { stopCount.withLock { $0 } }
+
+    /// Reports a terminal write failure (a full disk), the recording's one
+    /// mid-session event.
+    func reportWriteFailure(reason: String = "injected by a test") {
+        eventContinuation.yield(.failed(reason: reason))
+    }
+}
+
+/// A provider that hands out a fixed mock recording service — so a test can
+/// inspect the same service the coordinator drove.
+struct MockRecordingProvider: RecordingServiceProvider {
+    let id = OutputID(rawValue: "mock-recording")
+    let name = "Mock Recording"
+    let fileExtensions = ["mov", "mp4"]
+
+    /// The service every recording gets.
+    let service: MockRecordingService
+
+    func makeRecordingService(configuration: StreamConfiguration) -> any RecordingService {
+        service
+    }
+}
+
 /// Polls a condition until it holds or the deadline passes — the bounded
 /// wait tests use where task scheduling order is not deterministic.
 func poll(within seconds: Double = 2, _ condition: @Sendable () -> Bool) async -> Bool {

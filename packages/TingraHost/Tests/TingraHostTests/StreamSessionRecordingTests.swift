@@ -184,6 +184,41 @@ struct StreamSessionRecordingTests {
         #expect(recording.stops == 1)
     }
 
+    @Test("isRecordingOpen is true while the file is growing and false once it stops")
+    func isRecordingOpenTracksTheFile() async throws {
+        let clock = ManualClock()
+        let eventBus = EventBus()
+        let service = MockStreamingService()
+        let recording = MockRecordingService()
+        let session = try Self.makeSession(
+            service: service,
+            recording: recording,
+            recordingFile: Self.makeFile(),
+            clock: clock,
+            eventBus: eventBus,
+            policy: StreamSession.Policy(statsIntervalSeconds: 0)
+        )
+        // Nothing has opened before the run.
+        #expect(await session.isRecordingOpen == false)
+
+        let runTask = Task { try await session.run() }
+        _ = await eventually { service.starts.count == 1 }
+        #expect(await session.isRecordingOpen == true)
+
+        // A write failure closes the file while the stream runs on — the
+        // read `stream_status` keys its `recording` object's absence off
+        // (MCP.md, "Tool surface").
+        recording.reportFailure(reason: "disk full")
+        #expect(await eventually { await session.isRecordingOpen == false })
+
+        await session.stop()
+        let outcome = try await runTask.value
+        #expect(outcome == .stopRequested)
+        // Finalized on teardown, and still not open.
+        #expect(recording.stops == 1)
+        #expect(await session.isRecordingOpen == false)
+    }
+
     // MARK: - Record-only sessions (no destinations)
 
     /// Builds a record-only session: program streams in, a file out, and no

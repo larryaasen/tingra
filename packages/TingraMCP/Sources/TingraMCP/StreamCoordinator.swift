@@ -78,14 +78,38 @@ struct RequestedDestination: Sendable {
     let streamKey: String?
 }
 
+/// The local recording a `stream_start` call asked for with its `record`
+/// field: where the file goes, already expanded and validated by the tool.
+///
+/// The path is the caller's, verbatim (MCP.md, "Tool surface"): the daemon
+/// adds no filename policy, no date stamp, and no overwrite protection
+/// beyond the recording service's own. A recording path is not a secret and
+/// appears as-is in events and status.
+struct RequestedRecording: Sendable, Equatable {
+    /// The expanded, absolute file URL the recording writes to.
+    let url: URL
+
+    /// The lowercased path extension, which selects the container and the
+    /// recording provider (`mov`/`mp4`) — the same resolution the CLI's
+    /// `--record` uses.
+    let fileExtension: String
+}
+
 /// The fully resolved inputs to a stream, as the `stream_start` tool parsed
 /// and validated them from the MCP arguments before handing them to the
 /// coordinator.
 struct StreamRequest: Sendable {
     /// The destinations the one program fans out to, in the order requested.
     /// One session, N legs — the "one active stream" rule is unchanged
-    /// (MCP.md, "Sessions and concurrency").
+    /// (MCP.md, "Sessions and concurrency"). **Empty is legal when
+    /// ``recording`` is present**: a record-only session, the engine shape
+    /// "Recording in the app" made legal (ARCHITECTURE.md); the tool refuses
+    /// a request with neither.
     let destinations: [RequestedDestination]
+
+    /// The local recording the session writes alongside (or instead of)
+    /// streaming, or nil when `record` was not given.
+    let recording: RequestedRecording?
 
     /// Which input feeds the video side.
     let video: SideSelection
@@ -134,6 +158,11 @@ public actor StreamCoordinator {
         /// transient-key policy true — see
         /// ``RequestedDestination/streamKey`` and ``clear(id:)``.
         let destinations: [RequestedDestination]
+
+        /// Where the session's recording is written, or nil when none was
+        /// requested — what `stream_status`'s `recording` object reports
+        /// while the session's recording is open.
+        let recordingFile: RecordingFile?
     }
 
     /// The active stream, or nil when nothing is streaming.
@@ -198,7 +227,10 @@ public actor StreamCoordinator {
     }
 
     /// Whether a stream is currently active — the idle-exit guard reads this
-    /// so the daemon never idle-exits mid-stream (MCP.md, "Idle exit").
+    /// so the daemon never idle-exits mid-stream (MCP.md, "Idle exit"). A
+    /// record-only session counts: the guard's promise is "nothing streaming
+    /// **or recording**", and a session is a session whether its sinks are
+    /// destinations, a file, or both.
     public var isStreaming: Bool { active != nil }
 
     /// Starts a stream and returns its session id once media is flowing.
@@ -231,6 +263,7 @@ public actor StreamCoordinator {
         defer { startInProgress = false }
 
         let legs = try await makeDestinationLegs(request)
+        let (recordingService, recordingFile) = try await makeRecording(request)
         let videoInput = try await resolve(request.video, kind: .camera, defaultID: defaults.cameraID())
         let audioInput = try await resolve(request.audio, kind: .microphone, defaultID: defaults.microphoneID())
 
@@ -241,7 +274,9 @@ public actor StreamCoordinator {
             configuration: request.configuration,
             policy: request.policy,
             clock: clock,
-            eventBus: eventBus
+            eventBus: eventBus,
+            recording: recordingService,
+            recordingFile: recordingFile
         )
         let id = "stream-" + UUID().uuidString.prefix(8).lowercased()
 
@@ -281,7 +316,9 @@ public actor StreamCoordinator {
         // creation and this line, so the run task cannot reach the actor
         // before the install — which is what closes the window rather than
         // merely narrowing it.
-        active = Active(id: id, session: session, runTask: runTask, destinations: request.destinations)
+        active = Active(
+            id: id, session: session, runTask: runTask, destinations: request.destinations,
+            recordingFile: recordingFile)
 
         do {
             try await gate.wait()
@@ -308,7 +345,10 @@ public actor StreamCoordinator {
     /// "Status sink"). A fanned-out stream reports every leg under
     /// `destinations`; the flat top-level counters stay the **first**
     /// destination's, so a caller written against one destination reads the
-    /// same fields and never a synthesized average.
+    /// same fields and never a synthesized average. A session with a
+    /// recording reports it under `recording` while the file is open —
+    /// absent once it has finalized or failed, the same absence contract a
+    /// rejected leg has (MCP.md, "Tool surface").
     ///
     /// Throws a ``ToolError`` if the id does not name the active stream.
     func statusReport(sessionId: String) async throws -> JSONValue {
@@ -321,6 +361,12 @@ public actor StreamCoordinator {
         ]
         if let first = active.destinations.first {
             report["url"] = .string(first.url)
+        }
+        if let file = active.recordingFile, await active.session.isRecordingOpen {
+            report["recording"] = .object([
+                "path": .string(file.url.path),
+                "container": .string(file.container.rawValue),
+            ])
         }
 
         var legs: [JSONValue] = []
@@ -451,6 +497,36 @@ public actor StreamCoordinator {
             )
         }
         return legs
+    }
+
+    /// Resolves the requested recording to its service and file, or
+    /// `(nil, nil)` when the request has none.
+    ///
+    /// The file extension resolves against the same output registry the
+    /// streaming providers live in — recording is a plug-in like everything
+    /// else, and this is the same resolution the CLI's `--record` uses. A
+    /// registry with no provider for the extension is a `recordingFailed`
+    /// tool error, the analog of the CLI's exit-70-at-setup.
+    ///
+    /// - Parameter request: The parsed `stream_start` request.
+    /// - Returns: The recording service and its file, or `(nil, nil)`.
+    /// - Throws: A ``ToolError`` with `recordingFailed` when no recording
+    ///   output serves the extension.
+    private func makeRecording(_ request: StreamRequest) async throws
+        -> (service: (any RecordingService)?, file: RecordingFile?)
+    {
+        guard let recording = request.recording else { return (nil, nil) }
+        guard let provider = await outputs.recordingProvider(forFileExtension: recording.fileExtension) else {
+            throw ToolError(
+                identifier: .recordingFailed,
+                message:
+                    "No recording output serves '.\(recording.fileExtension)' files; record to a .mov "
+                    + "or .mp4 path."
+            )
+        }
+        let container: RecordingFile.Container = recording.fileExtension == "mp4" ? .mp4 : .mov
+        let file = RecordingFile(url: recording.url, container: container)
+        return (provider.makeRecordingService(configuration: request.configuration), file)
     }
 
     /// Resolves one side of the pipeline to an input, mapping selector

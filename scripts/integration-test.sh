@@ -346,14 +346,36 @@ echo "== Scenario: reconnect across a server outage"
     --json > "$OUT_DIR/reconnect.json" &
 stream_pid=$!
 sleep 8
+
+# Assert the stream is up before the outage, so a post-outage failure can
+# never be ambiguous about whether it was publishing in the first place.
+verify_before_ok=false
+if "$SIM" verify "live/$GOOD_KEY" | grep -q "codec_name=h264"; then
+    verify_before_ok=true
+fi
+report "the stream is publishing before the outage" "$verify_before_ok"
+
 "$SIM" stop
 sleep 3
 "$SIM" start
-sleep 10
+# The client only notices the outage when a socket operation errors, and the
+# kernel decides when that is — so detection, and the reconnect it triggers
+# (paced by --reconnect-delay), can land late. A one-shot verify after a
+# fixed wait races that timing (observed 2026-08-07: a run with no
+# stream.reconnecting events at the sample point, then a clean pass on the
+# adjacent run). Poll for the republished stream with a deadline instead:
+# the 20-second budget stays inside the stream's 35-second duration, and a
+# stream that cannot notice a dead server within it is a real defect this
+# check should still catch — the poll absorbs timing variance, not absence.
 verify_after_ok=false
-if "$SIM" verify "live/$GOOD_KEY" | grep -q "codec_name=h264"; then
-    verify_after_ok=true
-fi
+reconnect_deadline=$((SECONDS + 20))
+while ((SECONDS < reconnect_deadline)); do
+    if "$SIM" verify "live/$GOOD_KEY" | grep -q "codec_name=h264"; then
+        verify_after_ok=true
+        break
+    fi
+    sleep 1
+done
 report "the stream is publishing again after the outage" "$verify_after_ok"
 
 reconnect_exit_ok=false
@@ -373,17 +395,22 @@ echo "== Scenario: MCP daemon stream lifecycle (serve + socket client, verified 
 # Start the daemon on a private socket (idle-exit disabled for the test), then
 # drive it over the real socket with a minimal MCP client: initialize,
 # tools/list, devices_list, then the stream lifecycle (start/status/stop)
-# against the simulator with generators. This mirrors how an agent uses the
-# engine (MCP.md), end to end.
+# against the simulator with generators — with a recording riding alongside
+# (`record` on stream_start), and then a record-only session with no
+# destination at all (MCP.md, "Tool surface"). This mirrors how an agent uses
+# the engine (MCP.md), end to end; both files are verified with ffprobe after
+# the daemon shuts down.
 MCP_SOCK="$OUT_DIR/tingra.sock"
+MCP_REC_FILE="$OUT_DIR/mcp-recording.mp4"
+MCP_RECONLY_FILE="$OUT_DIR/mcp-record-only.mov"
 "$CLI" serve --socket "$MCP_SOCK" --idle-timeout 0 --json > "$OUT_DIR/serve.json" 2>&1 &
 serve_pid=$!
 for _ in $(seq 1 50); do [[ -S "$MCP_SOCK" ]] && break; sleep 0.1; done
 
-python3 - "$MCP_SOCK" "$RTMP_URL" "$GOOD_KEY" > "$OUT_DIR/mcp.out" 2>&1 <<'PY' &
+python3 - "$MCP_SOCK" "$RTMP_URL" "$GOOD_KEY" "$MCP_REC_FILE" "$MCP_RECONLY_FILE" > "$OUT_DIR/mcp.out" 2>&1 <<'PY' &
 import json, socket, sys, time
 
-sock_path, url, key = sys.argv[1], sys.argv[2], sys.argv[3]
+sock_path, url, key, rec, rec_only = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5]
 conn = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
 conn.connect(sock_path)
 stream = conn.makefile("rwb")
@@ -409,7 +436,7 @@ assert call("tools/call", {"name": "devices_list"})["result"]["isError"] is Fals
 
 start = call("tools/call", {"name": "stream_start", "arguments": {
     "url": url, "key": key, "videoGenerator": "bars", "audioGenerator": "tone",
-    "resolution": "640x360", "statsInterval": 2,
+    "resolution": "640x360", "statsInterval": 2, "record": rec,
 }})
 assert start["result"]["isError"] is False, start
 session_id = start["result"]["structuredContent"]["sessionId"]
@@ -417,9 +444,30 @@ print("STARTED", session_id, flush=True)
 
 time.sleep(9)
 status = call("tools/call", {"name": "stream_status", "arguments": {"sessionId": session_id}})
-print("STATUS", json.dumps(status["result"]["structuredContent"]), flush=True)
+content = status["result"]["structuredContent"]
+print("STATUS", json.dumps(content), flush=True)
+# The recording rides in status while the file is open.
+assert content["recording"]["path"] == rec, content
+assert content["recording"]["container"] == "mp4", content
 assert call("tools/call", {"name": "stream_stop", "arguments": {"sessionId": session_id}})["result"]["isError"] is False
 print("STOPPED", flush=True)
+
+# A record-only session: a recording and no destination at all.
+start = call("tools/call", {"name": "stream_start", "arguments": {
+    "record": rec_only, "videoGenerator": "bars", "audioGenerator": "tone",
+    "resolution": "640x360", "statsInterval": 0,
+}})
+assert start["result"]["isError"] is False, start
+session_id = start["result"]["structuredContent"]["sessionId"]
+time.sleep(4)
+status = call("tools/call", {"name": "stream_status", "arguments": {"sessionId": session_id}})
+content = status["result"]["structuredContent"]
+# No destination: no url, an empty destinations list, and the recording.
+assert "url" not in content, content
+assert content["destinations"] == [], content
+assert content["recording"]["path"] == rec_only, content
+assert call("tools/call", {"name": "stream_stop", "arguments": {"sessionId": session_id}})["result"]["isError"] is False
+print("RECORD_ONLY_STOPPED", flush=True)
 conn.close()
 PY
 client_pid=$!
@@ -441,10 +489,11 @@ report "MCP client round-trips initialize/devices_list/start/status/stop" "$clie
 mcp_flow_ok=false
 if grep -q '^STARTED ' "$OUT_DIR/mcp.out" \
     && grep -q '"state": "live"' "$OUT_DIR/mcp.out" \
-    && grep -q '^STOPPED' "$OUT_DIR/mcp.out"; then
+    && grep -q '^STOPPED' "$OUT_DIR/mcp.out" \
+    && grep -q '^RECORD_ONLY_STOPPED' "$OUT_DIR/mcp.out"; then
     mcp_flow_ok=true
 fi
-report "MCP lifecycle markers (started/live/stopped) observed" "$mcp_flow_ok"
+report "MCP lifecycle markers (started/live/stopped/record-only) observed" "$mcp_flow_ok"
 
 kill -INT "$serve_pid" 2> /dev/null || true
 shutdown_ok=false
@@ -458,6 +507,23 @@ if grep -q "$GOOD_KEY" "$OUT_DIR/serve.json"; then
     mcp_key_ok=false
 fi
 report "the stream key never appears in the daemon log" "$mcp_key_ok"
+
+# Both recordings are finalized by their stops, so they are verifiable once
+# the client is done — the same ffprobe checks the --record scenario uses.
+mcp_rec_codecs="$(ffprobe -v error -show_entries stream=codec_name -of default=noprint_wrappers=1:nokey=1 "$MCP_REC_FILE" 2>/dev/null || true)"
+mcp_rec_ok=false
+if grep -q '^h264$' <<< "$mcp_rec_codecs" && grep -q '^aac$' <<< "$mcp_rec_codecs"; then
+    mcp_rec_ok=true
+fi
+report "the MCP-started recording contains H.264 and AAC tracks (ffprobe)" "$mcp_rec_ok"
+
+mcp_reconly_duration="$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$MCP_RECONLY_FILE" 2>/dev/null || echo 0)"
+mcp_reconly_ok=false
+# The record-only session ran about 4 seconds before its stop.
+if awk -v d="$mcp_reconly_duration" 'BEGIN { exit !(d >= 2 && d <= 8) }'; then
+    mcp_reconly_ok=true
+fi
+report "the record-only session wrote a playable file (~4s, got ${mcp_reconly_duration}s)" "$mcp_reconly_ok"
 
 echo
 if [[ $failures -gt 0 ]]; then

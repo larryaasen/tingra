@@ -1151,6 +1151,126 @@ or two in the doc that owns them — none need a rewrite.
 
 ## Decisions to settle
 
+- [x] **MCP recording control — decided and recorded 2026-08-06, go-ahead
+  given 2026-08-07 with record-only included, and built the same day**
+  (recorded in MCP.md, "Tool surface" and "Sessions and concurrency", and
+  CLI.md, "`tingra-cli serve` and `tingra-cli mcp`"). The scoping call for the iteration after
+  recording-in-the-app, picked over the other three deferrals that record left
+  named (per-destination compression settings, a record button on multiview,
+  recording something other than program): it is the oldest standing deferral
+  (2026-07-05), the one whose blocking question the last iteration answered,
+  and the one that completes the recording story across all three surfaces —
+  CLI (step 5), app (2026-08-06), and now the agent.
+
+  **The shape: the `record` field on `stream_start`, exactly as the 2026-07-05
+  record planned — not a `record_start`/`record_stop` pair.** The field is a
+  file path; the extension selects the container through the same
+  `OutputRegistry.recordingProvider(forFileExtension:)` resolution the CLI and
+  the app use (any other extension: `invalidArgument`, the exit-64 analog). No
+  tool pair, because the coordinator owns one engine session whose sinks are
+  configured at start — a recording is a property of the session, not an
+  independent lifecycle; mid-show record control is the app's surface, where a
+  human sits. If an agent ever needs the pair, it reuses the app's
+  second-session shape and the coordinator generalizes then, not now.
+
+  **The identity question, answered.** The daemon is a LaunchAgent bootstrapped
+  into the operator's GUI session (`gui/$UID` — MCP.md, "Lifecycle"), so a file
+  it writes is created under the operator's own uid and home exactly as an
+  app-written file is; there is no other identity for it to write under. What
+  the 2026-07-05 deferral was actually protecting is **location**:
+  Desktop/Documents/Downloads are TCC-protected, and a files-and-folders prompt
+  raised by a headless tool call can appear with nobody at the screen. The
+  answer is guidance, not enforcement — recommend `~/Movies` (unprotected, the
+  app's default for the same reasons) and let a TCC-refused location surface as
+  the same `recordingFailed` any unwritable path does, because the operator's
+  agent carries the operator's own authority just as their shell running
+  `stream --record` does, and a folder allowlist would be a policy the CLI does
+  not have and no one owns.
+
+  **The path contract.** Absolute paths only, with a leading `~/` expanded
+  against the daemon's home as the one convenience (anything else is
+  `invalidArgument` — the daemon's working directory is meaningless; JSON has
+  no shell to expand for the caller). The daemon adds no filename policy, no
+  date stamp, and no overwrite protection beyond the service's own — the path
+  is the caller's, verbatim; the app's never-overwrite rule stays the app's. A
+  recording path is not a secret (CLI.md already says so) and appears as-is.
+
+  **Failure semantics inherited through the seam.** A recording that cannot
+  open fails `stream_start` (`recordingFailed`) before anything connects — the
+  CLI's exit-70-at-setup analog — including the five-minute free-space floor,
+  which lives in the service's `start(to:)` and so costs this iteration
+  nothing. A write failure once rolling is reported and the stream carries on.
+  `stream_stop` and every other teardown path finalize the file, as
+  `StreamSession` already guarantees.
+
+  **`stream_status` gains an optional `recording` object** (`path`,
+  `container`) — present while the recording is open, absent once it has
+  finalized or failed, the rejected-leg absence contract applied to the
+  recording. Additive, camelCase, round-trip tested. No new events:
+  `recording.started`/`recording.stopped` already broadcast through the status
+  sink, and the session `label` stays nil for the daemon.
+
+  **The one sub-question, answered at the go-ahead — record-only sessions are
+  in** (Larry, 2026-08-07): `stream_start` with `record` and no destination
+  starts a record-only session. The engine has allowed it since the
+  `connectLegs()` guard changed; it occupies the one engine session (a
+  conflicting `stream_start` gets the same structured error); the idle-exit
+  guard already reads "nothing streaming or recording"; and a recording
+  failure ends it (`stream.stopped`, `reason: recordingFailed` — the reason
+  CLI.md documents as unreachable from the CLI, reachable here). Refusing it
+  in the daemon would have been a policy with no owner: the CLI's `--url`
+  requirement is its stream-shaped exit-code contract, which a structured
+  tool result does not share. `stream_start` with neither a destination nor
+  `record` stays an `invalidArgument`.
+
+  **What this deliberately does not touch.** No `TingraPlugInKit` change, no
+  document change and so **no version bump**, no new events, no CLI behavior
+  change (`stream` still requires `--url`), keys stay transient in the daemon.
+  CLI.md's "not reachable from the CLI" note on the `recordingFailed` stop
+  reason gains the daemon when this builds.
+
+  **What has to prove it.** `TingraMCP` tests: `record` input parsing (tilde
+  expansion, relative-path rejection, bad extension), the coordinator opening
+  and finalizing the recording on every teardown path over mocks, record-only
+  start and its conflict error, the setup-failure path failing the tool call,
+  and the `stream_status` `recording` shape round-trip. `integration-test.sh`:
+  the MCP scenario gains a recording verified with `ffprobe` (the step-5
+  recording checks over the socket path) — run once, by Larry.
+
+  **Built and verified 2026-08-07, with one addition the build surfaced.**
+  The status contract needed a truth to read: "present while open, absent
+  once finalized or failed" is the session's state, not deducible from event
+  order, so `StreamSession` gained **`isRecordingOpen`** — a read-only
+  accessor over the existing `recordingStarted` flag and a new
+  write-failure flag (set where `recordingFailed` is reported; kept apart
+  because `recordingStarted` deliberately stays set so teardown still
+  finalizes). That is the one host change, additive, and the mock recording
+  seam drives it in tests. Everything else landed as recorded: the `record`
+  field and its parse rules (tilde expansion, absolute-only, `mov`/`mp4`) in
+  `StreamStartTool` — which also began carrying `includesVideo`/`includesAudio`
+  into the configuration, the CLI's track-topology rule the tool had not
+  needed until a recording sink could open tracks; the coordinator's
+  provider resolution (`recordingFailed` on a registry miss), record-only
+  legality, and the `recording` status object; and the daemon now activates
+  `RecordingPlugIn` (it was never loaded by `serve` before). Tests:
+  `TingraHost` 98 → 99 (`isRecordingOpen` across open, write failure, and
+  finalize), `TingraMCP` 61 → 75 (seven parse cases, seven coordinator cases
+  over the new mock recording provider), `tingra-cli` 85 unchanged —
+  **889 across 13 targets**, warning-clean (packages and the app build),
+  `check-format` clean. `integration-test.sh` extended in place: the MCP
+  scenario now records alongside its stream (`record` on `stream_start`,
+  status assertions, ffprobe H.264 + AAC) and then runs a **record-only**
+  session (no `url` in status, empty `destinations`, ffprobe ~4 s duration)
+  — and the reconnect-outage scenario was **hardened after Larry's first run
+  flaked exactly there** (2 of its checks; every recording check passed, and
+  the adjacent solo run passed 39/39): the post-outage verify is now a
+  20-second deadline poll instead of one fixed-wait sample, because the
+  client only notices the outage when a socket operation errors and the
+  kernel decides when that is — the poll absorbs timing variance while a
+  detection that never comes still fails; a pre-outage verify was added so a
+  future failure cannot be ambiguous about whether the stream was ever up.
+  The baseline becomes **40 checks / 11 scenarios**, pending Larry's run.
+
 - [x] **Recording in the app — decided and recorded 2026-08-06, go-ahead given
   and built the same day** (the full record is in ARCHITECTURE.md, "Recording
   in the app"). The scoping call for the first iteration after step 9
