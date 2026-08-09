@@ -28,6 +28,20 @@ struct TingraApp: App {
     /// (see ``AppearanceModel``).
     @State private var appearance = AppearanceModel()
 
+    /// Whether the windows carry a status bar, owned for the app's lifetime
+    /// so the General settings pane's checkbox reaches every window at once
+    /// (see ``StatusBarModel``).
+    @State private var statusBar = StatusBarModel()
+
+    /// Whether the main window's sidebar is showing — the split view's own
+    /// state, held here so the View menu's Show/Hide Sidebar item can read and
+    /// write it (see ``SidebarVisibilityCommands``).
+    ///
+    /// It starts at `.all` rather than `.automatic` for one reason: the menu
+    /// item's title has to say *show* or *hide*, and `.automatic` is neither —
+    /// it is "let the system decide", which the item cannot print.
+    @State private var sidebarVisibility: NavigationSplitViewVisibility = .all
+
     /// The delegate that holds quitting open until a recording in flight is
     /// finalized (see ``TingraAppDelegate``).
     @NSApplicationDelegateAdaptor(TingraAppDelegate.self) private var appDelegate
@@ -50,13 +64,24 @@ struct TingraApp: App {
     /// reimplement (see ``SidebarView``). The detail column keeps the minimum
     /// size the production surfaces need, so the sidebar's own minimum widens
     /// the window rather than squeezing them.
+    ///
+    /// The **status bar** rides on the detail column rather than under the
+    /// whole split view, which is where every macOS window that has both puts
+    /// it: a sidebar's material runs the full height of the window, so a bar
+    /// drawn across the bottom of it would cut the one surface the system draws
+    /// for us (see ``SidebarView``). A bottom safe-area inset rather than a
+    /// row in the stack, so it stays put while the production surfaces scroll
+    /// (``StatusBarView``).
     var body: some Scene {
         WindowGroup {
-            NavigationSplitView {
+            NavigationSplitView(columnVisibility: $sidebarVisibility) {
                 SidebarView(model: model)
             } detail: {
                 ContentView(model: model)
                     .frame(minWidth: 640, minHeight: 480)
+                    .safeAreaInset(edge: .bottom, spacing: 0) {
+                        StatusBarView(model: model, statusBar: statusBar)
+                    }
             }
             .task {
                 appDelegate.model = model
@@ -64,7 +89,9 @@ struct TingraApp: App {
             }
         }
         .commands {
+            SidebarVisibilityCommands(model: model, visibility: $sidebarVisibility)
             MultiviewCommands(model: model)
+            StatusBarCommands(model: model, statusBar: statusBar)
             SettingsCommands(model: model)
         }
 
@@ -82,7 +109,7 @@ struct TingraApp: App {
             ),
             id: Self.multiviewWindowID
         ) {
-            MultiviewView(model: model)
+            MultiviewView(model: model, statusBar: statusBar)
                 .frame(minWidth: 640, minHeight: 400)
         }
 
@@ -102,13 +129,14 @@ struct TingraApp: App {
             String(localized: "Settings", comment: "Title of the settings window"),
             id: Self.settingsWindowID
         ) {
-            SettingsView(model: model, appearance: appearance)
+            SettingsView(model: model, appearance: appearance, statusBar: statusBar)
         }
         .windowResizability(.contentMinSize)
     }
 }
 
-/// Holds quitting open until a recording in flight has been finalized.
+/// Holds quitting open until a recording in flight has been finalized, and
+/// turns off the window tabbing this app has no use for.
 ///
 /// SwiftUI gives a scene no async hook that runs before the process exits, and
 /// a recording that is not finalized is an **unplayable file** — the one piece
@@ -121,6 +149,25 @@ struct TingraApp: App {
 final class TingraAppDelegate: NSObject, NSApplicationDelegate {
     /// The engine model, handed over once the main window's task runs.
     var model: EngineModel?
+
+    /// Turns off automatic window tabbing, before any window exists.
+    ///
+    /// That single line is what removes **Show Tab Bar** and **Show All Tabs**
+    /// from the View menu: AppKit contributes both to every app whose windows
+    /// can be tabbed, and they are the only two items in Tingra's View menu
+    /// that do nothing an operator wants. Tabbing production windows together
+    /// is not a workflow this app has — the main window is one per show, and
+    /// multiview's whole point is to sit on a *second display*, which is the
+    /// opposite of being folded into a tab beside the window it monitors.
+    ///
+    /// It belongs in `applicationWillFinishLaunching` rather than
+    /// `applicationDidFinishLaunching`: the setting is read as each window is
+    /// created, and by "did" the first window already exists.
+    ///
+    /// - Parameter notification: The launch notification (unused).
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        NSWindow.allowsAutomaticWindowTabbing = false
+    }
 
     /// Lets a quit through immediately unless a recording is open, in which
     /// case the file is finalized first.
@@ -162,6 +209,127 @@ struct MultiviewCommands: Commands {
                 Text("Multiview", comment: "Title of the multiview monitoring window, and its View-menu command")
             }
             .keyboardShortcut("m", modifiers: [.command, .option])
+        }
+    }
+}
+
+/// The View-menu command that shows or hides the **main window's** sidebar,
+/// ⌃⌘S — the standard macOS item, in the standard place, with the standard key.
+///
+/// **Written rather than taken, after taking it was measured and rejected.**
+/// SwiftUI ships `SidebarCommands()`, which is the obvious answer and was the
+/// first one tried. Against this app it did two wrong things (verified
+/// 2026-08-08 on a clean build): its ⌃⌘S collapsed the **settings** window's
+/// source list — the one sidebar in the app that must never collapse, since it
+/// is that window's only navigation — and once the settings window existed it
+/// stopped reaching the main window at all, while its title stayed on "Show
+/// Sidebar" with the sidebar plainly showing. A command that aims at the wrong
+/// window and mislabels itself is worse than one written here, because both
+/// failures are silent.
+///
+/// Driving ``TingraApp/sidebarVisibility`` directly fixes all of it: the item
+/// can only ever mean the main window, the title is read from the same state
+/// the split view draws from, and the toolbar's own toggle writes that state
+/// too — so the button and the menu item cannot disagree.
+///
+/// The title flips, Show to Hide, for the reason ``StatusBarCommands`` records:
+/// a menu item says what choosing it will *do*.
+struct SidebarVisibilityCommands: Commands {
+    /// The engine model, for the command's `tap` event.
+    let model: EngineModel
+
+    /// The main window's split-view column visibility.
+    @Binding var visibility: NavigationSplitViewVisibility
+
+    /// Whether the sidebar is on screen. Anything but `detailOnly` shows it —
+    /// a two-column split view has more than one way to say "both columns",
+    /// and only one way to say "just the detail".
+    private var isShowing: Bool {
+        visibility != .detailOnly
+    }
+
+    /// The one View-menu item, in the slot macOS reserves for it.
+    var body: some Commands {
+        CommandGroup(after: .sidebar) {
+            Button {
+                model.eventBus.tap(
+                    "sidebar.menuItem",
+                    domain: .platform,
+                    params: ["visible": .bool(!isShowing)]
+                )
+                visibility = isShowing ? .detailOnly : .all
+            } label: {
+                Label {
+                    if isShowing {
+                        Text("Hide Sidebar", comment: "View menu item that hides the main window's sidebar")
+                    } else {
+                        Text("Show Sidebar", comment: "View menu item that shows the main window's sidebar")
+                    }
+                } icon: {
+                    Image(systemName: "sidebar.leading")
+                }
+            }
+            .keyboardShortcut("s", modifiers: [.command, .control])
+        }
+    }
+}
+
+/// The View-menu command that shows or hides the status bar.
+///
+/// **The title flips rather than carrying a checkmark** — Show Status Bar when
+/// it is off, Hide Status Bar when it is on. That is the macOS convention for
+/// this exact item (the Finder's and Safari's View menus both do it), and it
+/// reads as an instruction the way a menu item should: the item says what
+/// choosing it will do, not what is currently true. The General settings row is
+/// a checkbox for the opposite reason — a settings row states the current
+/// state.
+///
+/// It sits in the View menu at `CommandGroupPlacement.sidebar`, directly after
+/// the Show/Hide Sidebar item (``SidebarVisibilityCommands``) — the Finder's
+/// arrangement — and takes **⌘/**, the Finder's and Safari's
+/// assignment for the status bar and free in Tingra. The key comes from
+/// ``ProductionShortcut/toggleStatusBar`` rather than being spelled here, so
+/// the Shortcuts settings pane cannot print a shortcut this item does not bind.
+///
+/// **The dividers are not decoration.** They put the item in a section of its
+/// own, which is both the Finder's layout and the only way it lines up: an
+/// AppKit menu section indents every item past an icon column as soon as *one*
+/// item in it has an icon, and the neighbours on both sides have one (Hide
+/// Sidebar above, Enter Full Screen below). Merging it into Multiview's section
+/// instead was tried and is worse — that indents both.
+///
+/// It drives the same ``StatusBarModel`` the settings checkbox writes, so the
+/// two can never disagree and either one persists the choice.
+struct StatusBarCommands: Commands {
+    /// The engine model, for the command's `tap` event.
+    let model: EngineModel
+
+    /// Whether the status bar is shown.
+    let statusBar: StatusBarModel
+
+    /// The one View-menu item, in a section of its own (see the type's note on
+    /// placement).
+    var body: some Commands {
+        CommandGroup(after: .sidebar) {
+            Divider()
+
+            Button {
+                model.eventBus.tap(
+                    "statusBar.menuItem",
+                    domain: .platform,
+                    params: ["visible": .bool(!statusBar.isVisible)]
+                )
+                statusBar.isVisible.toggle()
+            } label: {
+                if statusBar.isVisible {
+                    Text("Hide Status Bar", comment: "View menu item that hides the window status bar")
+                } else {
+                    Text("Show Status Bar", comment: "View menu item that shows the window status bar")
+                }
+            }
+            .keyboardShortcut(ProductionShortcut.toggleStatusBar.shortcut)
+
+            Divider()
         }
     }
 }

@@ -79,8 +79,10 @@ struct ContentView: View {
     /// row's key at once.
     @State private var streamKeys: [ProjectDestinationID: String] = [:]
 
-    /// The padding around the window's column of surfaces.
-    private static let columnPadding: CGFloat = 20
+    /// The padding around the window's column of surfaces. Read by
+    /// ``StatusBarView`` too, so the bar's readings line up with the panel
+    /// headings above them.
+    static let columnPadding: CGFloat = 20
 
     /// The gap between stacked surfaces — and, in the monitoring section,
     /// between the input grid and the monitors and between the two monitors.

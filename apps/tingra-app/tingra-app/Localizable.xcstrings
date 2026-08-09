@@ -938,6 +938,40 @@
         }
       }
     },
+    "Hide Sidebar" : {
+      "comment" : "View menu item that hides the main window's sidebar",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seitenleiste ausblenden"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ocultar barra lateral"
+          }
+        }
+      }
+    },
+    "Hide Status Bar" : {
+      "comment" : "View menu item that hides the window status bar",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Statusleiste ausblenden"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ocultar barra de estado"
+          }
+        }
+      }
+    },
     "Idle" : {
       "comment" : "Recording status: not recording\nStream status: not streaming",
       "localizations" : {
@@ -1075,7 +1109,7 @@
       }
     },
     "Live" : {
-      "comment" : "Per-destination state: this destination is publishing",
+      "comment" : "Per-destination state: this destination is publishing\nStatus bar reading: the program is on air",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1774,6 +1808,40 @@
         }
       }
     },
+    "Not recording" : {
+      "comment" : "Status bar reading: nothing is being recorded",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Aufnahme"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sin grabación"
+          }
+        }
+      }
+    },
+    "Not streaming" : {
+      "comment" : "Status bar reading: the program is not on air",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kein Streaming"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sin transmisión"
+          }
+        }
+      }
+    },
     "Opacity" : {
       "comment" : "Layer opacity slider label",
       "localizations" : {
@@ -1945,7 +2013,7 @@
       }
     },
     "Recording" : {
-      "comment" : "Section heading over the recording folder and Record control",
+      "comment" : "Section heading over the recording folder and Record control\nStatus bar reading: the program is being written to a file",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1957,6 +2025,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Grabación"
+          }
+        }
+      }
+    },
+    "Recording error" : {
+      "comment" : "Status bar reading: the recording could not start or could not continue",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufnahmefehler"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Error de grabación"
           }
         }
       }
@@ -2284,6 +2369,74 @@
         }
       }
     },
+    "Show or Hide Status Bar" : {
+      "comment" : "Shortcuts settings: name of the ⌘/ action",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Statusleiste ein- oder ausblenden"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostrar u ocultar la barra de estado"
+          }
+        }
+      }
+    },
+    "Show Sidebar" : {
+      "comment" : "View menu item that shows the main window's sidebar",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seitenleiste einblenden"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostrar barra lateral"
+          }
+        }
+      }
+    },
+    "Show Status Bar" : {
+      "comment" : "General settings: checkbox showing or hiding the bar across the bottom of the windows\nView menu item that shows the window status bar",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Statusleiste einblenden"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostrar barra de estado"
+          }
+        }
+      }
+    },
+    "Shows or hides the bar reporting recording and streaming across the bottom of the window." : {
+      "comment" : "Shortcuts settings: what the status bar shortcut does",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Blendet die Leiste am unteren Fensterrand ein oder aus, die Aufnahme und Streaming meldet."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Muestra u oculta la barra en la parte inferior de la ventana que informa de la grabación y la transmisión."
+          }
+        }
+      }
+    },
     "Stage on preview" : {
       "comment" : "Tooltip on an input tile that stages it on preview",
       "localizations" : {
@@ -2484,6 +2637,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Transmisión"
+          }
+        }
+      }
+    },
+    "Streaming error" : {
+      "comment" : "Status bar reading: the stream could not start or could not continue",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Streamingfehler"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Error de transmisión"
           }
         }
       }

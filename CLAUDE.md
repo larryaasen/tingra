@@ -55,7 +55,8 @@ packages/                       # Engine libraries
                                 #   first-party control tools (no third-party dependency)
   (UI packages)                 # Phase 2 — arrive once the engine is proven
 docs/                           # The project documentation set (ARCHITECTURE.md, GLOSSARY.md, CLI.md,
-                                #   SIMULATOR.md, CLOCK.md, EVENTS.md, MCP.md, TODO.md) and screenshots
+                                #   SIMULATOR.md, CLOCK.md, EVENTS.md, MCP.md, TYPES.md, TODO.md)
+                                #   and screenshots
 scripts/                        # Formatting scripts (format-swift.sh, check-format.sh) and the
                                 #   streaming integration tests (integration-test.sh)
 .github/workflows/              # GitHub Actions CI (ci.yml, integration.yml; see Toolchain & CI)
@@ -66,7 +67,7 @@ The package names are **finalized** (reviewed 2026-07-03; also recorded in "Repo
 **Key facts:**
 - Within each package's or app's `Sources/`, keep files flat by default; use a named subdirectory only for features with **more than one UI or implementation file**. Do not create generic folders like `Views/`, `Components/`, or `Helpers/`.
 - `packages/` holds local SPM library packages (the engine); `apps/` holds the runnable products (`tingra-cli`, `ingest-simulator`, and the phase-3 `tingra-app`) that consume them.
-- Companion docs, each authoritative for its area: [README.md](README.md) (project overview), [ARCHITECTURE.md](docs/ARCHITECTURE.md) (technical plan and engine design), [GLOSSARY.md](docs/GLOSSARY.md) (canonical vocabulary), [CLI.md](docs/CLI.md) (`tingra-cli` spec), [SIMULATOR.md](docs/SIMULATOR.md) (local RTMP/SRT test server), [CLOCK.md](docs/CLOCK.md) (master clock, program tick, and A/V sync model), [EVENTS.md](docs/EVENTS.md) (event bus, sinks, and logging/redaction policy), [MCP.md](docs/MCP.md) (engine daemon, socket transport, and the agent-facing MCP server).
+- Companion docs, each authoritative for its area: [README.md](README.md) (project overview), [ARCHITECTURE.md](docs/ARCHITECTURE.md) (technical plan and engine design), [GLOSSARY.md](docs/GLOSSARY.md) (canonical vocabulary), [CLI.md](docs/CLI.md) (`tingra-cli` spec), [SIMULATOR.md](docs/SIMULATOR.md) (local RTMP/SRT test server), [CLOCK.md](docs/CLOCK.md) (master clock, program tick, and A/V sync model), [EVENTS.md](docs/EVENTS.md) (event bus, sinks, and logging/redaction policy), [MCP.md](docs/MCP.md) (engine daemon, socket transport, and the agent-facing MCP server), [TYPES.md](docs/TYPES.md) (every public type, package by package).
 - **Vocabulary is not optional.** Use [GLOSSARY.md](docs/GLOSSARY.md) terms exactly — in code, comments, commit messages, and UI text: `input`, `generator`, `shot`, `preset`, `project`, `program`, `preview`, `compression`, `output`, `destination`, `plug-in` (always hyphenated), `host`, `registry`. Never use terminology (`source`, `scene`, `encoder`, `ingest`, `egress`) except at an explicit external protocol boundary (e.g., an RTSP "source" stays a source in that protocol's own terms).
 - `AGENTS.md` is a pointer to this file and should not be edited separately.
 
@@ -329,8 +330,9 @@ Before completing a swap, verify:
 - **Every type, property, method, and function gets a doc comment (`///`) — public, internal, and private alike.** Public API gets full API-reference treatment (purpose, parameters, thrown errors); private helpers still get at least a brief `///` stating what they do and why they exist. Access level is never a reason to skip documentation.
 - All properties and methods in the host/core, plug-in protocol, and feature plug-in packages should be clearly documented.
 - Keep inline comments focused on "why" not "what".
-- Update relevant documentation ([README.md](README.md), [ARCHITECTURE.md](docs/ARCHITECTURE.md), [GLOSSARY.md](docs/GLOSSARY.md), [CLI.md](docs/CLI.md), [SIMULATOR.md](docs/SIMULATOR.md)) when making architectural changes; keep [README.md](README.md) reflecting the current state and intended usage.
-- **[README.md](README.md) lists every package and app** with a one-line description, and under each, **every public type** with a one-liner. Update that listing in the same change whenever a package, app, or public type is added, renamed, or removed — it must never drift from the code.
+- Update relevant documentation ([README.md](README.md), [TYPES.md](docs/TYPES.md), [ARCHITECTURE.md](docs/ARCHITECTURE.md), [GLOSSARY.md](docs/GLOSSARY.md), [CLI.md](docs/CLI.md), [SIMULATOR.md](docs/SIMULATOR.md)) when making architectural changes; keep [README.md](README.md) reflecting the current state and intended usage.
+- **[TYPES.md](docs/TYPES.md) lists every public type** in the monorepo, package by package, each with a one-liner. Update that listing in the same change whenever a public type is added, renamed, or removed — it must never drift from the code. An app exposes no public API beyond its `@main` entry, so an app's entry lists the internal surface a reader needs to navigate the target instead.
+- **[README.md](README.md) lists every package and app** with a paragraph saying what it is and why it exists, ending in a `**Types:**` link into [TYPES.md](docs/TYPES.md). Add that pair in the same change whenever a package or app is added; the README says what each piece *is*, TYPES.md says what is *in* it, and the type listing itself does not belong in the README.
 - Update [GLOSSARY.md](docs/GLOSSARY.md) if you introduce new user-facing vocabulary.
 - Never reference "the Tingra plan" — the pre-repo planning document that guided this repo's creation is not part of the repo. Cite the in-repo docs (ARCHITECTURE.md, etc.) instead.
 - Use clear, descriptive variable and function names that reduce need for comments.

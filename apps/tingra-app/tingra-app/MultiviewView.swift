@@ -34,7 +34,15 @@ struct MultiviewView: View {
     /// The engine model — read only: multiview changes nothing.
     let model: EngineModel
 
-    /// Program and preview across the top, the input tiles beneath.
+    /// Whether this window carries a status bar (``StatusBarModel``).
+    let statusBar: StatusBarModel
+
+    /// Program and preview across the top, the input tiles beneath, over the
+    /// same status bar the main window carries.
+    ///
+    /// The bar earns its place here more than anywhere: a multiview on a
+    /// second display is often the only surface an operator is looking at, and
+    /// it had no way at all to say the program was on air or being recorded.
     var body: some View {
         VStack(spacing: 12) {
             HStack(spacing: 12) {
@@ -58,5 +66,8 @@ struct MultiviewView: View {
         }
         .padding()
         .background(.background)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            StatusBarView(model: model, statusBar: statusBar)
+        }
     }
 }

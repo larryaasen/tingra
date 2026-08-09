@@ -15,18 +15,28 @@ import Testing
 @MainActor
 @Suite("ProductionShortcut")
 struct ProductionShortcutTests {
-    @Test("the pane lists six shortcuts — the five most common, plus the take")
-    func theListIsTheFiveCommonOnesPlusTheTake() {
-        #expect(ProductionShortcut.allCases.count == 6)
+    @Test("the pane lists seven shortcuts — the five most common, the take, and the status bar")
+    func theListIsTheFiveCommonOnesPlusTheTakeAndTheStatusBar() {
+        #expect(ProductionShortcut.allCases.count == 7)
         #expect(ProductionShortcut.allCases.contains(.take))
-        #expect(Set(ProductionShortcut.allCases).count == 6)
+        #expect(ProductionShortcut.allCases.contains(.toggleStatusBar))
+        #expect(Set(ProductionShortcut.allCases).count == 7)
     }
 
-    @Test("the list reads stage, then the two takes, then the program controls")
+    @Test("the list reads stage, the two takes, the program controls, then the window command")
     func theCaseOrderIsTheReadingOrder() {
         #expect(
-            ProductionShortcut.allCases == [.stageShot, .cut, .take, .fadeToBlack, .goLive, .record]
+            ProductionShortcut.allCases == [
+                .stageShot, .cut, .take, .fadeToBlack, .goLive, .record, .toggleStatusBar,
+            ]
         )
+    }
+
+    @Test("the status bar is ⌘/ — the Finder's and Safari's assignment for it")
+    func theStatusBarIsCommandSlash() {
+        #expect(ProductionShortcut.toggleStatusBar.key?.character == "/")
+        #expect(ProductionShortcut.toggleStatusBar.modifiers == .command)
+        #expect(ProductionShortcut.toggleStatusBar.symbol == "⌘/")
     }
 
     @Test("the take is ⌘Return — the industry's take key, not ⌘T")
@@ -49,6 +59,7 @@ struct ProductionShortcutTests {
         #expect(ProductionShortcut.fadeToBlack.symbol == "⇧⌘B")
         #expect(ProductionShortcut.goLive.symbol == "⌘G")
         #expect(ProductionShortcut.record.symbol == "⌘R")
+        #expect(ProductionShortcut.toggleStatusBar.symbol == "⌘/")
     }
 
     @Test("modifier glyphs are printed in the system's order, Shift before Command")

@@ -39,17 +39,23 @@ import SwiftUI
 /// taken in its ⌘ form — which is also the form the two native Apple apps in
 /// the survey, MixEffect and Ecamm Live, already use.
 ///
-/// The shortcuts are attached to the controls themselves rather than to menu
-/// items, following the Fade to Black button that already carried ⇧⌘B: a
-/// shortcut bound to the real control inherits the control's disabled state
-/// (Take is dead while nothing is staged) and its state (Start Streaming
+/// The production shortcuts are attached to the controls themselves rather
+/// than to menu items, following the Fade to Black button that already carried
+/// ⇧⌘B: a shortcut bound to the real control inherits the control's disabled
+/// state (Take is dead while nothing is staged) and its state (Start Streaming
 /// carries the stream keys the operator has typed but not yet submitted),
 /// where a parallel menu command would have to reconstruct both and could
 /// drift from them. The Shortcuts settings tab is the discovery surface.
 ///
+/// ``toggleStatusBar`` is the one exception, and it proves the rule rather than
+/// bending it: window chrome has no control to hang a shortcut on, so it rides
+/// the View-menu item (``StatusBarCommands``) — which binds *this* case, so the
+/// pane and the menu bar still cannot disagree.
+///
 /// **The case order is the reading order** the Shortcuts pane prints, so the
 /// pane needs no list of its own: stage a shot, take it (instantly or over the
-/// armed transition), take the program down, then the two session controls.
+/// armed transition), take the program down, the two session controls, then the
+/// one window command.
 enum ProductionShortcut: String, CaseIterable, Sendable {
     /// Stage the *n*th shot of the switcher on preview — ⌘1 through ⌘9.
     case stageShot
@@ -70,6 +76,11 @@ enum ProductionShortcut: String, CaseIterable, Sendable {
 
     /// Start or stop recording the program to a local file — ⌘R.
     case record
+
+    /// Show or hide the window's status bar — ⌘/. The one window command in
+    /// the list: it has no control of its own, so the View-menu item binds it
+    /// (see the type's note above).
+    case toggleStatusBar
 
     /// The highest shot position that gets a shortcut — ⌘1 through ⌘9,
     /// stopping short of ⌘0 so the digit and the position never disagree.
@@ -108,13 +119,14 @@ enum ProductionShortcut: String, CaseIterable, Sendable {
         case .fadeToBlack: "b"
         case .goLive: "g"
         case .record: "r"
+        case .toggleStatusBar: "/"
         }
     }
 
     /// The modifiers held with ``key``.
     var modifiers: EventModifiers {
         switch self {
-        case .stageShot, .take, .goLive, .record: .command
+        case .stageShot, .take, .goLive, .record, .toggleStatusBar: .command
         case .cut, .fadeToBlack: [.command, .shift]
         }
     }
@@ -141,6 +153,8 @@ enum ProductionShortcut: String, CaseIterable, Sendable {
             Self.symbol(modifiers: modifiers, keyLabel: "G")
         case .record:
             Self.symbol(modifiers: modifiers, keyLabel: "R")
+        case .toggleStatusBar:
+            Self.symbol(modifiers: modifiers, keyLabel: "/")
         }
     }
 
@@ -166,6 +180,8 @@ enum ProductionShortcut: String, CaseIterable, Sendable {
             Text("Go Live", comment: "Shortcuts settings: name of the start/stop streaming action")
         case .record:
             Text("Record", comment: "Button that starts recording the program to a local file")
+        case .toggleStatusBar:
+            Text("Show or Hide Status Bar", comment: "Shortcuts settings: name of the ⌘/ action")
         }
     }
 
@@ -201,6 +217,11 @@ enum ProductionShortcut: String, CaseIterable, Sendable {
             Text(
                 "Starts recording the program to a local file, or stops and closes it.",
                 comment: "Shortcuts settings: what the record shortcut does"
+            )
+        case .toggleStatusBar:
+            Text(
+                "Shows or hides the bar reporting recording and streaming across the bottom of the window.",
+                comment: "Shortcuts settings: what the status bar shortcut does"
             )
         }
     }

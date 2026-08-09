@@ -80,6 +80,9 @@ struct SettingsView: View {
     /// The app's appearance, edited by the General pane.
     @Bindable var appearance: AppearanceModel
 
+    /// Whether the windows carry a status bar, edited by the General pane.
+    @Bindable var statusBar: StatusBarModel
+
     /// Closes the settings window — what Escape does (see ``body``).
     @Environment(\.dismiss) private var dismiss
 
@@ -129,8 +132,21 @@ struct SettingsView: View {
     /// equivalent. The exit command reaches the split view from wherever
     /// focus sits, including the sidebar (verified 2026-08-08 against a clean
     /// build: Escape closes the window with the handler alone).
+    ///
+    /// **The column visibility is a constant, and that is what makes the
+    /// sidebar genuinely non-collapsible.** Removing the toolbar's toggle
+    /// (below) only removes the *button*, which is not the same thing: SwiftUI's
+    /// stock `SidebarCommands()` was tried when the View menu gained a Show/Hide
+    /// Sidebar item, and its ⌃⌘S reached *this* window and collapsed the very
+    /// source list that is this window's only navigation — stranding the
+    /// operator in whichever pane was open, the exact outcome removing the
+    /// button was meant to prevent. The app's own item
+    /// (``SidebarVisibilityCommands``) now drives the main window's binding
+    /// instead and cannot reach here at all, but the constant stays: a window
+    /// whose navigation must not collapse should say so where the column is
+    /// declared, not rely on no one ever aiming a command at it.
     var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: .constant(.all)) {
             List(SettingsPane.allCases, id: \.self, selection: paneSelection) { pane in
                 Label {
                     pane.name
@@ -203,7 +219,7 @@ struct SettingsView: View {
     /// - Returns: Its view.
     @ViewBuilder private func paneBody(for pane: SettingsPane) -> some View {
         switch pane {
-        case .general: GeneralSettingsView(model: model, appearance: appearance)
+        case .general: GeneralSettingsView(model: model, appearance: appearance, statusBar: statusBar)
         case .shortcuts: ShortcutsSettingsView()
         case .about: AboutSettingsView()
         }

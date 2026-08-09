@@ -10,7 +10,8 @@
 import SwiftUI
 import TingraEventBus
 
-/// The General settings pane: the app's Appearance, System / Light / Dark.
+/// The General settings pane: the app's Appearance, System / Light / Dark,
+/// and whether the windows carry a status bar.
 ///
 /// A grouped `Form` with the control on the trailing edge of a labeled row —
 /// the shape every settings pane on macOS 26 has, and the one that keeps a
@@ -23,7 +24,14 @@ struct GeneralSettingsView: View {
     /// The app's appearance.
     @Bindable var appearance: AppearanceModel
 
+    /// Whether the windows carry a status bar.
+    @Bindable var statusBar: StatusBarModel
+
     /// The pane.
+    ///
+    /// Both settings sit in one section: they are the same kind of thing —
+    /// how the operator's windows are dressed — and two rows do not need a
+    /// heading between them to be told apart.
     var body: some View {
         Form {
             Section {
@@ -32,9 +40,28 @@ struct GeneralSettingsView: View {
                 } label: {
                     Text("Appearance", comment: "General settings: label of the light/dark appearance control")
                 }
+
+                Toggle(isOn: statusBarSelection) {
+                    Text(
+                        "Show Status Bar",
+                        comment: "General settings: checkbox showing or hiding the bar across the bottom of the windows"
+                    )
+                }
             }
         }
         .formStyle(.grouped)
+    }
+
+    /// The status bar binding, reporting its own `tap` before the change
+    /// lands — the ``appearanceSelection`` rule, so restoring the stored
+    /// choice at launch records no tap nobody made.
+    private var statusBarSelection: Binding<Bool> {
+        $statusBar.isVisible.reportingTap(
+            to: model.eventBus,
+            "statusBar.checkbox",
+            domain: .platform,
+            params: { ["visible": .bool($0)] }
+        )
     }
 
     /// The appearance binding, reporting its own `tap` before the change
