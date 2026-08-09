@@ -132,6 +132,118 @@ struct SidebarRowTests {
         #expect(SidebarRow.rows(shots: [automatic], onProgram: nil, onPreview: nil).isEmpty)
     }
 
+    // MARK: Preset rows
+
+    @Test("preset rows keep switcher order and carry the preset's identity and name")
+    func presetRowsKeepOrderAndIdentity() {
+        let rows = SidebarRow.rows(
+            presets: [
+                Preset(id: PresetID(rawValue: "b"), name: "Interview"),
+                Preset(id: PresetID(rawValue: "a"), name: "Intro"),
+            ],
+            active: nil
+        )
+
+        #expect(rows.map(\.id) == ["b", "a"])
+        #expect(rows.map(\.name) == ["Interview", "Intro"])
+    }
+
+    @Test("the active preset is the checked row, and it is the only one")
+    func activePresetIsMarkedCurrent() {
+        let rows = SidebarRow.rows(
+            presets: [
+                Preset(id: PresetID(rawValue: "a"), name: "Intro"),
+                Preset(id: PresetID(rawValue: "b"), name: "Interview"),
+                Preset(id: PresetID(rawValue: "c"), name: "Outro"),
+            ],
+            active: PresetID(rawValue: "b")
+        )
+
+        #expect(rows.map(\.isCurrent) == [false, true, false])
+    }
+
+    @Test("a preset row carries no tally")
+    func presetRowsCarryNoTally() {
+        let rows = SidebarRow.rows(
+            presets: [Preset(id: PresetID(rawValue: "a"), name: "Intro")], active: PresetID(rawValue: "a"))
+
+        // A preset is not on a bus: the active one is checked, never lit, so
+        // red keeps meaning on program everywhere in the app.
+        #expect(rows.map(\.tally) == [nil])
+    }
+
+    @Test("an unknown active preset leaves every row unchecked")
+    func unmatchedActivePresetChecksNothing() {
+        let rows = SidebarRow.rows(
+            presets: [Preset(id: PresetID(rawValue: "a"), name: "Intro")],
+            active: PresetID(rawValue: "gone")
+        )
+
+        #expect(rows.allSatisfy { !$0.isCurrent })
+    }
+
+    @Test("a project with no presets yields no rows")
+    func noPresetsYieldsNoRows() {
+        #expect(SidebarRow.rows(presets: [], active: nil).isEmpty)
+    }
+
+    // MARK: Destination rows
+
+    @Test("destination rows keep panel order and carry the destination's identity")
+    @MainActor
+    func destinationRowsKeepOrderAndIdentity() {
+        let rows = SidebarRow.rows(destinations: [
+            DestinationEdit(id: ProjectDestinationID(rawValue: "b"), urlText: "rtmp://a.example/live", name: "Twitch"),
+            DestinationEdit(
+                id: ProjectDestinationID(rawValue: "a"), urlText: "rtmps://b.example/live", name: "YouTube"),
+        ])
+
+        #expect(rows.map(\.id) == ["b", "a"])
+        #expect(rows.map(\.name) == ["Twitch", "YouTube"])
+    }
+
+    @Test("an unnamed destination is labeled by its URL")
+    @MainActor
+    func unnamedDestinationIsLabeledByURL() {
+        let rows = SidebarRow.rows(destinations: [
+            DestinationEdit(id: ProjectDestinationID(rawValue: "a"), urlText: "rtmp://a.example/live")
+        ])
+
+        // The panel's own label rule, reused rather than re-derived, so one
+        // destination cannot read as two different things in two places.
+        #expect(rows.map(\.name) == ["rtmp://a.example/live"])
+    }
+
+    @Test("a destination with neither name nor URL still has a label")
+    @MainActor
+    func emptyDestinationStillHasALabel() {
+        let rows = SidebarRow.rows(destinations: [DestinationEdit()])
+
+        // A brand new row is a real row, and a row with no label at all would
+        // be a target the operator cannot identify or right-click with intent.
+        #expect(rows.count == 1)
+        #expect(rows[0].name.isEmpty == false)
+    }
+
+    @Test("a destination row carries no tally and no check")
+    @MainActor
+    func destinationRowsAreUnmarked() {
+        let rows = SidebarRow.rows(destinations: [
+            DestinationEdit(id: ProjectDestinationID(rawValue: "a"), urlText: "rtmp://a.example/live", name: "Twitch")
+        ])
+
+        // Live, reconnecting, rejected, and lost are four states a two-colour
+        // lamp would flatten; the streaming panel reports them.
+        #expect(rows.map(\.tally) == [nil])
+        #expect(rows.allSatisfy { !$0.isCurrent })
+    }
+
+    @Test("a project with no destinations yields no rows")
+    @MainActor
+    func noDestinationsYieldsNoRows() {
+        #expect(SidebarRow.rows(destinations: []).isEmpty)
+    }
+
     // MARK: Camera rows
 
     @Test("camera rows carry the input's tally")
@@ -169,6 +281,20 @@ struct SidebarRowTests {
         #expect(rows.map(\.tally) == [.staged])
     }
 
+    @Test("display rows carry the input's tally, like the cameras")
+    @MainActor
+    func displayRowsCarryTheirTally() {
+        let rows = SidebarRow.rows(
+            from: Self.videoChoices,
+            ofKind: .display,
+            onProgram: [Self.input("display")],
+            onPreview: []
+        )
+
+        #expect(rows.map(\.name) == ["Built-in Display"])
+        #expect(rows.map(\.tally) == [.onAir])
+    }
+
     @Test("a camera on neither bus is unlit")
     @MainActor
     func idleCameraIsUnlit() {
@@ -197,10 +323,30 @@ struct SidebarRowTests {
         #expect(rows.map(\.id) == ["mic"])
     }
 
+    @Test("the audio generator section lists the tone and not the microphones")
+    @MainActor
+    func audioGeneratorSectionListsOnlyGenerators() {
+        let rows = SidebarRow.rows(from: Self.audioChoices, ofKind: .generator)
+
+        #expect(rows == [SidebarRow(id: "tone", name: "440 Hz Tone", tally: nil)])
+    }
+
+    @Test("the audio generator section leaves out the video generators")
+    @MainActor
+    func audioGeneratorSectionExcludesVideoGenerators() {
+        let rows = SidebarRow.rows(from: Self.videoChoices, ofKind: .generator)
+
+        // The two generator sections are told apart by the *media-role* list
+        // each is handed — the model's audio and video lists — so the bars
+        // cannot reach the audio section even though both are `.generator`.
+        #expect(rows.map(\.id) == ["bars"])
+    }
+
     @Test("an inert row carries no tally")
     @MainActor
     func inertRowsCarryNoTally() {
         #expect(SidebarRow.rows(from: Self.audioChoices, ofKind: .microphone).allSatisfy { $0.tally == nil })
+        #expect(SidebarRow.rows(from: Self.audioChoices, ofKind: .generator).allSatisfy { $0.tally == nil })
         #expect(SidebarRow.rows(from: [AudioMonitorDevice(uid: "u", name: "n")]).allSatisfy { $0.tally == nil })
     }
 
@@ -263,7 +409,7 @@ struct SidebarRowTests {
 
     // MARK: Equality
 
-    @Test("two rows are equal only when identifier, name, and tally all match")
+    @Test("two rows are equal only when identifier, name, tally, and current mark all match")
     func equalityComparesEveryField() {
         let row = SidebarRow(id: "mic", name: "MacBook Pro Microphone", tally: nil)
 
@@ -273,5 +419,8 @@ struct SidebarRowTests {
         #expect(row != SidebarRow(id: "mic-2", name: "MacBook Pro Microphone", tally: nil))
         // A lamp lighting is a changed row too, or it would never redraw.
         #expect(row != SidebarRow(id: "mic", name: "MacBook Pro Microphone", tally: .idle))
+        // And so is a checkmark arriving, or a preset switch would leave the
+        // check on the preset the operator switched away from.
+        #expect(row != SidebarRow(id: "mic", name: "MacBook Pro Microphone", tally: nil, isCurrent: true))
     }
 }

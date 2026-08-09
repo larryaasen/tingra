@@ -15,11 +15,17 @@ import Foundation
 /// the `tap` event name are both derived from one closed list — a section
 /// added without an entry here does not compile.
 enum SidebarSection: String, CaseIterable {
+    /// The project's presets.
+    case presets
+
     /// The active preset's authored shots.
     case shots
 
     /// The discovered cameras.
     case cameras
+
+    /// The discovered displays.
+    case displays
 
     /// The video generators.
     case generators
@@ -27,8 +33,14 @@ enum SidebarSection: String, CaseIterable {
     /// The discovered audio input devices.
     case audioInputs
 
+    /// The audio generators.
+    case audioGenerators
+
     /// The system's audio output devices.
     case audioOutputs
+
+    /// The project's streaming destinations.
+    case destinations
 
     /// The section's `tap` event name, reported when the operator opens or
     /// closes it.
@@ -40,11 +52,15 @@ enum SidebarSection: String, CaseIterable {
     /// the raw value, so the event names are greppable.
     var tapName: String {
         switch self {
+        case .presets: "sidebarPresets.disclosure"
         case .shots: "sidebarShots.disclosure"
         case .cameras: "sidebarCameras.disclosure"
+        case .displays: "sidebarDisplays.disclosure"
         case .generators: "sidebarGenerators.disclosure"
         case .audioInputs: "sidebarAudioInputs.disclosure"
+        case .audioGenerators: "sidebarAudioGenerators.disclosure"
         case .audioOutputs: "sidebarAudioOutputs.disclosure"
+        case .destinations: "sidebarDestinations.disclosure"
         }
     }
 

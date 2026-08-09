@@ -83,6 +83,16 @@ struct DestinationListView: View {
 /// key is bound to the panel's collection and is never observable model
 /// state: it goes straight to secure storage at Start and is prefilled from
 /// there (ARCHITECTURE.md, "Streaming the program").
+///
+/// **Seeding must not write back**, which is what the equality guards on the
+/// two `onChange` handlers are for. Adopting the saved values moves each field
+/// off its empty initial value, and `onChange` cannot tell that from typing —
+/// so without the guards, every launch pushed the destination's own name and
+/// URL back into the model, scheduling an autosave, clearing a stream-status
+/// banner, and mutating observable state from inside a view update. That last
+/// one is what surfaced it: once the sidebar listed destinations too, the
+/// write invalidated its `List` mid-update and AppKit reported a reentrant
+/// operation in the table's delegate.
 private struct DestinationRow: View {
     /// The engine model the edits land in.
     let model: EngineModel
@@ -118,7 +128,10 @@ private struct DestinationRow: View {
             .textFieldStyle(.roundedBorder)
             .frame(width: 110)
             .disabled(model.isStreaming)
-            .onChange(of: name) { _, newValue in model.setDestinationName(newValue, for: destination.id) }
+            .onChange(of: name) { _, newValue in
+                guard newValue != destination.name else { return }
+                model.setDestinationName(newValue, for: destination.id)
+            }
 
             TextField(
                 text: $urlText,
@@ -128,7 +141,10 @@ private struct DestinationRow: View {
             }
             .textFieldStyle(.roundedBorder)
             .disabled(model.isStreaming)
-            .onChange(of: urlText) { _, newValue in model.setDestinationURL(newValue, for: destination.id) }
+            .onChange(of: urlText) { _, newValue in
+                guard newValue != destination.urlText else { return }
+                model.setDestinationURL(newValue, for: destination.id)
+            }
 
             SecureField(
                 text: $streamKey,

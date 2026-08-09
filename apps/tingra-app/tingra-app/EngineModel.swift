@@ -1692,10 +1692,37 @@ final class EngineModel {
     /// transition and names preview as its source.
     func takePreview() {
         guard let staged = previewShotID else { return }
+        performTakePreview(transition: resolvedTransition(for: staged))
+    }
+
+    /// Takes the staged shot to program with a **hard cut**, whatever the
+    /// switcher's transition picker selects — the switcher's CUT beside its
+    /// AUTO, and the one take an operator must be able to reach without first
+    /// checking which transition is armed (⇧⌘↩, see ``ProductionShortcut``).
+    ///
+    /// Identical to ``takePreview()`` in every other respect: the buses swap,
+    /// and nothing happens while nothing is staged.
+    ///
+    /// Reports no `tap` event itself — the Cut button's action closure
+    /// reports it (EVENTS.md, "The `tap` convention").
+    func cutPreview() {
+        guard previewShotID != nil else { return }
+        performTakePreview(transition: .cut)
+    }
+
+    /// The body both preview takes share: swap the buses over a stated
+    /// transition, then bring tally and the held-snapshot bookkeeping back in
+    /// line.
+    ///
+    /// Factored out so ``takePreview()`` and ``cutPreview()`` cannot drift on
+    /// anything except the transition — which is the only thing they differ
+    /// on.
+    ///
+    /// - Parameter transition: The transition to take the staged shot with.
+    private func performTakePreview(transition: Transition) {
         // The same held-snapshot bookkeeping a direct take does: a snapshot
         // from outside the pool can stop its inputs once this take replaces it.
         let wasHoldingSnapshot = activeShotID == nil && hasSessionPreset
-        let transition = resolvedTransition(for: staged)
         compositor.takePreview(transition: transition)
         activeShotID = compositor.activeShotID
         previewShotID = compositor.previewShotID

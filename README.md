@@ -865,35 +865,48 @@ each leg's `DestinationState` from the bus's `stream.*` events, never a poll,
 and takes the whole program off air with `setFadeToBlack(_:duration:)` — the
 one control driving both engine surfaces, which lives here because
 `TingraComposition` and `TingraAudio` depend on each other in neither
-direction), `SidebarView` (the main window's leading sidebar: the active
-preset's shots, the video generators, and every camera, audio input device, and
-audio output device this Mac can see, in five sections. It is a standard `NavigationSplitView`
+direction), `SidebarView` (the main window's leading sidebar: the project's
+presets, the active one's shots, the video generators, the audio generators,
+every camera, display, audio input device, and audio output device this Mac can
+see, and the destinations the program streams to, in nine sections.
+It is a standard `NavigationSplitView`
 sidebar, which is what makes it Liquid Glass on macOS 26 — nothing applies a
-glass material by hand, and the deployment floor has none to apply. Shots come
-first, because a shot is what goes to air and the devices beneath are what
-shots are built from — and the section lists the **authored** shots only, so
+glass material by hand, and the deployment floor has none to apply. The order is
+the signal path: presets hold shots, a shot is what goes to air, the inputs
+beneath are what shots are built from, and the destinations the program leaves
+by come last — and the shot section lists the **authored** shots only, so
 the working shots the app creates to stage a clicked input stay in the switcher
-without cluttering the operator's own list. The Generators section lists the
-patterns that synthesize a picture — bars, PLUGE, alignment, black — drawn from
-the video inputs, so the 440 Hz tone stays on its mixer strip rather than
-becoming a video layer that renders nothing. Shot, camera, and generator rows
-behave identically — one `stagingSection` draws all three, so they cannot drift
+without cluttering the operator's own list. The Video Generators section lists
+the patterns that synthesize a picture — bars, PLUGE, alignment, black — drawn
+from the video inputs, so the 440 Hz tone never becomes a video layer that
+renders nothing; the tone is listed instead in Audio Generators, inert beside
+the microphones it mixes with, which is what makes both headings say which
+medium they mean. Shot, camera, display, generator, and preset rows
+behave identically — one `stagingSection` draws all five, so they cannot drift
 — staging on preview and lighting the same tally the input rows' tiles carry,
 red on air and green staged, from the shared `Tally` tints; only the call
-differs, `setPreview(_:)` for a shot and `stagePreview(showing:)` for an input.
+differs, `setPreview(_:)` for a shot, `stagePreview(showing:)` for an input, and
+`switchPreset(to:)` for a preset — which is also why the active preset wears a
+checkmark rather than a lamp, since a preset is not on a bus and red means on
+air everywhere else in the app.
 Nothing reaches program from here. Every section collapses, with the standard
 source-list disclosure, and which ones are folded away persists across
 launches. A shot row also carries a context menu with one item, Delete, which
 raises a confirmation naming the shot before anything is removed — unlike the
-switcher's own Remove Shot, which is immediate. The audio rows read rather than
-switch — the channel strips and the
-monitor picker already own those decisions — and listing a device starts
+switcher's own Remove Shot, which is immediate; a destination row carries the
+same Delete, whose confirmation says that the stored stream key goes with it.
+The audio and destination rows otherwise read rather than
+switch — the channel strips, the monitor picker, and the streaming panel
+already own those decisions — and listing a device starts
 nothing, so no camera indicator lights for the sidebar),
 `SidebarRow` (the pure, unit-tested row derivation behind it: one identity
-across shots, capture devices, and Core Audio outputs; the shot tally with red
-winning over green; the `kind` filter that keeps a generator out of a device
-list; and the name sort that stops the output section reshuffling when Core
-Audio reorders itself), `SidebarSection` (the closed list of the sidebar's five
+across shots, presets, capture devices, destinations, and Core Audio outputs;
+the shot tally with red
+winning over green; the checkmark that marks the active preset without
+borrowing the tally's colours; the `kind` filter that keeps a generator out of a
+device list and gives the audio generators a section of their own; and the name
+sort that stops the output section reshuffling when Core
+Audio reorders itself), `SidebarSection` (the closed list of the sidebar's nine
 sections, each deriving its own persistence key and its own disclosure `tap`
 name, so a section added without an entry does not compile),
 `SidebarPreferences` (which sections are open: machine-local `UserDefaults` on
@@ -1036,12 +1049,58 @@ compositor's latest-wins slot on each draw — a read-only share, drawn and
 dropped), `MultiviewTile` (the pure, unit-tested tile derivation and its tally
 rule, red winning over green, plus the `Tally` tint pair both tile surfaces draw
 from so they cannot read a lamp differently), `MultiviewCommands` (the View-menu
-command that opens the window, ⌥⌘M), and `ProgramLayout` (the
+command that opens the window, ⌥⌘M), `ProgramLayout` (the
 pure, unit-tested arrangement that seeds a fresh project's picture-in-picture,
-display, and camera shots). The window monitors preview beside program and
-carries a second switcher row that stages a shot on preview, with a Take button
-promoting it (`EngineModel.setPreview(_:)`/`takePreview()`); what is staged is
-session state and never enters the project document.
+display, and camera shots), `ProductionShortcut` (the closed list of production
+keyboard shortcuts — staging ⌘1–⌘9, Cut ⇧⌘↩, Take ⌘↩, Fade to Black ⇧⌘B, Go
+Live ⌘G, Record ⌘R — that is both the binding the controls apply and the
+listing the Shortcuts settings pane prints, so a documented shortcut and a
+working one cannot disagree; the case order is the pane's reading order; the
+assignments are the ones the professional Mac switchers already share, which
+is why the take is ⌘Return and not ⌘T),
+`SettingsView` (the settings window, ⌘, — a `NavigationSplitView` whose
+source list holds three panes, the shape System Settings and Xcode 26 settled
+on. A `Window` scene with its own Settings… command rather than SwiftUI's
+`Settings` scene, because that scene starts its content below the title bar
+and leaves the source list floating as a card instead of running the full
+height of the window with the close/minimize/zoom buttons on it. The
+sidebar's collapse button is removed, since a settings sidebar *is* its
+navigation and collapsing it strands the operator in a pane — but an empty
+toolbar item stays, because a window with no toolbar reverts to the short
+title bar the sidebar cannot run up through. The open pane names the window,
+on the leading edge beside the split view rather than centered; and Escape
+closes the window beside the ⌘W every window has, since nothing here is
+committed for Escape to cancel), `SettingsPane` (the closed list of panes —
+General, Shortcuts, About — each deriving its own name and symbol, so the
+sidebar's label and the window's title cannot drift), `SettingsCommands` (the
+app-menu Settings… item that opens it, replacing the one the `Settings` scene
+would have contributed), `GeneralSettingsView`
+(the General pane: the app's Appearance), `AppearancePicker` and
+`AppearanceSwatch` and `AppearanceMiniDesktop` (the three-thumbnail appearance
+control and the miniature desktop each thumbnail draws — the System swatch
+composites the other two rather than being a third artwork),
+`ShortcutsSettingsView` and `ShortcutRow` (the Shortcuts pane, read-only —
+every shortcut the app binds in **one** group, no headings and no footnote,
+drawn from `ProductionShortcut.allCases` so a seventh cannot be added and
+forgotten here),
+`AboutSettingsView` (the About pane: the app's icon, name, and version),
+`AppearanceMode` (System, Light, or Dark — three cases rather than a boolean,
+because "follow the system" is a state and not the absence of a choice),
+`AppearancePreferences` (where that choice persists: machine-local
+`UserDefaults` on the `MonitorPreferences` pattern, defaulting to System, with
+an unrecognizable stored value reading as System rather than trapping),
+`AppearanceModel` (the `@Observable` that installs the matching `NSAppearance`
+on the application at launch and on every change, so the stored value and the
+painted window can never disagree), `AppearanceTarget` (the one-property seam
+it installs through, so a test can watch the install without repainting the
+test host), and `AppVersion` (the pure, unit-tested version assembly the About
+pane prints — the build in parentheses, dropped when it repeats the version,
+and nothing invented for a bundle that names neither). The window monitors
+preview beside program and carries a second switcher row that stages a shot on
+preview, with Cut and Take buttons promoting it
+(`EngineModel.setPreview(_:)`/`cutPreview()`/`takePreview()` — Cut takes
+instantly whatever transition is armed, the CUT beside AUTO of a hardware
+panel); what is staged is session state and never enters the project document.
 User-facing strings are localized (`Localizable.xcstrings`, en/de/es).
 To build a signed, runnable copy, copy `apps/tingra-app/Local.xcconfig.example`
 to `Local.xcconfig` (git-ignored) and set your own Apple Developer Team ID; the

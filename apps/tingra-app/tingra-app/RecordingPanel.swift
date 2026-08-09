@@ -138,6 +138,7 @@ struct RecordingPanel: View {
         }
         .buttonStyle(.borderedProminent)
         .tint(model.isRecording ? .red : .accentColor)
+        .keyboardShortcut(ProductionShortcut.record.shortcut)
     }
 
     /// The live recording status, rendered from ``EngineModel/RecordingStatus``.

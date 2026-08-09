@@ -22,6 +22,12 @@ struct TingraApp: App {
     /// The engine model, owned for the app's lifetime.
     @State private var model = EngineModel()
 
+    /// The app's appearance, owned for the app's lifetime and installed on
+    /// the application the moment it is created — before the first window is
+    /// drawn, so an operator on Dark never sees a light window correct itself
+    /// (see ``AppearanceModel``).
+    @State private var appearance = AppearanceModel()
+
     /// The delegate that holds quitting open until a recording in flight is
     /// finalized (see ``TingraAppDelegate``).
     @NSApplicationDelegateAdaptor(TingraAppDelegate.self) private var appDelegate
@@ -29,8 +35,11 @@ struct TingraApp: App {
     /// The identifier the View menu's Multiview command opens.
     static let multiviewWindowID = "multiview"
 
-    /// The scenes: the main production window, plus the multiview monitoring
-    /// window it can open.
+    /// The identifier the app menu's Settings… command opens.
+    static let settingsWindowID = "settings"
+
+    /// The scenes: the main production window, the multiview monitoring
+    /// window it can open, and the settings window (``SettingsView``).
     ///
     /// The main window is a two-column `NavigationSplitView`: the shot and
     /// device sidebar on the leading edge (``SidebarView``) beside the
@@ -56,6 +65,7 @@ struct TingraApp: App {
         }
         .commands {
             MultiviewCommands(model: model)
+            SettingsCommands(model: model)
         }
 
         // Multiview is a **separate window**, not a panel: the main window
@@ -75,6 +85,26 @@ struct TingraApp: App {
             MultiviewView(model: model)
                 .frame(minWidth: 640, minHeight: 400)
         }
+
+        // Settings is a `Window` rather than the `Settings` scene, for one
+        // reason that is visible the moment you look at the two side by side:
+        // **a `Settings` scene does not run its sidebar under the title bar.**
+        // Its split view starts below the title bar, so the source list draws
+        // as a card floating in the content area, where every other sidebar on
+        // this Mac — the main window's above, Xcode 26's settings window, the
+        // Finder's — runs the full height of the window with the
+        // close/minimize/zoom buttons sitting on it. A `Window` scene gets the
+        // main window's treatment, which is exactly the treatment wanted here.
+        //
+        // `SettingsCommands` puts Settings… back where macOS reserves it,
+        // under ⌘, in the app menu, so nothing an operator can see moved.
+        Window(
+            String(localized: "Settings", comment: "Title of the settings window"),
+            id: Self.settingsWindowID
+        ) {
+            SettingsView(model: model, appearance: appearance)
+        }
+        .windowResizability(.contentMinSize)
     }
 }
 
@@ -132,6 +162,34 @@ struct MultiviewCommands: Commands {
                 Text("Multiview", comment: "Title of the multiview monitoring window, and its View-menu command")
             }
             .keyboardShortcut("m", modifiers: [.command, .option])
+        }
+    }
+}
+
+/// The app-menu command that opens the settings window.
+///
+/// `CommandGroup(replacing: .appSettings)` puts it in the slot macOS reserves
+/// for Settings…, under ⌘, — the item the `Settings` scene would have
+/// contributed on its own. Replacing it rather than adding one is what keeps
+/// the app menu from carrying two, now that settings live in a `Window` scene
+/// (see ``TingraApp/body``).
+struct SettingsCommands: Commands {
+    /// The engine model, for the command's `tap` event.
+    let model: EngineModel
+
+    /// Opens the settings window.
+    @Environment(\.openWindow) private var openWindow
+
+    /// The one app-menu item, keeping the system's own shortcut.
+    var body: some Commands {
+        CommandGroup(replacing: .appSettings) {
+            Button {
+                model.eventBus.tap("settings.menuItem", domain: .platform)
+                openWindow(id: TingraApp.settingsWindowID)
+            } label: {
+                Text("Settings…", comment: "App menu item that opens the settings window")
+            }
+            .keyboardShortcut(",", modifiers: .command)
         }
     }
 }

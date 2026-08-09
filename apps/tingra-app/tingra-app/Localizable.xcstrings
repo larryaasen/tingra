@@ -18,6 +18,23 @@
         }
       }
     },
+    "%@ and its stored stream key will be removed. This cannot be undone." : {
+      "comment" : "Confirmation alert message before deleting a destination; the placeholder is the destination's name",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ und der gespeicherte Streamschlüssel werden entfernt. Dies kann nicht rückgängig gemacht werden."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ y su clave de emisión guardada se eliminarán. Esta acción no se puede deshacer."
+          }
+        }
+      }
+    },
     "%@ copy" : {
       "comment" : "Name of a duplicated shot or preset; the placeholder is the source's name",
       "localizations" : {
@@ -99,6 +116,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "● Grabando"
+          }
+        }
+      }
+    },
+    "About" : {
+      "comment" : "Settings window pane: the app's version",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Über"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Acerca de"
+          }
+        }
+      }
+    },
+    "Active" : {
+      "comment" : "Accessibility label of the checkmark marking the active preset",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktiv"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Activo"
           }
         }
       }
@@ -201,6 +252,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Añadir toma"
+          }
+        }
+      }
+    },
+    "Appearance" : {
+      "comment" : "General settings: label of the light/dark appearance control",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erscheinungsbild"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apariencia"
+          }
+        }
+      }
+    },
+    "Audio Generators" : {
+      "comment" : "Sidebar section heading over the audio generators",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Audiogeneratoren"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Generadores de audio"
           }
         }
       }
@@ -376,7 +461,7 @@
       }
     },
     "Cut" : {
-      "comment" : "Transition picker option: switch to the next shot taken instantly",
+      "comment" : "Switch to the next shot taken instantly — the transition picker option, and the Cut button\nTransition picker option: switch to the next shot taken instantly",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -388,6 +473,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Corte"
+          }
+        }
+      }
+    },
+    "Dark" : {
+      "comment" : "Appearance option: always draw the app dark",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dunkel"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Oscuro"
           }
         }
       }
@@ -443,6 +545,23 @@
         }
       }
     },
+    "Delete this destination?" : {
+      "comment" : "Confirmation alert title before deleting a destination from the sidebar",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieses Ziel löschen?"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "¿Eliminar este destino?"
+          }
+        }
+      }
+    },
     "Delete this shot?" : {
       "comment" : "Confirmation alert title before deleting a shot from the sidebar",
       "localizations" : {
@@ -473,6 +592,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Destino"
+          }
+        }
+      }
+    },
+    "Destinations" : {
+      "comment" : "Sidebar section heading over the streaming destination list",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ziele"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Destinos"
           }
         }
       }
@@ -525,6 +661,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Pantalla"
+          }
+        }
+      }
+    },
+    "Displays" : {
+      "comment" : "Sidebar section heading over the display list",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bildschirme"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pantallas"
           }
         }
       }
@@ -716,8 +869,26 @@
         }
       }
     },
+    "General" : {
+      "comment" : "Settings window pane: general app settings",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Allgemein"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "General"
+          }
+        }
+      }
+    },
     "Generators" : {
       "comment" : "Sidebar section heading over the video generators",
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -729,6 +900,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Generadores"
+          }
+        }
+      }
+    },
+    "Go Live" : {
+      "comment" : "Shortcuts settings: name of the start/stop streaming action",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Live gehen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Emitir en vivo"
           }
         }
       }
@@ -865,6 +1053,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Nivel"
+          }
+        }
+      }
+    },
+    "Light" : {
+      "comment" : "Appearance option: always draw the app light",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hell"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Claro"
           }
         }
       }
@@ -1211,6 +1416,23 @@
         }
       }
     },
+    "No audio generators available" : {
+      "comment" : "Sidebar placeholder when no audio generator is registered",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Audiogeneratoren verfügbar"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No hay generadores de audio disponibles"
+          }
+        }
+      }
+    },
     "No audio inputs connected" : {
       "comment" : "Device rail placeholder when no audio input device is discovered",
       "localizations" : {
@@ -1330,6 +1552,23 @@
         }
       }
     },
+    "No displays available" : {
+      "comment" : "Sidebar placeholder when no display is discovered",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Bildschirme verfügbar"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No hay pantallas disponibles"
+          }
+        }
+      }
+    },
     "No effects" : {
       "comment" : "Placeholder in an empty audio effect chain",
       "localizations" : {
@@ -1349,6 +1588,7 @@
     },
     "No generators available" : {
       "comment" : "Sidebar placeholder when no video generator is registered",
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1415,6 +1655,23 @@
         }
       }
     },
+    "No presets in this project" : {
+      "comment" : "Sidebar placeholder when the project has no presets",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Presets in diesem Projekt"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No hay presets en este proyecto"
+          }
+        }
+      }
+    },
     "No recording output writes .%@ files." : {
       "comment" : "Recording error when the chosen container has no registered recording output",
       "localizations" : {
@@ -1462,6 +1719,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ninguna salida de transmisión sirve destinos %@. Use rtmp, rtmps o srt."
+          }
+        }
+      }
+    },
+    "No video generators available" : {
+      "comment" : "Sidebar placeholder when no video generator is registered",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Videogeneratoren verfügbar"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No hay generadores de vídeo disponibles"
           }
         }
       }
@@ -1598,6 +1872,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Programa"
+          }
+        }
+      }
+    },
+    "Puts the program on air to every enabled destination, or takes it off." : {
+      "comment" : "Shortcuts settings: what the go live shortcut does",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bringt das Programm zu allen aktivierten Zielen auf Sendung oder nimmt es wieder heraus."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pone el programa al aire en todos los destinos activados, o lo saca."
           }
         }
       }
@@ -1891,6 +2182,40 @@
         }
       }
     },
+    "Settings" : {
+      "comment" : "Title of the settings window",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einstellungen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ajustes"
+          }
+        }
+      }
+    },
+    "Settings…" : {
+      "comment" : "App menu item that opens the settings window",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einstellungen…"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ajustes…"
+          }
+        }
+      }
+    },
     "Shader" : {
       "comment" : "Label of the picker choosing the built-in shader a shader transition reveals with\nTransition picker option: reveal the next shot taken through a built-in custom shader",
       "localizations" : {
@@ -1904,6 +2229,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Shader"
+          }
+        }
+      }
+    },
+    "Shortcuts" : {
+      "comment" : "Settings window pane: the keyboard shortcuts listing",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kurzbefehle"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Atajos"
           }
         }
       }
@@ -1959,6 +2301,40 @@
         }
       }
     },
+    "Stage Shot on Preview" : {
+      "comment" : "Shortcuts settings: name of the ⌘1–⌘9 action",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einstellung auf Vorschau vorbereiten"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Preparar toma en previsualización"
+          }
+        }
+      }
+    },
+    "Stages the shot in that position of the switcher, ready to take." : {
+      "comment" : "Shortcuts settings: what ⌘1–⌘9 does",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bereitet die Einstellung an dieser Position des Bildmischers auf Vorschau vor, bereit zur Übernahme."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prepara la toma en esa posición del mezclador, lista para tomar."
+          }
+        }
+      }
+    },
     "Start Streaming" : {
       "comment" : "Button that puts the program on air",
       "localizations" : {
@@ -1989,6 +2365,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Iniciando…"
+          }
+        }
+      }
+    },
+    "Starts recording the program to a local file, or stops and closes it." : {
+      "comment" : "Shortcuts settings: what the record shortcut does",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Startet die Aufnahme des Programms in eine lokale Datei oder stoppt und schließt sie."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inicia la grabación del programa en un archivo local, o la detiene y la cierra."
           }
         }
       }
@@ -2095,6 +2488,40 @@
         }
       }
     },
+    "Switch to this preset" : {
+      "comment" : "Tooltip on a sidebar preset row",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zu diesem Preset wechseln"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cambiar a este preset"
+          }
+        }
+      }
+    },
+    "System" : {
+      "comment" : "Appearance option: follow the system's light or dark setting",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "System"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sistema"
+          }
+        }
+      }
+    },
     "Take" : {
       "comment" : "Button taking the shot staged on preview to program",
       "localizations" : {
@@ -2108,6 +2535,57 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Tomar"
+          }
+        }
+      }
+    },
+    "Takes the staged shot to program instantly, whatever transition is selected." : {
+      "comment" : "Shortcuts settings: what the cut shortcut does",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Übernimmt die vorbereitete Einstellung sofort ins Programm, unabhängig vom gewählten Übergang."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lleva la toma preparada al programa al instante, sea cual sea la transición seleccionada."
+          }
+        }
+      }
+    },
+    "Takes the staged shot to program with the selected transition, swapping the buses." : {
+      "comment" : "Shortcuts settings: what the take shortcut does",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Übernimmt die vorbereitete Einstellung mit dem gewählten Übergang ins Programm und tauscht die Busse."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lleva la toma preparada al programa con la transición seleccionada e intercambia los buses."
+          }
+        }
+      }
+    },
+    "Takes the whole program off air — picture and sound — and brings it back." : {
+      "comment" : "Shortcuts settings: what the fade to black shortcut does",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nimmt das gesamte Programm — Bild und Ton — aus der Sendung und bringt es zurück."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saca del aire todo el programa —imagen y sonido— y lo devuelve."
           }
         }
       }
@@ -2176,6 +2654,57 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Transición"
+          }
+        }
+      }
+    },
+    "Version %@" : {
+      "comment" : "About settings: the app's version and build number",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Version %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Versión %@"
+          }
+        }
+      }
+    },
+    "Version unavailable" : {
+      "comment" : "About settings: shown when the bundle names no version",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Version nicht verfügbar"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Versión no disponible"
+          }
+        }
+      }
+    },
+    "Video Generators" : {
+      "comment" : "Sidebar section heading over the video generators",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Videogeneratoren"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Generadores de vídeo"
           }
         }
       }

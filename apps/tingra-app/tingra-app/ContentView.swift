@@ -472,8 +472,12 @@ struct ContentView: View {
                             comment: "Transition picker option: take each shot with its own default transition"
                         )
                         .tag(TakeTransitionKind.default)
-                        Text("Cut", comment: "Transition picker option: switch to the next shot taken instantly")
-                            .tag(TakeTransitionKind.cut)
+                        Text(
+                            "Cut",
+                            comment:
+                                "Switch to the next shot taken instantly — the transition picker option, and the Cut button"
+                        )
+                        .tag(TakeTransitionKind.cut)
                         Text("Dissolve", comment: "Transition picker option: crossfade to the next shot taken")
                             .tag(TakeTransitionKind.dissolve)
                         Text(
@@ -596,7 +600,7 @@ struct ContentView: View {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
 
-                ForEach(model.shots) { shot in
+                ForEach(Array(model.shots.enumerated()), id: \.element.id) { index, shot in
                     let isStaged = shot.id == model.previewShotID
                     Button(shot.name) {
                         model.eventBus.tap(
@@ -608,7 +612,28 @@ struct ContentView: View {
                     }
                     .buttonStyle(.bordered)
                     .tint(isStaged ? .green : nil)
+                    // ⌘1…⌘9 by position, the switcher convention every
+                    // surveyed app shares (``ProductionShortcut``). A tenth
+                    // shot simply has none — the optional overload takes nil.
+                    .keyboardShortcut(ProductionShortcut.stageShotShortcut(forIndex: index))
                 }
+
+                // Cut left of Take, the order the two live side by side on a
+                // hardware panel: CUT takes instantly, AUTO takes over the
+                // armed transition.
+                Button {
+                    model.eventBus.tap(
+                        "cut.button",
+                        domain: .composition,
+                        params: ["shot": .string(model.previewShotID?.rawValue ?? "none")]
+                    )
+                    model.cutPreview()
+                } label: {
+                    ProductionShortcut.cut.name
+                }
+                .buttonStyle(.bordered)
+                .disabled(model.previewShotID == nil)
+                .keyboardShortcut(ProductionShortcut.cut.shortcut)
 
                 Button {
                     model.eventBus.tap(
@@ -623,6 +648,7 @@ struct ContentView: View {
                 .buttonStyle(.borderedProminent)
                 .tint(.red)
                 .disabled(model.previewShotID == nil)
+                .keyboardShortcut(ProductionShortcut.take.shortcut)
             }
         }
     }
@@ -652,7 +678,7 @@ struct ContentView: View {
             }
             .buttonStyle(.borderedProminent)
             .tint(model.isFadedToBlack ? .red : .gray)
-            .keyboardShortcut("b", modifiers: [.command, .shift])
+            .keyboardShortcut(ProductionShortcut.fadeToBlack.shortcut)
 
             if model.isFadedToBlack {
                 fadedToBlackHint
@@ -960,6 +986,12 @@ struct ContentView: View {
                 .buttonStyle(.borderedProminent)
                 .tint(model.isStreaming ? .red : .accentColor)
                 .disabled(!model.isStreaming && !model.hasStreamableDestination)
+                // ⌘G — Ecamm Live's own Go Live assignment, and the one
+                // shortcut that has to work without the operator hunting for
+                // this panel (``ProductionShortcut``). Bound to the control
+                // rather than to a menu item so it carries the stream keys
+                // typed into the rows above and the same disabled rule.
+                .keyboardShortcut(ProductionShortcut.goLive.shortcut)
             }
         }
     }
