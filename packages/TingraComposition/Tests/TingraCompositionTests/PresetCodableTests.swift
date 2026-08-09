@@ -134,6 +134,50 @@ struct PresetCodableTests {
         #expect(decoded.defaultTransition == transition)
     }
 
+    // MARK: Origin
+
+    @Test("a shot with no origin key decodes as authored")
+    func shotMissingOriginDecodesAuthored() throws {
+        let json = Data(#"{"id":"s","name":"Wide"}"#.utf8)
+        let decoded = try JSONDecoder().decode(Shot.self, from: json)
+        // Every document written before the distinction existed keeps its
+        // shots visible: hiding one someone authored is the worse error.
+        #expect(decoded.origin == .authored)
+    }
+
+    @Test("an authored shot encodes without the origin key")
+    func authoredShotOmitsOriginKey() throws {
+        let data = try JSONEncoder().encode(Shot(id: ShotID(rawValue: "s"), name: "Wide"))
+        let object = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(Set(object.keys) == ["id", "name", "layers", "background"])
+    }
+
+    @Test("an automatic shot encodes under the stable origin key")
+    func automaticShotEncodesOriginKey() throws {
+        let shot = Shot(id: ShotID(rawValue: "s"), name: "Razer Kiyo Pro", origin: .automatic)
+        let data = try JSONEncoder().encode(shot)
+        let object = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(object["origin"] as? String == "automatic")
+    }
+
+    @Test("a shot's origin round-trips through JSON unchanged", arguments: ShotOrigin.allCases)
+    func shotOriginRoundTrips(origin: ShotOrigin) throws {
+        let shot = Shot(id: ShotID(rawValue: "s"), name: "Wide", origin: origin)
+        let data = try JSONEncoder().encode(shot)
+        let decoded = try JSONDecoder().decode(Shot.self, from: data)
+        #expect(decoded == shot)
+        #expect(decoded.origin == origin)
+    }
+
+    @Test("two shots differing only in origin are not equal")
+    func originParticipatesInEquality() {
+        let authored = Shot(id: ShotID(rawValue: "s"), name: "Wide")
+        let automatic = Shot(id: ShotID(rawValue: "s"), name: "Wide", origin: .automatic)
+
+        #expect(authored != automatic)
+        #expect(authored == Shot(id: ShotID(rawValue: "s"), name: "Wide", origin: .authored))
+    }
+
     @Test("a shot's default transition encodes under the stable defaultTransition key")
     func shotDefaultTransitionKeyIsStable() throws {
         let shot = Shot(id: ShotID(rawValue: "s"), name: "Wide", defaultTransition: .wipe(edge: .right))

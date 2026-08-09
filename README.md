@@ -537,7 +537,14 @@ so it stays testable with a synthetic clock and a mock renderer (see
 - `Shot` — a short-term composition with a stable `id` and user-facing `name`:
   an ordered layer tree (bottom to top) over a `BackgroundColor`, plus an
   optional `defaultTransition` the shot is taken with when the caller does not
-  name one (absent = a cut). `Codable` as part of the persisted preset.
+  name one (absent = a cut) and an `origin` saying who made it. `Codable` as
+  part of the persisted preset.
+- `ShotOrigin` — whether a shot is `authored` (the operator made it) or
+  `automatic` (the app made it to stage a clicked input, naming it after the
+  device). Provenance, not lifecycle: both persist and both are in the
+  switcher, and only surfaces meaning "the operator's own shots" filter on it.
+  An optional document key that decodes to `authored` when absent, so every
+  earlier project keeps its shots.
 - `ShotID` — a stable, string-backed identifier for a shot, used to take it to
   program (a fresh UUID by default, or a fixed token for a built-in shot).
 - `Layer` — one positioned element: an input referenced by `InputID`, placed in
@@ -858,7 +865,43 @@ each leg's `DestinationState` from the bus's `stream.*` events, never a poll,
 and takes the whole program off air with `setFadeToBlack(_:duration:)` — the
 one control driving both engine surfaces, which lives here because
 `TingraComposition` and `TingraAudio` depend on each other in neither
-direction), `ContentView` (the main window in two sections — a monitoring
+direction), `SidebarView` (the main window's leading sidebar: the active
+preset's shots, the video generators, and every camera, audio input device, and
+audio output device this Mac can see, in five sections. It is a standard `NavigationSplitView`
+sidebar, which is what makes it Liquid Glass on macOS 26 — nothing applies a
+glass material by hand, and the deployment floor has none to apply. Shots come
+first, because a shot is what goes to air and the devices beneath are what
+shots are built from — and the section lists the **authored** shots only, so
+the working shots the app creates to stage a clicked input stay in the switcher
+without cluttering the operator's own list. The Generators section lists the
+patterns that synthesize a picture — bars, PLUGE, alignment, black — drawn from
+the video inputs, so the 440 Hz tone stays on its mixer strip rather than
+becoming a video layer that renders nothing. Shot, camera, and generator rows
+behave identically — one `stagingSection` draws all three, so they cannot drift
+— staging on preview and lighting the same tally the input rows' tiles carry,
+red on air and green staged, from the shared `Tally` tints; only the call
+differs, `setPreview(_:)` for a shot and `stagePreview(showing:)` for an input.
+Nothing reaches program from here. Every section collapses, with the standard
+source-list disclosure, and which ones are folded away persists across
+launches. A shot row also carries a context menu with one item, Delete, which
+raises a confirmation naming the shot before anything is removed — unlike the
+switcher's own Remove Shot, which is immediate. The audio rows read rather than
+switch — the channel strips and the
+monitor picker already own those decisions — and listing a device starts
+nothing, so no camera indicator lights for the sidebar),
+`SidebarRow` (the pure, unit-tested row derivation behind it: one identity
+across shots, capture devices, and Core Audio outputs; the shot tally with red
+winning over green; the `kind` filter that keeps a generator out of a device
+list; and the name sort that stops the output section reshuffling when Core
+Audio reorders itself), `SidebarSection` (the closed list of the sidebar's five
+sections, each deriving its own persistence key and its own disclosure `tap`
+name, so a section added without an entry does not compile),
+`SidebarPreferences` (which sections are open: machine-local `UserDefaults` on
+the `MonitorPreferences` pattern — window habits are not part of the show, and
+a source list that forgot its collapsed sections each launch would read as a
+bug. A section nothing is stored for reads open, so the default is the absence
+of a value rather than its content), `ContentView` (the main window's detail
+column, in two sections — a monitoring
 section across the top, the input rows on the left and the preview and program
 monitors on the right, over a control section holding everything the operator
 works. The whole column scrolls, and the monitoring section's height is derived
@@ -950,8 +993,13 @@ adjust a layer's frame and opacity with live sliders — every edit on program a
 the next tick, and autosaved to the project file), `LayerTreeEdit` (the pure,
 unit-tested edit operations over a `Shot`, including the rebind a picker change
 applies), `ShotEdit` (the pure, unit-tested shot-management operations: a new
-empty shot, a duplicate under a fresh id, a rename that ignores empty names,
-and setting or clearing a shot's default transition),
+empty shot, a shot showing one input full frame (the one kind the app marks
+`automatic`), a duplicate under a fresh id, a rename that ignores empty names —
+and that promotes an automatic shot to authored, the operator claiming it —
+setting or clearing a shot's default transition, and the match that decides
+which existing shot staging an input reuses — one showing *only* that input, never one that merely contains it, so
+clicking a camera previews the camera rather than a composition built around
+it),
 `PresetEdit` (the same operations one level up: a new empty preset, a duplicate
 under a fresh id with the source's shot ids preserved — so switching between
 original and copy holds the on-program shot — and a rename that ignores empty

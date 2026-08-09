@@ -18,7 +18,7 @@ A project is the saved file for an entire show. A project contains presets. A pr
 
 **Layer tree** — the data structure holding a shot's layers and their ordering, transforms, and effect chains. The compositor renders the layer tree to a single frame.
 
-**Shot** — a short term composition: a specific arrangement of layers designed to be taken to program, cut away from, and returned to. Shots are quick to create, switch, and discard.
+**Shot** — a short term composition: a specific arrangement of layers designed to be taken to program, cut away from, and returned to. Shots are quick to create, switch, and discard. A shot is **authored** when the operator made it — added it, duplicated one, renamed one, or received it as a new project's seeded arrangement — and **automatic** when the app made one to stage an input the operator clicked, naming it after that device. The distinction is provenance, not lifecycle: both persist, both are in the switcher, and both can be taken. It exists so a surface listing the operator's own shots does not fill with device names; renaming an automatic shot makes it authored.
 
 **Preset** — a long term, persisted collection of settings you switch between during a live session and keep across sessions: its shots, layer arrangements, audio configuration, and connected inputs. Switching presets is seamless and does not interrupt what is already playing out.
 

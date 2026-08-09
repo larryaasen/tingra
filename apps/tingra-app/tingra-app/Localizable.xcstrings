@@ -52,6 +52,23 @@
         }
       }
     },
+    "%@ will be removed from the preset. This cannot be undone." : {
+      "comment" : "Confirmation alert message before deleting a shot; the placeholder is the shot's name",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ wird aus der Voreinstellung entfernt. Dies kann nicht rückgängig gemacht werden."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ se eliminará del preajuste. Esta acción no se puede deshacer."
+          }
+        }
+      }
+    },
     "● Live" : {
       "comment" : "Stream status: the program is on air",
       "localizations" : {
@@ -188,6 +205,40 @@
         }
       }
     },
+    "Audio Inputs" : {
+      "comment" : "Sidebar section heading over the audio input device list",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Audioeingänge"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Entradas de audio"
+          }
+        }
+      }
+    },
+    "Audio Outputs" : {
+      "comment" : "Sidebar section heading over the audio output device list",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Audioausgänge"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Salidas de audio"
+          }
+        }
+      }
+    },
     "Blinds" : {
       "comment" : "Shader picker option: horizontal bands revealing in parallel",
       "localizations" : {
@@ -235,6 +286,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Cámara"
+          }
+        }
+      }
+    },
+    "Cameras" : {
+      "comment" : "Device rail section heading over the camera device list",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kameras"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cámaras"
           }
         }
       }
@@ -358,6 +426,40 @@
         }
       }
     },
+    "Delete" : {
+      "comment" : "Sidebar shot context menu item, and its confirmation's confirm button",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Löschen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eliminar"
+          }
+        }
+      }
+    },
+    "Delete this shot?" : {
+      "comment" : "Confirmation alert title before deleting a shot from the sidebar",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Einstellung löschen?"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "¿Eliminar esta toma?"
+          }
+        }
+      }
+    },
     "Destination" : {
       "comment" : "Destination URL field label",
       "localizations" : {
@@ -371,6 +473,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Destino"
+          }
+        }
+      }
+    },
+    "Devices" : {
+      "comment" : "Accessibility label of the main window's device rail",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Geräte"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dispositivos"
           }
         }
       }
@@ -592,6 +712,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Formato"
+          }
+        }
+      }
+    },
+    "Generators" : {
+      "comment" : "Sidebar section heading over the video generators",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Generatoren"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Generadores"
           }
         }
       }
@@ -1074,6 +1211,23 @@
         }
       }
     },
+    "No audio inputs connected" : {
+      "comment" : "Device rail placeholder when no audio input device is discovered",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Audioeingänge verbunden"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No hay entradas de audio conectadas"
+          }
+        }
+      }
+    },
     "No audio inputs found" : {
       "comment" : "Mixer placeholder when no audio input is discovered",
       "localizations" : {
@@ -1091,6 +1245,23 @@
         }
       }
     },
+    "No audio outputs connected" : {
+      "comment" : "Device rail placeholder when no audio output device is discovered",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Audioausgänge verbunden"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No hay salidas de audio conectadas"
+          }
+        }
+      }
+    },
     "No cameras" : {
       "comment" : "Shown in place of the camera row when none is discovered",
       "localizations" : {
@@ -1104,6 +1275,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Sin cámaras"
+          }
+        }
+      }
+    },
+    "No cameras connected" : {
+      "comment" : "Device rail placeholder when no camera is discovered",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Kameras verbunden"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No hay cámaras conectadas"
           }
         }
       }
@@ -1155,6 +1343,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Sin efectos"
+          }
+        }
+      }
+    },
+    "No generators available" : {
+      "comment" : "Sidebar placeholder when no video generator is registered",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Generatoren verfügbar"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No hay generadores disponibles"
           }
         }
       }
@@ -1223,6 +1428,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ninguna salida de grabación escribe archivos .%@."
+          }
+        }
+      }
+    },
+    "No shots in this preset" : {
+      "comment" : "Sidebar placeholder when the active preset has no shots",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Einstellungen in dieser Voreinstellung"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No hay tomas en este preajuste"
           }
         }
       }
@@ -1682,6 +1904,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Shader"
+          }
+        }
+      }
+    },
+    "Shots" : {
+      "comment" : "Sidebar section heading over the active preset's shots",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einstellungen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tomas"
+          }
+        }
+      }
+    },
+    "Shots and Devices" : {
+      "comment" : "Accessibility label of the main window's sidebar",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einstellungen und Geräte"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tomas y dispositivos"
           }
         }
       }

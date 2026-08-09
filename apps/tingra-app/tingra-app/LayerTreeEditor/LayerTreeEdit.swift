@@ -234,15 +234,21 @@ enum LayerTreeEdit {
     }
 
     /// Rebuilds the shot with an edited layer tree, preserving its identity —
-    /// the id, name, background, and default transition never change under a
-    /// layer-tree edit.
+    /// the id, name, background, default transition, and origin never change
+    /// under a layer-tree edit.
+    ///
+    /// **Origin is carried explicitly rather than left to the initializer's
+    /// default**, which would quietly promote every automatic shot to authored
+    /// the first time anything touched its layers — including the camera
+    /// picker's rebind, which is not an act of authorship at all.
     private static func replacingLayers(of shot: Shot, with layers: [Layer]) -> Shot {
         Shot(
             id: shot.id,
             name: shot.name,
             layers: layers,
             background: shot.background,
-            defaultTransition: shot.defaultTransition
+            defaultTransition: shot.defaultTransition,
+            origin: shot.origin
         )
     }
 }

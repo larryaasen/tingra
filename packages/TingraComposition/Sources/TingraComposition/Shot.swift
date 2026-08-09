@@ -30,6 +30,34 @@ public struct ShotID: RawRepresentable, Hashable, Sendable, Codable {
     }
 }
 
+/// Who made a shot: the operator, or the app on their behalf (GLOSSARY.md,
+/// "Shot").
+///
+/// The distinction exists because staging an input has to resolve it to a
+/// shot, and when no shot shows that input alone the app creates one — named
+/// after the device, so the switcher gains a button matching what was clicked.
+/// Those are working shots rather than part of the operator's show, and a
+/// surface listing "the shots I made" should not fill up with device names
+/// (Larry, 2026-08-08).
+///
+/// It is **not** a lifecycle: an automatic shot is persisted, taken, and
+/// removed exactly like any other, and both kinds appear in the switcher. Only
+/// surfaces that mean "the operator's own shots" filter on it.
+public enum ShotOrigin: String, Sendable, Equatable, Codable, CaseIterable {
+    /// The operator made this shot — added it, duplicated one, renamed one, or
+    /// received it as a new project's seeded arrangement.
+    ///
+    /// The default everywhere, including for a shot decoded from a document
+    /// written before this distinction existed: a shot whose origin was never
+    /// recorded is treated as the operator's, because hiding a shot someone
+    /// authored is the worse error of the two.
+    case authored
+
+    /// The app made this shot to stage an input the operator clicked, and
+    /// named it after that input.
+    case automatic
+}
+
 /// A short-term composition: an ordered arrangement of layers plus the
 /// background they sit over (GLOSSARY.md, "Shot"). The compositor renders a
 /// shot's layer tree to a single program frame each tick, and a shot is taken
@@ -74,6 +102,14 @@ public struct Shot: Sendable, Equatable, Codable, Identifiable {
     /// an operator's override is the caller's decision.
     public let defaultTransition: Transition?
 
+    /// Who made this shot — the operator, or the app staging an input on their
+    /// behalf (see ``ShotOrigin``). Defaults to ``ShotOrigin/authored``.
+    ///
+    /// The compositor never reads it: it is a provenance fact for the surfaces
+    /// that list an operator's own shots, not an instruction to render
+    /// anything differently.
+    public let origin: ShotOrigin
+
     /// Creates a shot.
     ///
     /// - Parameters:
@@ -83,18 +119,21 @@ public struct Shot: Sendable, Equatable, Codable, Identifiable {
     ///   - background: The background color (default: opaque black).
     ///   - defaultTransition: The transition an unresolved take uses
     ///     (default: none — a cut).
+    ///   - origin: Who made the shot (default: the operator).
     public init(
         id: ShotID = ShotID(),
         name: String = "",
         layers: [Layer] = [],
         background: BackgroundColor = .black,
-        defaultTransition: Transition? = nil
+        defaultTransition: Transition? = nil,
+        origin: ShotOrigin = .authored
     ) {
         self.id = id
         self.name = name
         self.layers = layers
         self.background = background
         self.defaultTransition = defaultTransition
+        self.origin = origin
     }
 
     /// The coding keys — stable camelCase names for the project document.
@@ -104,13 +143,16 @@ public struct Shot: Sendable, Equatable, Codable, Identifiable {
         case layers
         case background
         case defaultTransition
+        case origin
     }
 
     /// Decodes a shot. `id` and `name` are required (a persisted shot has an
     /// identity and a name); `layers` and `background` are optional and
     /// default to an empty tree over opaque black, so a minimal hand-written
     /// shot is valid; `defaultTransition` is optional and absent means no
-    /// default.
+    /// default; `origin` is optional and absent means ``ShotOrigin/authored``,
+    /// so every document written before the distinction existed decodes with
+    /// its shots intact and visible.
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(ShotID.self, forKey: .id)
@@ -118,12 +160,14 @@ public struct Shot: Sendable, Equatable, Codable, Identifiable {
         layers = try container.decodeIfPresent([Layer].self, forKey: .layers) ?? []
         background = try container.decodeIfPresent(BackgroundColor.self, forKey: .background) ?? .black
         defaultTransition = try container.decodeIfPresent(Transition.self, forKey: .defaultTransition)
+        origin = try container.decodeIfPresent(ShotOrigin.self, forKey: .origin) ?? .authored
     }
 
     /// Encodes a shot, always writing every field — except
-    /// `defaultTransition`, written only when set, so a shot with no default
-    /// round-trips to a document without the key (and reads back as nil, the
-    /// same rule as `Project`'s `destination`).
+    /// `defaultTransition`, written only when set, and `origin`, written only
+    /// when it is not the default, so a shot with neither round-trips to a
+    /// document without those keys (the same rule as `Project`'s
+    /// `destination`).
     public func encode(to encoder: any Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(id, forKey: .id)
@@ -131,6 +175,9 @@ public struct Shot: Sendable, Equatable, Codable, Identifiable {
         try container.encode(layers, forKey: .layers)
         try container.encode(background, forKey: .background)
         try container.encodeIfPresent(defaultTransition, forKey: .defaultTransition)
+        if origin != .authored {
+            try container.encode(origin, forKey: .origin)
+        }
     }
 }
 

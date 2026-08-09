@@ -31,14 +31,28 @@ struct TingraApp: App {
 
     /// The scenes: the main production window, plus the multiview monitoring
     /// window it can open.
+    ///
+    /// The main window is a two-column `NavigationSplitView`: the shot and
+    /// device sidebar on the leading edge (``SidebarView``) beside the
+    /// production surfaces (``ContentView``). A standard split view rather
+    /// than a hand-built column, because the standard sidebar is what carries
+    /// the system's own material — Liquid Glass on macOS 26 — its collapse and
+    /// resize behavior, and its toolbar toggle, none of which an app should
+    /// reimplement (see ``SidebarView``). The detail column keeps the minimum
+    /// size the production surfaces need, so the sidebar's own minimum widens
+    /// the window rather than squeezing them.
     var body: some Scene {
         WindowGroup {
-            ContentView(model: model)
-                .task {
-                    appDelegate.model = model
-                    await model.start()
-                }
-                .frame(minWidth: 640, minHeight: 480)
+            NavigationSplitView {
+                SidebarView(model: model)
+            } detail: {
+                ContentView(model: model)
+                    .frame(minWidth: 640, minHeight: 480)
+            }
+            .task {
+                appDelegate.model = model
+                await model.start()
+            }
         }
         .commands {
             MultiviewCommands(model: model)

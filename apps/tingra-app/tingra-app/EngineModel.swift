@@ -1743,27 +1743,33 @@ final class EngineModel {
     /// Stages an **input** on the preview bus — what clicking a tile in the
     /// main window's input rows does (``InputRowsView``).
     ///
-    /// Preview stages a **shot**, never an input (GLOSSARY.md), which is the
-    /// objection that kept the tiles inert until now: a click could only guess
-    /// at which shot the operator meant. The guess is resolved rather than
-    /// avoided — **an authored shot wins**. The first shot of the active
-    /// preset whose layers already reference the input is staged as-is, so
-    /// clicking a camera stages the shot that camera appears in, keys, lower
-    /// thirds and all, rather than a bare full-frame version of it. Only when
-    /// no shot shows the input at all is one created for it, appended to the
-    /// preset and saved, so the switcher gains a button matching what was
-    /// clicked instead of a shot the operator cannot get back to.
+    /// Preview stages a **shot**, never an input (GLOSSARY.md), so an input
+    /// the operator clicks has to be resolved to one. The rule is that
+    /// **clicking an input previews that input** — the shot staged shows the
+    /// clicked input full frame and nothing else. The operator picked a
+    /// camera, not a composition; a shot is what the shot rows and the
+    /// switcher are for (Larry, 2026-08-08).
     ///
-    /// Reusing before creating is also what keeps repeated clicks from filling
-    /// the switcher with near-duplicates.
+    /// So the shot reused is the one that *is* that input: an authored shot
+    /// whose layer tree matches the one this method would create — a single
+    /// full-frame layer bound to the input, no crop, no overlay, no effect
+    /// chain. A shot that merely *contains* the input no longer matches, which
+    /// is the change: a camera shot carrying a PLUGE overlay and a cropped
+    /// camera layer is a composition the operator did not ask for by clicking
+    /// the camera. When nothing matches, a shot is created for the input,
+    /// appended to the preset and saved, so the switcher gains a button
+    /// matching what was clicked rather than a shot the operator cannot get
+    /// back to — and that appended shot is what the *next* click matches,
+    /// which is what still keeps repeated clicks from filling the switcher
+    /// with near-duplicates.
     ///
-    /// Reports no `tap` event itself — the tile's action closure reports it
-    /// (EVENTS.md, "The `tap` convention").
+    /// Reports no `tap` event itself — the tile's or sidebar row's action
+    /// closure reports it (EVENTS.md, "The `tap` convention").
     ///
     /// - Parameter input: The input to stage.
     func stagePreview(showing input: InputID) async {
         guard hasSessionPreset else { return }
-        if let authored = shots.first(where: { $0.layers.contains { $0.input == input } }) {
+        if let authored = ShotEdit.shot(in: shots, showingOnly: input) {
             setPreview(authored.id)
             return
         }
