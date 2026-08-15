@@ -26,9 +26,9 @@
     <key>CFBundleExecutable</key>
     <string>tingra-cli</string>
     <key>CFBundleShortVersionString</key>
-    <string>0.1.1</string>
+    <string>0.1.2</string>
     <key>CFBundleVersion</key>
-    <string>0.1.1</string>
+    <string>0.1.2</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundlePackageType</key>
