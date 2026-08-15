@@ -396,7 +396,7 @@ struct DestinationStoreTests {
         #expect(await fixture.store.hasKey(for: destination) == false)
     }
 
-    // MARK: - The unsigned development build
+    // MARK: - A key this process cannot read
 
     @Test("names and urls still resolve when no key can be read")
     func namesResolveWithoutKeyAccess() async throws {
@@ -417,7 +417,7 @@ struct DestinationStoreTests {
         #expect(await fixture.store.hasKey(for: destination) == false)
     }
 
-    @Test("reading an unreadable key throws an error naming the signed-binary fix")
+    @Test("reading an unreadable key throws an error explaining the per-binary keychain split")
     func unreadableKeyThrowsWithFix() async throws {
         let fixture = try Fixture(readFailure: .keychain(-34018))
         let destination = makeDestination()
@@ -429,8 +429,8 @@ struct DestinationStoreTests {
         #expect(error == .keyUnreadable(name: "Twitch", underlying: .keychain(-34018)))
         #expect(error?.identifier == .pipelineError)
         let message = String(describing: try #require(error))
-        #expect(message.contains("unsigned development build"))
-        #expect(message.contains("release-cli-package.sh"))
+        #expect(message.contains("separate binaries in separate groups"))
+        #expect(message.contains("raw 'url'/'key' pair still"))
     }
 
     @Test("an unreadable key is reported on the event bus")

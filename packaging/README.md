@@ -16,7 +16,13 @@ holds the concrete recipe.
 
 Both come from one signed binary: Developer ID Application signature, hardened
 runtime, the stable identifier `com.moonwink.tingra.cli`, and the entitlements
-in [`apps/tingra-cli/tingra-cli.entitlements`](../apps/tingra-cli/tingra-cli.entitlements).
+in [`apps/tingra-cli/tingra-cli.entitlements`](../apps/tingra-cli/tingra-cli.entitlements)
+— which may hold **unrestricted entitlements only**, since a bare executable
+carries no provisioning profile to authorize a restricted one (see docs/CLI.md,
+"Hardened runtime and entitlements"). After signing, the script runs the
+packaged binary and stops the release unless it reports the expected version:
+signature verification, entitlement inspection, and notarization all pass on a
+binary the kernel refuses to launch, as v0.1.1 proved.
 The Info.plist ([`apps/tingra-cli/Info.plist`](../apps/tingra-cli/Info.plist))
 is embedded in the binary's `__TEXT,__info_plist` section by the linker flags
 in the CLI's `Package.swift`.

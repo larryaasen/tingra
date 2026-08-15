@@ -95,9 +95,10 @@ public enum DestinationStoreError: Error, Equatable, CustomStringConvertible {
     case duplicateID(DestinationID)
 
     /// A destination's stream key is filed but could not be read out of
-    /// secure storage — in practice, an **unsigned development build**, which
-    /// carries no entitlements and so cannot join the shared keychain access
-    /// group (DESTINATIONS.md, "Key sharing between the app and the daemon").
+    /// secure storage — in practice, **a key filed by the other binary**. The
+    /// app and `tingra-cli` sit in separate keychain groups, because sharing
+    /// one needs a restricted entitlement the bare CLI executable cannot carry
+    /// (DESTINATIONS.md, "Key sharing between the app and the daemon").
     case keyUnreadable(name: String, underlying: SecureStorageError)
 
     /// A developer/agent-facing description naming the cause and the fix;
@@ -133,10 +134,12 @@ public enum DestinationStoreError: Error, Equatable, CustomStringConvertible {
         case .keyUnreadable(let name, let underlying):
             return """
                 The stream key for destination '\(name)' is filed but could not be read from secure \
-                storage (\(underlying)). An unsigned development build carries no entitlements and so \
-                cannot join Tingra's shared keychain access group; run a signed binary — the app, or a \
-                tingra-cli built by scripts/release-cli-package.sh — to reach saved keys. Destination names and \
-                URLs resolve either way, and a raw 'url'/'key' pair still streams.
+                storage (\(underlying)). Keychain items are partitioned per binary, and tingra-cli \
+                and the Tingra app are separate binaries in separate groups — so a key filed in the \
+                app is not readable here. Sharing one group needs an entitlement only a bundled \
+                binary can carry (DESTINATIONS.md, "Key sharing between the app and the daemon"). \
+                The destination's name and URL resolve either way, and a raw 'url'/'key' pair still \
+                streams to it.
                 """
         }
     }
@@ -319,10 +322,10 @@ public actor DestinationStore {
     /// Whether a stream key is filed for a destination.
     ///
     /// **Reports `false` when the key cannot be read**, not an error, so a
-    /// listing always answers. In an unsigned development build every key is
-    /// unreadable (no entitlement, no access group), and the honest answer to
-    /// "does this process have a key for it?" is no. The reason is not
-    /// swallowed: an `error` event goes out on the bus naming the fix, and
+    /// listing always answers. A key filed by the app is unreadable from
+    /// `tingra-cli` (separate keychain groups), and the honest answer to "does
+    /// this process have a key for it?" is no. The reason is not
+    /// swallowed: an `error` event goes out on the bus explaining it, and
     /// ``key(for:)`` throws
     /// ``DestinationStoreError/keyUnreadable(name:underlying:)`` if the
     /// destination is actually used to stream.

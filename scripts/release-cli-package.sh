@@ -72,30 +72,27 @@ cp "$BIN" "$STAGE_BIN"
 if [[ -n "${TINGRA_SIGN_ID:-}" ]]; then
     log "signing with '${TINGRA_SIGN_ID}'…"
 
-    # The entitlements file carries $(TeamIdentifierPrefix) in its keychain
-    # access group, because a Team ID must never live in a tracked file
-    # (CLAUDE.md, "Signing"). Xcode expands that build variable for the app
-    # target; `codesign` does not, so expand it here — from the Team ID inside
-    # the signing identity, which is where the release's team already comes
-    # from — into a throwaway copy that is signed and then discarded.
-    SIGN_ENTITLEMENTS="$ENTITLEMENTS"
+    # A $(TeamIdentifierPrefix) in this file is a defect, not something to
+    # expand. Xcode expands that build variable for an app target; `codesign`
+    # does not, so it would be embedded verbatim — and the entitlement it
+    # appears in (keychain-access-groups) is restricted anyway: the kernel
+    # authorizes a restricted entitlement from an embedded provisioning
+    # profile, which a bare Mach-O has nowhere to carry. v0.1.1 shipped that
+    # way and every invocation was SIGKILLed at exec. Refuse it here rather
+    # than let it reach a user's Mac (docs/DESTINATIONS.md, "What v0.1.1
+    # settled about the CLI and restricted entitlements").
     if grep -q 'TeamIdentifierPrefix' "$ENTITLEMENTS"; then
-        # "Developer ID Application: Some Name (TEAMID)" → TEAMID
-        TEAM_ID="$(sed -n 's/.*(\([A-Z0-9]\{10\}\))$/\1/p' <<<"$TINGRA_SIGN_ID")"
-        [[ -n "$TEAM_ID" ]] || die "could not read a Team ID out of TINGRA_SIGN_ID ('${TINGRA_SIGN_ID}'); \
-it must end in the team identifier in parentheses, e.g. 'Developer ID Application: Name (ABCDE12345)'"
-        SIGN_ENTITLEMENTS="${DIST}/tingra-cli.signing.entitlements"
-        sed "s/\$(TeamIdentifierPrefix)/${TEAM_ID}./g" "$ENTITLEMENTS" >"$SIGN_ENTITLEMENTS"
-        log "expanded \$(TeamIdentifierPrefix) for the keychain access group."
+        die "${ENTITLEMENTS} contains \$(TeamIdentifierPrefix), which codesign cannot expand. \
+It reached this file with a restricted entitlement (keychain-access-groups); a bare executable cannot \
+carry the provisioning profile that would authorize one, so the signed binary is killed at launch. \
+Remove the entitlement — the CLI reads its own keychain group, not a shared one."
     fi
 
     codesign --force --options runtime --timestamp \
         --sign "$TINGRA_SIGN_ID" \
         --identifier "$BUNDLE_ID" \
-        --entitlements "$SIGN_ENTITLEMENTS" \
+        --entitlements "$ENTITLEMENTS" \
         "$STAGE_BIN"
-    # The expanded copy holds the Team ID; it never outlives the signature.
-    [[ "$SIGN_ENTITLEMENTS" == "$ENTITLEMENTS" ]] || rm -f "$SIGN_ENTITLEMENTS"
     codesign --verify --strict --verbose=2 "$STAGE_BIN"
     codesign -d --entitlements - "$STAGE_BIN" >/dev/null
     otool -s __TEXT __info_plist "$STAGE_BIN" >/dev/null
@@ -104,12 +101,37 @@ else
     warn "TINGRA_SIGN_ID unset — skipping signing (the artifact will NOT be notarizable)."
 fi
 
-# 5. Zip for the tap.
+# 5. Run the artifact. A verifying signature is not proof of a running binary:
+#    `codesign` embeds whatever entitlements it is handed without checking that
+#    the platform will grant them, and the kernel kills a process at exec over a
+#    restricted entitlement it cannot authorize — before main, with no output
+#    and no log entry. Notarization does not execute the binary either, so
+#    nothing else in this pipeline would notice. v0.1.1 shipped unrunnable and
+#    was caught only after `brew upgrade`. This is the cheapest check that would
+#    have stopped it, and it runs whether or not the binary was signed.
+SMOKE_OUTPUT="$("$STAGE_BIN" version 2>&1)" && SMOKE_STATUS=0 || SMOKE_STATUS=$?
+if (( SMOKE_STATUS != 0 )); then
+    HINT=""
+    # 128+9: SIGKILL, which for a freshly signed binary means the kernel
+    # refused it — an entitlement no provisioning profile authorizes is the
+    # cause to look at first.
+    (( SMOKE_STATUS == 137 )) && HINT=" The binary was SIGKILLed at exec, which for a signed binary \
+means the kernel refused it: check ${ENTITLEMENTS} for a restricted entitlement (a bare executable can \
+carry no provisioning profile to authorize one). Compare against an unsigned build, which has no \
+entitlements: swift build -c release --arch arm64."
+    die "the signed binary does not run: 'tingra-cli version' exited ${SMOKE_STATUS}.${HINT} \
+Output: ${SMOKE_OUTPUT:-<none>}"
+fi
+[[ "$SMOKE_OUTPUT" == *"${VERSION}"* ]] || die "the packaged binary reports '${SMOKE_OUTPUT}', \
+which does not name version ${VERSION}"
+log "smoke test passed: the packaged binary runs and reports ${VERSION}."
+
+# 6. Zip for the tap.
 ZIP="${DIST}/tingra-cli-${VERSION}-arm64.zip"
 ( cd "$DIST" && ditto -c -k --keepParent "tingra-cli" "$ZIP" )
 log "wrote $ZIP"
 
-# 6. Notarize the zip (online ticket; a bare binary can't be stapled).
+# 7. Notarize the zip (online ticket; a bare binary can't be stapled).
 if [[ -n "${TINGRA_NOTARY_PROFILE:-}" && -n "${TINGRA_SIGN_ID:-}" ]]; then
     log "notarizing the zip…"
     xcrun notarytool submit "$ZIP" --keychain-profile "$TINGRA_NOTARY_PROFILE" --wait
@@ -118,13 +140,13 @@ else
     warn "TINGRA_NOTARY_PROFILE unset — skipping notarization of the zip."
 fi
 
-# 7. Emit the sha256 the Homebrew formula pins. The zip is the tap's only
+# 8. Emit the sha256 the Homebrew formula pins. The zip is the tap's only
 #    input, so surface it now — before the optional .pkg — so a pkg or keychain
 #    hiccup below can never swallow the one value the release actually needs.
 SHA="$(shasum -a 256 "$ZIP" | awk '{print $1}')"
 log "zip sha256: $SHA   (paste into packaging/homebrew/tingra-cli.rb)"
 
-# 8. Build the offline .pkg: install to /usr/local/bin (Homebrew's own path is
+# 9. Build the offline .pkg: install to /usr/local/bin (Homebrew's own path is
 #    managed by the formula; the pkg is the manual-install fallback). Best
 #    effort — the notarized zip above is what the tap uses, so a pkg
 #    signing/keychain failure warns rather than aborting the release.
@@ -162,7 +184,7 @@ else
     PKG=""
 fi
 
-# 9. Final summary.
+# 10. Final summary.
 echo
 log "artifacts in ${DIST}:"
 echo "  zip:    $ZIP"

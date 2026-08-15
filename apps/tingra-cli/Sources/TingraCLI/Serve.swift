@@ -184,10 +184,11 @@ struct Serve: AsyncParsableCommand {
         let statusTask = eventBus.attach(status)
 
         // The operator's saved destinations, so an agent can name "my Twitch"
-        // instead of carrying a URL and key (DESTINATIONS.md). The default
-        // secure storage joins the shared keychain access group when this
-        // binary is signed; an unsigned development build resolves names and
-        // URLs and reports every key as absent, with the fix in the message.
+        // instead of carrying a URL and key (DESTINATIONS.md). The daemon
+        // reads its own keychain group, not the app's: sharing one needs a
+        // restricted entitlement this bare executable cannot carry (0.1.2 —
+        // see the entitlements file). So names and URLs resolve, and a key
+        // filed in the app is reported absent with the reason in the message.
         let destinations = DestinationStore(eventBus: eventBus)
 
         let coordinator = StreamCoordinator(

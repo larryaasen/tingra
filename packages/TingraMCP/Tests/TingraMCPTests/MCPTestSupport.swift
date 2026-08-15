@@ -303,7 +303,7 @@ final class DestinationFixture {
     ///   - destinations: The destinations to file, in order.
     ///   - keys: The stream key to file for each destination id, if any.
     ///   - readFailure: An error the secret store's reads throw, standing in
-    ///     for an unsigned development build.
+    ///     for a key filed in the other binary's keychain group.
     ///   - eventBus: The bus the store's change events go out on.
     init(
         destinations: [StoredDestination] = [],

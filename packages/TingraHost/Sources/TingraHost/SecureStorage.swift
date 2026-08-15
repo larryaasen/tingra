@@ -92,9 +92,17 @@ public struct KeychainSecureStorage: SecureStorage {
     /// Data-protection keychain items are partitioned by access group, and the
     /// app and `tingra-cli` are different signed binaries — so without a
     /// shared group an item filed by one is invisible to the other. Passing
-    /// ``sharedAccessGroup()`` here is what lets the daemon reach a stream key
-    /// the operator filed in the app (DESTINATIONS.md, "Key sharing between
-    /// the app and the daemon").
+    /// ``sharedAccessGroup()`` here joins the group when the running binary
+    /// declares one (DESTINATIONS.md, "Key sharing between the app and the
+    /// daemon").
+    ///
+    /// As of 0.1.2 no shipped binary declares one, so this is nil in practice
+    /// and the two processes do not share keys. `keychain-access-groups` is a
+    /// restricted entitlement: the kernel authorizes it from an embedded
+    /// provisioning profile, which the bare `tingra-cli` executable cannot
+    /// carry — v0.1.1 shipped it and was SIGKILLed at every launch. The seam
+    /// stays because the mechanism is right and only the CLI's packaging is
+    /// wrong; DESTINATIONS.md owns the replacement.
     private let accessGroup: String?
 
     /// Creates a Keychain-backed store.
@@ -110,9 +118,12 @@ public struct KeychainSecureStorage: SecureStorage {
         self.accessGroup = accessGroup
     }
 
-    /// The suffix of the shared keychain access group, as written in both
-    /// binaries' `keychain-access-groups` entitlement:
+    /// The suffix of the shared keychain access group, as written in the app's
+    /// `keychain-access-groups` entitlement:
     /// `$(TeamIdentifierPrefix)com.moonwink.tingra.shared`.
+    ///
+    /// `tingra-cli` declared the same group until 0.1.2 and no longer can —
+    /// see ``sharedAccessGroup()``.
     ///
     /// Only the suffix is a constant. The full group string carries the team
     /// identifier prefix, which a public repository must never hold in a
@@ -128,12 +139,13 @@ public struct KeychainSecureStorage: SecureStorage {
     /// value this needs — reading it back is how the group is known at runtime
     /// without a Team ID ever appearing in source.
     ///
-    /// Returns nil for an **unsigned development build** (a bare `swift build`
-    /// of the CLI), which carries no entitlements and therefore cannot join an
-    /// access group. That is a real state, not an error: the caller degrades
-    /// honestly — names and URLs still resolve, and a key the process cannot
-    /// read is reported as absent with a structured error naming the fix (see
-    /// ``DestinationStore``).
+    /// Returns nil whenever the running binary declares no such group, which
+    /// as of 0.1.2 is every build of `tingra-cli` — an unsigned `swift build`
+    /// (no entitlements at all) and the signed release alike, since the
+    /// entitlement had to be removed to keep the binary launchable. That is a
+    /// real state, not an error: the caller degrades honestly — names and URLs
+    /// still resolve, and a key the process cannot read is reported as absent
+    /// with a structured error explaining why (see ``DestinationStore``).
     ///
     /// - Returns: The full access group string, or nil when the binary
     ///   declares none.

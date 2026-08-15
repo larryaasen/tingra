@@ -64,8 +64,9 @@ struct DestinationsListTool: Tool {
                     "name": .string(destination.name),
                     "url": .string(destination.url.absoluteString),
                     // False, not an error, when this process cannot reach the
-                    // Keychain — an unsigned development build. The reason
-                    // goes out on the event bus rather than into the result.
+                    // Keychain — a key filed by the app, which sits in a
+                    // separate keychain group. The reason goes out on the
+                    // event bus rather than into the result.
                     "hasKey": .bool(await destinations.hasKey(for: destination)),
                 ]))
         }

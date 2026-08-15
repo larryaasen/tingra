@@ -136,6 +136,6 @@ struct ProbeToolTests {
         let error = try await probeError(["destination": "Twitch"], destinations: fixture.store)
 
         #expect(error?.identifier == .pipelineError)
-        #expect(error?.message.contains("unsigned development build") == true)
+        #expect(error?.message.contains("separate binaries in separate groups") == true)
     }
 }

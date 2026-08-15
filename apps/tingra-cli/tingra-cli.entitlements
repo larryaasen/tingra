@@ -14,16 +14,29 @@
   plug-ins signed by other teams (ARCHITECTURE.md). No sandbox entitlement:
   Tingra is deliberately unsandboxed.
 
-  keychain-access-groups puts this binary and Tingra.app in one data-protection
-  keychain group, so the daemon can read a stream key the operator filed in the
-  app (DESTINATIONS.md, "Key sharing between the app and the daemon"). The
-  value carries the $(TeamIdentifierPrefix) build variable, never a literal
-  Team ID — nothing personal in a tracked file (CLAUDE.md, "Signing"). Xcode
-  expands that variable itself; `codesign` does not, so release-cli-package.sh
-  substitutes the Team ID out of TINGRA_SIGN_ID into a temporary copy at
-  signing time. An unsigned `swift build` binary has no entitlements at all and
-  therefore no access group: destination names and URLs still resolve, and a
-  key it cannot read is reported as absent with a message naming the fix.
+  Every entitlement here is unrestricted — one the hardened runtime grants on
+  the signature alone. That constraint is the whole shape of this file, and it
+  is not a style preference: the kernel authorizes a *restricted* entitlement
+  from an embedded provisioning profile, and a bare Mach-O executable has
+  nowhere to carry one (embedded.provisionprofile lives inside a bundle's
+  Contents/). codesign does not check, so a restricted entitlement signs,
+  verifies, and notarizes clean, then dies with SIGKILL at exec — before main,
+  with no output and no log entry.
+
+  v0.1.1 shipped exactly that way, with keychain-access-groups added for the
+  destination store's shared keychain group. Every invocation of the released
+  binary was killed. It was removed in 0.1.2, and two guards now stand where it
+  was: scripts/release-cli-package.sh refuses a $(TeamIdentifierPrefix) in this
+  file outright, and runs the packaged binary before notarizing it. Before
+  adding an entitlement here, confirm it is unrestricted — or the CLI has to
+  move inside a bundle first.
+
+  The cost is real and deliberate: without a shared access group, a stream key
+  the operator files in Tingra.app is invisible to the daemon. Destination
+  names and URLs resolve either way (the JSON document needs no entitlement),
+  a key the daemon cannot read is reported as absent, and a raw 'url'/'key'
+  pair still streams. See DESTINATIONS.md, "Key sharing between the app and the
+  daemon", which owns the replacement mechanism.
 -->
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -34,9 +47,5 @@
     <true/>
     <key>com.apple.security.cs.disable-library-validation</key>
     <true/>
-    <key>keychain-access-groups</key>
-    <array>
-        <string>$(TeamIdentifierPrefix)com.moonwink.tingra.shared</string>
-    </array>
 </dict>
 </plist>

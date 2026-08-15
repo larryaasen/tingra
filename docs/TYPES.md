@@ -214,8 +214,10 @@ internal surface a reader needs to navigate the target instead.
   document, an event, or a log. A seam so the app runs against the real
   Keychain and tests against an in-memory double. Its optional access group —
   resolved at runtime by `sharedAccessGroup()` from the running binary's own
-  entitlements, so no Team ID appears in source — is what lets the app and
-  `tingra-cli` reach one another's keys (DESTINATIONS.md).
+  entitlements, so no Team ID appears in source — is the seam by which the app
+  and `tingra-cli` would reach one another's keys; it resolves to nil in every
+  shipped `tingra-cli`, which cannot carry the restricted entitlement, so the
+  two do not share keys today (DESTINATIONS.md).
 - `SecureStorageError` — a recoverable, secret-free failure from the secure
   store (a Keychain status, or a value that would not read back as text).
 - `DestinationStore` — the operator's saved destinations, the host service

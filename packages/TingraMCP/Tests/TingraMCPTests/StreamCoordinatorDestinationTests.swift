@@ -197,7 +197,7 @@ struct StreamCoordinatorDestinationTests {
         let error = await startError(coordinator, [.saved(id: "destination-1", selector: "Twitch")])
 
         #expect(error?.identifier == .pipelineError)
-        #expect(error?.message.contains("unsigned development build") == true)
+        #expect(error?.message.contains("separate binaries in separate groups") == true)
         #expect(await coordinator.isStreaming == false)
     }
 
