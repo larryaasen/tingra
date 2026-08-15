@@ -81,7 +81,13 @@ if [[ -n "${TINGRA_SIGN_ID:-}" ]]; then
     # way and every invocation was SIGKILLed at exec. Refuse it here rather
     # than let it reach a user's Mac (docs/DESTINATIONS.md, "What v0.1.1
     # settled about the CLI and restricted entitlements").
-    if grep -q 'TeamIdentifierPrefix' "$ENTITLEMENTS"; then
+    # Inspect the *parsed* entitlements, never the file text: this file
+    # documents the rule in an XML comment that names the variable, and a raw
+    # grep matches its own documentation. Parsing drops comments, so only a
+    # real key or value can trip this.
+    ENTITLEMENTS_JSON="$(plutil -convert json -o - "$ENTITLEMENTS")" \
+        || die "${ENTITLEMENTS} is not a readable plist"
+    if grep -q 'TeamIdentifierPrefix' <<<"$ENTITLEMENTS_JSON"; then
         die "${ENTITLEMENTS} contains \$(TeamIdentifierPrefix), which codesign cannot expand. \
 It reached this file with a restricted entitlement (keychain-access-groups); a bare executable cannot \
 carry the provisioning profile that would authorize one, so the signed binary is killed at launch. \
