@@ -14,7 +14,7 @@ import ArgumentParser
 ///
 /// - **Product releases** are tagged `v<MAJOR>.<MINOR>.<PATCH>` (e.g.
 ///   `v0.1.0`); ``current`` holds that number without the `v`, and
-///   `tingra-cli version` prints it. `scripts/package-cli.sh` asserts the tag
+///   `tingra-cli version` prints it. `scripts/release-cli-package.sh` asserts the tag
 ///   matches ``current`` so the artifact, the embedded Info.plist, and the tag
 ///   never drift.
 /// - **The plug-in protocol package (`TingraPlugInKit`) and `TingraEventBus`

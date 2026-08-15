@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-#  package-cli.sh
+#  release-cli-package.sh
 #  tingra-cli
 #
 #  Created by Larry Aasen on 2026-07-09.
@@ -25,7 +25,7 @@
 #   TINGRA_NOTARY_PROFILE     notarytool keychain profile name (`notarytool store-credentials`)
 #
 # Usage:
-#   scripts/package-cli.sh [version]
+#   scripts/release-cli-package.sh [version]
 # The version defaults to what `tingra-cli version` reports; the script asserts
 # it matches the embedded Info.plist so a release can't ship mislabelled.
 set -euo pipefail
@@ -36,9 +36,9 @@ readonly CLI_DIR="${ROOT}/apps/tingra-cli"
 readonly ENTITLEMENTS="${CLI_DIR}/tingra-cli.entitlements"
 readonly DIST="${ROOT}/dist"
 
-log()  { echo "package-cli: $*"; }
-warn() { echo "package-cli: WARNING: $*" >&2; }
-die()  { echo "package-cli: ERROR: $*" >&2; exit 1; }
+log()  { echo "release-cli-package: $*"; }
+warn() { echo "release-cli-package: WARNING: $*" >&2; }
+die()  { echo "release-cli-package: ERROR: $*" >&2; exit 1; }
 
 # 1. Build the release binary (arm64 only, per Platform Support).
 log "building release binary…"

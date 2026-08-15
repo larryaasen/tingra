@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-#  publish-cli.sh
+#  release-cli-publish.sh
 #  tingra-cli
 #
 #  Created by Larry Aasen on 2026-07-11.
@@ -8,7 +8,7 @@
 #  SPDX-License-Identifier: MIT
 #
 # One command to cut and deploy a tingra-cli Homebrew release end to end:
-#   1. build + sign + notarize + package  (scripts/package-cli.sh),
+#   1. build + sign + notarize + package  (scripts/release-cli-package.sh),
 #   2. tag the commit and push the tag,
 #   3. create the GitHub release and upload the artifacts, and
 #   4. render packaging/homebrew/tingra-cli.rb into the tap repo with this
@@ -16,13 +16,13 @@
 #
 # After this runs, `brew install larryaasen/tingra/tingra-cli` gets the new
 # version. Requires the GitHub CLI (`gh`) authenticated with push access to
-# both repos, plus the signing/notarization environment package-cli.sh needs
+# both repos, plus the signing/notarization environment release-cli-package.sh needs
 # (TINGRA_SIGN_ID, TINGRA_INSTALLER_SIGN_ID, TINGRA_NOTARY_PROFILE).
 #
 # Usage:
-#   scripts/publish-cli.sh [version]
+#   scripts/release-cli-publish.sh [version]
 # The version defaults to TingraCLIVersion.current in Version.swift, so a
-# normal release is just `scripts/publish-cli.sh` once that constant is bumped.
+# normal release is just `scripts/release-cli-publish.sh` once that constant is bumped.
 #
 # Configuration (env, with defaults):
 #   TINGRA_REPO        code + releases repo   (default larryaasen/tingra)
@@ -38,8 +38,8 @@ readonly REPO="${TINGRA_REPO:-larryaasen/tingra}"
 readonly TAP_REPO="${TINGRA_TAP_REPO:-larryaasen/homebrew-tingra}"
 readonly TAP_FORMULA="${TINGRA_TAP_FORMULA:-Formula/tingra-cli.rb}"
 
-log()  { echo "publish-cli: $*"; }
-die()  { echo "publish-cli: ERROR: $*" >&2; exit 1; }
+log()  { echo "release-cli-publish: $*"; }
+die()  { echo "release-cli-publish: ERROR: $*" >&2; exit 1; }
 
 # 0. Preconditions: the tools and a clean tree (a tag must name a real commit).
 command -v gh >/dev/null || die "the GitHub CLI (gh) is required — install with 'brew install gh' and 'gh auth login'."
@@ -61,9 +61,9 @@ fi
 readonly TAG="v${VERSION}"
 log "releasing ${TAG} → ${REPO} (tap ${TAP_REPO})"
 
-# 2. Build, sign, notarize, and package. package-cli.sh asserts the version
+# 2. Build, sign, notarize, and package. release-cli-package.sh asserts the version
 #    matches the embedded Info.plist, so a mismatch stops here.
-"${ROOT}/scripts/package-cli.sh" "$VERSION"
+"${ROOT}/scripts/release-cli-package.sh" "$VERSION"
 ZIP="${DIST}/tingra-cli-${VERSION}-arm64.zip"
 PKG="${DIST}/tingra-cli-${VERSION}.pkg"
 [[ -f "$ZIP" ]] || die "expected artifact not found: $ZIP"
@@ -78,7 +78,7 @@ fi
 git -C "$ROOT" push origin "$TAG"
 
 # 4. Create the GitHub release (or reuse it) and upload the artifacts. The zip
-#    is required; the pkg is attached only if package-cli.sh produced one.
+#    is required; the pkg is attached only if release-cli-package.sh produced one.
 assets=("$ZIP")
 [[ -f "$PKG" ]] && assets+=("$PKG")
 if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then

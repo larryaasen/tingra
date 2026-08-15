@@ -40,13 +40,13 @@ Signed and notarized binary for Apple Silicon (arm64) only, distributed through 
 
 **CI verification.** The packaging job asserts identity, entitlements, and the embedded plist on every release — `codesign --verify --strict`, `codesign -d --entitlements -`, and an `otool -s __TEXT __info_plist` presence check — so a regression fails the pipeline, not a user's Mac.
 
-**Versioning.** Product releases tag `v<MAJOR>.<MINOR>.<PATCH>`; `tingra-cli version` prints the number without the `v`, kept in sync with the embedded Info.plist's `CFBundleShortVersionString` (`scripts/package-cli.sh` asserts they match). The plug-in protocol package (`TingraPlugInKit`) and the event bus (`TingraEventBus`) SemVer independently under prefixed tags (`plugin-kit-<x.y.z>`, `event-bus-<x.y.z>`) so the API-stability diff pins the right baseline in a monorepo that ships several products from one commit. Between releases `main` carries the next version with a `-dev` suffix.
+**Versioning.** Product releases tag `v<MAJOR>.<MINOR>.<PATCH>`; `tingra-cli version` prints the number without the `v`, kept in sync with the embedded Info.plist's `CFBundleShortVersionString` (`scripts/release-cli-package.sh` asserts they match). The plug-in protocol package (`TingraPlugInKit`) and the event bus (`TingraEventBus`) SemVer independently under prefixed tags (`plugin-kit-<x.y.z>`, `event-bus-<x.y.z>`) so the API-stability diff pins the right baseline in a monorepo that ships several products from one commit. Between releases `main` carries the next version with a `-dev` suffix.
 
-**The recipe is implemented.** `scripts/package-cli.sh` runs the whole pipeline (release build → sign → verify → notarized zip + stapled `.pkg` → sha256), gated on signing/notarization credentials passed as environment variables (absent creds fall back to an unsigned dev artifact). `.github/workflows/packaging.yml` runs it on a `v*` tag; the formula template lives at `packaging/homebrew/tingra-cli.rb`, copied per release into the external `larryaasen/homebrew-tingra` tap (see `packaging/README.md`).
+**The recipe is implemented.** `scripts/release-cli-package.sh` runs the whole pipeline (release build → sign → verify → notarized zip + stapled `.pkg` → sha256), gated on signing/notarization credentials passed as environment variables (absent creds fall back to an unsigned dev artifact). `.github/workflows/packaging.yml` runs it on a `v*` tag; the formula template lives at `packaging/homebrew/tingra-cli.rb`, copied per release into the external `larryaasen/homebrew-tingra` tap (see `packaging/README.md`).
 
 ### Cutting a release
 
-`scripts/release-cli.sh` cuts and publishes a release in one command. It owns the version decision — prompting for the next version number and bumping `TingraCLIVersion.current` and the embedded `Info.plist` together — then hands off to `scripts/publish-cli.sh` for the build, signing, notarization, tag, GitHub release, and tap update. `publish-cli.sh` stays non-interactive and callable on its own, so CI and the `v*` tag workflow are unaffected.
+`scripts/release-cli.sh` cuts and publishes a release in one command. It owns the version decision — prompting for the next version number and bumping `TingraCLIVersion.current` and the embedded `Info.plist` together — then hands off to `scripts/release-cli-publish.sh` for the build, signing, notarization, tag, GitHub release, and tap update. `release-cli-publish.sh` stays non-interactive and callable on its own, so CI and the `v*` tag workflow are unaffected.
 
 **Step by step.**
 
@@ -60,7 +60,7 @@ Signed and notarized binary for Apple Silicon (arm64) only, distributed through 
    export TINGRA_NOTARY_PROFILE="…"   # a notarytool store-credentials profile
    ```
 
-   Missing credentials are a warning plus a confirmation prompt, not a hard stop, because `package-cli.sh` still produces a usable unsigned artifact for local inspection. Never publish that artifact: Gatekeeper rejects it and its TCC grants key to nothing.
+   Missing credentials are a warning plus a confirmation prompt, not a hard stop, because `release-cli-package.sh` still produces a usable unsigned artifact for local inspection. Never publish that artifact: Gatekeeper rejects it and its TCC grants key to nothing.
 
 3. **Run it:**
 
@@ -83,7 +83,7 @@ Signed and notarized binary for Apple Silicon (arm64) only, distributed through 
 
 **Flags.** `--version <x.y.z>` skips the prompt; `--dry-run` runs the preflight and prints the plan without changing anything; `--no-dev-bump` skips step 6; `--help` prints usage. `TINGRA_RELEASE_BRANCH` overrides the expected branch (default `main`); releasing from another branch warns and asks rather than refusing.
 
-**Resumable.** If a run stops partway — a notarization timeout is the usual cause — re-run it with the same `--version`. The bump and its commit are skipped when already in place, and `publish-cli.sh` is itself idempotent (it reuses an existing tag and clobbers uploaded artifacts), so a resumed run finishes the release rather than starting a second one.
+**Resumable.** If a run stops partway — a notarization timeout is the usual cause — re-run it with the same `--version`. The bump and its commit are skipped when already in place, and `release-cli-publish.sh` is itself idempotent (it reuses an existing tag and clobbers uploaded artifacts), so a resumed run finishes the release rather than starting a second one.
 
 Open question tracked in TODO.md: how bundled plug-ins ship next to a bare binary (app bundle style layout, compiled in, or a plug-ins directory installed by the formula). For the CLI era they are compiled in (see ARCHITECTURE.md); the question is what changes when the external bundle loader ships.
 

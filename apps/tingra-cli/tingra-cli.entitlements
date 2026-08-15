@@ -7,7 +7,7 @@
   Copyright © 2026 Larry Aasen.
   SPDX-License-Identifier: MIT
 
-  Applied by scripts/package-cli.sh at signing (see CLI.md, "Distribution").
+  Applied by scripts/release-cli-package.sh at signing (see CLI.md, "Distribution").
   Notarization requires the hardened runtime, which denies camera and
   microphone access unless the binary opts in — hence the two device
   entitlements. disable-library-validation lets the host load third-party
@@ -19,7 +19,7 @@
   app (DESTINATIONS.md, "Key sharing between the app and the daemon"). The
   value carries the $(TeamIdentifierPrefix) build variable, never a literal
   Team ID — nothing personal in a tracked file (CLAUDE.md, "Signing"). Xcode
-  expands that variable itself; `codesign` does not, so package-cli.sh
+  expands that variable itself; `codesign` does not, so release-cli-package.sh
   substitutes the Team ID out of TINGRA_SIGN_ID into a temporary copy at
   signing time. An unsigned `swift build` binary has no entitlements at all and
   therefore no access group: destination names and URLs still resolve, and a

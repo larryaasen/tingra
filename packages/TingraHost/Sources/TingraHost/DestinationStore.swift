@@ -135,7 +135,7 @@ public enum DestinationStoreError: Error, Equatable, CustomStringConvertible {
                 The stream key for destination '\(name)' is filed but could not be read from secure \
                 storage (\(underlying)). An unsigned development build carries no entitlements and so \
                 cannot join Tingra's shared keychain access group; run a signed binary — the app, or a \
-                tingra-cli built by scripts/package-cli.sh — to reach saved keys. Destination names and \
+                tingra-cli built by scripts/release-cli-package.sh — to reach saved keys. Destination names and \
                 URLs resolve either way, and a raw 'url'/'key' pair still streams.
                 """
         }

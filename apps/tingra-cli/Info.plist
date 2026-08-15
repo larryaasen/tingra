@@ -13,7 +13,7 @@
   keys, and the TCC usage descriptions live. Without the usage-description
   strings, TCC does not deny the request — it kills the process outright.
 
-  The version keys track TingraCLIVersion.current; scripts/package-cli.sh
+  The version keys track TingraCLIVersion.current; scripts/release-cli-package.sh
   asserts they match so a release cannot ship a mislabelled binary.
 -->
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

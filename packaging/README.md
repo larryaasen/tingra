@@ -6,7 +6,7 @@ holds the concrete recipe.
 
 ## Artifacts
 
-`scripts/package-cli.sh [version]` produces, in `dist/`:
+`scripts/release-cli-package.sh [version]` produces, in `dist/`:
 
 - **`tingra-cli-<version>-arm64.zip`** — the artifact the Homebrew tap
   downloads. A bare Mach-O cannot be stapled, so Gatekeeper fetches the
@@ -38,7 +38,7 @@ In CI these come from GitHub Actions secrets, never the repo.
 `scripts/release-cli.sh` is the one command to run. It prompts for the next
 version (defaulting to the next increment), bumps `TingraCLIVersion.current` and
 `Info.plist` together, commits and pushes that bump, then hands off to
-`publish-cli.sh` — so a release is:
+`release-cli-publish.sh` — so a release is:
 
 ```sh
 # Export the signing env (see the table above), then:
@@ -48,15 +48,15 @@ scripts/release-cli.sh      # prompts for the version; --dry-run to rehearse
 Step-by-step instructions, flags, and the resume behavior are in
 [docs/CLI.md](../docs/CLI.md) "Cutting a release".
 
-`scripts/publish-cli.sh [version]` is the non-interactive half underneath — build,
+`scripts/release-cli-publish.sh [version]` is the non-interactive half underneath — build,
 sign, notarize, tag, publish the GitHub release, and update the tap. Call it
 directly when the version bump is already committed (which is what CI does); it
-does **not** bump the version itself, so a bare `publish-cli.sh` on a tree whose
+does **not** bump the version itself, so a bare `release-cli-publish.sh` on a tree whose
 constant still names a shipped version stops at the tag-collision check.
 
 It requires a **clean working tree** (the tag must name a committed state) and the
 GitHub CLI (`gh`) authenticated with push access to both repos. Under the hood it
-runs `scripts/package-cli.sh`, pushes tag `v<version>`, creates the release with
+runs `scripts/release-cli-package.sh`, pushes tag `v<version>`, creates the release with
 `dist/*.zip` (and `*.pkg` if produced), and renders
 [`homebrew/tingra-cli.rb`](homebrew/tingra-cli.rb) into the tap with the release's
 `version` + `sha256`. Configurable via `TINGRA_REPO`, `TINGRA_TAP_REPO`,
@@ -71,18 +71,18 @@ tingra-cli serve --install
 
 The tap never builds from source — it downloads the prebuilt, notarized zip.
 
-### The pieces `publish-cli.sh` orchestrates
+### The pieces `release-cli-publish.sh` orchestrates
 
 The formula source of truth is [`homebrew/tingra-cli.rb`](homebrew/tingra-cli.rb).
 The **tap itself is a separate repo**, `larryaasen/homebrew-tingra`, that lives
 outside this monorepo and must exist (empty is fine) before the first release.
-To run any step by hand instead of `publish-cli.sh`:
+To run any step by hand instead of `release-cli-publish.sh`:
 
-1. `scripts/package-cli.sh` → `dist/*.zip`, `dist/*.pkg`, and the zip's sha256.
+1. `scripts/release-cli-package.sh` → `dist/*.zip`, `dist/*.pkg`, and the zip's sha256.
 2. `gh release create v<version> dist/* --repo larryaasen/tingra`.
 3. Copy `homebrew/tingra-cli.rb` into the tap, setting `version` and `sha256`,
    then commit and push the tap.
 
 The tag-triggered `.github/workflows/packaging.yml` automates steps 1–2 in CI
 when the signing secrets are configured; the tap update (step 3) stays with
-`publish-cli.sh` (or is done by hand) since it pushes to a second repo.
+`release-cli-publish.sh` (or is done by hand) since it pushes to a second repo.

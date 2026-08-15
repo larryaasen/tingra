@@ -60,7 +60,7 @@ jobs:
           TINGRA_SIGN_ID: ${{ secrets.TINGRA_SIGN_ID }}
           TINGRA_INSTALLER_SIGN_ID: ${{ secrets.TINGRA_INSTALLER_SIGN_ID }}
           TINGRA_NOTARY_PROFILE: ${{ secrets.TINGRA_NOTARY_PROFILE }}
-        run: scripts/package-cli.sh
+        run: scripts/release-cli-package.sh
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4

@@ -430,7 +430,7 @@ struct DestinationStoreTests {
         #expect(error?.identifier == .pipelineError)
         let message = String(describing: try #require(error))
         #expect(message.contains("unsigned development build"))
-        #expect(message.contains("package-cli.sh"))
+        #expect(message.contains("release-cli-package.sh"))
     }
 
     @Test("an unreadable key is reported on the event bus")

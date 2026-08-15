@@ -8,17 +8,17 @@
 #  SPDX-License-Identifier: MIT
 #
 # One interactive command to cut a tingra-cli release from a clean checkout.
-# This is the front end over scripts/publish-cli.sh: it owns the *version
+# This is the front end over scripts/release-cli-publish.sh: it owns the *version
 # decision* — the step packaging/README.md previously left to the operator —
 # and delegates the actual build/sign/notarize/tag/publish/tap work to
-# publish-cli.sh, which stays non-interactive so CI can keep calling it directly.
+# release-cli-publish.sh, which stays non-interactive so CI can keep calling it directly.
 #
 # What it does, in order:
 #   1. Preflight: tools, authentication, branch, clean tree, signing env.
 #   2. Prompt for the version, defaulting to the next increment.
 #   3. Bump TingraCLIVersion.current and Info.plist's version keys together.
 #   4. Commit the bump and push the branch.
-#   5. Run scripts/publish-cli.sh, which tags, packages, publishes, updates the tap.
+#   5. Run scripts/release-cli-publish.sh, which tags, packages, publishes, updates the tap.
 #   6. Optionally reopen main on the next -dev version (the documented scheme).
 #
 # Usage:
@@ -29,7 +29,7 @@
 #
 # Resumable: if a run stops after the bump (say notarization times out), just
 # run it again with the same version — the bump and commit are skipped when
-# they are already in place, and publish-cli.sh is itself idempotent.
+# they are already in place, and release-cli-publish.sh is itself idempotent.
 set -euo pipefail
 
 readonly ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -68,7 +68,7 @@ current_version() {
 }
 
 # Reads CFBundleShortVersionString from the embedded Info.plist. Used to prove
-# the two stayed in sync, which package-cli.sh asserts again at package time.
+# the two stayed in sync, which release-cli-package.sh asserts again at package time.
 plist_version() {
     sed -n '/<key>CFBundleShortVersionString<\/key>/{n;s/.*<string>\(.*\)<\/string>.*/\1/p;}' "$INFO_PLIST"
 }
@@ -100,7 +100,7 @@ confirm() {
 }
 
 # Writes a version into both Version.swift and the embedded Info.plist, then
-# reads them back. They are bumped together on purpose: package-cli.sh refuses
+# reads them back. They are bumped together on purpose: release-cli-package.sh refuses
 # to package a binary whose plist and constant disagree.
 write_version() {
     local new="$1"
@@ -123,7 +123,7 @@ write_version() {
 
 [[ -f "$VERSION_SWIFT" ]] || die "not found: $VERSION_SWIFT"
 [[ -f "$INFO_PLIST" ]]    || die "not found: $INFO_PLIST"
-[[ -x "${ROOT}/scripts/publish-cli.sh" ]] || die "scripts/publish-cli.sh is missing or not executable."
+[[ -x "${ROOT}/scripts/release-cli-publish.sh" ]] || die "scripts/release-cli-publish.sh is missing or not executable."
 
 command -v git >/dev/null || die "git is required."
 command -v gh  >/dev/null || die "the GitHub CLI (gh) is required — 'brew install gh' then 'gh auth login'."
@@ -135,7 +135,7 @@ if [[ "$BRANCH" != "$RELEASE_BRANCH" ]]; then
     $DRY_RUN || confirm "Release from '${BRANCH}' anyway?" || die "aborted."
 fi
 
-# A dirty tree is fatal rather than a prompt: publish-cli.sh requires a clean tree
+# A dirty tree is fatal rather than a prompt: release-cli-publish.sh requires a clean tree
 # so the tag names a committed state, and this script is about to write two
 # files of its own — stray edits would be swept into the release commit.
 if [[ -n "$(git -C "$ROOT" status --porcelain)" ]]; then
@@ -152,7 +152,7 @@ if git -C "$ROOT" rev-parse -q --verify "origin/${RELEASE_BRANCH}" >/dev/null; t
 fi
 
 # Signing credentials live only in the environment (never a tracked file).
-# Without them package-cli.sh falls back to an unsigned artifact, which must
+# Without them release-cli-package.sh falls back to an unsigned artifact, which must
 # never reach the tap: Gatekeeper would reject it and TCC grants key to nothing.
 missing_creds=()
 for var in TINGRA_SIGN_ID TINGRA_INSTALLER_SIGN_ID TINGRA_NOTARY_PROFILE; do
@@ -160,7 +160,7 @@ for var in TINGRA_SIGN_ID TINGRA_INSTALLER_SIGN_ID TINGRA_NOTARY_PROFILE; do
 done
 if [[ ${#missing_creds[@]} -gt 0 ]]; then
     warn "signing/notarization environment not set: ${missing_creds[*]}"
-    warn "package-cli.sh would fall back to an UNSIGNED artifact — do not publish that."
+    warn "release-cli-package.sh would fall back to an UNSIGNED artifact — do not publish that."
     $DRY_RUN || confirm "Continue without full signing credentials?" || die "aborted."
 fi
 
@@ -235,12 +235,12 @@ git -C "$ROOT" push -q origin "$BRANCH"
 log "pushed ${BRANCH}."
 
 # ---------------------------------------------------------------------------
-# 5. Hand off to publish-cli.sh (build, sign, notarize, tag, publish, tap)
+# 5. Hand off to release-cli-publish.sh (build, sign, notarize, tag, publish, tap)
 # ---------------------------------------------------------------------------
 
-log "handing off to scripts/publish-cli.sh ${VERSION}"
+log "handing off to scripts/release-cli-publish.sh ${VERSION}"
 echo
-"${ROOT}/scripts/publish-cli.sh" "$VERSION"
+"${ROOT}/scripts/release-cli-publish.sh" "$VERSION"
 
 # ---------------------------------------------------------------------------
 # 6. Reopen the branch on the next -dev version
