@@ -62,4 +62,9 @@ extension ErrorIdentifier {
     /// The connection dropped and was not recovered within the configured
     /// reconnect attempts. Exit code 75.
     public static let connectionLost = ErrorIdentifier(rawValue: "connectionLost")
+
+    /// A tool addressed "the active stream" (an omitted session id) while no
+    /// stream was active. MCP-only — no CLI command addresses a session by
+    /// omission — so no exit code maps to it.
+    public static let noActiveStream = ErrorIdentifier(rawValue: "noActiveStream")
 }

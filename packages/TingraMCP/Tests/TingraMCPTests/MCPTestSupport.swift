@@ -212,6 +212,17 @@ func poll(within seconds: Double = 2, _ condition: @Sendable () -> Bool) async -
     return condition()
 }
 
+/// The async-condition form of ``poll(within:_:)`` — how a test awaits an
+/// event emitted on the bus settling into an attached actor sink.
+func eventually(within seconds: Double = 2, _ condition: @Sendable () async -> Bool) async -> Bool {
+    let deadline = ContinuousClock.now + .seconds(seconds)
+    while ContinuousClock.now < deadline {
+        if await condition() { return true }
+        try? await Task.sleep(for: .milliseconds(10))
+    }
+    return await condition()
+}
+
 /// Decodes one written line into a ``JSONValue`` for inspection.
 func decodeLine(_ line: String) -> JSONValue? {
     try? JSONDecoder().decode(JSONValue.self, from: Data(line.utf8))

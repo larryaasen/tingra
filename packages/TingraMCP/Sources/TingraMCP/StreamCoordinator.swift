@@ -163,6 +163,14 @@ public actor StreamCoordinator {
         /// requested — what `stream_status`'s `recording` object reports
         /// while the session's recording is open.
         let recordingFile: RecordingFile?
+
+        /// When this session's start began, on the wall clock the event bus
+        /// stamps events with. The status sink retains events across
+        /// sessions, and leg ids repeat (`destination-1` in every session),
+        /// so `stream_status` reads only events dated at or after this —
+        /// without the floor, a fresh session's leg would wear the previous
+        /// session's counters and its `lost`/`rejected` verdicts.
+        let startedAt: Date
     }
 
     /// The active stream, or nil when nothing is streaming.
@@ -262,6 +270,10 @@ public actor StreamCoordinator {
         startInProgress = true
         defer { startInProgress = false }
 
+        // Captured before the session exists, so every event it will ever
+        // emit is dated at or after this — the floor `statusReport` reads
+        // retained sink events against (see `Active.startedAt`).
+        let startedAt = Date()
         let legs = try await makeDestinationLegs(request)
         let (recordingService, recordingFile) = try await makeRecording(request)
         let videoInput = try await resolve(request.video, kind: .camera, defaultID: defaults.cameraID())
@@ -318,7 +330,7 @@ public actor StreamCoordinator {
         // merely narrowing it.
         active = Active(
             id: id, session: session, runTask: runTask, destinations: request.destinations,
-            recordingFile: recordingFile)
+            recordingFile: recordingFile, startedAt: startedAt)
 
         do {
             try await gate.wait()
@@ -338,26 +350,32 @@ public actor StreamCoordinator {
         return id
     }
 
-    /// Reports the current status of the stream with the given id.
+    /// Reports the current status of a stream.
     ///
-    /// Reads each destination's latest retained `stream.stats` from the
+    /// Reads each destination's latest retained per-leg events from the
     /// status sink — a point read of live data, never a poll (EVENTS.md,
     /// "Status sink"). A fanned-out stream reports every leg under
-    /// `destinations`; the flat top-level counters stay the **first**
-    /// destination's, so a caller written against one destination reads the
-    /// same fields and never a synthesized average. A session with a
-    /// recording reports it under `recording` while the file is open —
-    /// absent once it has finalized or failed, the same absence contract a
-    /// rejected leg has (MCP.md, "Tool surface").
+    /// `destinations`, each with its own `state` (see ``legState``); the
+    /// flat top-level counters stay the **first** destination's, so a caller
+    /// written against one destination reads the same fields and never a
+    /// synthesized average. A session with a recording reports it under
+    /// `recording` while the file is open — absent once it has finalized or
+    /// failed, the same absence contract a rejected leg has (MCP.md, "Tool
+    /// surface").
     ///
-    /// Throws a ``ToolError`` if the id does not name the active stream.
-    func statusReport(sessionId: String) async throws -> JSONValue {
-        guard let active, active.id == sessionId else {
-            throw unknownSession(sessionId)
+    /// - Parameter sessionId: The session to report, or nil to address the
+    ///   active stream — with one active stream in v1 there is never
+    ///   ambiguity to resolve. With nil and nothing active the report is
+    ///   `{"state": "idle"}`: a truthful answer, not an error.
+    /// - Returns: The status report.
+    /// - Throws: A ``ToolError`` when an explicit id does not name the
+    ///   active stream.
+    func statusReport(sessionId: String?) async throws -> JSONValue {
+        guard let active = try resolveSession(sessionId) else {
+            return .object(["state": .string("idle")])
         }
         var report: [String: JSONValue] = [
-            "sessionId": .string(active.id),
-            "state": .string("live"),
+            "sessionId": .string(active.id)
         ]
         if let first = active.destinations.first {
             report["url"] = .string(first.url)
@@ -370,16 +388,20 @@ public actor StreamCoordinator {
         }
 
         var legs: [JSONValue] = []
+        var legStates: [String] = []
         for destination in active.destinations {
             var leg: [String: JSONValue] = [
                 "destination": .string(destination.id),
                 "url": .string(destination.url),
             ]
-            // A leg reports counters once it has emitted a stats sample; a
-            // leg rejected at start or already lost simply has none.
-            let stats = await status.latestEvent(named: "stream.stats", forDestination: destination.id)
+            // A leg's counters are its last stats sample — kept even on a
+            // degraded leg (they are the last truth); `state` says whether
+            // they are current.
+            let stats = await retained("stream.stats", for: destination.id, since: active.startedAt)
             Self.copyStatsFields(from: stats, into: &leg)
-            leg["state"] = .string(stats == nil ? "pending" : "live")
+            let state = await legState(of: destination.id, stats: stats, since: active.startedAt)
+            leg["state"] = .string(state)
+            legStates.append(state)
             legs.append(.object(leg))
 
             if destination.id == active.destinations.first?.id {
@@ -387,7 +409,118 @@ public actor StreamCoordinator {
             }
         }
         report["destinations"] = .array(legs)
+        report["state"] = .string(Self.sessionState(ofLegs: legStates))
         return .object(report)
+    }
+
+    /// The session's own state, derived from its destination legs so the
+    /// headline can never contradict them: an agent that reads only `state`
+    /// reaches the same verdict as one that reads every leg. It answers "is
+    /// this stream delivering?", not "is this session running?" — the
+    /// session's existence is already told by there being a report at all.
+    ///
+    /// - `"live"` — every leg that has reported is delivering, or the session
+    ///   has no destinations (a record-only session is doing exactly what it
+    ///   was asked to).
+    /// - `"degraded"` — some legs delivering and some not, or none delivering
+    ///   while a reconnect budget is still being spent. Something is wrong;
+    ///   recovery is still possible.
+    /// - `"lost"` — every leg ended terminally (`"lost"` or `"rejected"`);
+    ///   nothing recovers without a new session.
+    /// - `"pending"` — legs exist and none has reported yet.
+    ///
+    /// A leg still waiting for its first event is not evidence either way, so
+    /// `"pending"` legs are set aside unless *every* leg is pending — without
+    /// that, a session whose second leg had merely not been heard from yet
+    /// would read `"degraded"` on the way up. They are not set aside when
+    /// judging terminality, though: one pending leg among lost ones may still
+    /// come good, so that session is `"degraded"`, not `"lost"`.
+    ///
+    /// `"idle"` is the fifth value the report can carry; it belongs to having
+    /// no session at all and never reaches here.
+    ///
+    /// - Parameter legs: Each leg's state, in report order.
+    /// - Returns: The session's state string.
+    static func sessionState(ofLegs legs: [String]) -> String {
+        guard !legs.isEmpty else { return "live" }
+        if legs.allSatisfy({ $0 == "lost" || $0 == "rejected" }) { return "lost" }
+        if legs.allSatisfy({ $0 == "pending" }) { return "pending" }
+        return legs.allSatisfy { $0 == "live" || $0 == "pending" } ? "live" : "degraded"
+    }
+
+    /// The current state of one destination leg, derived from the sink's
+    /// retained per-leg events (all emitted by ``StreamSession`` — see
+    /// CLI.md, "Starting and losing destinations"):
+    ///
+    /// - `"rejected"` — the destination refused the connection at start
+    ///   (`stream.destination.rejected`); terminal for the run.
+    /// - `"lost"` — the leg exhausted its reconnect budget
+    ///   (`stream.destination.lost`); terminal for the run.
+    /// - `"reconnecting"` — a `stream.reconnecting` newer than the leg's last
+    ///   word for delivery: the leg dropped and its budget is still being
+    ///   spent.
+    /// - `"live"` — delivering: the connection opening
+    ///   (`stream.destination.started`), a recovery (`stream.reconnected`),
+    ///   or a stats sample is the newest word. The opening counts because
+    ///   `start` only returns once the leg is connected — waiting for the
+    ///   first stats sample would report a delivering leg as pending for a
+    ///   whole stats interval.
+    /// - `"pending"` — no per-leg event yet (start still settling).
+    ///
+    /// - Parameters:
+    ///   - destination: The leg id.
+    ///   - stats: The leg's retained stats, already floor-filtered.
+    ///   - since: The session's ``Active/startedAt`` floor.
+    /// - Returns: The leg's state string.
+    private func legState(of destination: String, stats: EventBusEvent?, since: Date) async -> String {
+        if await retained("stream.destination.rejected", for: destination, since: since) != nil {
+            return "rejected"
+        }
+        if await retained("stream.destination.lost", for: destination, since: since) != nil {
+            return "lost"
+        }
+        let reconnecting = await retained("stream.reconnecting", for: destination, since: since)
+        let reconnected = await retained("stream.reconnected", for: destination, since: since)
+        let started = await retained("stream.destination.started", for: destination, since: since)
+        let newestDelivery = [started, reconnected, stats].compactMap { $0?.date }.max()
+        if let dropped = reconnecting?.date, dropped > (newestDelivery ?? .distantPast) {
+            return "reconnecting"
+        }
+        return newestDelivery == nil ? "pending" : "live"
+    }
+
+    /// The sink's latest retained event of a name for one leg, ignoring
+    /// anything older than the session — leg ids repeat across sessions, so
+    /// without the floor a fresh leg would inherit a previous session's
+    /// events (see ``Active/startedAt``).
+    ///
+    /// - Parameters:
+    ///   - name: The event name, e.g. `stream.stats`.
+    ///   - destination: The leg id carried in the event's `destination` param.
+    ///   - since: The session's start floor.
+    /// - Returns: The event, or nil when none this session.
+    private func retained(_ name: String, for destination: String, since: Date) async -> EventBusEvent? {
+        guard let event = await status.latestEvent(named: name, forDestination: destination),
+            event.date >= since
+        else { return nil }
+        return event
+    }
+
+    /// Resolves a tool's session argument to the active stream.
+    ///
+    /// - Parameter sessionId: The explicit id, or nil to address the active
+    ///   stream.
+    /// - Returns: The active stream, or nil when the id was omitted and
+    ///   nothing is active — the caller decides whether that is an idle
+    ///   answer (`stream_status`) or an error (`stream_stop`).
+    /// - Throws: A ``ToolError`` when an explicit id does not name the
+    ///   active stream.
+    private func resolveSession(_ sessionId: String?) throws -> Active? {
+        guard let sessionId else { return active }
+        guard let active, active.id == sessionId else {
+            throw unknownSession(sessionId)
+        }
+        return active
     }
 
     /// Copies the delivery counters out of a `stream.stats` event into a
@@ -405,18 +538,28 @@ public actor StreamCoordinator {
         }
     }
 
-    /// Stops the stream with the given id: a clean stop that flushes
-    /// compression and closes the connection, awaiting an orderly teardown.
+    /// Stops a stream: a clean stop that flushes compression and closes the
+    /// connection, awaiting an orderly teardown.
     ///
-    /// Throws a ``ToolError`` if the id does not name the active stream.
-    func stop(sessionId: String) async throws -> JSONValue {
-        guard let active, active.id == sessionId else {
-            throw unknownSession(sessionId)
+    /// - Parameter sessionId: The session to stop, or nil to stop the active
+    ///   stream — with one active stream in v1 "stop the stream" is
+    ///   unambiguous.
+    /// - Returns: The stop confirmation, carrying the stopped session's id.
+    /// - Throws: A ``ToolError`` when an explicit id does not name the
+    ///   active stream (`invalidArgument`), or when the id was omitted and
+    ///   nothing is active (`noActiveStream`) — unlike an idle
+    ///   `stream_status`, there is nothing truthful to have stopped.
+    func stop(sessionId: String?) async throws -> JSONValue {
+        guard let active = try resolveSession(sessionId) else {
+            throw ToolError(
+                identifier: .noActiveStream,
+                message: "No stream is active, so there is nothing to stop. stream_status reports state 'idle'."
+            )
         }
         await active.session.stop()
         await active.runTask.value  // Wait for the orderly teardown to finish.
         return .object([
-            "sessionId": .string(sessionId),
+            "sessionId": .string(active.id),
             "stopped": .bool(true),
         ])
     }

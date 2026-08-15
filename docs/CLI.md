@@ -243,6 +243,7 @@ Every `error` event the CLI emits carries a stable, machine-readable `identifier
 | `recordingFailed` | 70 | The local recording (`--record`) could not be written — an unwritable path, a rejected format, or a write/finalize error (a full disk). At setup this fails the command; once recording, it is reported but does not change the stream's exit code. |
 | `connectionFailed` | 75 | The initial connection or handshake to the destination was rejected or unreachable. |
 | `connectionLost` | 75 | The connection dropped and was not recovered within the configured reconnect attempts. |
+| `noActiveStream` | — | An MCP tool addressed "the active stream" (an omitted session id) while no stream was active (MCP.md, "Tool surface"). MCP-only: no CLI command addresses a session by omission, so no exit code maps to it. |
 
 ### `tingra-cli serve` and `tingra-cli mcp`
 
@@ -270,8 +271,8 @@ The MCP tool surface is plug-in defined: plug-ins contribute tools to the host's
 | `devices_list` | `devices --json` | Same identifiers, same JSON shape. |
 | `probe` | `probe` | Validate URL/key without going live. |
 | `stream_start` | `stream` options | Input schema mirrors the flags (url, key, camera, mic, resolution, bitrate, ...). Returns a session id. |
-| `stream_status` | `--json` status events | Bitrate, fps, dropped frames, connection state for a session. |
-| `stream_stop` | Ctrl-C | Clean stop: flush compression, close connection, finalize any recording. |
+| `stream_status` | `--json` status events | Bitrate, fps, dropped frames, and a derived per-leg connection state. `sessionId` optional: omitted addresses the active stream. The session's own `state` is derived from its legs — `idle`, `pending`, `live`, `degraded`, `lost` (MCP.md, "Tool surface"). |
+| `stream_stop` | Ctrl-C | Clean stop: flush compression, close connection, finalize any recording. `sessionId` optional: omitted stops the active stream; nothing active is a `noActiveStream` error. |
 
 One active stream session in v1 — which may fan out to several destinations (see MCP.md, "Sessions and concurrency"). Stream keys arrive as `stream_start` tool input and are transient in the daemon (see MCP.md, "Sessions and concurrency"): held only for the life of the session, released on every teardown path, never persisted to secure storage by the daemon, never logged, and referenced only redacted per EVENTS.md.
 

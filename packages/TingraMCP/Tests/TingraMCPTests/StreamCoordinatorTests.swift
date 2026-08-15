@@ -117,6 +117,22 @@ struct StreamCoordinatorTests {
         )
     }
 
+    /// A generator-only request fanned out to two mock destinations — one
+    /// session with two legs, so a report can hold legs in different states.
+    private var twoDestinationRequest: StreamRequest {
+        StreamRequest(
+            destinations: [
+                RequestedDestination(id: "destination-1", url: "rtmp://localhost/live", streamKey: "a"),
+                RequestedDestination(id: "destination-2", url: "rtmp://localhost/backup", streamKey: "b"),
+            ],
+            recording: nil,
+            video: .generator(InputID(rawValue: "bars")),
+            audio: .generator(InputID(rawValue: "tone")),
+            configuration: StreamConfiguration(),
+            policy: StreamSession.Policy(statsIntervalSeconds: 0)
+        )
+    }
+
     /// A request that ends itself once its duration elapses — which the
     /// finishing clock does at once, so the duration teardown path runs
     /// without any wall-clock wait.
@@ -222,31 +238,29 @@ struct StreamCoordinatorTests {
 
     @Test("status reports the live state and url for the active session")
     func statusReport() async throws {
-        let (coordinator, _, _) = try await makeCoordinator()
+        // Attached, so the session's own `stream.destination.started` reaches
+        // the sink: the state is derived from the legs, and a leg is live from
+        // the moment it connects rather than from its first stats sample.
+        let (coordinator, bus, sink, attach) = try await makeAttachedCoordinator()
         let id = try await coordinator.start(generatorRequest)
+        #expect(
+            await eventually {
+                await sink.latestEvent(named: "stream.destination.started", forDestination: "destination-1") != nil
+            })
+
         let report = try await coordinator.statusReport(sessionId: id)
         #expect(report["sessionId"] == .string(id))
         #expect(report["state"] == .string("live"))
         #expect(report["url"] == .string("rtmp://localhost/live"))
-        _ = try await coordinator.stop(sessionId: id)
+
+        try await teardown(coordinator, bus, sink, attach)
     }
 
     @Test("status lists every destination of a fanned-out session under one session id")
     func statusListsEveryDestination() async throws {
         let (coordinator, _, _) = try await makeCoordinator()
-        let request = StreamRequest(
-            destinations: [
-                RequestedDestination(id: "destination-1", url: "rtmp://localhost/live", streamKey: "a"),
-                RequestedDestination(id: "destination-2", url: "rtmp://localhost/backup", streamKey: "b"),
-            ],
-            recording: nil,
-            video: .generator(InputID(rawValue: "bars")),
-            audio: .generator(InputID(rawValue: "tone")),
-            configuration: StreamConfiguration(),
-            policy: StreamSession.Policy(statsIntervalSeconds: 0)
-        )
         // Two destinations are still one session — the v1 rule is unchanged.
-        let id = try await coordinator.start(request)
+        let id = try await coordinator.start(twoDestinationRequest)
         let report = try await coordinator.statusReport(sessionId: id)
 
         #expect(report["sessionId"] == .string(id))
@@ -331,7 +345,7 @@ struct StreamCoordinatorTests {
         // The survivor is a real, stoppable session — an overwritten first
         // session would leave a live stream no id resolves to.
         let id = try #require(started.first)
-        #expect(try await coordinator.statusReport(sessionId: id)["state"] == .string("live"))
+        #expect(try await coordinator.statusReport(sessionId: id)["sessionId"] == .string(id))
         _ = try await coordinator.stop(sessionId: id)
         #expect(await coordinator.isStreaming == false)
     }
@@ -342,7 +356,7 @@ struct StreamCoordinatorTests {
         let id = try await coordinator.start(generatorRequest)
         // While live, the coordinator holds the requested legs — which is
         // where the stream key lives for the session's lifetime.
-        #expect(try await coordinator.statusReport(sessionId: id)["state"] == .string("live"))
+        #expect(try await coordinator.statusReport(sessionId: id)["sessionId"] == .string(id))
         _ = try await coordinator.stop(sessionId: id)
         // After the stop, the session id resolves to nothing. This is the
         // observable form of the transient-key policy (MCP.md, "Sessions and
@@ -416,6 +430,8 @@ struct StreamCoordinatorTests {
         #expect(await coordinator.isStreaming == true)
 
         let report = try await coordinator.statusReport(sessionId: id)
+        // Live with no legs to derive from: a record-only session is doing
+        // exactly what it was asked to.
         #expect(report["state"] == .string("live"))
         // No destination, so no url and an empty destinations list — never
         // a placeholder value standing in for a leg that does not exist.
@@ -499,7 +515,9 @@ struct StreamCoordinatorTests {
             let report = try await coordinator.statusReport(sessionId: id)
             if report["recording"] == nil {
                 recordingGone = true
-                #expect(report["state"] == .string("live"))
+                // The session itself is untouched — still the active one, and
+                // still streaming (asserted below).
+                #expect(report["sessionId"] == .string(id))
                 break
             }
             try? await Task.sleep(for: .milliseconds(10))
@@ -507,5 +525,263 @@ struct StreamCoordinatorTests {
         #expect(recordingGone)
         #expect(await coordinator.isStreaming == true)
         _ = try await coordinator.stop(sessionId: id)
+    }
+
+    // MARK: - Session addressing (an omitted session id — MCP.md, "Tool surface")
+
+    @Test("status and stop without a session id address the active stream")
+    func omittedSessionIdAddressesActiveStream() async throws {
+        let (coordinator, _, _) = try await makeCoordinator()
+        let id = try await coordinator.start(generatorRequest)
+
+        let report = try await coordinator.statusReport(sessionId: nil)
+        #expect(report["sessionId"] == .string(id))
+        // This sink is not attached to the bus, so no leg has reported and the
+        // derived state is pending — the addressing is what is under test.
+        #expect(report["state"] == .string("pending"))
+
+        // Stop resolves the same way and confirms which session it stopped.
+        let result = try await coordinator.stop(sessionId: nil)
+        #expect(result["sessionId"] == .string(id))
+        #expect(result["stopped"] == .bool(true))
+        #expect(await coordinator.isStreaming == false)
+    }
+
+    @Test("status without a session id on an idle engine reports the idle state")
+    func idleStatusReportsIdle() async throws {
+        let (coordinator, _, _) = try await makeCoordinator()
+        let report = try await coordinator.statusReport(sessionId: nil)
+        // A truthful answer, not an error — and no session fields to
+        // mistake for one.
+        #expect(report == .object(["state": .string("idle")]))
+    }
+
+    @Test("stop without a session id on an idle engine returns a noActiveStream error")
+    func idleStopReturnsNoActiveStream() async throws {
+        let (coordinator, _, _) = try await makeCoordinator()
+        do {
+            _ = try await coordinator.stop(sessionId: nil)
+            Issue.record("stop should have thrown")
+        } catch let error as ToolError {
+            #expect(error.identifier == .noActiveStream)
+        }
+    }
+
+    // MARK: - Leg states (derived from the sink's retained events)
+
+    /// Builds a coordinator whose status sink is attached to the event bus,
+    /// so tests can put per-leg status events on the bus and read the states
+    /// `stream_status` derives from them. Returns the sink and its attach
+    /// task for orderly teardown.
+    private func makeAttachedCoordinator() async throws
+        -> (StreamCoordinator, EventBus, StatusSink, Task<Void, Never>)
+    {
+        let eventBus = EventBus()
+        let inputs = InputRegistry()
+        try await inputs.register(StubInput(id: "bars", name: "SMPTE Bars", kind: .generator))
+        try await inputs.register(StubInput(id: "tone", name: "440 Hz Tone", kind: .generator))
+        let outputs = OutputRegistry()
+        try await outputs.register(MockProvider(service: MockStreamingService()))
+        let sink = StatusSink()
+        let attach = eventBus.attach(sink)
+        let coordinator = StreamCoordinator(
+            inputs: inputs,
+            outputs: outputs,
+            status: sink,
+            eventBus: eventBus,
+            clock: FinishingClock(),
+            defaults: StreamDefaults(cameraID: { nil }, microphoneID: { nil })
+        )
+        return (coordinator, eventBus, sink, attach)
+    }
+
+    /// Ends an attached-coordinator test in order: stream, bus, sink.
+    private func teardown(
+        _ coordinator: StreamCoordinator, _ bus: EventBus, _ sink: StatusSink, _ attach: Task<Void, Never>
+    ) async throws {
+        if await coordinator.isStreaming {
+            _ = try await coordinator.stop(sessionId: nil)
+        }
+        bus.shutdown()
+        await attach.value
+        await sink.shutdown()
+    }
+
+    /// The state of the first (and only) leg in a status report.
+    private func firstLegState(_ report: JSONValue) throws -> JSONValue? {
+        try #require(report["destinations"]?.arrayValue).first?["state"]
+    }
+
+    @Test("a leg reports reconnecting after a drop and live again after recovery")
+    func legStateFollowsReconnectCycle() async throws {
+        let (coordinator, bus, sink, attach) = try await makeAttachedCoordinator()
+        _ = try await coordinator.start(generatorRequest)
+        let leg = "destination-1"
+
+        bus.event("stream.stats", domain: .output, params: ["destination": .string(leg), "fps": .int(30)])
+        #expect(await eventually { await sink.latestEvent(named: "stream.stats", forDestination: leg) != nil })
+        #expect(try firstLegState(try await coordinator.statusReport(sessionId: nil)) == .string("live"))
+
+        bus.event("stream.reconnecting", domain: .output, params: ["destination": .string(leg), "attempt": .int(1)])
+        #expect(await eventually { await sink.latestEvent(named: "stream.reconnecting", forDestination: leg) != nil })
+        let reconnecting = try await coordinator.statusReport(sessionId: nil)
+        #expect(try firstLegState(reconnecting) == .string("reconnecting"))
+        // The last stats stay on the leg — the last truth; `state` says
+        // whether they are current.
+        #expect(try #require(reconnecting["destinations"]?.arrayValue).first?["fps"] == .int(30))
+
+        bus.event("stream.reconnected", domain: .output, params: ["destination": .string(leg), "outage": .double(1.5)])
+        #expect(await eventually { await sink.latestEvent(named: "stream.reconnected", forDestination: leg) != nil })
+        #expect(try firstLegState(try await coordinator.statusReport(sessionId: nil)) == .string("live"))
+
+        try await teardown(coordinator, bus, sink, attach)
+    }
+
+    @Test("a leg that exhausted its reconnect budget reports lost")
+    func legStateReportsLost() async throws {
+        let (coordinator, bus, sink, attach) = try await makeAttachedCoordinator()
+        _ = try await coordinator.start(generatorRequest)
+        let leg = "destination-1"
+
+        bus.error("stream.destination.lost", domain: .output, params: ["destination": .string(leg)])
+        #expect(
+            await eventually { await sink.latestEvent(named: "stream.destination.lost", forDestination: leg) != nil })
+        #expect(try firstLegState(try await coordinator.statusReport(sessionId: nil)) == .string("lost"))
+
+        try await teardown(coordinator, bus, sink, attach)
+    }
+
+    @Test("a leg the destination refused at start reports rejected")
+    func legStateReportsRejected() async throws {
+        let (coordinator, bus, sink, attach) = try await makeAttachedCoordinator()
+        _ = try await coordinator.start(generatorRequest)
+        let leg = "destination-1"
+
+        bus.error("stream.destination.rejected", domain: .output, params: ["destination": .string(leg)])
+        #expect(
+            await eventually {
+                await sink.latestEvent(named: "stream.destination.rejected", forDestination: leg) != nil
+            }
+        )
+        #expect(try firstLegState(try await coordinator.statusReport(sessionId: nil)) == .string("rejected"))
+
+        try await teardown(coordinator, bus, sink, attach)
+    }
+
+    @Test("a previous session's retained events never reach a fresh session's report")
+    func previousSessionEventsStayOut() async throws {
+        let (coordinator, bus, sink, attach) = try await makeAttachedCoordinator()
+        let leg = "destination-1"
+
+        // A previous session used the same leg id — leg ids are positional
+        // and repeat every session — and left its verdicts in the sink.
+        bus.event("stream.stats", domain: .output, params: ["destination": .string(leg), "bitrate": .int(4_500_000)])
+        bus.error("stream.destination.lost", domain: .output, params: ["destination": .string(leg)])
+        #expect(
+            await eventually { await sink.latestEvent(named: "stream.destination.lost", forDestination: leg) != nil })
+
+        _ = try await coordinator.start(generatorRequest)
+        // Wait for the fresh session's own connection event before reading, so
+        // the assertion turns on the floor rather than on which event happened
+        // to arrive first. The previous "session" here emitted no
+        // `stream.destination.started`, so seeing one means the new leg's
+        // evidence is in the sink alongside the old leg's `lost` verdict.
+        #expect(
+            await eventually {
+                await sink.latestEvent(named: "stream.destination.started", forDestination: leg) != nil
+            })
+
+        let report = try await coordinator.statusReport(sessionId: nil)
+        // The fresh leg is live — not lost, and not wearing the old session's
+        // counters.
+        #expect(try firstLegState(report) == .string("live"))
+        #expect(try #require(report["destinations"]?.arrayValue).first?["bitrate"] == nil)
+        #expect(report["bitrate"] == nil)
+
+        try await teardown(coordinator, bus, sink, attach)
+    }
+
+    // MARK: - Session state (derived from the legs — MCP.md, "Tool surface")
+
+    @Test("the session state answers whether the stream is delivering, leg by leg")
+    func sessionStateDerivation() {
+        // No legs at all: a record-only session is doing exactly what it was
+        // asked to.
+        #expect(StreamCoordinator.sessionState(ofLegs: []) == "live")
+        #expect(StreamCoordinator.sessionState(ofLegs: ["live"]) == "live")
+        #expect(StreamCoordinator.sessionState(ofLegs: ["live", "live"]) == "live")
+        // A leg that has not reported yet is not evidence against a session
+        // that is otherwise delivering — otherwise a two-leg session would
+        // read degraded on the way up, before its second leg was heard from.
+        #expect(StreamCoordinator.sessionState(ofLegs: ["live", "pending"]) == "live")
+        #expect(StreamCoordinator.sessionState(ofLegs: ["pending"]) == "pending")
+        #expect(StreamCoordinator.sessionState(ofLegs: ["pending", "pending"]) == "pending")
+        // Something is wrong and recovery is still possible — including when
+        // nothing is delivering but a reconnect budget is still being spent.
+        #expect(StreamCoordinator.sessionState(ofLegs: ["live", "lost"]) == "degraded")
+        #expect(StreamCoordinator.sessionState(ofLegs: ["live", "rejected"]) == "degraded")
+        #expect(StreamCoordinator.sessionState(ofLegs: ["reconnecting"]) == "degraded")
+        #expect(StreamCoordinator.sessionState(ofLegs: ["live", "reconnecting"]) == "degraded")
+        // A pending leg may still come good, so the session has not ended.
+        #expect(StreamCoordinator.sessionState(ofLegs: ["pending", "lost"]) == "degraded")
+        // Every leg ended; nothing recovers without a new session.
+        #expect(StreamCoordinator.sessionState(ofLegs: ["lost"]) == "lost")
+        #expect(StreamCoordinator.sessionState(ofLegs: ["lost", "rejected"]) == "lost")
+        #expect(StreamCoordinator.sessionState(ofLegs: ["rejected", "rejected"]) == "lost")
+    }
+
+    @Test("a fanned-out session reads degraded while one leg is down and the other delivers")
+    func sessionStateReportsDegraded() async throws {
+        let (coordinator, bus, sink, attach) = try await makeAttachedCoordinator()
+        _ = try await coordinator.start(twoDestinationRequest)
+        // The session emits its legs' connection events in order, so the
+        // second one's arrival means both are in the sink.
+        #expect(
+            await eventually {
+                await sink.latestEvent(named: "stream.destination.started", forDestination: "destination-2") != nil
+            })
+        #expect(try await coordinator.statusReport(sessionId: nil)["state"] == .string("live"))
+
+        bus.error("stream.destination.lost", domain: .output, params: ["destination": .string("destination-2")])
+        #expect(
+            await eventually {
+                await sink.latestEvent(named: "stream.destination.lost", forDestination: "destination-2") != nil
+            })
+
+        // The headline no longer contradicts the legs: half this stream is on
+        // the floor, and `state` says so without the caller reading them.
+        let report = try await coordinator.statusReport(sessionId: nil)
+        #expect(report["state"] == .string("degraded"))
+        let legs = try #require(report["destinations"]?.arrayValue)
+        #expect(legs.first?["state"] == .string("live"))
+        #expect(legs.last?["state"] == .string("lost"))
+
+        try await teardown(coordinator, bus, sink, attach)
+    }
+
+    @Test("a fanned-out session reads lost once every leg has ended")
+    func sessionStateReportsLost() async throws {
+        let (coordinator, bus, sink, attach) = try await makeAttachedCoordinator()
+        _ = try await coordinator.start(twoDestinationRequest)
+        #expect(
+            await eventually {
+                await sink.latestEvent(named: "stream.destination.started", forDestination: "destination-2") != nil
+            })
+
+        // The two terminal verdicts differ; together they still end the
+        // session's delivery entirely.
+        bus.error("stream.destination.rejected", domain: .output, params: ["destination": .string("destination-1")])
+        bus.error("stream.destination.lost", domain: .output, params: ["destination": .string("destination-2")])
+        #expect(
+            await eventually {
+                let rejected = await sink.latestEvent(
+                    named: "stream.destination.rejected", forDestination: "destination-1")
+                let lost = await sink.latestEvent(named: "stream.destination.lost", forDestination: "destination-2")
+                return rejected != nil && lost != nil
+            })
+
+        #expect(try await coordinator.statusReport(sessionId: nil)["state"] == .string("lost"))
+
+        try await teardown(coordinator, bus, sink, attach)
     }
 }

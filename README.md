@@ -166,8 +166,8 @@ Once connected, ask Claude in plain language — it calls the matching tool:
 
 For example:
 
-> **You:** Start streaming SMPTE bars and a 440 Hz tone to my Twitch ingest
-> at rtmp://live.twitch.tv/app — the key is `live_1234567890`.
+> **You:** Start streaming SMPTE bars and a 440 Hz tone to my Twitch
+> destination at rtmp://live.twitch.tv/app — the key is `live_1234567890`.
 >
 > **Claude:** *(calls `stream_start`)* Streaming is live — generators (bars +
 > tone) to `rtmp://live.twitch.tv/app`. I'll leave it running; say "stop the

@@ -399,4 +399,23 @@ struct ArgumentReader {
 
     /// The boolean value for a key, if present and a boolean.
     func bool(_ key: String) -> Bool? { members[key]?.boolValue }
+
+    /// The optional `sessionId` argument shared by `stream_status` and
+    /// `stream_stop`: nil when absent (or JSON null) — address the active
+    /// stream — and the id when given.
+    ///
+    /// - Parameter tool: The calling tool's name, for the error message.
+    /// - Returns: The session id, or nil to address the active stream.
+    /// - Throws: A ``ToolError`` with `invalidArgument` when the value is
+    ///   present but not a string — a malformed call, not an omission.
+    func sessionId(tool: String) throws -> String? {
+        guard let value = members["sessionId"], value != .null else { return nil }
+        guard let id = value.stringValue else {
+            throw ToolError(
+                identifier: .invalidArgument,
+                message: "\(tool)'s 'sessionId' must be a string when given; omit it to address the active stream."
+            )
+        }
+        return id
+    }
 }

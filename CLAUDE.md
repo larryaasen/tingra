@@ -55,7 +55,8 @@ packages/                       # Engine libraries
                                 #   first-party control tools (no third-party dependency)
   (UI packages)                 # Phase 2 — arrive once the engine is proven
 docs/                           # The project documentation set (ARCHITECTURE.md, GLOSSARY.md, CLI.md,
-                                #   SIMULATOR.md, CLOCK.md, EVENTS.md, MCP.md, TYPES.md, TODO.md)
+                                #   SIMULATOR.md, CLOCK.md, EVENTS.md, MCP.md, DESTINATIONS.md,
+                                #   TYPES.md, TODO.md)
                                 #   and screenshots
 scripts/                        # Formatting scripts (format-swift.sh, check-format.sh) and the
                                 #   streaming integration tests (integration-test.sh)
@@ -67,7 +68,7 @@ The package names are **finalized** (reviewed 2026-07-03; also recorded in "Repo
 **Key facts:**
 - Within each package's or app's `Sources/`, keep files flat by default; use a named subdirectory only for features with **more than one UI or implementation file**. Do not create generic folders like `Views/`, `Components/`, or `Helpers/`.
 - `packages/` holds local SPM library packages (the engine); `apps/` holds the runnable products (`tingra-cli`, `ingest-simulator`, and the phase-3 `tingra-app`) that consume them.
-- Companion docs, each authoritative for its area: [README.md](README.md) (project overview), [ARCHITECTURE.md](docs/ARCHITECTURE.md) (technical plan and engine design), [GLOSSARY.md](docs/GLOSSARY.md) (canonical vocabulary), [CLI.md](docs/CLI.md) (`tingra-cli` spec), [SIMULATOR.md](docs/SIMULATOR.md) (local RTMP/SRT test server), [CLOCK.md](docs/CLOCK.md) (master clock, program tick, and A/V sync model), [EVENTS.md](docs/EVENTS.md) (event bus, sinks, and logging/redaction policy), [MCP.md](docs/MCP.md) (engine daemon, socket transport, and the agent-facing MCP server), [TYPES.md](docs/TYPES.md) (every public type, package by package).
+- Companion docs, each authoritative for its area: [README.md](README.md) (project overview), [ARCHITECTURE.md](docs/ARCHITECTURE.md) (technical plan and engine design), [GLOSSARY.md](docs/GLOSSARY.md) (canonical vocabulary), [CLI.md](docs/CLI.md) (`tingra-cli` spec), [SIMULATOR.md](docs/SIMULATOR.md) (local RTMP/SRT test server), [CLOCK.md](docs/CLOCK.md) (master clock, program tick, and A/V sync model), [EVENTS.md](docs/EVENTS.md) (event bus, sinks, and logging/redaction policy), [MCP.md](docs/MCP.md) (engine daemon, socket transport, and the agent-facing MCP server), [DESTINATIONS.md](docs/DESTINATIONS.md) (the named destination model: the operator-global destination store and its agent-facing resolution), [TYPES.md](docs/TYPES.md) (every public type, package by package).
 - **Vocabulary is not optional.** Use [GLOSSARY.md](docs/GLOSSARY.md) terms exactly — in code, comments, commit messages, and UI text: `input`, `generator`, `shot`, `preset`, `project`, `program`, `preview`, `compression`, `output`, `destination`, `plug-in` (always hyphenated), `host`, `registry`. Never use terminology (`source`, `scene`, `encoder`, `ingest`, `egress`) except at an explicit external protocol boundary (e.g., an RTSP "source" stays a source in that protocol's own terms).
 - `AGENTS.md` is a pointer to this file and should not be edited separately.
 

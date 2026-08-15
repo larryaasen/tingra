@@ -1151,6 +1151,22 @@ or two in the doc that owns them — none need a rewrite.
 
 ## Decisions to settle
 
+- [ ] **Named destinations — proposed 2026-08-11, awaiting approval**
+  (recorded in DESTINATIONS.md, the veto gate). The second of the two gaps
+  keeping the MCP surface from answering "stream to my Twitch" / "check my
+  backup ingest" — the first, session addressing, was decided and built
+  2026-08-11 (MCP.md, "Tool surface"). The proposal: destinations become
+  operator-global (a project *references* them by id), held by a
+  `DestinationStore` host service — names/URLs in Application Support JSON,
+  keys in the existing Keychain-backed secure storage reached from both the
+  app and the daemon through a shared keychain access group
+  (`$(TeamIdentifierPrefix)`-prefixed, so no Team ID enters a tracked file).
+  Agents get `destinations_list` and a `destination` selector on
+  `stream_start`/`probe` (read-only: the app remains the editor, so keys
+  never transit an agent conversation); the daemon's transient-key policy is
+  amended by reference, not reversed. Sequencing and the open questions are
+  in the doc.
+
 - [x] **MCP recording control — decided and recorded 2026-08-06, go-ahead
   given 2026-08-07 with record-only included, and built the same day**
   (recorded in MCP.md, "Tool surface" and "Sessions and concurrency", and
