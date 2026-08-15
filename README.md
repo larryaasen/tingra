@@ -205,9 +205,9 @@ plug-ins build against, importable without the engine (see
 ### `packages/TingraHost`
 
 The host/core package: plug-in loading, registries, frame transport,
-session/state, secure storage, and authorization — the minimal core that is
-not a plug-in (see [ARCHITECTURE.md](docs/ARCHITECTURE.md), "Engine model: host
-and plug-ins").
+session/state, secure storage, the operator's destination store, and
+authorization — the minimal core that is not a plug-in (see
+[ARCHITECTURE.md](docs/ARCHITECTURE.md), "Engine model: host and plug-ins").
 
 **Types:** [`TingraHost` in TYPES.md](docs/TYPES.md#packagestingrahost)
 

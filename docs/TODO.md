@@ -2772,7 +2772,7 @@ Each lists its trigger condition:
   (`packaging/homebrew/tingra-cli.rb` + `packaging/README.md`), the
   `.github/workflows/packaging.yml` release job (tag-triggered; builds/verifies
   unsigned without secrets, signs+notarizes+attaches to the release with them),
-  and `scripts/release.sh` — the one-command local release (build → tag →
+  and `scripts/publish-cli.sh` — the one-command local release (build → tag →
   `gh release create` → render the formula into the tap and push).
 
 - [x] **Define the product versioning scheme** *(decided 2026-07-09, recorded in
@@ -2789,7 +2789,7 @@ Each lists its trigger condition:
   `README.md` (with a Claude Desktop/Code verify step). First release `v0.1.0`
   shipped: signed + notarized zip and `.pkg` attached to the GitHub release,
   formula sha256 verified against the uploaded zip,
-  `brew install larryaasen/tingra/tingra-cli` working. `scripts/release.sh`
+  `brew install larryaasen/tingra/tingra-cli` working. `scripts/publish-cli.sh`
   renders + pushes the formula per release.
 
 - [ ] **Daemon shows the signer's name, not "Tingra", in Login Items & Extensions
@@ -2833,7 +2833,7 @@ Each lists its trigger condition:
   → Extension Developer → Install Extension…, or eventually listed in Anthropic's
   extension directory. Scope: an `mcpb`-format manifest wrapping the signed
   `tingra-cli` binary with `args: ["mcp"]`, built and versioned alongside the
-  existing packaging pipeline (`scripts/package-cli.sh`/`release.sh`). Worth
+  existing packaging pipeline (`scripts/package-cli.sh`/`publish-cli.sh`). Worth
   revisiting once `Tingra.app` exists (previous item) — the extension could point
   at the app-bundled CLI rather than a separate artifact. Not started; a real
   scoped project, not a quick add.

@@ -42,6 +42,15 @@ extension ErrorIdentifier {
     /// Exit code 69.
     public static let inputAmbiguous = ErrorIdentifier(rawValue: "inputAmbiguous")
 
+    /// No saved destination matches the `destination` selector. MCP-only —
+    /// no CLI command resolves a destination by name in v1 — so no exit code
+    /// maps to it; a CLI selector would exit 69, beside `inputNotFound`.
+    public static let destinationNotFound = ErrorIdentifier(rawValue: "destinationNotFound")
+
+    /// A `destination` name selector matches more than one saved destination.
+    /// MCP-only, on the same terms as `destinationNotFound`.
+    public static let destinationAmbiguous = ErrorIdentifier(rawValue: "destinationAmbiguous")
+
     /// Camera or microphone TCC authorization was denied. Exit code 69.
     public static let authorizationDenied = ErrorIdentifier(rawValue: "authorizationDenied")
 

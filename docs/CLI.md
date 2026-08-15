@@ -44,6 +44,47 @@ Signed and notarized binary for Apple Silicon (arm64) only, distributed through 
 
 **The recipe is implemented.** `scripts/package-cli.sh` runs the whole pipeline (release build → sign → verify → notarized zip + stapled `.pkg` → sha256), gated on signing/notarization credentials passed as environment variables (absent creds fall back to an unsigned dev artifact). `.github/workflows/packaging.yml` runs it on a `v*` tag; the formula template lives at `packaging/homebrew/tingra-cli.rb`, copied per release into the external `larryaasen/homebrew-tingra` tap (see `packaging/README.md`).
 
+### Cutting a release
+
+`scripts/release-cli.sh` cuts and publishes a release in one command. It owns the version decision — prompting for the next version number and bumping `TingraCLIVersion.current` and the embedded `Info.plist` together — then hands off to `scripts/publish-cli.sh` for the build, signing, notarization, tag, GitHub release, and tap update. `publish-cli.sh` stays non-interactive and callable on its own, so CI and the `v*` tag workflow are unaffected.
+
+**Step by step.**
+
+1. **Land the work.** The tree must be clean and the branch level with `origin/main`; both are checked before anything is written, and a dirty tree is refused outright (the tag has to name a committed state, and the script is about to write two files of its own).
+
+2. **Export the signing credentials** — they live only in the environment, never in a tracked file:
+
+   ```sh
+   export TINGRA_SIGN_ID="Developer ID Application: … (TEAMID)"
+   export TINGRA_INSTALLER_SIGN_ID="Developer ID Installer: … (TEAMID)"
+   export TINGRA_NOTARY_PROFILE="…"   # a notarytool store-credentials profile
+   ```
+
+   Missing credentials are a warning plus a confirmation prompt, not a hard stop, because `package-cli.sh` still produces a usable unsigned artifact for local inspection. Never publish that artifact: Gatekeeper rejects it and its TCC grants key to nothing.
+
+3. **Run it:**
+
+   ```sh
+   scripts/release-cli.sh
+   ```
+
+4. **Answer the version prompt.** The default is the next version: the current number with its `-dev` suffix dropped when `main` is on-scheme, otherwise the next patch. A default that is already tagged is skipped over, and an explicitly requested version that collides is refused — so a release can never overwrite a shipped tag. The version must be `MAJOR.MINOR.PATCH`; a `-dev` suffix is rejected here by design.
+
+5. **Confirm the plan.** The script prints the version transition, tag, branch, tap, and expected artifacts, then asks once before anything is published. Everything up to this prompt is read-only.
+
+6. **Answer the `-dev` prompt** after the release completes, to reopen `main` on the next `-dev` version per the versioning scheme above. Skip it with `--no-dev-bump`.
+
+7. **Verify** the published release from a consumer's position, not by reading the script's output:
+
+   ```sh
+   brew update && brew upgrade tingra-cli && tingra-cli version
+   tingra-cli serve --install    # re-point the LaunchAgent at the new binary
+   ```
+
+**Flags.** `--version <x.y.z>` skips the prompt; `--dry-run` runs the preflight and prints the plan without changing anything; `--no-dev-bump` skips step 6; `--help` prints usage. `TINGRA_RELEASE_BRANCH` overrides the expected branch (default `main`); releasing from another branch warns and asks rather than refusing.
+
+**Resumable.** If a run stops partway — a notarization timeout is the usual cause — re-run it with the same `--version`. The bump and its commit are skipped when already in place, and `publish-cli.sh` is itself idempotent (it reuses an existing tag and clobbers uploaded artifacts), so a resumed run finishes the release rather than starting a second one.
+
 Open question tracked in TODO.md: how bundled plug-ins ship next to a bare binary (app bundle style layout, compiled in, or a plug-ins directory installed by the formula). For the CLI era they are compiled in (see ARCHITECTURE.md); the question is what changes when the external bundle loader ships.
 
 ## Command structure
@@ -244,6 +285,8 @@ Every `error` event the CLI emits carries a stable, machine-readable `identifier
 | `connectionFailed` | 75 | The initial connection or handshake to the destination was rejected or unreachable. |
 | `connectionLost` | 75 | The connection dropped and was not recovered within the configured reconnect attempts. |
 | `noActiveStream` | — | An MCP tool addressed "the active stream" (an omitted session id) while no stream was active (MCP.md, "Tool surface"). MCP-only: no CLI command addresses a session by omission, so no exit code maps to it. |
+| `destinationNotFound` | — | No saved destination matches a `destination` selector on `stream_start` or `probe` (DESTINATIONS.md); the message points at `destinations_list`. MCP-only in v1 — no CLI command resolves a destination by name — so no exit code maps to it; were the CLI to gain a destination selector, it would exit 69 beside `inputNotFound`. |
+| `destinationAmbiguous` | — | A `destination` name selector matches more than one saved destination; the message lists the matches. MCP-only on the same terms as `destinationNotFound`. |
 
 ### `tingra-cli serve` and `tingra-cli mcp`
 

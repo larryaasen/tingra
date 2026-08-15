@@ -11,6 +11,7 @@ import CoreMedia
 import Foundation
 import Synchronization
 import TingraEventBus
+import TingraHost
 import TingraPlugInKit
 
 @testable import TingraMCP
@@ -69,6 +70,11 @@ final class MockStreamingService: StreamingService, Sendable {
     /// Feeds ``eventStream``.
     private let eventContinuation: AsyncStream<StreamingServiceEvent>.Continuation
 
+    /// The destination the service was last started to, so a test can assert
+    /// which URL and stream key a leg actually published with — the only way
+    /// to see that a saved destination resolved to the right pair.
+    private let started = Mutex<Destination?>(nil)
+
     /// Creates a mock, optionally rejecting the first start.
     init(startError: StreamingServiceError? = nil) {
         self.startError = Mutex(startError)
@@ -84,7 +90,12 @@ final class MockStreamingService: StreamingService, Sendable {
         }) {
             throw error
         }
+        started.withLock { $0 = destination }
     }
+
+    /// The destination the service was last started to, or nil before any
+    /// start.
+    var startedDestination: Destination? { started.withLock { $0 } }
 
     func send(video frame: CapturedFrame) async {}
 
@@ -236,4 +247,100 @@ extension Data {
 extension String {
     /// The string as UTF-8 data, for enqueuing onto a transport.
     var utf8Data: Data { Data(utf8) }
+}
+
+/// An in-memory ``SecureStorage`` for the destination tests, so no test
+/// touches the real Keychain (no unlocked login keychain, no prompt on a CI
+/// runner). It mirrors the double in the TingraHost test target — test
+/// targets cannot share code, so the two are deliberate twins rather than a
+/// duplicated helper.
+///
+/// ``readFailure`` makes every read throw, which is the only way to reach the
+/// unsigned-development-build path: a real process either has the entitlement
+/// or does not, and a test cannot un-sign itself.
+final class InMemorySecureStorage: SecureStorage {
+    /// The stored secrets, keyed by account.
+    private let secrets = Mutex<[String: String]>([:])
+
+    /// The error every read throws, or nil to read normally.
+    private let readFailure: SecureStorageError?
+
+    /// Creates a double.
+    ///
+    /// - Parameter readFailure: An error every read throws, or nil.
+    init(readFailure: SecureStorageError? = nil) {
+        self.readFailure = readFailure
+    }
+
+    func setSecret(_ secret: String, forAccount account: String) throws {
+        secrets.withLock { $0[account] = secret }
+    }
+
+    func secret(forAccount account: String) throws -> String? {
+        if let readFailure { throw readFailure }
+        return secrets.withLock { $0[account] }
+    }
+
+    func removeSecret(forAccount account: String) throws {
+        secrets.withLock { $0[account] = nil }
+    }
+}
+
+/// A ``DestinationStore`` over a temporary directory, seeded with the
+/// destinations a test needs — so the tool surface is exercised against a real
+/// document and never the operator's own (DESTINATIONS.md: the store is
+/// operator state).
+final class DestinationFixture {
+    /// The temporary directory the document lives in, removed at deinit.
+    private let directory: URL
+
+    /// The store under test.
+    let store: DestinationStore
+
+    /// Seeds a store.
+    ///
+    /// - Parameters:
+    ///   - destinations: The destinations to file, in order.
+    ///   - keys: The stream key to file for each destination id, if any.
+    ///   - readFailure: An error the secret store's reads throw, standing in
+    ///     for an unsigned development build.
+    ///   - eventBus: The bus the store's change events go out on.
+    init(
+        destinations: [StoredDestination] = [],
+        keys: [String: String] = [:],
+        readFailure: SecureStorageError? = nil,
+        eventBus: EventBus = EventBus()
+    ) async throws {
+        directory = URL.temporaryDirectory.appending(path: "tingra-mcp-destinations-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let secureStorage = InMemorySecureStorage(readFailure: readFailure)
+        store = DestinationStore(directory: directory, secureStorage: secureStorage, eventBus: eventBus)
+        for destination in destinations {
+            try await store.add(destination)
+            if let key = keys[destination.id.rawValue] {
+                // Filed directly, so a store whose reads fail can still be
+                // seeded — `setKey` writes, and only reads are faulted.
+                try secureStorage.setSecret(key, forAccount: DestinationStore.secureStorageAccount(for: destination.id))
+            }
+        }
+    }
+
+    deinit {
+        try? FileManager.default.removeItem(at: directory)
+    }
+}
+
+/// A saved destination for the tool tests.
+///
+/// - Parameters:
+///   - id: The stable id.
+///   - name: The operator's label.
+///   - url: The destination URL.
+/// - Returns: The destination.
+func savedDestination(
+    id: String = "dest-twitch",
+    name: String = "Twitch",
+    url: String = "rtmp://localhost/live"
+) -> StoredDestination {
+    StoredDestination(id: DestinationID(rawValue: id), name: name, url: URL(string: url) ?? URL.temporaryDirectory)
 }

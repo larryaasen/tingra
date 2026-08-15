@@ -18,8 +18,9 @@ import TingraPlugInKit
 ///
 /// Several destinations are **one session with N legs**, so a fan-out still
 /// returns a single id (MCP.md, "Sessions and concurrency"). Name them either
-/// with the `url`/`key` pair (one destination, the common case) or with the
-/// `destinations` array; passing both is an error.
+/// with the `url`/`key` pair (one destination, the common case), with a
+/// `destination` selector naming one the operator saved, or with the
+/// `destinations` array; passing more than one form at a time is an error.
 ///
 /// The tool parses and validates the MCP arguments (the same rules as the
 /// CLI's flag validation) into a ``StreamRequest``, then hands it to the
@@ -38,8 +39,10 @@ struct StreamStartTool: Tool {
     let description =
         "Start capturing and streaming to one or more RTMP/RTMPS/SRT destinations. Mirrors `tingra-cli stream`. "
         + "Returns a session id used by stream_status and stream_stop. One active stream at a time; several "
-        + "destinations are one session fanned out, reported per destination by stream_status. Pass 'record' "
-        + "to also write the program to a local file — alone, with no destination, it records without streaming."
+        + "destinations are one session fanned out, reported per destination by stream_status. Name a "
+        + "destination the operator saved with 'destination' (see destinations_list) instead of a raw URL and "
+        + "key. Pass 'record' to also write the program to a local file — alone, with no destination, it "
+        + "records without streaming."
 
     let inputSchema: JSONValue = .object([
         "type": .string("object"),
@@ -47,19 +50,29 @@ struct StreamStartTool: Tool {
             "url": schema(
                 "string",
                 "RTMP(S) or SRT destination URL, e.g. rtmp://live.twitch.tv/app. Use this for a single "
-                    + "destination, or 'destinations' for several — not both."),
+                    + "destination, 'destination' for a saved one, or 'destinations' for several — only one "
+                    + "of the three."),
             "key": schema("string", "Stream key for 'url'. Never returned or logged."),
+            "destination": schema(
+                "string",
+                "A destination the operator saved, by id or by name (e.g. 'Twitch') — its URL and stream key "
+                    + "are read from the operator's store, so no key passes through this call. A name must "
+                    + "match exactly one destination. List them with destinations_list. Use instead of "
+                    + "'url'/'key', not alongside them."),
             "destinations": .object([
                 "type": .string("array"),
                 "description": .string(
-                    "Several destinations for one program. Each item is an object with a required 'url' and an "
-                        + "optional 'key'. Use instead of 'url'/'key', not alongside them."),
+                    "Several destinations for one program. Each item is an object naming one destination "
+                        + "either with a 'url' (and optional 'key') or with a saved 'destination' selector — "
+                        + "one of the two per item, mixable across items. Use instead of 'url'/'key' or "
+                        + "'destination', not alongside them."),
                 "items": .object([
                     "type": .string("object"),
-                    "required": .array([.string("url")]),
                     "properties": .object([
                         "url": schema("string", "RTMP(S) or SRT destination URL."),
                         "key": schema("string", "Stream key for this destination. Never returned or logged."),
+                        "destination": schema(
+                            "string", "A saved destination for this leg, by id or name, in place of 'url'."),
                     ]),
                 ]),
             ]),
@@ -215,42 +228,88 @@ struct StreamStartTool: Tool {
         )
     }
 
-    /// Parses the destinations from either the `url`/`key` pair or the
-    /// `destinations` array, validating each URL's scheme.
+    /// Parses the destinations from the `url`/`key` pair, the `destination`
+    /// selector, or the `destinations` array, validating each raw URL's
+    /// scheme. A saved destination's URL is not validated here — the store
+    /// only ever holds one the app accepted.
     ///
-    /// At most one of the two forms may be given: accepting both would leave
-    /// the order (and therefore each leg's identity) ambiguous. **Neither is
+    /// At most one of the three forms may be given: accepting two would leave
+    /// the order (and therefore each leg's identity) ambiguous. **None is
     /// legal too** — that is a record-only request, and `parse` enforces
     /// that something (a destination or a recording) is configured.
     ///
     /// - Parameter reader: The `stream_start` arguments.
     /// - Returns: The requested destinations, numbered by position; empty
-    ///   when neither form was given.
+    ///   when no form was given.
     /// - Throws: A ``ToolError`` with `invalidArgument` for a duplicated,
     ///   malformed, or unsupported destination.
-    private static func parseDestinations(_ reader: ArgumentReader) throws -> [RequestedDestination] {
+    private static func parseDestinations(_ reader: ArgumentReader) throws -> [RequestedDestinationSpec] {
         let single = reader.string("url")
+        let saved = reader.string("destination")
         let list = reader.value("destinations")?.arrayValue
 
-        if single != nil, list != nil {
-            throw invalid("Pass either 'url' (one destination) or 'destinations' (several), not both.")
+        let forms = [single != nil, saved != nil, list != nil].filter { $0 }.count
+        guard forms <= 1 else {
+            throw invalid(
+                "Pass exactly one of 'url' (one destination), 'destination' (one saved destination), or "
+                    + "'destinations' (several).")
         }
         if let single {
-            return [try makeDestination(url: single, key: reader.string("key"), index: 0)]
+            return [try makeSpec(url: single, key: reader.string("key"), index: 0)]
+        }
+        if let saved {
+            guard reader.string("key") == nil else {
+                throw invalid(
+                    "A saved destination carries its own stream key, so 'key' does not apply to "
+                        + "'destination'. Drop 'key', or name the destination with 'url' instead.")
+            }
+            return [.saved(id: legID(0), selector: saved)]
         }
         guard let list else { return [] }
         guard !list.isEmpty else {
             throw invalid("'destinations' is empty; name at least one destination to stream to.")
         }
         return try list.enumerated().map { index, item in
-            guard let members = item.objectValue, let url = members["url"]?.stringValue else {
-                throw invalid("Each 'destinations' item must be an object with a string 'url'.")
+            guard let members = item.objectValue else {
+                throw invalid("Each 'destinations' item must be an object with a 'url' or a 'destination'.")
             }
-            return try makeDestination(url: url, key: members["key"]?.stringValue, index: index)
+            let url = members["url"]?.stringValue
+            let selector = members["destination"]?.stringValue
+            let key = members["key"]?.stringValue
+            switch (url, selector) {
+            case (let url?, nil):
+                return try makeSpec(url: url, key: key, index: index)
+            case (nil, let selector?):
+                guard key == nil else {
+                    throw invalid(
+                        "The 'destinations' item at position \(index + 1) names a saved destination, which "
+                            + "carries its own stream key; 'key' applies only to a 'url'.")
+                }
+                return .saved(id: legID(index), selector: selector)
+            case (nil, nil):
+                throw invalid(
+                    "The 'destinations' item at position \(index + 1) names nowhere; give it a string 'url' "
+                        + "or a saved 'destination'.")
+            default:
+                throw invalid(
+                    "The 'destinations' item at position \(index + 1) has both a 'url' and a 'destination'; "
+                        + "each leg goes to one place.")
+            }
         }
     }
 
-    /// Validates one destination's URL and pairs it with its key and its
+    /// The stable leg id for a destination's position — `destination-1`,
+    /// `destination-2`, … — carried in every per-leg status event. Positional
+    /// whichever form named the leg, so a saved destination and a raw URL are
+    /// indistinguishable downstream.
+    ///
+    /// - Parameter index: The zero-based position in the request.
+    /// - Returns: The leg id.
+    private static func legID(_ index: Int) -> String {
+        "destination-\(index + 1)"
+    }
+
+    /// Validates one raw destination's URL and pairs it with its key and its
     /// position-derived leg id.
     ///
     /// - Parameters:
@@ -259,14 +318,14 @@ struct StreamStartTool: Tool {
     ///   - index: The zero-based position, which names the leg.
     /// - Returns: The validated destination.
     /// - Throws: A ``ToolError`` for a malformed URL or unsupported scheme.
-    private static func makeDestination(url: String, key: String?, index: Int) throws -> RequestedDestination {
+    private static func makeSpec(url: String, key: String?, index: Int) throws -> RequestedDestinationSpec {
         guard let scheme = URL(string: url)?.scheme?.lowercased() else {
             throw invalid("The 'url' value is not a valid URL: '\(url)'.")
         }
         guard ["rtmp", "rtmps", "srt"].contains(scheme) else {
             throw invalid("The 'url' scheme '\(scheme)' is not supported; use rtmp://, rtmps://, or srt://.")
         }
-        return RequestedDestination(id: "destination-\(index + 1)", url: url, streamKey: key)
+        return .raw(id: legID(index), url: url, key: key)
     }
 
     /// Validates the `record` path and resolves it to a recording request.

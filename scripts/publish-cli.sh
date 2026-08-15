@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-#  release.sh
+#  publish-cli.sh
 #  tingra-cli
 #
 #  Created by Larry Aasen on 2026-07-11.
@@ -20,9 +20,9 @@
 # (TINGRA_SIGN_ID, TINGRA_INSTALLER_SIGN_ID, TINGRA_NOTARY_PROFILE).
 #
 # Usage:
-#   scripts/release.sh [version]
+#   scripts/publish-cli.sh [version]
 # The version defaults to TingraCLIVersion.current in Version.swift, so a
-# normal release is just `scripts/release.sh` once that constant is bumped.
+# normal release is just `scripts/publish-cli.sh` once that constant is bumped.
 #
 # Configuration (env, with defaults):
 #   TINGRA_REPO        code + releases repo   (default larryaasen/tingra)
@@ -38,8 +38,8 @@ readonly REPO="${TINGRA_REPO:-larryaasen/tingra}"
 readonly TAP_REPO="${TINGRA_TAP_REPO:-larryaasen/homebrew-tingra}"
 readonly TAP_FORMULA="${TINGRA_TAP_FORMULA:-Formula/tingra-cli.rb}"
 
-log()  { echo "release: $*"; }
-die()  { echo "release: ERROR: $*" >&2; exit 1; }
+log()  { echo "publish-cli: $*"; }
+die()  { echo "publish-cli: ERROR: $*" >&2; exit 1; }
 
 # 0. Preconditions: the tools and a clean tree (a tag must name a real commit).
 command -v gh >/dev/null || die "the GitHub CLI (gh) is required — install with 'brew install gh' and 'gh auth login'."

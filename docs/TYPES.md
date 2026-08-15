@@ -212,9 +212,27 @@ internal surface a reader needs to navigate the target instead.
   its data-protection-Keychain implementation: stream keys live here (keyed by
   destination id under Tingra's identifier namespace), never in the project
   document, an event, or a log. A seam so the app runs against the real
-  Keychain and tests against an in-memory double.
+  Keychain and tests against an in-memory double. Its optional access group —
+  resolved at runtime by `sharedAccessGroup()` from the running binary's own
+  entitlements, so no Team ID appears in source — is what lets the app and
+  `tingra-cli` reach one another's keys (DESTINATIONS.md).
 - `SecureStorageError` — a recoverable, secret-free failure from the secure
   store (a Keychain status, or a value that would not read back as text).
+- `DestinationStore` — the operator's saved destinations, the host service
+  every surface resolves "my Twitch" against (DESTINATIONS.md): `{id, name,
+  url}` records in `~/Library/Application Support/Tingra/destinations.json`
+  beside their keys in secure storage, selector resolution mirroring input
+  selection, and `destination.added`/`.changed`/`.removed` on the event bus.
+  Reads go to the file every time — the app and the daemon are separate
+  processes over one document — and the directory is injectable so tests never
+  touch the operator's own.
+- `DestinationID` / `StoredDestination` — a saved destination's stable identity
+  (what its key is filed under, unchanged by an edit) and the key-free record
+  itself: operator-global, referenced by a project rather than owned by one.
+- `DestinationStoreError` — a recoverable, secret-free store failure:
+  `notFound`/`ambiguous` selector resolution (mirroring the input selector's
+  two), an unreadable or unwritable document, and the unreadable key an
+  unsigned development build gets, whose message names the fix.
 - `ToolRegistry` — the actor where tool plug-ins register the MCP tools they
   contribute and the MCP/Control service lists and resolves them from; the
   host's concrete `ToolRegistering`.
@@ -563,13 +581,14 @@ internal surface a reader needs to navigate the target instead.
   status-change notifications fed by the status sink.
 - `StreamCoordinator` — owns the one active stream in v1 on behalf of the stream
   tools; reuses the host's `StreamSession`, confirms the stream went live before
-  `stream_start` returns, and keys `stream_status`/`stream_stop` off the session
-  id.
+  `stream_start` returns, resolves each leg's destination (a raw URL, or one
+  named against the operator's `DestinationStore`), and keys
+  `stream_status`/`stream_stop` off the session id.
 - `StreamDefaults` — the system default input identifiers, injected so the
   coordinator never imports the capture package.
 - `ControlToolsPlugIn` — registers the first-party tools (`devices_list`,
-  `probe`, `stream_start`, `stream_status`, `stream_stop`) through the same
-  `ToolRegistering` seam a third party uses.
+  `destinations_list`, `probe`, `stream_start`, `stream_status`,
+  `stream_stop`) through the same `ToolRegistering` seam a third party uses.
 - `DaemonInfo` — the daemon identity (name, version) reported in the
   `initialize` result so a client can detect version skew.
 - `StdioSocketProxy` — the transparent byte pipe behind `tingra-cli mcp`: copies

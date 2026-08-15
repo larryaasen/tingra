@@ -7,33 +7,12 @@
 //  SPDX-License-Identifier: MIT
 //
 
-import Synchronization
 import Testing
 
 @testable import TingraHost
 
-/// An in-memory ``SecureStorage`` double, so the seam's contract is exercised
-/// without touching the real Keychain — no unlocked login keychain and no
-/// prompt on a CI runner (``KeychainSecureStorage`` is validated by hand). It
-/// implements the same documented semantics the app depends on: a store
-/// overwrites, a read of a missing account is `nil`, and a remove is
-/// idempotent.
-private final class InMemorySecureStorage: SecureStorage {
-    /// The stored secrets, keyed by account.
-    private let secrets = Mutex<[String: String]>([:])
-
-    func setSecret(_ secret: String, forAccount account: String) throws {
-        secrets.withLock { $0[account] = secret }
-    }
-
-    func secret(forAccount account: String) throws -> String? {
-        secrets.withLock { $0[account] }
-    }
-
-    func removeSecret(forAccount account: String) throws {
-        secrets.withLock { $0[account] = nil }
-    }
-}
+// The in-memory double these tests run against is shared with the
+// ``DestinationStore`` suite; it lives in SecureStorageTestSupport.swift.
 
 @Suite("SecureStorage")
 struct SecureStorageTests {
@@ -76,5 +55,20 @@ struct SecureStorageTests {
         try storage.setSecret("key-b", forAccount: "b")
         #expect(try storage.secret(forAccount: "a") == "key-a")
         #expect(try storage.secret(forAccount: "b") == "key-b")
+    }
+
+    @Test("The shared access group is nil in a build that declares none, rather than trapping")
+    func sharedAccessGroupWithoutEntitlement() {
+        // This test binary is ad-hoc signed with no entitlements, which is
+        // exactly the unsigned-development-build shape: reading the group back
+        // out of the running code must answer "none" and never trap
+        // (DESTINATIONS.md, "Key sharing between the app and the daemon").
+        #expect(KeychainSecureStorage.sharedAccessGroup() == nil)
+    }
+
+    @Test("The shared access group suffix is the value both entitlements declare")
+    func sharedAccessGroupSuffix() {
+        // Only the suffix is a constant; the team prefix is never in source.
+        #expect(KeychainSecureStorage.sharedAccessGroupSuffix == "com.moonwink.tingra.shared")
     }
 }

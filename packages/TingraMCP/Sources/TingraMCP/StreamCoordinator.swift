@@ -53,6 +53,24 @@ public struct StreamDefaults: Sendable {
     }
 }
 
+/// How one leg of a `stream_start` call named where it goes, before
+/// resolution: either inline, or by reference to a destination the operator
+/// saved (DESTINATIONS.md, "The tool surface").
+///
+/// The two forms resolve independently, leg by leg, exactly as mixed
+/// transports do — so a request may name a saved destination beside a raw
+/// one. Each carries the positional leg id the tool minted, because a leg's
+/// identity is its place in the request, not where it happens to point.
+enum RequestedDestinationSpec: Sendable, Equatable {
+    /// A URL and key given inline. Transient in the daemon exactly as before:
+    /// the caller already holds the key it is passing.
+    case raw(id: String, url: String, key: String?)
+
+    /// A saved destination named by id or by name; its URL and key are read
+    /// from the operator's ``DestinationStore`` at start.
+    case saved(id: String, selector: String)
+}
+
 /// One destination a `stream_start` call asked for: where a leg goes, and
 /// the key it publishes with.
 struct RequestedDestination: Sendable {
@@ -64,17 +82,22 @@ struct RequestedDestination: Sendable {
     /// The destination URL string (scheme already validated).
     let url: String
 
-    /// The stream key, read from the tool arguments; never logged or returned.
+    /// The stream key — read from the tool arguments, or from the operator's
+    /// destination store when the leg named a saved destination; never logged
+    /// or returned.
     ///
     /// **Transient by policy** (MCP.md, "Sessions and concurrency"): the
     /// daemon holds a key only for the life of the session it starts and
     /// never writes it to secure storage, so it outlives neither the session
     /// nor the process. The value lives here and in the leg's `Destination`
     /// for the duration, and both are released together when
-    /// ``StreamCoordinator/clear(id:)`` drops the active session. Persisting
-    /// a key belongs to the destination model, not to the daemon — the app
-    /// persists because a saved destination is a document with an owner,
-    /// while this caller already holds the key it is passing.
+    /// ``StreamCoordinator/clear(id:)`` drops the active session.
+    ///
+    /// A key **resolved** from the store is transient here on exactly the
+    /// same terms — the store changes who owns a saved key (the operator,
+    /// through the app), not how long the daemon holds one
+    /// (DESTINATIONS.md, "The transient-key policy, amended by reference").
+    /// The daemon still never writes a key.
     let streamKey: String?
 }
 
@@ -99,13 +122,14 @@ struct RequestedRecording: Sendable, Equatable {
 /// and validated them from the MCP arguments before handing them to the
 /// coordinator.
 struct StreamRequest: Sendable {
-    /// The destinations the one program fans out to, in the order requested.
-    /// One session, N legs — the "one active stream" rule is unchanged
-    /// (MCP.md, "Sessions and concurrency"). **Empty is legal when
-    /// ``recording`` is present**: a record-only session, the engine shape
-    /// "Recording in the app" made legal (ARCHITECTURE.md); the tool refuses
-    /// a request with neither.
-    let destinations: [RequestedDestination]
+    /// The destinations the one program fans out to, in the order requested,
+    /// as the tool named them — a raw URL, or a reference to a saved
+    /// destination the coordinator resolves at start. One session, N legs —
+    /// the "one active stream" rule is unchanged (MCP.md, "Sessions and
+    /// concurrency"). **Empty is legal when ``recording`` is present**: a
+    /// record-only session, the engine shape "Recording in the app" made
+    /// legal (ARCHITECTURE.md); the tool refuses a request with neither.
+    let destinations: [RequestedDestinationSpec]
 
     /// The local recording the session writes alongside (or instead of)
     /// streaming, or nil when `record` was not given.
@@ -197,6 +221,12 @@ public actor StreamCoordinator {
     /// The output registry that resolves a destination scheme to a provider.
     private let outputs: OutputRegistry
 
+    /// The operator's saved destinations, which a `destination` selector
+    /// resolves against, or nil when the embedder configured none — in which
+    /// case a selector reports `destinationNotFound` naming that, and raw
+    /// `url`/`key` legs are unaffected. The daemon always configures one.
+    private let destinationStore: DestinationStore?
+
     /// The status sink `stream_status` reads live counters from.
     private let status: StatusSink
 
@@ -218,13 +248,16 @@ public actor StreamCoordinator {
     ///   - eventBus: The event bus.
     ///   - clock: The master clock (synthetic in tests).
     ///   - defaults: The system default input provider.
+    ///   - destinationStore: The operator's saved destinations, which a
+    ///     `destination` selector resolves against (default: none).
     public init(
         inputs: InputRegistry,
         outputs: OutputRegistry,
         status: StatusSink,
         eventBus: EventBus,
         clock: any EngineClock,
-        defaults: StreamDefaults
+        defaults: StreamDefaults,
+        destinationStore: DestinationStore? = nil
     ) {
         self.inputs = inputs
         self.outputs = outputs
@@ -232,6 +265,7 @@ public actor StreamCoordinator {
         self.eventBus = eventBus
         self.clock = clock
         self.defaults = defaults
+        self.destinationStore = destinationStore
     }
 
     /// Whether a stream is currently active — the idle-exit guard reads this
@@ -274,7 +308,8 @@ public actor StreamCoordinator {
         // emit is dated at or after this — the floor `statusReport` reads
         // retained sink events against (see `Active.startedAt`).
         let startedAt = Date()
-        let legs = try await makeDestinationLegs(request)
+        let destinations = try await resolveDestinations(request.destinations)
+        let legs = try await makeDestinationLegs(destinations, configuration: request.configuration)
         let (recordingService, recordingFile) = try await makeRecording(request)
         let videoInput = try await resolve(request.video, kind: .camera, defaultID: defaults.cameraID())
         let audioInput = try await resolve(request.audio, kind: .microphone, defaultID: defaults.microphoneID())
@@ -329,7 +364,7 @@ public actor StreamCoordinator {
         // before the install — which is what closes the window rather than
         // merely narrowing it.
         active = Active(
-            id: id, session: session, runTask: runTask, destinations: request.destinations,
+            id: id, session: session, runTask: runTask, destinations: destinations,
             recordingFile: recordingFile, startedAt: startedAt)
 
         do {
@@ -600,20 +635,68 @@ public actor StreamCoordinator {
         }
     }
 
-    /// Builds one destination leg per requested destination, each with its
+    /// Resolves each requested destination to a concrete URL and key: a raw
+    /// leg passes through unchanged, and a saved leg is looked up in the
+    /// operator's ``DestinationStore`` by id or name.
+    ///
+    /// Each leg resolves independently, so a request can name "my Twitch"
+    /// beside a raw backup URL — the same leg-by-leg independence mixed
+    /// transports already have. A resolved key is transient in the daemon
+    /// exactly as an inline one is (see ``RequestedDestination/streamKey``).
+    ///
+    /// - Parameter specs: The destinations as the tool named them.
+    /// - Returns: The resolved destinations, in the requested order.
+    /// - Throws: A ``ToolError`` carrying `destinationNotFound`,
+    ///   `destinationAmbiguous`, or `pipelineError` (an unreadable store or
+    ///   an unreadable key — the unsigned-development-build case, whose
+    ///   message names the fix).
+    private func resolveDestinations(_ specs: [RequestedDestinationSpec]) async throws -> [RequestedDestination] {
+        var resolved: [RequestedDestination] = []
+        for spec in specs {
+            switch spec {
+            case .raw(let id, let url, let key):
+                resolved.append(RequestedDestination(id: id, url: url, streamKey: key))
+            case .saved(let id, let selector):
+                guard let destinationStore else {
+                    throw ToolError(
+                        identifier: .destinationNotFound,
+                        message:
+                            "This engine has no destination store, so the destination selector '\(selector)' "
+                            + "cannot be resolved. Pass 'url' (and 'key') for this leg instead."
+                    )
+                }
+                do {
+                    let saved = try await destinationStore.resolve(selector: selector)
+                    let key = try await destinationStore.key(for: saved)
+                    resolved.append(
+                        RequestedDestination(id: id, url: saved.url.absoluteString, streamKey: key))
+                } catch {
+                    throw Self.toolError(from: error)
+                }
+            }
+        }
+        return resolved
+    }
+
+    /// Builds one destination leg per resolved destination, each with its
     /// own streaming service and its own stream key.
     ///
     /// Every leg's scheme resolves independently against the one output
     /// registry, so a request can mix transports (RTMP beside SRT). The keys
     /// travel inward only — never into a status report, an event, or a log.
     ///
-    /// - Parameter request: The parsed `stream_start` request.
+    /// - Parameters:
+    ///   - destinations: The resolved destinations, in the requested order.
+    ///   - configuration: The compression settings every leg encodes with.
     /// - Returns: The legs, in the requested order.
     /// - Throws: A ``ToolError`` with `invalidArgument` for a URL that does
     ///   not parse or resolves to no registered output.
-    private func makeDestinationLegs(_ request: StreamRequest) async throws -> [StreamSession.DestinationLeg] {
+    private func makeDestinationLegs(
+        _ destinations: [RequestedDestination],
+        configuration: StreamConfiguration
+    ) async throws -> [StreamSession.DestinationLeg] {
         var legs: [StreamSession.DestinationLeg] = []
-        for destination in request.destinations {
+        for destination in destinations {
             guard let url = URL(string: destination.url) else {
                 throw ToolError(
                     identifier: .invalidArgument,
@@ -635,7 +718,7 @@ public actor StreamCoordinator {
                 StreamSession.DestinationLeg(
                     id: destination.id,
                     destination: Destination(url: url, streamKey: destination.streamKey),
-                    service: provider.makeStreamingService(configuration: request.configuration)
+                    service: provider.makeStreamingService(configuration: configuration)
                 )
             )
         }

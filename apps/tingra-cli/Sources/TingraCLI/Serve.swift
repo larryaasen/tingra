@@ -183,6 +183,13 @@ struct Serve: AsyncParsableCommand {
         let status = StatusSink()
         let statusTask = eventBus.attach(status)
 
+        // The operator's saved destinations, so an agent can name "my Twitch"
+        // instead of carrying a URL and key (DESTINATIONS.md). The default
+        // secure storage joins the shared keychain access group when this
+        // binary is signed; an unsigned development build resolves names and
+        // URLs and reports every key as absent, with the fix in the message.
+        let destinations = DestinationStore(eventBus: eventBus)
+
         let coordinator = StreamCoordinator(
             inputs: inputs,
             outputs: outputs,
@@ -192,7 +199,8 @@ struct Serve: AsyncParsableCommand {
             defaults: StreamDefaults(
                 cameraID: { SystemDefaultInputs.cameraID },
                 microphoneID: { SystemDefaultInputs.microphoneID }
-            )
+            ),
+            destinationStore: destinations
         )
 
         // First-party plug-ins load through the same path a third party will
@@ -207,7 +215,8 @@ struct Serve: AsyncParsableCommand {
                 GeneratorPlugIn(),
                 HaishinKitOutputPlugIn(),
                 RecordingPlugIn(),
-                ControlToolsPlugIn(coordinator: coordinator, inputs: inputs, outputs: outputs),
+                ControlToolsPlugIn(
+                    coordinator: coordinator, inputs: inputs, outputs: outputs, destinations: destinations),
             ],
             in: context
         )

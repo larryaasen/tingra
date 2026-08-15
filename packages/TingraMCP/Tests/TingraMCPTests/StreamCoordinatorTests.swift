@@ -80,7 +80,7 @@ struct StreamCoordinatorTests {
     private var recordAlongsideRequest: StreamRequest {
         StreamRequest(
             destinations: [
-                RequestedDestination(id: "destination-1", url: "rtmp://localhost/live", streamKey: "test_key")
+                RequestedDestinationSpec.raw(id: "destination-1", url: "rtmp://localhost/live", key: "test_key")
             ],
             recording: requestedRecording,
             video: .generator(InputID(rawValue: "bars")),
@@ -107,7 +107,7 @@ struct StreamCoordinatorTests {
     private var generatorRequest: StreamRequest {
         StreamRequest(
             destinations: [
-                RequestedDestination(id: "destination-1", url: "rtmp://localhost/live", streamKey: "test_key")
+                RequestedDestinationSpec.raw(id: "destination-1", url: "rtmp://localhost/live", key: "test_key")
             ],
             recording: nil,
             video: .generator(InputID(rawValue: "bars")),
@@ -122,8 +122,8 @@ struct StreamCoordinatorTests {
     private var twoDestinationRequest: StreamRequest {
         StreamRequest(
             destinations: [
-                RequestedDestination(id: "destination-1", url: "rtmp://localhost/live", streamKey: "a"),
-                RequestedDestination(id: "destination-2", url: "rtmp://localhost/backup", streamKey: "b"),
+                RequestedDestinationSpec.raw(id: "destination-1", url: "rtmp://localhost/live", key: "a"),
+                RequestedDestinationSpec.raw(id: "destination-2", url: "rtmp://localhost/backup", key: "b"),
             ],
             recording: nil,
             video: .generator(InputID(rawValue: "bars")),
@@ -139,7 +139,7 @@ struct StreamCoordinatorTests {
     private var durationLimitedRequest: StreamRequest {
         StreamRequest(
             destinations: [
-                RequestedDestination(id: "destination-1", url: "rtmp://localhost/live", streamKey: "test_key")
+                RequestedDestinationSpec.raw(id: "destination-1", url: "rtmp://localhost/live", key: "test_key")
             ],
             recording: nil,
             video: .generator(InputID(rawValue: "bars")),
@@ -154,7 +154,7 @@ struct StreamCoordinatorTests {
     private var noReconnectRequest: StreamRequest {
         StreamRequest(
             destinations: [
-                RequestedDestination(id: "destination-1", url: "rtmp://localhost/live", streamKey: "test_key")
+                RequestedDestinationSpec.raw(id: "destination-1", url: "rtmp://localhost/live", key: "test_key")
             ],
             recording: nil,
             video: .generator(InputID(rawValue: "bars")),

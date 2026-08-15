@@ -13,6 +13,17 @@
   entitlements. disable-library-validation lets the host load third-party
   plug-ins signed by other teams (ARCHITECTURE.md). No sandbox entitlement:
   Tingra is deliberately unsandboxed.
+
+  keychain-access-groups puts this binary and Tingra.app in one data-protection
+  keychain group, so the daemon can read a stream key the operator filed in the
+  app (DESTINATIONS.md, "Key sharing between the app and the daemon"). The
+  value carries the $(TeamIdentifierPrefix) build variable, never a literal
+  Team ID — nothing personal in a tracked file (CLAUDE.md, "Signing"). Xcode
+  expands that variable itself; `codesign` does not, so package-cli.sh
+  substitutes the Team ID out of TINGRA_SIGN_ID into a temporary copy at
+  signing time. An unsigned `swift build` binary has no entitlements at all and
+  therefore no access group: destination names and URLs still resolve, and a
+  key it cannot read is reported as absent with a message naming the fix.
 -->
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -23,5 +34,9 @@
     <true/>
     <key>com.apple.security.cs.disable-library-validation</key>
     <true/>
+    <key>keychain-access-groups</key>
+    <array>
+        <string>$(TeamIdentifierPrefix)com.moonwink.tingra.shared</string>
+    </array>
 </dict>
 </plist>

@@ -1,6 +1,6 @@
 # Destinations: the named destination model
 
-**Status: proposed 2026-08-11 — awaiting approval. Nothing below is implemented; the veto gate is this document.** Once approved, each decision here lands in the doc that owns its area (GLOSSARY.md, MCP.md, CLI.md, ARCHITECTURE.md) as it is built, per the decide-then-build rule.
+**Status: approved 2026-08-15. Steps 2 and 3 of the sequencing are built; step 4 (the app adopting the store) is outstanding.** Each decision here lands in the doc that owns its area as it is built, per the decide-then-build rule: the store and the shared access group are in [TYPES.md](TYPES.md) and [README.md](../README.md), the tool surface in [MCP.md](MCP.md), and the two new error identifiers in [CLI.md](CLI.md). [GLOSSARY.md](GLOSSARY.md)'s Destination entry is rewritten with step 4.
 
 ## The problem
 
@@ -51,14 +51,22 @@ The sidebar's destinations section and the streaming panel read and write the st
 
 ## Sequencing
 
-1. **This document** — the veto gate.
-2. **`DestinationStore` in `TingraHost`** + the shared access group (entitlements in both targets, the access-group parameter on `KeychainSecureStorage`), with store unit tests over a temporary directory and the in-memory secure storage.
-3. **The MCP tools** — `destinations_list`, the `destination` selector on `stream_start`/`probe`, the two identifiers, round-trip tests, and the MCP.md/CLI.md records.
+1. ~~**This document** — the veto gate.~~ Approved 2026-08-15.
+2. ~~**`DestinationStore` in `TingraHost`** + the shared access group (entitlements in both targets, the access-group parameter on `KeychainSecureStorage`), with store unit tests over a temporary directory and the in-memory secure storage.~~ Built 2026-08-15.
+3. ~~**The MCP tools** — `destinations_list`, the `destination` selector on `stream_start`/`probe`, the two identifiers, round-trip tests, and the MCP.md/CLI.md records.~~ Built 2026-08-15.
 4. **The app adopts the store** — sidebar and panel move over; GLOSSARY.md's Destination entry is rewritten to the reference model.
 
 Steps 2–3 make every query in the motivating set answerable headlessly; step 4 removes the last duplicate ownership.
 
-## Open questions
+### What steps 2–3 settled that step 4 should know
 
-- Whether `destinations_list` should also report each destination's last-seen leg state from the status sink (a convenience join `stream_status` already answers) — currently: no, one tool per question.
-- Whether the ingest simulator's test destinations warrant a seeded store fixture for integration tests, or the raw-URL path (which stays supported) remains the test surface — currently: raw URLs; the store is operator state, not test state.
+- **`kSecAttrAccessGroup` needs the team-prefixed group string, and the prefix is not knowable from source.** `KeychainSecureStorage.sharedAccessGroup()` reads it back out of the running binary's own `keychain-access-groups` entitlement (`SecTaskCreateFromSelf`), which the signing process has already expanded — so the value is right at runtime and no Team ID ever appears in a tracked file. It returns nil for an unsigned build, which is exactly the honest-degradation signal.
+- **`codesign` does not expand `$(TeamIdentifierPrefix)`; Xcode does.** The app target gets the expansion for free; `scripts/package-cli.sh` now substitutes the Team ID out of `TINGRA_SIGN_ID` into a throwaway entitlements copy at signing, and deletes it after.
+- **The entitlement needs the Keychain Sharing capability on the App ID.** Adding `keychain-access-groups` makes a locally signed Xcode build fail against the wildcard "Mac Team Provisioning Profile: \*" until the capability is added once (Xcode's Signing & Capabilities, or `xcodebuild -allowProvisioningUpdates`). CI is unaffected — it builds `CODE_SIGNING_ALLOWED=NO`.
+- **Adding the entitlement changes which group *new* items go to.** With `keychain-access-groups` present, an item written with no explicit group lands in the first entry of that list rather than the app's application-identifier group. Keys the app filed before this change stay readable by the app and stay invisible to the CLI, so step 4 should file keys into the shared group and expect the operator to re-enter any authored earlier — the same one-time re-entry this document already accepted for pre-change project documents.
+- **The store caches nothing.** Every read goes to the file, because the app and the daemon are separate processes over one document. That is a point read on demand, not a poll. The consequence for step 4: the change events reach in-process subscribers only, so the app's `@Observable` list stays current by reading after its own edits, and a cross-process observer stays current by reading rather than listening. If step 4 wants the app to react to a *daemon-side* change, that needs a file watcher and is its own decision — nothing in v1 needs it, since the agent surface is read-only.
+
+## Open questions — both answered 2026-08-15
+
+- ~~Whether `destinations_list` should also report each destination's last-seen leg state from the status sink~~ — **no, one tool per question.** Beyond the "one tool per question" principle, there is no id to join on: MCP leg identity is positional (`destination-1`), never the store id, so the join could only match URL strings — the fragile inference the 2026-08-15 leg-state decision deliberately moved away from, and one that collides outright for two destinations sharing an ingest URL with different keys (a case the id-keyed key storage exists to support). A store read must also answer with nothing streaming, so the field would be absent on most calls. An agent wanting the join reads both tools and matches on `url`.
+- ~~Whether the ingest simulator's test destinations warrant a seeded store fixture for integration tests~~ — **no; raw URLs remain the test surface.** The store is operator state at a real path in Application Support, with keys in the real Keychain: a fixture that seeds it is a test writing the developer's own destinations. The raw `url`/`key` path stays supported permanently and everything downstream of resolution is identical, so the integration tests lose no coverage; resolution itself is covered by unit tests over a temporary directory. The store's directory *is* injectable, which is what would let a fixture be added later without touching operator state — so this defers the option rather than closing it.

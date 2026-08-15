@@ -11,9 +11,10 @@ import TingraHost
 import TingraPlugInKit
 
 /// The first-party control tools plug-in: contributes the MCP tool set that
-/// mirrors the CLI surface (`devices_list`, `probe`, `stream_start`,
-/// `stream_status`, `stream_stop`) through the same ``ToolRegistering`` seam
-/// a third-party tool plug-in uses (MCP.md, "Tool surface").
+/// mirrors the CLI surface (`devices_list`, `destinations_list`, `probe`,
+/// `stream_start`, `stream_status`, `stream_stop`) through the same
+/// ``ToolRegistering`` seam a third-party tool plug-in uses (MCP.md, "Tool
+/// surface").
 ///
 /// The stream tools share one ``StreamCoordinator`` — injected rather than
 /// created here so the daemon can also read it for the idle-exit guard
@@ -36,22 +37,34 @@ public struct ControlToolsPlugIn: PlugIn {
     /// The output registry `probe` resolves against.
     private let outputs: OutputRegistry
 
+    /// The operator's destinations `destinations_list` reads and the
+    /// `destination` selector resolves against.
+    private let destinations: DestinationStore
+
     /// Creates the plug-in.
     ///
     /// - Parameters:
     ///   - coordinator: The shared stream coordinator.
     ///   - inputs: The host input registry.
     ///   - outputs: The host output registry.
-    public init(coordinator: StreamCoordinator, inputs: InputRegistry, outputs: OutputRegistry) {
+    ///   - destinations: The operator's destination store.
+    public init(
+        coordinator: StreamCoordinator,
+        inputs: InputRegistry,
+        outputs: OutputRegistry,
+        destinations: DestinationStore
+    ) {
         self.coordinator = coordinator
         self.inputs = inputs
         self.outputs = outputs
+        self.destinations = destinations
     }
 
     /// Registers every first-party tool into the host's tool registry.
     public func activate(in context: PlugInContext) async throws {
         try await context.tools.register(DevicesListTool(inputs: inputs))
-        try await context.tools.register(ProbeTool(outputs: outputs))
+        try await context.tools.register(DestinationsListTool(destinations: destinations))
+        try await context.tools.register(ProbeTool(outputs: outputs, destinations: destinations))
         try await context.tools.register(StreamStartTool(coordinator: coordinator))
         try await context.tools.register(StreamStatusTool(coordinator: coordinator))
         try await context.tools.register(StreamStopTool(coordinator: coordinator))

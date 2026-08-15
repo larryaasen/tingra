@@ -86,12 +86,62 @@ public struct KeychainSecureStorage: SecureStorage {
     /// identifier namespace, so its items are distinct from any other app's.
     private let service: String
 
+    /// The keychain access group items are filed in and read from, or nil to
+    /// use the process's default group.
+    ///
+    /// Data-protection keychain items are partitioned by access group, and the
+    /// app and `tingra-cli` are different signed binaries — so without a
+    /// shared group an item filed by one is invisible to the other. Passing
+    /// ``sharedAccessGroup()`` here is what lets the daemon reach a stream key
+    /// the operator filed in the app (DESTINATIONS.md, "Key sharing between
+    /// the app and the daemon").
+    private let accessGroup: String?
+
     /// Creates a Keychain-backed store.
     ///
-    /// - Parameter service: The Keychain service string (default
-    ///   `"com.moonwink.tingra"`, Tingra's identifier namespace).
-    public init(service: String = "com.moonwink.tingra") {
+    /// - Parameters:
+    ///   - service: The Keychain service string (default
+    ///     `"com.moonwink.tingra"`, Tingra's identifier namespace).
+    ///   - accessGroup: The keychain access group to file items in (default
+    ///     nil: the process's default group). Pass ``sharedAccessGroup()`` to
+    ///     use the group both Tingra binaries declare.
+    public init(service: String = "com.moonwink.tingra", accessGroup: String? = nil) {
         self.service = service
+        self.accessGroup = accessGroup
+    }
+
+    /// The suffix of the shared keychain access group, as written in both
+    /// binaries' `keychain-access-groups` entitlement:
+    /// `$(TeamIdentifierPrefix)com.moonwink.tingra.shared`.
+    ///
+    /// Only the suffix is a constant. The full group string carries the team
+    /// identifier prefix, which a public repository must never hold in a
+    /// tracked file (CLAUDE.md, "Signing") — hence ``sharedAccessGroup()``,
+    /// which reads the already-expanded value out of the running binary.
+    public static let sharedAccessGroupSuffix = "com.moonwink.tingra.shared"
+
+    /// The team-prefixed shared keychain access group of the **running**
+    /// binary, or nil when it has none.
+    ///
+    /// The signing process expands `$(TeamIdentifierPrefix)` into the
+    /// entitlement it embeds, so the signed binary already carries the one
+    /// value this needs — reading it back is how the group is known at runtime
+    /// without a Team ID ever appearing in source.
+    ///
+    /// Returns nil for an **unsigned development build** (a bare `swift build`
+    /// of the CLI), which carries no entitlements and therefore cannot join an
+    /// access group. That is a real state, not an error: the caller degrades
+    /// honestly — names and URLs still resolve, and a key the process cannot
+    /// read is reported as absent with a structured error naming the fix (see
+    /// ``DestinationStore``).
+    ///
+    /// - Returns: The full access group string, or nil when the binary
+    ///   declares none.
+    public static func sharedAccessGroup() -> String? {
+        guard let task = SecTaskCreateFromSelf(nil) else { return nil }
+        let value = SecTaskCopyValueForEntitlement(task, "keychain-access-groups" as CFString, nil)
+        guard let groups = value as? [String] else { return nil }
+        return groups.first { $0.hasSuffix(sharedAccessGroupSuffix) }
     }
 
     /// The base query identifying one account's generic-password item.
@@ -102,12 +152,16 @@ public struct KeychainSecureStorage: SecureStorage {
     /// login keychain ignores it). It keys items to the app's own identity, so
     /// reads and writes need no user unlock prompt.
     private func baseQuery(forAccount account: String) -> [CFString: Any] {
-        [
+        var query: [CFString: Any] = [
             kSecClass: kSecClassGenericPassword,
             kSecAttrService: service,
             kSecAttrAccount: account,
             kSecUseDataProtectionKeychain: true,
         ]
+        if let accessGroup {
+            query[kSecAttrAccessGroup] = accessGroup
+        }
+        return query
     }
 
     /// Stores the secret by clearing any existing item for the account and

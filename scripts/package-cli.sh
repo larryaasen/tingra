@@ -71,11 +71,31 @@ cp "$BIN" "$STAGE_BIN"
 #    asserts so a regression fails the pipeline, not a user's Mac.
 if [[ -n "${TINGRA_SIGN_ID:-}" ]]; then
     log "signing with '${TINGRA_SIGN_ID}'…"
+
+    # The entitlements file carries $(TeamIdentifierPrefix) in its keychain
+    # access group, because a Team ID must never live in a tracked file
+    # (CLAUDE.md, "Signing"). Xcode expands that build variable for the app
+    # target; `codesign` does not, so expand it here — from the Team ID inside
+    # the signing identity, which is where the release's team already comes
+    # from — into a throwaway copy that is signed and then discarded.
+    SIGN_ENTITLEMENTS="$ENTITLEMENTS"
+    if grep -q 'TeamIdentifierPrefix' "$ENTITLEMENTS"; then
+        # "Developer ID Application: Some Name (TEAMID)" → TEAMID
+        TEAM_ID="$(sed -n 's/.*(\([A-Z0-9]\{10\}\))$/\1/p' <<<"$TINGRA_SIGN_ID")"
+        [[ -n "$TEAM_ID" ]] || die "could not read a Team ID out of TINGRA_SIGN_ID ('${TINGRA_SIGN_ID}'); \
+it must end in the team identifier in parentheses, e.g. 'Developer ID Application: Name (ABCDE12345)'"
+        SIGN_ENTITLEMENTS="${DIST}/tingra-cli.signing.entitlements"
+        sed "s/\$(TeamIdentifierPrefix)/${TEAM_ID}./g" "$ENTITLEMENTS" >"$SIGN_ENTITLEMENTS"
+        log "expanded \$(TeamIdentifierPrefix) for the keychain access group."
+    fi
+
     codesign --force --options runtime --timestamp \
         --sign "$TINGRA_SIGN_ID" \
         --identifier "$BUNDLE_ID" \
-        --entitlements "$ENTITLEMENTS" \
+        --entitlements "$SIGN_ENTITLEMENTS" \
         "$STAGE_BIN"
+    # The expanded copy holds the Team ID; it never outlives the signature.
+    [[ "$SIGN_ENTITLEMENTS" == "$ENTITLEMENTS" ]] || rm -f "$SIGN_ENTITLEMENTS"
     codesign --verify --strict --verbose=2 "$STAGE_BIN"
     codesign -d --entitlements - "$STAGE_BIN" >/dev/null
     otool -s __TEXT __info_plist "$STAGE_BIN" >/dev/null

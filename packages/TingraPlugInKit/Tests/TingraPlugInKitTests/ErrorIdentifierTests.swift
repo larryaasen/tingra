@@ -27,6 +27,9 @@ struct ErrorIdentifierTests {
         #expect(ErrorIdentifier.recordingFailed.rawValue == "recordingFailed")
         #expect(ErrorIdentifier.connectionFailed.rawValue == "connectionFailed")
         #expect(ErrorIdentifier.connectionLost.rawValue == "connectionLost")
+        #expect(ErrorIdentifier.noActiveStream.rawValue == "noActiveStream")
+        #expect(ErrorIdentifier.destinationNotFound.rawValue == "destinationNotFound")
+        #expect(ErrorIdentifier.destinationAmbiguous.rawValue == "destinationAmbiguous")
     }
 
     @Test("encodes as a bare JSON string and round-trips")

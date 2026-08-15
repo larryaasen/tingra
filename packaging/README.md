@@ -35,14 +35,24 @@ In CI these come from GitHub Actions secrets, never the repo.
 
 ## Cutting a release
 
-`scripts/release.sh [version]` does the whole thing in one command — build, sign,
-notarize, tag, publish the GitHub release, and update the tap — so a release is:
+`scripts/release-cli.sh` is the one command to run. It prompts for the next
+version (defaulting to the next increment), bumps `TingraCLIVersion.current` and
+`Info.plist` together, commits and pushes that bump, then hands off to
+`publish-cli.sh` — so a release is:
 
 ```sh
-# 1. Bump TingraCLIVersion.current in Version.swift + Info.plist, then commit.
-# 2. Export the signing env (see the table above), then:
-scripts/release.sh          # version defaults to Version.swift's constant
+# Export the signing env (see the table above), then:
+scripts/release-cli.sh      # prompts for the version; --dry-run to rehearse
 ```
+
+Step-by-step instructions, flags, and the resume behavior are in
+[docs/CLI.md](../docs/CLI.md) "Cutting a release".
+
+`scripts/publish-cli.sh [version]` is the non-interactive half underneath — build,
+sign, notarize, tag, publish the GitHub release, and update the tap. Call it
+directly when the version bump is already committed (which is what CI does); it
+does **not** bump the version itself, so a bare `publish-cli.sh` on a tree whose
+constant still names a shipped version stops at the tag-collision check.
 
 It requires a **clean working tree** (the tag must name a committed state) and the
 GitHub CLI (`gh`) authenticated with push access to both repos. Under the hood it
@@ -61,12 +71,12 @@ tingra-cli serve --install
 
 The tap never builds from source — it downloads the prebuilt, notarized zip.
 
-### The pieces `release.sh` orchestrates
+### The pieces `publish-cli.sh` orchestrates
 
 The formula source of truth is [`homebrew/tingra-cli.rb`](homebrew/tingra-cli.rb).
 The **tap itself is a separate repo**, `larryaasen/homebrew-tingra`, that lives
 outside this monorepo and must exist (empty is fine) before the first release.
-To run any step by hand instead of `release.sh`:
+To run any step by hand instead of `publish-cli.sh`:
 
 1. `scripts/package-cli.sh` → `dist/*.zip`, `dist/*.pkg`, and the zip's sha256.
 2. `gh release create v<version> dist/* --repo larryaasen/tingra`.
@@ -75,4 +85,4 @@ To run any step by hand instead of `release.sh`:
 
 The tag-triggered `.github/workflows/packaging.yml` automates steps 1–2 in CI
 when the signing secrets are configured; the tap update (step 3) stays with
-`release.sh` (or is done by hand) since it pushes to a second repo.
+`publish-cli.sh` (or is done by hand) since it pushes to a second repo.

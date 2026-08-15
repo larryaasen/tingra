@@ -35,14 +35,12 @@ struct StreamStartToolTests {
     func minimalRequest() throws {
         let request = try StreamStartTool.parse(["url": "rtmp://localhost/live"])
         #expect(request.destinations.count == 1)
-        #expect(request.destinations.first?.url == "rtmp://localhost/live")
-        #expect(request.destinations.first?.id == "destination-1")
+        #expect(request.destinations.first == .raw(id: "destination-1", url: "rtmp://localhost/live", key: nil))
         #expect(request.video == .systemDefault)
         #expect(request.audio == .systemDefault)
         #expect(request.configuration.width == 1920)
         #expect(request.configuration.height == 1080)
         #expect(request.configuration.videoBitsPerSecond == 4_500_000)
-        #expect(request.destinations.first?.streamKey == nil)
     }
 
     @Test("a missing url returns an invalidArgument error")
@@ -60,12 +58,8 @@ struct StreamStartToolTests {
         ])
 
         #expect(request.destinations.count == 2)
-        #expect(request.destinations[0].id == "destination-1")
-        #expect(request.destinations[0].url == "rtmp://localhost/live")
-        #expect(request.destinations[0].streamKey == "twitch_key")
-        #expect(request.destinations[1].id == "destination-2")
-        #expect(request.destinations[1].url == "srt://localhost:8890")
-        #expect(request.destinations[1].streamKey == nil)
+        #expect(request.destinations[0] == .raw(id: "destination-1", url: "rtmp://localhost/live", key: "twitch_key"))
+        #expect(request.destinations[1] == .raw(id: "destination-2", url: "srt://localhost:8890", key: nil))
     }
 
     @Test("url and destinations together return an invalidArgument error")
@@ -73,6 +67,67 @@ struct StreamStartToolTests {
         let error = parseError([
             "url": .string("rtmp://localhost/live"),
             "destinations": .array([.object(["url": .string("rtmp://localhost/backup")])]),
+        ])
+        #expect(error?.identifier == .invalidArgument)
+    }
+
+    @Test("a destination selector becomes one saved leg, numbered like any other")
+    func savedDestinationSelector() throws {
+        let request = try StreamStartTool.parse(["destination": "Twitch"])
+        #expect(request.destinations == [.saved(id: "destination-1", selector: "Twitch")])
+    }
+
+    @Test("url and destination together return an invalidArgument error")
+    func urlAndSelectorReturnAnError() {
+        let error = parseError(["url": .string("rtmp://localhost/live"), "destination": .string("Twitch")])
+        #expect(error?.identifier == .invalidArgument)
+    }
+
+    @Test("destination and destinations together return an invalidArgument error")
+    func selectorAndArrayReturnAnError() {
+        let error = parseError([
+            "destination": .string("Twitch"),
+            "destinations": .array([.object(["url": .string("rtmp://localhost/backup")])]),
+        ])
+        #expect(error?.identifier == .invalidArgument)
+    }
+
+    @Test("a key alongside a destination selector returns an invalidArgument error")
+    func keyWithSelectorReturnsAnError() {
+        let error = parseError(["destination": .string("Twitch"), "key": .string("live_abc123")])
+        #expect(error?.identifier == .invalidArgument)
+        #expect(error?.message.contains("carries its own stream key") == true)
+    }
+
+    @Test("a destinations array mixes saved and raw legs, each resolving on its own")
+    func destinationsArrayMixesForms() throws {
+        let request = try StreamStartTool.parse([
+            "destinations": .array([
+                .object(["destination": .string("Twitch")]),
+                .object(["url": .string("rtmp://localhost/backup"), "key": .string("backup_key")]),
+            ])
+        ])
+
+        #expect(request.destinations[0] == .saved(id: "destination-1", selector: "Twitch"))
+        #expect(request.destinations[1] == .raw(id: "destination-2", url: "rtmp://localhost/backup", key: "backup_key"))
+    }
+
+    @Test("a destinations entry naming both a url and a destination returns an invalidArgument error")
+    func destinationEntryNamingTwoPlaces() {
+        let error = parseError([
+            "destinations": .array([
+                .object(["url": .string("rtmp://localhost/live"), "destination": .string("Twitch")])
+            ])
+        ])
+        #expect(error?.identifier == .invalidArgument)
+    }
+
+    @Test("a destinations entry with a key beside a saved destination returns an invalidArgument error")
+    func destinationEntryKeyWithSelector() {
+        let error = parseError([
+            "destinations": .array([
+                .object(["destination": .string("Twitch"), "key": .string("live_abc123")])
+            ])
         ])
         #expect(error?.identifier == .invalidArgument)
     }
