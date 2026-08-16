@@ -10,6 +10,7 @@
 import Foundation
 import Testing
 import TingraComposition
+import TingraHost
 
 @testable import TingraApp
 
@@ -43,7 +44,7 @@ struct DestinationEditTests {
         let destination = DestinationEdit(urlText: text)
         #expect(destination.url == nil)
         #expect(!destination.isStreamable)
-        #expect(destination.projectDestination == nil)
+        #expect(destination.storedDestination == nil)
     }
 
     @Test("a disabled destination has a URL but contributes no leg")
@@ -51,20 +52,36 @@ struct DestinationEditTests {
         let destination = DestinationEdit(urlText: "rtmp://live.twitch.tv/app", isEnabled: false)
         #expect(destination.url != nil)
         #expect(!destination.isStreamable)
-        // It still saves: disabling parks a destination, it does not discard it.
-        #expect(destination.projectDestination?.isEnabled == false)
+        // It still references: disabling parks a destination for this show, it
+        // does not discard the operator's saved record.
+        #expect(destination.reference.isEnabled == false)
+        #expect(destination.storedDestination != nil)
     }
 
-    @Test("the document record carries the id, trimmed URL, name, and enabled flag")
-    func projectDestinationCarriesEveryField() throws {
+    @Test("the stored record carries the id, trimmed URL, and name — and no enabled flag")
+    func storedDestinationCarriesEveryField() throws {
         let id = ProjectDestinationID(rawValue: "d1")
         let destination = DestinationEdit(id: id, urlText: "rtmp://live.twitch.tv/app", name: "Twitch")
-        let record = try #require(destination.projectDestination)
+        let record = try #require(destination.storedDestination)
 
-        #expect(record.id == id)
+        #expect(record.id.rawValue == id.rawValue)
         #expect(record.url.absoluteString == "rtmp://live.twitch.tv/app")
         #expect(record.name == "Twitch")
-        #expect(record.isEnabled)
+    }
+
+    @Test("the project reference carries the id and the enabled flag, and nothing else")
+    func referenceCarriesPerShowState() {
+        let id = ProjectDestinationID(rawValue: "d1")
+        let destination = DestinationEdit(id: id, urlText: "rtmp://a.example/app", isEnabled: false)
+
+        #expect(destination.reference == DestinationReference(id: id, isEnabled: false))
+    }
+
+    @Test("a row with no usable URL still references, so parking a half-typed row is remembered")
+    func unusableRowStillReferences() {
+        let destination = DestinationEdit(id: ProjectDestinationID(rawValue: "d1"), urlText: "rtm")
+        #expect(destination.storedDestination == nil)
+        #expect(destination.reference.id.rawValue == "d1")
     }
 
     @Test("editing the URL keeps the destination's id, so its stored key follows the edit")
@@ -75,71 +92,107 @@ struct DestinationEditTests {
         destination.urlText = "rtmp://new.example/app"
 
         #expect(destination.id == originalID)
-        #expect(try #require(destination.projectDestination).id == originalID)
+        #expect(try #require(destination.storedDestination).id.rawValue == originalID.rawValue)
     }
 
     @Test("adopting a saved destination round-trips every field")
     func adoptingASavedDestinationRoundTrips() throws {
-        let saved = ProjectDestination(
-            id: ProjectDestinationID(rawValue: "d1"),
-            url: try #require(URL(string: "srt://backup.example:8890")),
+        let saved = StoredDestination(
+            id: DestinationID(rawValue: "d1"),
             name: "Backup",
-            isEnabled: false
+            url: try #require(URL(string: "srt://backup.example:8890"))
         )
-        let destination = DestinationEdit(saved)
+        let destination = DestinationEdit(saved, isEnabled: false)
 
-        #expect(destination.id == saved.id)
+        #expect(destination.id.rawValue == "d1")
         #expect(destination.urlText == "srt://backup.example:8890")
         #expect(destination.name == "Backup")
         #expect(!destination.isEnabled)
-        #expect(destination.projectDestination == saved)
+        #expect(destination.storedDestination == saved)
     }
 
-    @Test("the panel's destinations become the saved list in order, skipping unusable rows")
-    func savedListSkipsUnusableRows() throws {
+    /// A saved destination with a fixed id, so merges compare exactly.
+    private func makeSaved(_ id: String, _ url: String, name: String = "") throws -> StoredDestination {
+        StoredDestination(id: DestinationID(rawValue: id), name: name, url: try #require(URL(string: url)))
+    }
+
+    @Test("the panel lists every saved destination in store order, carrying this project's enabled flags")
+    func mergeListsTheStoreInOrder() throws {
+        let saved = [
+            try makeSaved("d1", "rtmp://a.example/app", name: "A"),
+            try makeSaved("d2", "srt://b.example:8890", name: "B"),
+        ]
+        let references = [
+            DestinationReference(id: ProjectDestinationID(rawValue: "d2"), isEnabled: false),
+            DestinationReference(id: ProjectDestinationID(rawValue: "d1"), isEnabled: true),
+        ]
+        let edits = DestinationEdit.edits(saved: saved, references: references)
+
+        // Store order, not reference order — the list is operator-global.
+        #expect(edits.map(\.name) == ["A", "B"])
+        #expect(edits[0].isEnabled)
+        #expect(!edits[1].isEnabled)
+    }
+
+    @Test("a destination this project has never referenced is listed but not enabled")
+    func unreferencedDestinationIsOffered() throws {
+        let saved = [try makeSaved("d1", "rtmp://a.example/app", name: "A")]
+        let edits = DestinationEdit.edits(saved: saved, references: nil)
+
+        #expect(edits.count == 1)
+        // Offered, never surprise-live: another show's destination does not
+        // start streaming here just by existing.
+        #expect(!edits[0].isEnabled)
+    }
+
+    @Test("a reference naming a destination the operator deleted contributes no row")
+    func danglingReferenceIsDropped() throws {
+        let saved = [try makeSaved("d1", "rtmp://a.example/app", name: "A")]
+        let references = [
+            DestinationReference(id: ProjectDestinationID(rawValue: "d1")),
+            DestinationReference(id: ProjectDestinationID(rawValue: "gone")),
+        ]
+        let edits = DestinationEdit.edits(saved: saved, references: references)
+
+        #expect(edits.count == 1)
+        #expect(edits[0].id.rawValue == "d1")
+    }
+
+    @Test("an empty store produces no rows, whatever the project references")
+    func emptyStoreProducesNoRows() {
+        let references = [DestinationReference(id: ProjectDestinationID(rawValue: "d1"))]
+        #expect(DestinationEdit.edits(saved: [], references: references).isEmpty)
+        #expect(DestinationEdit.edits(saved: [], references: nil).isEmpty)
+    }
+
+    @Test("every row becomes a reference, parked ones included")
+    func everyRowReferences() throws {
         let edits = [
-            DestinationEdit(id: ProjectDestinationID(rawValue: "d1"), urlText: "rtmp://a.example/app", name: "A"),
-            // A row the operator added but has not filled in yet.
-            DestinationEdit(id: ProjectDestinationID(rawValue: "d2"), urlText: "rtm"),
-            DestinationEdit(id: ProjectDestinationID(rawValue: "d3"), urlText: "srt://c.example:8890", name: "C"),
+            DestinationEdit(id: ProjectDestinationID(rawValue: "d1"), urlText: "rtmp://a.example/app"),
+            DestinationEdit(id: ProjectDestinationID(rawValue: "d2"), urlText: "rtm", isEnabled: false),
         ]
-        let saved = try #require(DestinationEdit.projectDestinations(from: edits))
+        let references = try #require(DestinationEdit.references(from: edits))
 
-        #expect(saved.count == 2)
-        #expect(saved[0].name == "A")
-        #expect(saved[1].name == "C")
+        #expect(references.count == 2)
+        #expect(references[0].isEnabled)
+        #expect(!references[1].isEnabled)
     }
 
-    @Test("a panel with no usable destination saves no list at all")
-    func noUsableDestinationSavesNothing() {
-        #expect(DestinationEdit.projectDestinations(from: []) == nil)
-        #expect(DestinationEdit.projectDestinations(from: [DestinationEdit()]) == nil)
+    @Test("a panel with no rows references nothing at all")
+    func noRowsReferenceNothing() {
+        #expect(DestinationEdit.references(from: []) == nil)
     }
 
-    @Test("the saved list and the panel's rows round-trip through each other")
+    @Test("the store's records and the panel's rows round-trip through each other")
     func editsAndRecordsRoundTrip() throws {
-        let records = [
-            ProjectDestination(
-                id: ProjectDestinationID(rawValue: "d1"),
-                url: try #require(URL(string: "rtmp://a.example/app")),
-                name: "A"
-            ),
-            ProjectDestination(
-                id: ProjectDestinationID(rawValue: "d2"),
-                url: try #require(URL(string: "srt://b.example:8890")),
-                name: "B",
-                isEnabled: false
-            ),
+        let saved = [
+            try makeSaved("d1", "rtmp://a.example/app", name: "A"),
+            try makeSaved("d2", "srt://b.example:8890", name: "B"),
         ]
-        let edits = DestinationEdit.edits(from: records)
+        let edits = DestinationEdit.edits(saved: saved, references: DestinationEdit.references(from: []))
 
         #expect(edits.count == 2)
-        #expect(DestinationEdit.projectDestinations(from: edits) == records)
-    }
-
-    @Test("an absent saved list produces no rows")
-    func absentSavedListProducesNoRows() {
-        #expect(DestinationEdit.edits(from: nil).isEmpty)
+        #expect(edits.compactMap(\.storedDestination) == saved)
     }
 
     @Test("the row label prefers the name, then the URL, then a placeholder")

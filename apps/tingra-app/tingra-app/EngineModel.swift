@@ -520,6 +520,24 @@ final class EngineModel {
     /// an event, never a log (CLAUDE.md, "Error Handling").
     @ObservationIgnored private let secureStorage: any SecureStorage = KeychainSecureStorage()
 
+    /// The operator's saved destinations (DESTINATIONS.md). Operator-global,
+    /// not per-project: the app is the editor, and the daemon reads the same
+    /// document so an agent can resolve "my Twitch" by name.
+    ///
+    /// Held as the writer of names and URLs only. Stream keys stay on
+    /// ``secureStorage`` directly, under the account convention the store
+    /// itself publishes (``DestinationStore/secureStorageAccount(for:)``), so
+    /// the two can never disagree about where a key is filed.
+    @ObservationIgnored private lazy var destinationStore = DestinationStore(eventBus: eventBus)
+
+    /// This project's destination references as loaded, held until the store
+    /// read that turns them into panel rows completes.
+    ///
+    /// The two halves arrive separately — the document synchronously, the
+    /// store from an actor — so the references wait here rather than the merge
+    /// guessing at an empty store.
+    @ObservationIgnored private var projectDestinationReferences: [DestinationReference]?
+
     /// The active stream session, or nil when not streaming (v1's one active
     /// session — GLOSSARY.md, "Session").
     @ObservationIgnored private var streamSession: StreamSession?
@@ -786,6 +804,7 @@ final class EngineModel {
 
         await readDeviceLists()
         loadProject()
+        await loadDestinations()
         // The strips merge the loaded preset's authored audio channels with
         // discovery — the seed policy (first audio input unmuted) is the
         // fallback when the document authored none (a fresh project, or one
@@ -2272,11 +2291,59 @@ final class EngineModel {
 
     // MARK: Destination editing
 
+    /// Merges the operator's saved destinations with this project's
+    /// references into the panel's rows (DESTINATIONS.md).
+    ///
+    /// Runs once at boot, after the document is read: the store is an actor
+    /// and answers asynchronously, while the document arrives synchronously.
+    /// A store that cannot be read is reported and treated as empty — the show
+    /// still opens, with no destinations, rather than not opening at all.
+    private func loadDestinations() async {
+        do {
+            let saved = try await destinationStore.destinations()
+            destinations = DestinationEdit.edits(saved: saved, references: projectDestinationReferences)
+        } catch {
+            eventBus.error(
+                "destination.load",
+                domain: .output,
+                params: ["error": .string(String(describing: error))]
+            )
+            destinations = []
+        }
+        projectDestinationReferences = nil
+    }
+
+    /// Writes one row through to the operator's store, adding it when new and
+    /// updating it otherwise.
+    ///
+    /// A row whose URL is not yet usable is **not** written: a half-typed
+    /// `rtm` is not a destination, and the store is shared with every other
+    /// project and the daemon. The row keeps its place in the panel until the
+    /// URL resolves, then lands.
+    ///
+    /// - Parameter edit: The row to write.
+    private func syncDestinationToStore(_ edit: DestinationEdit) async {
+        guard let destination = edit.storedDestination else { return }
+        do {
+            if try await destinationStore.destination(id: destination.id) == nil {
+                try await destinationStore.add(destination)
+            } else {
+                try await destinationStore.update(destination)
+            }
+        } catch {
+            eventBus.error(
+                "destination.save",
+                domain: .output,
+                params: ["error": .string(String(describing: error))]
+            )
+        }
+    }
+
     /// Adds an empty destination to the panel and autosaves.
     ///
-    /// The new row saves nothing until its URL is usable
-    /// (``DestinationEdit/projectDestination``), so an abandoned row never
-    /// reaches the project file.
+    /// The new row reaches neither the store nor the project file until its
+    /// URL is usable (``DestinationEdit/storedDestination``), so an abandoned
+    /// row never becomes an operator-global destination.
     func addDestination() {
         destinations.append(DestinationEdit())
         eventBus.event("destination.added", domain: .output, params: ["destinations": .int(destinations.count)])
@@ -2286,13 +2353,29 @@ final class EngineModel {
     /// Removes a destination and clears its stored stream key — deleting a
     /// destination should not leave its secret behind in the Keychain.
     ///
+    /// **Removes it for every project**, not just this one: destinations are
+    /// operator-global, so this deletes the saved record itself. The panel's
+    /// confirmation is what makes that safe (ARCHITECTURE.md, "Multiple
+    /// destinations").
+    ///
     /// - Parameter id: The destination to remove.
     func removeDestination(_ id: ProjectDestinationID) {
         guard let index = destinations.firstIndex(where: { $0.id == id }) else { return }
-        destinations.remove(at: index)
+        let removed = destinations.remove(at: index)
         persistStreamKey("", for: id)
         eventBus.event("destination.removed", domain: .output, params: ["destinations": .int(destinations.count)])
         scheduleAutosave()
+        Task { [destinationStore, eventBus] in
+            do {
+                try await destinationStore.remove(id: removed.storeID)
+            } catch {
+                eventBus.error(
+                    "destination.remove",
+                    domain: .output,
+                    params: ["error": .string(String(describing: error))]
+                )
+            }
+        }
     }
 
     /// Updates a destination's typed URL and autosaves.
@@ -2324,7 +2407,7 @@ final class EngineModel {
     ///   - isEnabled: Whether it is streamed to.
     ///   - id: The destination to update.
     func setDestinationEnabled(_ isEnabled: Bool, for id: ProjectDestinationID) {
-        updateDestination(id) { $0.isEnabled = isEnabled }
+        updateDestination(id, writesToStore: false) { $0.isEnabled = isEnabled }
     }
 
     /// Applies an edit to one destination, resets a stale terminal status,
@@ -2333,13 +2416,22 @@ final class EngineModel {
     /// - Parameters:
     ///   - id: The destination to update.
     ///   - edit: The mutation to apply.
-    private func updateDestination(_ id: ProjectDestinationID, _ edit: (inout DestinationEdit) -> Void) {
+    private func updateDestination(
+        _ id: ProjectDestinationID,
+        writesToStore: Bool = true,
+        _ edit: (inout DestinationEdit) -> Void
+    ) {
         guard let index = destinations.firstIndex(where: { $0.id == id }) else { return }
         edit(&destinations[index])
         // An edit after a failed or finished run clears the stale banner, so
         // the panel does not keep reporting the previous attempt's fate.
         if !isStreaming { streamStatus = .idle }
         scheduleAutosave()
+        // The name and URL belong to the operator's store; the enabled flag is
+        // this project's alone and never travels there.
+        guard writesToStore else { return }
+        let updated = destinations[index]
+        Task { await syncDestinationToStore(updated) }
     }
 
     /// The secure-storage account a destination's stream key is filed under.
@@ -2353,7 +2445,10 @@ final class EngineModel {
     /// - Parameter id: The destination's stable id.
     /// - Returns: The account string.
     private static func secureStorageAccount(for id: ProjectDestinationID) -> String {
-        "destination:\(id.rawValue)"
+        // Delegated rather than duplicated: the daemon files keys under the
+        // store's convention, and a second copy of the format here is exactly
+        // how the two would drift apart.
+        DestinationStore.secureStorageAccount(for: DestinationID(rawValue: id.rawValue))
     }
 
     /// Puts the program on air: resolves every enabled destination to its
@@ -2921,9 +3016,11 @@ final class EngineModel {
         do {
             if let project = try store.load() {
                 presets = project.presets
-                // Restore the destinations (each key stays in secure storage,
-                // read lazily when the panel prefills that row's field).
-                destinations = DestinationEdit.edits(from: project.destinations)
+                // Hold this project's references; ``loadDestinations()``
+                // merges them with the operator's store to build the panel
+                // rows (each key stays in secure storage, read lazily when the
+                // panel prefills that row's field).
+                projectDestinationReferences = project.destinations
             }
         } catch {
             eventBus.error(
@@ -3056,12 +3153,12 @@ final class EngineModel {
         autosaveTask?.cancel()
         autosaveTask = nil
         syncActivePreset()
-        // The destinations join the document; their stream keys are excluded
-        // — those live only in secure storage, filed by destination id. A row
-        // whose URL is not yet usable is left out rather than saved half-typed.
+        // The document records only which destinations this show streams to
+        // and whether each is enabled; the names and URLs belong to the
+        // operator's store, and the keys to secure storage (DESTINATIONS.md).
         let project = Project(
             presets: presets,
-            destinations: DestinationEdit.projectDestinations(from: destinations)
+            destinations: DestinationEdit.references(from: destinations)
         )
         do {
             try store.save(project)

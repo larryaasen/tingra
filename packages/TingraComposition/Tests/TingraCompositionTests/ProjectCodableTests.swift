@@ -87,12 +87,12 @@ struct ProjectCodableTests {
     @Test("projects are equal only when their version, presets, and destinations all match")
     func projectEquality() throws {
         let preset = Preset(id: PresetID(rawValue: "p"), name: "Live")
-        let destination = ProjectDestination(url: try #require(URL(string: "rtmp://live.example/app")))
+        let reference = DestinationReference(id: ProjectDestinationID(rawValue: "d1"))
         let base = Project(presets: [preset])
         let same = Project(presets: [preset])
         let otherVersion = Project(version: 0, presets: [preset])
         let otherPresets = Project(presets: [])
-        let withDestination = Project(presets: [preset], destinations: [destination])
+        let withDestination = Project(presets: [preset], destinations: [reference])
         #expect(base == same)
         #expect(base != otherVersion)
         #expect(base != otherPresets)
@@ -106,42 +106,26 @@ struct ProjectCodableTests {
         #expect(Project.currentVersion == 1)
     }
 
-    /// A destination with a fixed id, so encoded documents compare exactly.
-    private func makeDestination(
-        _ url: String,
-        id: String = "d1",
-        name: String = "",
-        isEnabled: Bool = true
-    ) throws -> ProjectDestination {
-        ProjectDestination(
-            id: ProjectDestinationID(rawValue: id),
-            url: try #require(URL(string: url)),
-            name: name,
-            isEnabled: isEnabled
-        )
+    /// A reference with a fixed id, so encoded documents compare exactly.
+    private func makeReference(_ id: String = "d1", isEnabled: Bool = true) -> DestinationReference {
+        DestinationReference(id: ProjectDestinationID(rawValue: id), isEnabled: isEnabled)
     }
 
-    @Test("a project with a destination round-trips through JSON unchanged")
+    @Test("a project with a destination reference round-trips through JSON unchanged")
     func projectWithDestinationRoundTrips() throws {
-        let project = Project(
-            presets: sampleProject.presets,
-            destinations: [try makeDestination("rtmp://live.twitch.tv/app", name: "Twitch")]
-        )
+        let project = Project(presets: sampleProject.presets, destinations: [makeReference()])
         let data = try JSONEncoder().encode(project)
         let decoded = try JSONDecoder().decode(Project.self, from: data)
         #expect(decoded == project)
-        #expect(decoded.destinations?.first?.url.absoluteString == "rtmp://live.twitch.tv/app")
-        #expect(decoded.destinations?.first?.name == "Twitch")
+        #expect(decoded.destinations?.first?.id == ProjectDestinationID(rawValue: "d1"))
+        #expect(decoded.destinations?.first?.isEnabled == true)
     }
 
-    @Test("several destinations round-trip in order with their ids, names, and enabled flags")
+    @Test("several references round-trip in order with their ids and enabled flags")
     func severalDestinationsRoundTrip() throws {
         let project = Project(
             presets: sampleProject.presets,
-            destinations: [
-                try makeDestination("rtmp://live.twitch.tv/app", id: "d1", name: "Twitch"),
-                try makeDestination("srt://backup.example:8890", id: "d2", name: "Backup", isEnabled: false),
-            ]
+            destinations: [makeReference("d1"), makeReference("d2", isEnabled: false)]
         )
         let data = try JSONEncoder().encode(project)
         let decoded = try JSONDecoder().decode(Project.self, from: data)
@@ -152,15 +136,18 @@ struct ProjectCodableTests {
         #expect(decoded.destinations?[0].isEnabled == true)
         #expect(decoded.destinations?[1].id == ProjectDestinationID(rawValue: "d2"))
         #expect(decoded.destinations?[1].isEnabled == false)
-        #expect(decoded.destinations?[1].url.absoluteString == "srt://backup.example:8890")
+    }
+
+    @Test("a reference encodes only id and isEnabled — never a url or a name")
+    func referenceEncodesOnlyItsOwnKeys() throws {
+        let data = try JSONEncoder().encode(makeReference())
+        let object = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(Set(object.keys) == ["id", "isEnabled"])
     }
 
     @Test("a project with destinations encodes version, presets, and destinations keys")
     func projectWithDestinationKeys() throws {
-        let project = Project(
-            presets: sampleProject.presets,
-            destinations: [try makeDestination("rtmp://live.twitch.tv/app")]
-        )
+        let project = Project(presets: sampleProject.presets, destinations: [makeReference()])
         let data = try JSONEncoder().encode(project)
         let object = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
         // The superseded single `destination` key is never written again.
@@ -175,19 +162,40 @@ struct ProjectCodableTests {
         #expect(decoded.destinations == nil)
     }
 
-    @Test("a document written with the single destination key folds it in as the only destination")
-    func singleDestinationKeyFoldsIn() throws {
-        // The shape written before a project could hold several — it must
-        // still open, with the destination becoming the first (and only) one.
-        let json = Data(#"{"version":1,"presets":[],"destination":{"url":"rtmp://live.twitch.tv/app"}}"#.utf8)
+    @Test("a document written before destinations became references keeps its ids and enabled flags")
+    func olderWholeRecordsDecodeAsReferences() throws {
+        // The shape the app wrote until DESTINATIONS.md step 4: whole records
+        // with url and name. Codable ignores the keys a reference does not
+        // read, so identity and the enabled flag survive and only the name and
+        // URL are re-entered once into the operator's store.
+        let json = Data(
+            #"""
+            {"version":1,"presets":[],"destinations":[\#
+            {"id":"d1","url":"rtmp://live.twitch.tv/app","name":"Twitch","isEnabled":true},\#
+            {"id":"d2","url":"srt://backup.example:8890","name":"Backup","isEnabled":false}]}
+            """#.utf8
+        )
         let decoded = try JSONDecoder().decode(Project.self, from: json)
 
-        #expect(decoded.destinations?.count == 1)
-        #expect(decoded.destinations?.first?.url.absoluteString == "rtmp://live.twitch.tv/app")
-        // The keyless older shape gains an identity and streams by default.
-        #expect(decoded.destinations?.first?.name == "")
-        #expect(decoded.destinations?.first?.isEnabled == true)
-        #expect(decoded.destinations?.first?.id.rawValue.isEmpty == false)
+        #expect(decoded.destinations?.count == 2)
+        #expect(decoded.destinations?[0].id == ProjectDestinationID(rawValue: "d1"))
+        #expect(decoded.destinations?[0].isEnabled == true)
+        #expect(decoded.destinations?[1].id == ProjectDestinationID(rawValue: "d2"))
+        #expect(decoded.destinations?[1].isEnabled == false)
+    }
+
+    @Test("the superseded single destination key, which carries no id, is dropped and the document still opens")
+    func singleDestinationKeyIsDropped() throws {
+        // That key predates destination ids, so its record cannot become a
+        // reference. The presets must survive regardless — losing a project to
+        // recover a URL the operator is re-entering anyway would be the worse
+        // trade.
+        let json = Data(
+            #"{"version":1,"presets":[],"destination":{"url":"rtmp://live.twitch.tv/app"}}"#.utf8)
+        let decoded = try JSONDecoder().decode(Project.self, from: json)
+
+        #expect(decoded.version == 1)
+        #expect(decoded.destinations == nil)
     }
 
     @Test("the destinations list wins when a document carries both keys")
@@ -195,31 +203,36 @@ struct ProjectCodableTests {
         let json = Data(
             #"""
             {"version":1,"presets":[],"destination":{"url":"rtmp://old.example/app"},\#
-            "destinations":[{"id":"d1","url":"rtmp://new.example/app","name":"New","isEnabled":true}]}
+            "destinations":[{"id":"d1","isEnabled":true}]}
             """#.utf8
         )
         let decoded = try JSONDecoder().decode(Project.self, from: json)
 
         #expect(decoded.destinations?.count == 1)
-        #expect(decoded.destinations?.first?.url.absoluteString == "rtmp://new.example/app")
+        #expect(decoded.destinations?.first?.id == ProjectDestinationID(rawValue: "d1"))
     }
 
-    @Test("a destination without a url returns a decoding error")
-    func destinationWithoutURLThrows() throws {
-        let json = Data(#"{"version":1,"presets":[],"destinations":[{"name":"Twitch"}]}"#.utf8)
+    @Test("a reference without an id returns a decoding error")
+    func referenceWithoutIDThrows() throws {
+        let json = Data(#"{"version":1,"presets":[],"destinations":[{"isEnabled":true}]}"#.utf8)
         #expect(throws: DecodingError.self) {
             _ = try JSONDecoder().decode(Project.self, from: json)
         }
     }
 
-    @Test("destinations are equal only when every field matches")
+    @Test("a reference without an isEnabled key decodes as enabled")
+    func referenceWithoutIsEnabledDefaultsToEnabled() throws {
+        let json = Data(#"{"version":1,"presets":[],"destinations":[{"id":"d1"}]}"#.utf8)
+        let decoded = try JSONDecoder().decode(Project.self, from: json)
+        #expect(decoded.destinations?.first?.isEnabled == true)
+    }
+
+    @Test("references are equal only when every field matches")
     func destinationEquality() throws {
-        let base = try makeDestination("rtmp://live.example/app", id: "d1", name: "Twitch")
-        #expect(base == (try makeDestination("rtmp://live.example/app", id: "d1", name: "Twitch")))
-        #expect(base != (try makeDestination("rtmp://other.example/app", id: "d1", name: "Twitch")))
-        #expect(base != (try makeDestination("rtmp://live.example/app", id: "d2", name: "Twitch")))
-        #expect(base != (try makeDestination("rtmp://live.example/app", id: "d1", name: "YouTube")))
-        #expect(base != (try makeDestination("rtmp://live.example/app", id: "d1", name: "Twitch", isEnabled: false)))
+        let base = makeReference("d1")
+        #expect(base == makeReference("d1"))
+        #expect(base != makeReference("d2"))
+        #expect(base != makeReference("d1", isEnabled: false))
     }
 
     // MARK: Default transitions

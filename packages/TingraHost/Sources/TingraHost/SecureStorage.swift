@@ -140,10 +140,12 @@ public struct KeychainSecureStorage: SecureStorage {
     /// without a Team ID ever appearing in source.
     ///
     /// Returns nil whenever the running binary declares no such group, which
-    /// as of 0.1.2 is every build of `tingra-cli` — an unsigned `swift build`
-    /// (no entitlements at all) and the signed release alike, since the
-    /// entitlement had to be removed to keep the binary launchable. That is a
-    /// real state, not an error: the caller degrades honestly — names and URLs
+    /// as of 0.1.2 is every build of both products. In `tingra-cli` — unsigned
+    /// `swift build` (no entitlements at all) and signed release alike — the
+    /// entitlement had to be removed to keep the binary launchable; in the app
+    /// it was removed once the CLI could no longer join, leaving nothing to
+    /// share with. That is a real state, not an error: the caller degrades
+    /// honestly — names and URLs
     /// still resolve, and a key the process cannot read is reported as absent
     /// with a structured error explaining why (see ``DestinationStore``).
     ///

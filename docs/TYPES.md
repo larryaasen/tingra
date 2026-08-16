@@ -215,9 +215,11 @@ internal surface a reader needs to navigate the target instead.
   Keychain and tests against an in-memory double. Its optional access group —
   resolved at runtime by `sharedAccessGroup()` from the running binary's own
   entitlements, so no Team ID appears in source — is the seam by which the app
-  and `tingra-cli` would reach one another's keys; it resolves to nil in every
-  shipped `tingra-cli`, which cannot carry the restricted entitlement, so the
-  two do not share keys today (DESTINATIONS.md).
+  and `tingra-cli` would reach one another's keys. It resolves to nil in both
+  today — `tingra-cli` cannot carry the restricted entitlement, and the app's
+  entry was removed once there was no second party to share with — so the two
+  do not share keys, and the seam stands ready for whatever replacement lands
+  (DESTINATIONS.md).
 - `SecureStorageError` — a recoverable, secret-free failure from the secure
   store (a Keychain status, or a value that would not read back as text).
 - `DestinationStore` — the operator's saved destinations, the host service
@@ -346,12 +348,16 @@ internal surface a reader needs to navigate the target instead.
   format is version 1 until the first release ships (pre-release it grows
   within v1, optional fields decoding forgivingly); decoding a document newer
   than the build understands throws rather than silently loading it.
-- `ProjectDestination` — a key-free destination configuration saved in a
-  `Project` (the RTMP(S)/SRT URL, a stable id, the operator's name, and an
-  enabled flag); the secret it references lives in the host's secure storage,
-  keyed by that **id** — not the URL, which is neither unique nor stable
-  across an edit. Deliberately `Codable` precisely because it holds no secret,
-  unlike the plug-in seam's `Destination`.
+- `DestinationReference` — a project's use of one destination: the saved
+  destination's id plus whether this show streams to it. The name and URL live
+  in the operator-global store, and the key in secure storage under the same
+  id, so neither is written to the project. A document written before this
+  change decodes unchanged — `Codable` ignores the `url` and `name` keys it no
+  longer reads — keeping every id and enabled flag.
+- `ProjectDestination` — **superseded by `DestinationReference`**; nothing
+  writes it any more. The key-free destination configuration a `Project` once
+  held (the RTMP(S)/SRT URL, a stable id, the operator's name, and an enabled
+  flag). Kept because documents written before the change still carry its keys.
 - `ProjectDestinationID` — a destination's stable identity within a project:
   what its stream key is filed under in secure storage and what its per-leg
   status events report.
@@ -725,11 +731,16 @@ surface is:
   rate while delivering, or Reconnecting/Refused/Lost when it alone is in
   trouble — and a remove button that also clears its stored key; rows lock while
   streaming, since v1 adds and removes destinations between runs.
-- `DestinationEdit` — the pure, unit-tested destination state behind those rows:
-  the URL held **as text** while it is typed, streamable only once it carries a
-  supported scheme and a host, converting to a saved `ProjectDestination` only
-  when usable — so a half-typed URL never reaches the project file, and an
-  edited URL keeps its id and therefore its stored key.
+- `DestinationEdit` — the pure, unit-tested destination state behind those rows,
+  merged from the two places a destination lives: the name and URL from the
+  operator's `StoredDestination`, the enabled flag from this project's
+  `DestinationReference`. The URL is held **as text** while it is typed and
+  becomes a `StoredDestination` only once it carries a supported scheme and a
+  host — so a half-typed URL never reaches the store every project shares — and
+  an edited URL keeps its id and therefore its stored key. Lists the store in
+  store order: a destination this project never referenced appears disabled
+  rather than surprise-live, and a reference to one the operator deleted is
+  dropped.
 - `MixerView` — the mixer panel: one channel strip per authored audio channel
   and per discovered audio input, each with a mute toggle, a meter, a live level
   slider, a pan slider that recenters on double-click, and an Effects button

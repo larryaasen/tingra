@@ -9,12 +9,17 @@
 
 import Foundation
 import TingraComposition
+import TingraHost
 
 /// One destination as the streaming panel edits it (GLOSSARY.md,
-/// "Destination"). The document-side record is
-/// `TingraComposition.ProjectDestination`; this is the app's observable
-/// session state for it — the ``MixerStrip``/`AudioChannel` pairing, one
-/// concern over.
+/// "Destination"). This is the app's observable session state, merged from the
+/// **two** places a destination now lives (DESTINATIONS.md): the name and URL
+/// come from the operator-global store (`TingraHost.StoredDestination`), and
+/// the enabled flag from this project's `TingraComposition.DestinationReference`.
+/// The ``MixerStrip``/`AudioChannel` pairing, one concern over.
+///
+/// The split is why editing a name here writes to the store — where every
+/// project sees it — while toggling Enabled writes only to this project.
 ///
 /// It exists because the panel edits a **URL as text**: a half-typed
 /// `rtm` is not a `URL`, and even the strings that do parse mid-typing parse
@@ -61,14 +66,24 @@ struct DestinationEdit: Identifiable, Equatable {
 
     /// Adopts a saved destination for editing.
     ///
-    /// - Parameter destination: The document's record of it.
-    init(_ destination: ProjectDestination) {
+    /// - Parameters:
+    ///   - destination: The operator's saved record — name and URL.
+    ///   - isEnabled: Whether this project streams to it (default yes).
+    init(_ destination: StoredDestination, isEnabled: Bool = true) {
         self.init(
-            id: destination.id,
+            id: ProjectDestinationID(rawValue: destination.id.rawValue),
             urlText: destination.url.absoluteString,
             name: destination.name,
-            isEnabled: destination.isEnabled
+            isEnabled: isEnabled
         )
+    }
+
+    /// The store's id for this destination — the same string as ``id``,
+    /// carried in the host's type because the document and the store name the
+    /// concept with types from packages that do not depend on each other
+    /// (DESTINATIONS.md).
+    var storeID: DestinationID {
+        DestinationID(rawValue: id.rawValue)
     }
 
     /// The URL this destination streams to, or nil while the typed text is
@@ -91,12 +106,19 @@ struct DestinationEdit: Identifiable, Equatable {
         isEnabled && url != nil
     }
 
-    /// The document's record of this destination, or nil when the typed URL
+    /// The operator's record of this destination, or nil when the typed URL
     /// is not yet usable — an incomplete destination is not saved, so a
-    /// half-typed URL never reaches the project file.
-    var projectDestination: ProjectDestination? {
+    /// half-typed URL never reaches the store.
+    var storedDestination: StoredDestination? {
         guard let url else { return nil }
-        return ProjectDestination(id: id, url: url, name: name, isEnabled: isEnabled)
+        return StoredDestination(id: storeID, name: name, url: url)
+    }
+
+    /// This project's reference to the destination: which one, and whether
+    /// this show streams to it. Always available — a reference needs no URL,
+    /// so parking a half-typed row still records the operator's intent.
+    var reference: DestinationReference {
+        DestinationReference(id: id, isEnabled: isEnabled)
     }
 
     /// The label the panel shows for this destination: the operator's name
@@ -117,23 +139,47 @@ struct DestinationEdit: Identifiable, Equatable {
     /// validates `--url` against (CLI.md, "Destination").
     static let supportedSchemes: Set<String> = ["rtmp", "rtmps", "srt"]
 
-    /// The panel's destinations for a project's saved list: one edit per
-    /// saved destination, in order.
+    /// The panel's rows: every destination the operator has saved, in store
+    /// order, each carrying this project's enabled flag for it.
     ///
-    /// - Parameter destinations: The project's saved destinations, if any.
-    /// - Returns: One edit per destination, in the saved order.
-    static func edits(from destinations: [ProjectDestination]?) -> [DestinationEdit] {
-        (destinations ?? []).map(DestinationEdit.init)
+    /// Store order rather than project order, because the list is
+    /// operator-global — the same destinations in the same order in every
+    /// project (DESTINATIONS.md). Two consequences follow from that ownership:
+    ///
+    /// - A **dangling reference** — one naming a destination the operator has
+    ///   since deleted from the store — contributes no row. Deleting a
+    ///   destination removes it from every project that used it, which is what
+    ///   operator-global means; a project cannot hold one back.
+    /// - A destination this project has **never referenced** appears disabled,
+    ///   so one saved in another show is offered here without going surprise-live.
+    ///
+    /// - Parameters:
+    ///   - saved: The operator's destinations, in store order.
+    ///   - references: This project's references, if any.
+    /// - Returns: One edit per saved destination, in store order.
+    static func edits(
+        saved: [StoredDestination],
+        references: [DestinationReference]?
+    ) -> [DestinationEdit] {
+        let enabled = Dictionary(
+            (references ?? []).map { ($0.id.rawValue, $0.isEnabled) },
+            uniquingKeysWith: { _, last in last }
+        )
+        return saved.map { destination in
+            DestinationEdit(destination, isEnabled: enabled[destination.id.rawValue] ?? false)
+        }
     }
 
-    /// The saved list for the panel's destinations: every one whose URL is
-    /// usable, in panel order, or nil when none is — so a project with no
-    /// usable destination writes no `destinations` key at all.
+    /// This project's references for the panel's rows, or nil when there are
+    /// none — so a project with no destination writes no `destinations` key.
+    ///
+    /// A reference is written for every row, parked ones included: the enabled
+    /// flag is exactly the per-show state the project owns, and dropping a
+    /// disabled row would lose the operator's decision not to stream there.
     ///
     /// - Parameter edits: The panel's destinations, in order.
-    /// - Returns: The document's list, or nil when empty.
-    static func projectDestinations(from edits: [DestinationEdit]) -> [ProjectDestination]? {
-        let saved = edits.compactMap(\.projectDestination)
-        return saved.isEmpty ? nil : saved
+    /// - Returns: The document's references, or nil when empty.
+    static func references(from edits: [DestinationEdit]) -> [DestinationReference]? {
+        edits.isEmpty ? nil : edits.map(\.reference)
     }
 }

@@ -33,8 +33,14 @@ public struct ProjectDestinationID: RawRepresentable, Hashable, Sendable, Codabl
     }
 }
 
-/// A destination configuration saved in a ``Project`` (GLOSSARY.md,
+/// A destination configuration as a ``Project`` once saved it (GLOSSARY.md,
 /// "Destination"): where the program streams to, minus the secret.
+///
+/// **Superseded by ``DestinationReference``** (DESTINATIONS.md): a destination
+/// is operator-global, so the project references one by id instead of holding
+/// its name and URL. Nothing writes this type any more. It stays because a
+/// document written before the change still carries its keys, and because the
+/// shape documents what those keys meant.
 ///
 /// Deliberately **key-free**: the stream key is a secret and lives only in
 /// the host's Keychain-backed secure storage (CLAUDE.md, "Error Handling";

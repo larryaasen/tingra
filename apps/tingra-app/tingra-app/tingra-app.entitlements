@@ -18,17 +18,20 @@
   sandbox entitlement: Tingra is deliberately unsandboxed. Screen Recording
   needs no entitlement — it is TCC-only.
 
-  keychain-access-groups puts this app and tingra-cli in one data-protection
-  keychain group, so the daemon can read a stream key the operator filed here
-  (DESTINATIONS.md, "Key sharing between the app and the daemon"). The value
-  carries the $(TeamIdentifierPrefix) build variable, which Xcode expands at
-  build time from DEVELOPMENT_TEAM — a literal Team ID must never reach a
-  tracked file (CLAUDE.md, "Signing"). Two consequences worth knowing:
-  scripts/sign-app.sh re-signs with --preserve-metadata=entitlements, so the
-  expanded group survives, but only if that identity belongs to the same team
-  the group is prefixed with; and a CODE_SIGNING_ALLOWED=NO build (how CI
-  builds) carries no entitlements at all, which is the same honest degradation
-  an unsigned CLI has.
+  There is deliberately no keychain-access-groups entry. One was added for the
+  destination store's shared keychain group, and it is gone for two reasons
+  that arrived together (DESTINATIONS.md, "Key sharing between the app and the
+  daemon"): tingra-cli cannot carry the entitlement at all — it is restricted,
+  the kernel authorizes it from an embedded provisioning profile, and a bare
+  Mach-O has nowhere to put one, which is what made v0.1.1 unrunnable — so
+  there is no second party left to share a group with; and on this side it
+  never took effect anyway, because automatic signing has only a wildcard App
+  ID, whose profile cannot carry a keychain group. Xcode's response is not
+  uniform: it silently dropped the entitlement from the signature in one
+  configuration and failed the build outright in another, so a built app that
+  launched was never evidence the group was working. Restoring it means
+  provisioning Keychain Sharing on an explicit App ID, and that should follow
+  the reopened key-sharing decision rather than precede it.
 -->
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -39,9 +42,5 @@
     <true/>
     <key>com.apple.security.cs.disable-library-validation</key>
     <true/>
-    <key>keychain-access-groups</key>
-    <array>
-        <string>$(TeamIdentifierPrefix)com.moonwink.tingra.shared</string>
-    </array>
 </dict>
 </plist>

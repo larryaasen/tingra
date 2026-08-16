@@ -28,7 +28,7 @@ import ArgumentParser
 enum TingraCLIVersion {
     /// The product version this build reports. Kept in sync with the release
     /// tag and the embedded Info.plist's `CFBundleShortVersionString`.
-    static let current = "0.1.2"
+    static let current = "0.1.3-dev"
 }
 
 /// `tingra-cli version` — print version and build info (see CLI.md).

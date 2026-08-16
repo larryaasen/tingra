@@ -43,25 +43,28 @@ public struct Project: Sendable, Equatable, Codable {
     /// until multiple presets arrive in the UI.
     public let presets: [Preset]
 
-    /// The stream destinations this project last configured, in the order
-    /// the operator listed them, or `nil` when none has been set. One program
-    /// fans out to every enabled one (ARCHITECTURE.md, "Multiple
-    /// destinations").
+    /// The saved destinations this project streams to, in the order the
+    /// operator listed them, or `nil` when none has been set. One program fans
+    /// out to every enabled one (ARCHITECTURE.md, "Multiple destinations").
     ///
-    /// The keys are never stored here — only in the host's secure storage,
-    /// filed under each destination's ``ProjectDestination/id``.
-    public let destinations: [ProjectDestination]?
+    /// **References, not records** (DESTINATIONS.md): each element names a
+    /// destination in the operator-global store and says whether this show
+    /// streams to it. The name and URL live in the store, and the key lives in
+    /// the host's secure storage filed under the same id — neither is ever
+    /// written here.
+    public let destinations: [DestinationReference]?
 
     /// Creates a project.
     ///
     /// - Parameters:
     ///   - version: The document format version (default: ``currentVersion``).
     ///   - presets: The presets, in switcher order (default: none).
-    ///   - destinations: The stream destinations (default: none).
+    ///   - destinations: The destinations this project streams to (default:
+    ///     none).
     public init(
         version: Int = Project.currentVersion,
         presets: [Preset] = [],
-        destinations: [ProjectDestination]? = nil
+        destinations: [DestinationReference]? = nil
     ) {
         self.version = version
         self.presets = presets
@@ -90,6 +93,14 @@ public struct Project: Sendable, Equatable, Codable {
     /// (the pre-release rule, no version bump), the same accommodation
     /// ``Preset/audioChannels`` made. `destinations` wins when both appear.
     ///
+    /// The elements are now ``DestinationReference``s rather than whole
+    /// records, and that too is **no version bump**: a document written by the
+    /// earlier app carries `url` and `name` keys alongside `id` and
+    /// `isEnabled`, and `Codable` ignores keys a type does not read. So an
+    /// older document decodes, keeping each destination's identity and enabled
+    /// flag; its names and URLs are re-entered once into the operator's store
+    /// (DESTINATIONS.md).
+    ///
     /// - Throws: `DecodingError.keyNotFound` when `version` is missing, and
     ///   `DecodingError.dataCorrupted` when the document declares a format
     ///   version newer than this build understands — open it with the newer
@@ -109,9 +120,15 @@ public struct Project: Sendable, Equatable, Codable {
         }
         self.version = version
         presets = try container.decodeIfPresent([Preset].self, forKey: .presets) ?? []
-        if let list = try container.decodeIfPresent([ProjectDestination].self, forKey: .destinations) {
+        if let list = try container.decodeIfPresent([DestinationReference].self, forKey: .destinations) {
             destinations = list
-        } else if let single = try container.decodeIfPresent(ProjectDestination.self, forKey: .destination) {
+        } else if let single = try? container.decodeIfPresent(DestinationReference.self, forKey: .destination) {
+            // Read leniently, and only here: the superseded single-destination
+            // key predates destination ids, so its record usually cannot become
+            // a reference at all. Dropping one unreferenceable legacy key is
+            // right; failing the whole document load over it is not — the
+            // operator would lose their presets to recover a URL they are
+            // re-entering anyway.
             destinations = [single]
         } else {
             destinations = nil
