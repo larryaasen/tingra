@@ -140,8 +140,21 @@ jobs:
             echo "::error::missing required repository secrets: ${missing[*]} — see the header of .github/workflows/release-cli.yml"
             exit 1
           fi
-          if [ -z "$TINGRA_INSTALLER_CERT_P12" ] || [ -z "$TINGRA_INSTALLER_SIGN_ID" ]; then
-            echo "::warning::TINGRA_INSTALLER_CERT_P12/TINGRA_INSTALLER_SIGN_ID unset — the offline .pkg will be unsigned. The notarized zip the tap uses is unaffected."
+          # An issuer ID that is not a UUID reaches notarytool as a usage error
+          # (exit 64) with no indication of which secret is wrong. Two things
+          # produce one: pasting the Key ID instead of the Issuer ID, and an
+          # Individual API key, which has no issuer at all.
+          if [ -n "$TINGRA_NOTARY_ISSUER_ID" ] &&
+             ! [[ "$TINGRA_NOTARY_ISSUER_ID" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]]; then
+            echo "::error::TINGRA_NOTARY_ISSUER_ID is not a UUID. It must be the Issuer ID shown above the key table on the App Store Connect API page (Team Keys tab) — not the Key ID, which is TINGRA_NOTARY_KEY_ID. An Individual API key has no Issuer ID: delete the secret entirely and this job omits the --issuer argument."
+            exit 1
+          fi
+          # The .pkg is signed when the installer *identity* is named; its
+          # certificate may arrive in TINGRA_CERT_P12 alongside the application
+          # one, so an unset TINGRA_INSTALLER_CERT_P12 is not on its own a
+          # reason to warn.
+          if [ -z "$TINGRA_INSTALLER_SIGN_ID" ]; then
+            echo "::warning::TINGRA_INSTALLER_SIGN_ID unset — the offline .pkg will be unsigned. The notarized zip the tap uses is unaffected."
           fi
           echo "all required release secrets are present."
 
