@@ -1,24 +1,30 @@
-# CI for the Tingra monorepo (see CLAUDE.md "Toolchain & CI"): formatting
-# verification, warning-clean builds, and unit tests for every package and app.
-# Tests use generators and mocks only — no camera, microphone, or TCC
-# authorization is needed on runners.
+# Formatting, builds, and unit tests for the Tingra monorepo (see CLAUDE.md
+# "Toolchain & CI"): the formatting check, warning-clean builds, and unit tests
+# for every package and app. Tests use generators and mocks only — no camera,
+# microphone, or TCC authorization is needed on runners.
 #
 # The toolchain floor is Xcode 26.6 / Swift 6.3.3. The macos-26 arm64 image
 # ships Xcode 26.6 but defaults to an older version, so DEVELOPER_DIR pins it
 # explicitly (verified 2026-07-04; see docs/TODO.md "Release mechanics").
 #
-# Deferred jobs, tracked in docs/TODO.md "CI follow-ups": packaging/
-# notarization (needs the release tooling) and the API-diff job for
-# TingraPlugInKit and TingraEventBus (needs their first tags). Integration
-# tests against the ingest simulator live in integration.yml — a separate
-# workflow triggered on streaming/output changes, not blocking every PR.
+# The other two workflows are release-cli.yml (build → sign → notarize → tag →
+# GitHub release → Homebrew tap, on demand) and integration.yml (streaming
+# tests against the ingest simulator, on streaming/output changes rather than
+# blocking every PR). This workflow is also `workflow_call`-able, and
+# release-cli.yml calls it as its pre-release gate so a release can only be cut
+# from a green tree.
+#
+# Deferred job, tracked in docs/TODO.md "CI follow-ups": the API-diff job for
+# TingraPlugInKit and TingraEventBus (needs their first tags).
 
-name: CI
+name: Format & Test
 
 on:
   push:
     branches: [main]
   pull_request:
+  # Called by release-cli.yml as the pre-release gate.
+  workflow_call:
 
 env:
   DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer

@@ -1,7 +1,7 @@
 # Streaming integration tests against the local ingest simulator
 # (SIMULATOR.md; scripts/integration-test.sh): tingra-cli with generators →
 # MediaMTX, verified server side with ffprobe. A separate workflow from
-# ci.yml, run on streaming/output changes rather than blocking every PR
+# format-test.yml, run on streaming/output changes rather than blocking every PR
 # (CLAUDE.md "Toolchain & CI"; docs/TODO.md "CI follow-ups").
 #
 # Generators need no camera, microphone, or TCC authorization, so the

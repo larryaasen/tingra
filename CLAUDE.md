@@ -60,7 +60,8 @@ docs/                           # The project documentation set (ARCHITECTURE.md
                                 #   and screenshots
 scripts/                        # Formatting scripts (format-swift.sh, check-format.sh) and the
                                 #   streaming integration tests (integration-test.sh)
-.github/workflows/              # GitHub Actions CI (ci.yml, integration.yml; see Toolchain & CI)
+.github/workflows/              # GitHub Actions CI: format-test.yml, integration.yml,
+                                #   release-cli.yml (see Toolchain & CI)
 ```
 
 The package names are **finalized** (reviewed 2026-07-03; also recorded in "Repository structure" in [ARCHITECTURE.md](docs/ARCHITECTURE.md)): `TingraEventBus`, `TingraPlugInKit`, and `TingraHost` under `packages/`, and `apps/tingra-cli` (executable product `tingra-cli`, module `TingraCLI` — module names can't contain a hyphen).
@@ -144,12 +145,10 @@ This repository is public, so **no app secret and nothing personal to one develo
 
 ## Toolchain & CI
 - **Toolchain floor: Xcode 26.6 and Swift 6.3.3.** Develop and build with these minimums; every `Package.swift` declares `swift-tools-version: 6.3.3` (see Swift Language & Idioms). This is the *development* toolchain floor — the *deployment* target (macOS 15.0+, Apple Silicon only) is separate; see Platform Support.
-- **CI runs on GitHub Actions (macOS runners).** `.github/workflows/ci.yml` runs on the `macos-26` arm64 image with `DEVELOPER_DIR` pinned to Xcode 26.6 — the image ships 26.6 but defaults to an older version (verified 2026-07-04; see [TODO.md](docs/TODO.md)). Workflows land with the monorepo scaffold (roadmap step 1) and cover:
-  - **Formatting verification** — `scripts/check-format.sh`.
-  - **Unit tests** — `swift test` per package (Swift Testing). Generators and mocks mean no camera, microphone, or TCC authorization is needed on runners.
-  - **Builds** — every package and app builds warning-clean (see Other Rules, Strict Compilation).
-  - **Integration tests** — against the local ingest simulator ([SIMULATOR.md](docs/SIMULATOR.md)); a separate job, run on streaming/output changes rather than blocking every PR.
-  - **Packaging** — Apple Silicon (arm64) only. Release artifacts are Developer ID signed (hardened runtime; identifiers under `com.moonwink.tingra.*`) and notarized via `notarytool`; each release ships a zip for the Homebrew tap (bare binaries can't be stapled — Gatekeeper checks the ticket online) plus a stapled `.pkg` for offline installs. See [CLI.md](docs/CLI.md) "Distribution" for the full recipe (embedded `__info_plist`, entitlements, CI verification). Signing certificates and the notarization API key live in GitHub Actions secrets, never in the repo.
+- **CI runs on GitHub Actions (macOS runners).** Every workflow runs on the `macos-26` arm64 image with `DEVELOPER_DIR` pinned to Xcode 26.6 — the image ships 26.6 but defaults to an older version (verified 2026-07-04; see [TODO.md](docs/TODO.md)). There are three, each named for what it does:
+  - **`format-test.yml`** — the every-push/every-PR workflow: **formatting verification** (`scripts/check-format.sh`), **unit tests** (`swift test` per package, Swift Testing; generators and mocks mean no camera, microphone, or TCC authorization is needed on runners), and **warning-clean builds** of every package and app (see Other Rules, Strict Compilation). Also `workflow_call`-able, which is how the release workflow gates on it.
+  - **`integration.yml`** — **integration tests** against the local ingest simulator ([SIMULATOR.md](docs/SIMULATOR.md)); a separate workflow, run on streaming/output changes rather than blocking every PR.
+  - **`release-cli.yml`** — the **whole `tingra-cli` release**, on manual dispatch: gate on `format-test.yml`, bump the version, build, sign, notarize, tag, publish the GitHub release, and push the rendered formula to the Homebrew tap. Apple Silicon (arm64) only. Release artifacts are Developer ID signed (hardened runtime; identifiers under `com.moonwink.tingra.*`) and notarized via `notarytool`; each release ships a zip for the Homebrew tap (bare binaries can't be stapled — Gatekeeper checks the ticket online) plus a stapled `.pkg` for offline installs. It is a thin wrapper over `scripts/release-cli.sh --yes`, the same script used locally, so the two paths cannot drift. See [CLI.md](docs/CLI.md) "Distribution" for the full recipe (embedded `__info_plist`, entitlements, CI verification) and the workflow's own header for the secrets it needs. Signing certificates, the notarization API key, and the release token live in GitHub Actions secrets, never in the repo.
   - Any other CI needs as they arise.
 - PRs must pass formatting, build, and unit tests before merge.
 

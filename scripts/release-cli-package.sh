@@ -23,6 +23,10 @@
 #   TINGRA_SIGN_ID            "Developer ID Application: … (TEAMID)"
 #   TINGRA_INSTALLER_SIGN_ID  "Developer ID Installer: … (TEAMID)"   (for the .pkg)
 #   TINGRA_NOTARY_PROFILE     notarytool keychain profile name (`notarytool store-credentials`)
+#   TINGRA_NOTARY_KEYCHAIN    path to the keychain holding that profile (optional;
+#                             notarytool reads the login keychain when unset, which
+#                             is right locally and wrong in CI, where the profile is
+#                             recreated into a throwaway keychain per run)
 #
 # Usage:
 #   scripts/release-cli-package.sh [version]
@@ -138,9 +142,15 @@ ZIP="${DIST}/tingra-cli-${VERSION}-arm64.zip"
 log "wrote $ZIP"
 
 # 7. Notarize the zip (online ticket; a bare binary can't be stapled).
+#    The credential is always a keychain profile; TINGRA_NOTARY_KEYCHAIN says
+#    *which* keychain holds it, because notarytool defaults to the login
+#    keychain and a CI runner's release credentials are not in it.
+notary_auth=(--keychain-profile "${TINGRA_NOTARY_PROFILE:-}")
+[[ -n "${TINGRA_NOTARY_KEYCHAIN:-}" ]] && notary_auth+=(--keychain "$TINGRA_NOTARY_KEYCHAIN")
+
 if [[ -n "${TINGRA_NOTARY_PROFILE:-}" && -n "${TINGRA_SIGN_ID:-}" ]]; then
     log "notarizing the zip…"
-    xcrun notarytool submit "$ZIP" --keychain-profile "$TINGRA_NOTARY_PROFILE" --wait
+    xcrun notarytool submit "$ZIP" "${notary_auth[@]}" --wait
     log "zip notarized (Gatekeeper fetches the ticket online on first run)."
 else
     warn "TINGRA_NOTARY_PROFILE unset — skipping notarization of the zip."
@@ -168,7 +178,7 @@ build_pkg() {
         productbuild --package "$component" --sign "$TINGRA_INSTALLER_SIGN_ID" "$PKG" || return 1
         if [[ -n "${TINGRA_NOTARY_PROFILE:-}" ]]; then
             log "notarizing and stapling the pkg…"
-            xcrun notarytool submit "$PKG" --keychain-profile "$TINGRA_NOTARY_PROFILE" --wait || return 1
+            xcrun notarytool submit "$PKG" "${notary_auth[@]}" --wait || return 1
             xcrun stapler staple "$PKG" || return 1
         else
             warn "TINGRA_NOTARY_PROFILE unset — pkg signed but not notarized/stapled."

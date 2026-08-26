@@ -2704,7 +2704,10 @@ Each lists its trigger condition:
   "Distribution"). *(Checkbox corrected 2026-07-26: this had been left unticked
   while the "Release mechanics" entry below recorded the same workflow as
   landed, and `v0.1.0` shipped through it — signed, notarized, and installable
-  from the tap. It was never the outstanding gate it read as.)*
+  from the tap. It was never the outstanding gate it read as.)* *(Superseded
+  2026-08-16: this workflow is now `.github/workflows/release-cli.yml` and runs
+  the whole release, tap push included — see "The whole release runs in CI"
+  under Release mechanics.)*
 
 - [ ] **API-diff job** (`swift package diagnose-api-breaking-changes` on
   `TingraPlugInKit` and `TingraEventBus`) — add when those packages get their
@@ -2841,9 +2844,27 @@ Each lists its trigger condition:
 - [x] **Verify GitHub Actions macOS runners offer Xcode 26.6** before CI lands —
   runner images lag Xcode releases. Verified 2026-07-04: the `macos-26` arm64
   image (version 20260630.0213.1) ships Xcode 26.6 (17F113) alongside
-  26.0.1–26.5, but defaults to 26.5 — so `.github/workflows/ci.yml` runs on
-  `macos-26` and pins `DEVELOPER_DIR` to `/Applications/Xcode_26.6.app` rather
-  than relying on the image default.
+  26.0.1–26.5, but defaults to 26.5 — so `.github/workflows/format-test.yml`
+  (then named `ci.yml`) runs on `macos-26` and pins `DEVELOPER_DIR` to
+  `/Applications/Xcode_26.6.app` rather than relying on the image default.
+
+- [x] **The whole release runs in CI** *(2026-08-16)*. `packaging.yml` covered
+  build → sign → notarize → attach-to-release and stopped there: the version
+  bump, the tag, and the tap push stayed on a developer's Mac, and its
+  `TINGRA_NOTARY_PROFILE` secret named a `notarytool` keychain profile that no
+  runner has, so the notarization step could never have run there. It is now
+  `.github/workflows/release-cli.yml`: a manual dispatch (version, `dev_bump`,
+  `dry_run`, `skip_tests`) that gates on `format-test.yml` via `workflow_call`,
+  then runs `scripts/release-cli.sh --yes` — the same script a local release
+  runs, so the two paths cannot drift. Three supporting changes made that
+  possible: `--yes` on `release-cli.sh` (unattended, and *stricter* about
+  signing credentials rather than looser); `TINGRA_NOTARY_KEYCHAIN` on
+  `release-cli-package.sh`, because the job recreates the notary profile from an
+  App Store Connect API key into a throwaway keychain; and a clear error in
+  `release-cli-publish.sh` when git has no configured identity to author the tap
+  commit with. The tap push needs a PAT (`TINGRA_RELEASE_TOKEN`) since
+  `GITHUB_TOKEN` cannot reach a second repository. `ci.yml` was renamed
+  `format-test.yml` in the same pass — with three workflows, "CI" named nothing.
 
 ## Generator plug-ins
 

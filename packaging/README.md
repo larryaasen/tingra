@@ -36,20 +36,33 @@ and prints the zip's sha256):
 | `TINGRA_SIGN_ID` | `Developer ID Application: … (TEAMID)` |
 | `TINGRA_INSTALLER_SIGN_ID` | `Developer ID Installer: … (TEAMID)` — for the `.pkg` |
 | `TINGRA_NOTARY_PROFILE` | a `notarytool store-credentials` keychain profile name |
+| `TINGRA_NOTARY_KEYCHAIN` | path to the keychain holding that profile — optional, and only CI sets it (`notarytool` reads the login keychain otherwise, which a runner's release credentials are not in) |
 
 In CI these come from GitHub Actions secrets, never the repo.
 
 ## Cutting a release
 
-`scripts/release-cli.sh` is the one command to run. It prompts for the next
-version (defaulting to the next increment), bumps `TingraCLIVersion.current` and
-`Info.plist` together, commits and pushes that bump, then hands off to
-`release-cli-publish.sh` — so a release is:
+**Normally, in CI:** Actions → **Release tingra-cli** → *Run workflow*
+(`.github/workflows/release-cli.yml`). That runs every step below — gate on
+Format & Test, bump, build, sign, notarize, tag, publish the GitHub release, and
+push the formula to the tap — so no developer Mac, keychain, or `gh` login is in
+the loop. The workflow's header lists the repository secrets it needs.
+
+**Locally,** `scripts/release-cli.sh` is the one command to run, and is exactly
+what the workflow runs. It prompts for the next version (defaulting to the next
+increment), bumps `TingraCLIVersion.current` and `Info.plist` together, commits
+and pushes that bump, then hands off to `release-cli-publish.sh` — so a release
+is:
 
 ```sh
 # Export the signing env (see the table above), then:
 scripts/release-cli.sh      # prompts for the version; --dry-run to rehearse
 ```
+
+`--yes` makes it unattended: every confirmation is answered yes and the default
+version is taken. That is the only difference between the two paths. Missing
+signing credentials abort under `--yes` instead of prompting, so an unsigned
+artifact can never be published unattended.
 
 Step-by-step instructions, flags, and the resume behavior are in
 [docs/CLI.md](../docs/CLI.md) "Cutting a release".
@@ -89,6 +102,6 @@ To run any step by hand instead of `release-cli-publish.sh`:
 3. Copy `homebrew/tingra-cli.rb` into the tap, setting `version` and `sha256`,
    then commit and push the tap.
 
-The tag-triggered `.github/workflows/packaging.yml` automates steps 1–2 in CI
-when the signing secrets are configured; the tap update (step 3) stays with
-`release-cli-publish.sh` (or is done by hand) since it pushes to a second repo.
+`.github/workflows/release-cli.yml` automates all three in CI, including the tap
+push — it holds a PAT with write access to both repositories, which is what
+`GITHUB_TOKEN` alone could not give it.

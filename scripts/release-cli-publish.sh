@@ -106,9 +106,20 @@ sed -E \
 if [[ -z "$(git -C "$WORK" status --porcelain)" ]]; then
     log "tap formula already at ${VERSION}/${SHA} — nothing to push."
 else
+    # The tap clone is a fresh temp directory with no identity of its own, so
+    # borrow this repo's. A bare runner has none configured, and git would fail
+    # here with "empty ident name" after the tag and release are already
+    # public — name the fix instead.
+    TAP_AUTHOR_NAME="$(git -C "$ROOT" config user.name || true)"
+    TAP_AUTHOR_EMAIL="$(git -C "$ROOT" config user.email || true)"
+    [[ -n "$TAP_AUTHOR_NAME" && -n "$TAP_AUTHOR_EMAIL" ]] \
+        || die "git user.name/user.email are unset, so the tap commit has no author — set them with \
+'git config --global user.name …' and 'git config --global user.email …', then re-run \
+(this script is idempotent). The release workflow sets them in its 'Configure git and gh' step."
+
     git -C "$WORK" add "$TAP_FORMULA"
-    git -C "$WORK" -c user.name="$(git -C "$ROOT" config user.name)" \
-        -c user.email="$(git -C "$ROOT" config user.email)" \
+    git -C "$WORK" -c user.name="$TAP_AUTHOR_NAME" \
+        -c user.email="$TAP_AUTHOR_EMAIL" \
         commit -q -m "tingra-cli ${VERSION}"
     git -C "$WORK" push -q
     log "pushed tingra-cli ${VERSION} to ${TAP_REPO}."

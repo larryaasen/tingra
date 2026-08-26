@@ -7,7 +7,7 @@
 #  Copyright © 2026 Larry Aasen.
 #  SPDX-License-Identifier: MIT
 #
-# One interactive command to cut a tingra-cli release from a clean checkout.
+# One command to cut a tingra-cli release from a clean checkout.
 # This is the front end over scripts/release-cli-publish.sh: it owns the *version
 # decision* — the step packaging/README.md previously left to the operator —
 # and delegates the actual build/sign/notarize/tag/publish/tap work to
@@ -26,6 +26,13 @@
 #   scripts/release-cli.sh --version 0.2.0 # skip the prompt
 #   scripts/release-cli.sh --dry-run       # preflight + show the plan, change nothing
 #   scripts/release-cli.sh --no-dev-bump   # skip step 6
+#   scripts/release-cli.sh --yes           # never prompt (this is what CI runs)
+#
+# --yes answers every confirmation with yes and takes the default version when
+# --version is absent, so the whole release runs unattended — that is how
+# .github/workflows/release-cli.yml drives it. One preflight is *stricter*
+# under --yes rather than looser: missing signing credentials abort instead of
+# asking, because the unsigned fallback artifact must never reach the tap.
 #
 # Resumable: if a run stops after the bump (say notarization times out), just
 # run it again with the same version — the bump and commit are skipped when
@@ -44,6 +51,7 @@ die()  { echo "release-cli: ERROR: $*" >&2; exit 1; }
 
 DRY_RUN=false
 DEV_BUMP=true
+ASSUME_YES=false
 REQUESTED_VERSION=""
 
 while [[ $# -gt 0 ]]; do
@@ -52,7 +60,8 @@ while [[ $# -gt 0 ]]; do
         --version=*)    REQUESTED_VERSION="${1#*=}"; shift ;;
         --dry-run)      DRY_RUN=true; shift ;;
         --no-dev-bump)  DEV_BUMP=false; shift ;;
-        -h|--help)      sed -n '10,31p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -y|--yes)       ASSUME_YES=true; shift ;;
+        -h|--help)      sed -n '10,39p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *)              die "unknown argument '$1' (try --help)." ;;
     esac
 done
@@ -91,10 +100,16 @@ tag_exists() {
 }
 
 # Asks a yes/no question, defaulting to no. Non-interactive runs must not
-# silently take a publishing action, so a missing tty is an error, not a yes.
+# silently take a publishing action, so a missing tty is an error, not a yes —
+# unless --yes was passed, which is the caller stating that intent up front
+# (the release workflow's dispatch button is the confirmation in that case).
 confirm() {
     local reply
-    [[ -t 0 ]] || die "no terminal for the '$1' prompt — re-run interactively."
+    if $ASSUME_YES; then
+        log "--yes: $1 -> yes"
+        return 0
+    fi
+    [[ -t 0 ]] || die "no terminal for the '$1' prompt — re-run interactively, or pass --yes."
     read -r -p "$1 [y/N]: " reply
     [[ "$reply" == "y" || "$reply" == "Y" ]]
 }
@@ -154,13 +169,26 @@ fi
 # Signing credentials live only in the environment (never a tracked file).
 # Without them release-cli-package.sh falls back to an unsigned artifact, which must
 # never reach the tap: Gatekeeper would reject it and TCC grants key to nothing.
+# TINGRA_INSTALLER_SIGN_ID is listed separately because only the offline .pkg
+# needs it, and release-cli-package.sh already treats that pkg as best effort —
+# the tap consumes the notarized zip, so an absent installer identity costs a
+# convenience artifact, not the release.
 missing_creds=()
-for var in TINGRA_SIGN_ID TINGRA_INSTALLER_SIGN_ID TINGRA_NOTARY_PROFILE; do
+for var in TINGRA_SIGN_ID TINGRA_NOTARY_PROFILE; do
     [[ -n "${!var:-}" ]] || missing_creds+=("$var")
 done
+[[ -n "${TINGRA_INSTALLER_SIGN_ID:-}" ]] \
+    || warn "TINGRA_INSTALLER_SIGN_ID unset — the offline .pkg will be unsigned; the tap's zip is unaffected."
 if [[ ${#missing_creds[@]} -gt 0 ]]; then
     warn "signing/notarization environment not set: ${missing_creds[*]}"
     warn "release-cli-package.sh would fall back to an UNSIGNED artifact — do not publish that."
+    # Interactively this is a question, because an unsigned artifact is still
+    # useful for local inspection. Unattended there is nobody to say no, and
+    # the run ends in a `brew` formula pointing at a zip Gatekeeper rejects, so
+    # --yes turns the question into a stop.
+    if $ASSUME_YES && ! $DRY_RUN; then
+        die "refusing to publish unattended without ${missing_creds[*]} — an unsigned artifact must never reach the tap."
+    fi
     $DRY_RUN || confirm "Continue without full signing credentials?" || die "aborted."
 fi
 
@@ -186,7 +214,7 @@ log "current version: ${CURRENT} (Info.plist: $(plist_version))"
 
 if [[ -n "$REQUESTED_VERSION" ]]; then
     VERSION="$REQUESTED_VERSION"
-elif $DRY_RUN; then
+elif $DRY_RUN || $ASSUME_YES; then
     VERSION="$DEFAULT"
 else
     [[ -t 0 ]] || die "no terminal for the version prompt — pass --version <x.y.z>."
