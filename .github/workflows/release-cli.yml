@@ -32,6 +32,13 @@
 #   TINGRA_NOTARY_KEY_P8           base64 of the App Store Connect API key (.p8)
 #   TINGRA_NOTARY_KEY_ID           that key's Key ID
 #
+# Validate a new API key locally before setting these — `xcrun notarytool
+# store-credentials <name> --key <p8> --key-id <id> [--issuer <uuid>]` answers in
+# seconds, where CI takes a run to say the same thing. Keep the .p8 in a password
+# manager: App Store Connect issues it once, and a key that cannot be
+# re-downloaded has to be replaced. The Key ID is in the filename
+# (AuthKey_<KEYID>.p8), which is the reliable way to confirm the two agree.
+#
 # Optional:
 #
 #   TINGRA_NOTARY_ISSUER_ID        the API key's Issuer ID (a UUID). Required for
@@ -235,11 +242,17 @@ jobs:
           if [ -n "${NOTARY_ISSUER_ID:-}" ]; then
             issuer_arg=(--issuer "$NOTARY_ISSUER_ID")
           fi
-          xcrun notarytool store-credentials "$TINGRA_NOTARY_PROFILE" \
+          if ! xcrun notarytool store-credentials "$TINGRA_NOTARY_PROFILE" \
             --key "$KEY_FILE" \
             --key-id "$NOTARY_KEY_ID" \
             "${issuer_arg[@]+"${issuer_arg[@]}"}" \
-            --keychain "$KEYCHAIN"
+            --keychain "$KEYCHAIN"; then
+            rm -f "$KEY_FILE"
+            # Apple's own message ("Credential validation failed") names no
+            # input, and all three are masked here, so list what can produce it.
+            echo "::error::Apple rejected the notarization credentials. Check, in order: (1) an Individual API key must have NO issuer — delete TINGRA_NOTARY_ISSUER_ID; a Team key must have the exact Issuer ID from the App Store Connect API page. (2) TINGRA_NOTARY_KEY_ID must match the key the .p8 came from, with no stray whitespace. (3) the key's role must be Developer or higher. (4) TINGRA_NOTARY_KEY_P8 must be the base64 of that same .p8. Validate the triple locally first — 'xcrun notarytool store-credentials <name> --key <p8> --key-id <id> [--issuer <uuid>]' — before setting the secrets."
+            exit 1
+          fi
           rm -f "$KEY_FILE"
 
           # notarytool reads the login keychain unless told otherwise, so the
