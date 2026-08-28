@@ -10,8 +10,13 @@
 # machine would produce an unsigned binary with no stable identity — no
 # notarization, and TCC grants keyed to nothing.
 #
-# Each release: run scripts/release-cli-package.sh, then update `version` and `sha256`
-# below from its output and commit the formula to the tap.
+# Each release: the CI workflow renders this file into the tap with the new
+# `version` and `sha256`. By hand, run scripts/release-cli-package.sh and copy
+# both from its output.
+#
+# `bin.install "tingra-cli"` relies on Homebrew descending into the archive's
+# single top-level directory: the zip holds `dist/tingra-cli`, because the
+# packaging script zips with `ditto --keepParent`. Keep the two in step.
 class TingraCli < Formula
   desc "Native macOS live-streaming engine with an MCP server (headless CLI front end)"
   homepage "https://github.com/larryaasen/tingra"

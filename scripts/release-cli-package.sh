@@ -136,7 +136,12 @@ fi
 which does not name version ${VERSION}"
 log "smoke test passed: the packaged binary runs and reports ${VERSION}."
 
-# 6. Zip for the tap.
+# 6. Zip for the tap. --keepParent embeds the enclosing folder, so the archive
+#    holds `dist/tingra-cli` rather than a bare `tingra-cli`. That is fine and
+#    deliberate: Homebrew descends into a single top-level directory when
+#    staging, so the formula's `bin.install "tingra-cli"` still resolves. The two
+#    are coupled — changing this line or the formula's install block requires
+#    changing both (packaging/README.md, "Verifying a published release").
 ZIP="${DIST}/tingra-cli-${VERSION}-arm64.zip"
 ( cd "$DIST" && ditto -c -k --keepParent "tingra-cli" "$ZIP" )
 log "wrote $ZIP"

@@ -40,6 +40,93 @@ and prints the zip's sha256):
 
 In CI these come from GitHub Actions secrets, never the repo.
 
+## Release secrets
+
+The CI release reads nine repository secrets. They are set once and then only
+touched when something expires or rotates, which is exactly when nobody
+remembers how they were made — so here is the whole recipe.
+
+| Secret | Where it comes from |
+|--------|---------------------|
+| `TINGRA_RELEASE_TOKEN` | a fine-grained PAT, **Contents: Read and write**, scoped to **both** `larryaasen/tingra` and `larryaasen/homebrew-tingra` |
+| `TINGRA_CERT_P12` | `base64 -i` of a `.p12` exported from Keychain Access |
+| `TINGRA_CERT_PASSWORD` | that export's password |
+| `TINGRA_SIGN_ID` | `Developer ID Application: … (TEAMID)` |
+| `TINGRA_INSTALLER_SIGN_ID` | `Developer ID Installer: … (TEAMID)` |
+| `TINGRA_NOTARY_KEY_P8` | `base64 -i` of an App Store Connect API key |
+| `TINGRA_NOTARY_KEY_ID` | that key's Key ID — always the `.p8` filename, `AuthKey_<KEYID>.p8` |
+| `TINGRA_NOTARY_ISSUER_ID` | the Issuer ID **for a Team key only** (see below) |
+| `TINGRA_INSTALLER_CERT_P12` / `_PASSWORD` | not needed when one `.p12` carries both identities |
+
+**The certificates.** In Keychain Access → login → My Certificates, select *both*
+Developer ID identities and export them as one `.p12`. A `.p12` may hold several
+identities and the workflow imports whatever it finds, so the separate installer
+secrets stay unset. Note `security find-identity -v -p codesigning` hides the
+Installer certificate; drop `-p codesigning` to see both.
+
+**The API key.** App Store Connect → Users and Access → Integrations →
+App Store Connect API, role **Developer** or higher. Two things about this key
+cause almost every notarization failure:
+
+- **Team vs Individual.** A **Team** key requires `--issuer`; an **Individual**
+  key has none and `notarytool` rejects the argument. The page shows a team
+  Issuer ID whether or not your key needs it, so it is easy to set the secret for
+  an Individual key and get `Credential validation failed` with nothing naming
+  the cause. Tingra's key is a Team key.
+- **It downloads once.** Store the `.p8` in a password manager immediately. A key
+  that cannot be re-downloaded has to be replaced.
+
+**Always validate a new key locally first.** This answers in seconds; CI takes a
+whole run to tell you the same thing:
+
+```sh
+xcrun notarytool store-credentials scratch-profile \
+    --key ~/AuthKey_XXXXXXXXXX.p8 --key-id XXXXXXXXXX --issuer <uuid>
+```
+
+**Setting them.** `gh secret set <NAME>` with no `--body` prompts for the value,
+so nothing lands in shell history. Do not reach for `$(pbpaste)` in a command you
+also have to copy — copying the command replaces the clipboard, and the secret
+becomes the command text.
+
+```sh
+base64 -i ~/tingra-signing.p12 | gh secret set TINGRA_CERT_P12 --repo larryaasen/tingra
+gh secret set TINGRA_CERT_PASSWORD --repo larryaasen/tingra          # prompts
+```
+
+**Expiry.** A fine-grained PAT lasts at most 366 days. When
+`TINGRA_RELEASE_TOKEN` expires the release fails at `actions/checkout` with a git
+authentication error that does not mention the token — regenerate it with the
+same two repositories and the same single permission.
+
+## Verifying a published release
+
+Read the artifacts, not the workflow log — the log says what the pipeline
+believes, and these commands say what a user will actually get.
+
+```sh
+gh release view v<version> --repo larryaasen/tingra          # assets present, not a draft
+gh release download v<version> --repo larryaasen/tingra --pattern '*.zip'
+shasum -a 256 tingra-cli-<version>-arm64.zip                 # must equal the tap formula's sha256
+xcrun stapler validate tingra-cli-<version>.pkg              # proves Apple issued a ticket
+pkgutil --check-signature tingra-cli-<version>.pkg           # "trusted by the Apple notary service"
+codesign -dv --verbose=4 dist/tingra-cli                     # identifier, chain, flags=0x10000(runtime)
+codesign -d --entitlements - --xml dist/tingra-cli | plutil -p -
+```
+
+Two results that look like problems and are not:
+
+- **`spctl --assess --type exec` reports "does not seem to be an app."** That
+  assessment only applies to bundles. For a bare executable the meaningful
+  evidence is the `origin=Developer ID Application: …` line it prints, plus the
+  stapled `.pkg` above — the zip itself carries no ticket to staple by design.
+- **The zip extracts to `dist/tingra-cli`, not a bare `tingra-cli`.** `ditto
+  --keepParent` embeds the enclosing folder. Homebrew descends into a single
+  top-level directory when staging, so the formula's `bin.install "tingra-cli"`
+  resolves correctly — verified on every release through 0.1.3. Anyone changing
+  the `ditto` invocation or the formula's `install` block must keep those two
+  agreeing.
+
 ## Cutting a release
 
 **Normally, in CI:** Actions → **Release tingra-cli** → *Run workflow*
