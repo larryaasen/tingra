@@ -720,14 +720,15 @@ surface is:
   a bug. A section nothing is stored for reads open, so the default is the
   absence of a value rather than its content.
 - `ContentView` — the main window's detail column, in two sections — a
-  monitoring section across the top, the input rows on the left and the preview
-  and program monitors on the right, over a control section holding everything
-  the operator works. The whole column scrolls, and the monitoring section's
-  height is derived from the window's width — two 16:9 monitors have no use for
-  surplus vertical room, and a plain stack resolved a shortfall by collapsing
-  the monitors and pushing the pickers off the bottom edge. The control section
-  holds the camera/display pickers, a streaming panel — the destination list,
-  live status, Start/Stop — and a preset switcher that switches and manages the
+  monitoring section across the top, the preview and program monitors side by
+  side across the full width with the input rows beneath them, over a control
+  section holding everything the operator works. The whole column scrolls, and
+  the monitoring section's height is derived from the window's width — two 16:9
+  monitors have no use for surplus vertical room, and a plain stack resolved a
+  shortfall by collapsing the monitors and pushing the pickers off the bottom
+  edge. The control section
+  holds the camera/display pickers, a streaming panel — the destination list
+  and live status; Start/Stop and Record are toolbar items — and a preset switcher that switches and manages the
   project's presets — an Add Preset button plus a per-preset context menu with
   Duplicate, Rename…, Move Left / Move Right, and Remove Preset, disabled on the
   last remaining preset — above a shot switcher that also manages shots: an Add
@@ -798,10 +799,19 @@ surface is:
   feedback howl, and it caches the selected device's name so the picker can
   label a selection the device list cannot currently resolve.
 - `RecordingPanel` — the recording panel: the folder the program is written to,
-  a container picker, how much room the volume still holds, and the Record
-  control with its own elapsed time and file name — its own panel beside the
+  a container picker, how much room the volume still holds, and the rolling
+  status with its elapsed time and file name — its own panel beside the
   streaming one because recording is its own session, so stopping the stream
   leaves a recording rolling and vice versa.
+- `RecordButton` — the Record / Stop Recording control, in the main window's
+  toolbar since 2026-09-06 rather than at the foot of the recording panel: a
+  primary action, always on screen where the panel scrolls away, with ⌘R bound
+  to it and the word beside the symbol so a red glyph cannot read as streaming.
+- `StreamButton` — the Start Streaming / Stop Streaming control beside it in
+  the toolbar, since the same day: it takes the stream keys typed into the
+  panel's rows as a value collected at the click, so the keys stay view-local
+  in `ContentView`, with ⌘G bound to it and the same disabled rule — nothing
+  to stream to, nothing to start.
 - `RecordingPreferences` — where the recordings folder and container persist:
   machine-local `UserDefaults` for the same reasons as `MonitorPreferences`,
   defaulting to `~/Movies`, which needs no TCC prompt where Desktop and
@@ -848,13 +858,38 @@ surface is:
   settings checkbox and the View-menu item write — shared rather than each
   window reading `UserDefaults` for itself, since `UserDefaults` is not
   observable and the two controls live outside the windows they change.
-- `TingraAppDelegate` — the two AppKit hooks: it answers `.terminateLater` so a
-  recording open at quit is finalized into a playable file instead of truncated,
-  and turns off automatic window tabbing before the first window exists — the
+- `TingraAppDelegate` — the two AppKit hooks: it answers every quit with
+  `.terminateLater` so the shutdown is recorded on the bus and drained to the
+  log before the process exits (`EngineModel.shutDown(reason:)`, with the cause
+  read from the quit Apple event through `TerminationReason`) and a recording
+  open at quit is finalized into a playable file instead of truncated, and
+  turns off automatic window tabbing before the first window exists — the
   one line that removes AppKit's Show Tab Bar and Show All Tabs from the View
   menu, which are the only two items in it that do nothing this app wants: the
   main window is one per show, and multiview's whole point is a second display
   rather than a tab beside the window it monitors.
+- `PresetContextMenu` — one preset's context menu — duplicate, rename, reorder,
+  remove — shared by the preset switcher's buttons and the sidebar's preset
+  rows so right-clicking a preset offers the same commands wherever it is
+  listed; Rename… hands the preset back to the owning view, which opens the
+  dialog.
+- `PresetMenuSurface` — which surface a preset menu is on, switcher or sidebar:
+  the pure, unit-tested source of each surface's `tap` names (the switcher
+  keeps its `preset…` names, the sidebar reports `sidebarPreset…`) and of the
+  reorder words — Move Left / Move Right across the switcher, Move Up / Move
+  Down in the sidebar.
+- `PresetRenameDialog` — the preset rename alert as a modifier, so each surface
+  presents the one dialog over its own content with its own subject and `tap`
+  names.
+- `TerminationReason` — why the app is quitting, as far as AppKit can say: the
+  app's own `terminate(_:)` (the Quit item, ⌘Q), or a quit Apple event from the
+  Dock, a script, or the login window on logout, restart, and shutdown, read
+  from the event's `kAEQuitReason` parameter. The `reason` param of the
+  `app.terminating` event; a `SIGTERM`, a Force Quit, or a crash bypasses the
+  hook and records nothing.
+- `QuitCommands` — the app-menu Quit item, replacing AppKit's so the click is
+  recorded as a `tap` (`quit.menuItem`) before `terminate(_:)`; the delegate
+  records the `app.terminating` effect for every quit, clicked or not.
 - `Binding.reportingTap` — the shared helper that reports a control's `tap` from
   its **selection binding** rather than from `.onChange` — a binding setter runs
   only when the operator works the control, so a default the model assigns at

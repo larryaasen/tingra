@@ -93,6 +93,7 @@ struct TingraApp: App {
             MultiviewCommands(model: model)
             StatusBarCommands(model: model, statusBar: statusBar)
             SettingsCommands(model: model)
+            QuitCommands(model: model)
         }
 
         // Multiview is a **separate window**, not a panel: the main window
@@ -169,16 +170,31 @@ final class TingraAppDelegate: NSObject, NSApplicationDelegate {
         NSWindow.allowsAutomaticWindowTabbing = false
     }
 
-    /// Lets a quit through immediately unless a recording is open, in which
-    /// case the file is finalized first.
+    /// Holds every quit open just long enough to record it and to finalize a
+    /// recording in flight.
+    ///
+    /// This is the one hook every AppKit-driven quit passes through — the Quit
+    /// menu item and ⌘Q, the Dock, a script, and the login window on logout,
+    /// restart, and shutdown — so it is where the app's shutdown goes on the
+    /// bus no matter what caused it (``EngineModel/shutDown(reason:)``), with
+    /// the cause read from the quit Apple event when there is one
+    /// (``TerminationReason``). The reply is always `.terminateLater`, because
+    /// bus delivery is asynchronous: replying now would let the process exit
+    /// with the shutdown event still buffered in the log sink's stream, and
+    /// an event that never reaches a sink was never recorded.
+    ///
+    /// What it cannot cover: a `SIGTERM`, a Force Quit, or a crash never
+    /// reaches this method, and nothing is recorded for them.
     ///
     /// - Parameter sender: The application quitting.
-    /// - Returns: `.terminateNow` when nothing is recording, `.terminateLater`
-    ///   while the file is being closed.
+    /// - Returns: `.terminateLater` while the shutdown is recorded and the
+    ///   recording (if any) is closed; `.terminateNow` only if the engine
+    ///   never started, when there is no bus to record on.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        guard let model, model.isRecording else { return .terminateNow }
+        guard let model else { return .terminateNow }
+        let reason = TerminationReason.current
         Task {
-            await model.finishRecording()
+            await model.shutDown(reason: reason)
             sender.reply(toApplicationShouldTerminate: true)
         }
         return .terminateLater
@@ -330,6 +346,36 @@ struct StatusBarCommands: Commands {
             .keyboardShortcut(ProductionShortcut.toggleStatusBar.shortcut)
 
             Divider()
+        }
+    }
+}
+
+/// The app-menu Quit item, replacing the one AppKit contributes so the click
+/// is recorded.
+///
+/// `CommandGroup(replacing: .appTermination)` takes over the slot macOS
+/// reserves for Quit, under ⌘Q, so nothing an operator can see moved. What it
+/// adds is the `tap` (`quit.menuItem`, domain `platform`) every other control
+/// in the app reports before acting (EVENTS.md, "The `tap` convention"): the
+/// click is the input, and the `app.terminating` event the delegate then
+/// records is the effect — the same split the shot switcher makes between its
+/// button and the compositor's take. The delegate records the effect for every
+/// quit, including those with no click behind them (the Dock, logout), which
+/// is why the tap lives here and the event lives there.
+struct QuitCommands: Commands {
+    /// The engine model, for the command's `tap` event.
+    let model: EngineModel
+
+    /// The one app-menu item, keeping the system's own shortcut.
+    var body: some Commands {
+        CommandGroup(replacing: .appTermination) {
+            Button {
+                model.eventBus.tap("quit.menuItem", domain: .platform)
+                NSApplication.shared.terminate(nil)
+            } label: {
+                Text("Quit Tingra", comment: "App menu item that quits the app")
+            }
+            .keyboardShortcut("q", modifiers: .command)
         }
     }
 }

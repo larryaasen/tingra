@@ -13,17 +13,18 @@ import TingraEventBus
 import TingraPlugInKit
 
 /// The main window, in two sections: a **monitoring section** across the top
-/// — the input grid on the left, the preview and program monitors on the
-/// right — over a **control section** carrying the preset switcher, the shot
-/// switcher, the layer-tree editor, the input pickers, the mixer, and the
-/// streaming panel.
+/// — the preview and program monitors side by side across the full width,
+/// the input rows beneath them — over a **control section** carrying the
+/// preset switcher, the shot switcher, the layer-tree editor, the input
+/// pickers, the mixer, and the streaming panel.
 ///
 /// That is the broadcast switcher's own arrangement (ARCHITECTURE.md, "The
 /// main window's two sections"): everything the operator *watches* is above
 /// everything the operator *works*, so an eye checking what is about to go to
-/// air never has to cross the controls that put it there. The input grid is
-/// the same ``InputGridView`` the multiview window tiles, so what a tile shows
-/// and what its tally reads cannot differ between the two surfaces.
+/// air never has to cross the controls that put it there. The input rows'
+/// tiles are the same ``MonitorTile`` over the same ``MultiviewTile`` tally
+/// derivation the multiview window uses, so what a tile shows and what its
+/// tally reads cannot differ between the two surfaces.
 ///
 /// The preset switcher switches among — and manages — the project's presets
 /// (ARCHITECTURE.md, "Multiple presets in the UI"): switching never
@@ -85,27 +86,12 @@ struct ContentView: View {
     static let columnPadding: CGFloat = 20
 
     /// The gap between stacked surfaces — and, in the monitoring section,
-    /// between the input grid and the monitors and between the two monitors.
+    /// between the two monitors and between the monitors and the input rows.
     private static let sectionSpacing: CGFloat = 12
 
-    /// The share of the window's content width the input rows take, leaving
-    /// the rest to the two monitors.
-    ///
-    /// A fixed share rather than a layout priority or an `HSplitView`, because
-    /// both of those levers do the opposite of what they sound like here: a
-    /// priority hands one group everything except the *minimum* of the others,
-    /// so it can pin a pane at its narrowest forever, and an `HSplitView` opens
-    /// with its first pane collapsed to that pane's minimum and needs a stored
-    /// divider position to do better — one more piece of window state to
-    /// persist, for a section an operator reads rather than adjusts. A share
-    /// keeps both panes growing together, and leaves the monitors the larger
-    /// surface at every window size, which is what the multiview window (⌥⌘M)
-    /// is for when the wall-of-tiles reading is the one wanted.
-    private static let inputRowsWidthFraction: CGFloat = 0.42
-
-    /// The shortest the monitoring section may be, so both monitors stay
-    /// readable in a window near the 640-point minimum width.
-    private static let minimumTopSectionHeight: CGFloat = 150
+    /// The shortest the monitors may be, so both stay readable in a window
+    /// near the 640-point minimum width.
+    private static let minimumMonitorsHeight: CGFloat = 150
 
     /// The width inside the column's padding.
     ///
@@ -115,33 +101,23 @@ struct ContentView: View {
         width - columnPadding * 2
     }
 
-    /// The width the input rows take at a given window width.
-    ///
-    /// - Parameter width: The window's width.
-    /// - Returns: The input rows' width.
-    private static func inputRowsWidth(forWindowWidth width: CGFloat) -> CGFloat {
-        contentWidth(forWindowWidth: width) * inputRowsWidthFraction
-    }
-
-    /// The monitoring section's height for a given window width: exactly what
-    /// two side-by-side 16:9 monitors need at that width.
+    /// The monitors' height for a given window width: exactly what two
+    /// side-by-side 16:9 monitors need when they split the content width
+    /// evenly.
     ///
     /// Derived from the **width** rather than taken as a share of the height
     /// because 16:9 monitors have no use for surplus vertical room — a taller
     /// section only grows the letterbox bars above and below the picture. This
     /// way the monitors grow when the window widens, waste nothing when it
     /// heightens, and the surfaces below scroll into reach either way. The
-    /// input rows beside them take the same height, splitting it in two.
+    /// input rows beneath them size their own tiles from the same width
+    /// (``InputRowsView/height(forRowWidth:)``).
     ///
     /// - Parameter width: The window's width.
-    /// - Returns: The section height, floored at ``minimumTopSectionHeight``.
-    private static func topSectionHeight(forWindowWidth width: CGFloat) -> CGFloat {
-        // The rows' share and the gap beside them come off the top; the
-        // remaining room splits between the two monitors.
-        let monitorsWidth =
-            contentWidth(forWindowWidth: width) - inputRowsWidth(forWindowWidth: width) - sectionSpacing
-        let eachMonitorWidth = (monitorsWidth - sectionSpacing) / 2
-        return max(minimumTopSectionHeight, eachMonitorWidth * 9 / 16)
+    /// - Returns: The monitors' height, floored at ``minimumMonitorsHeight``.
+    private static func monitorsHeight(forWindowWidth width: CGFloat) -> CGFloat {
+        let eachMonitorWidth = (contentWidth(forWindowWidth: width) - sectionSpacing) / 2
+        return max(minimumMonitorsHeight, eachMonitorWidth * 9 / 16)
     }
 
     /// The window body: the monitoring section on top, the controls beneath,
@@ -201,32 +177,43 @@ struct ContentView: View {
         .onChange(of: model.selectedDisplayID) { _, _ in
             Task { await model.reconfigure() }
         }
+        // The two actions that go out to viewers are the window's primary
+        // actions, and the toolbar is where those live: always on screen,
+        // never scrolled away with the panels that configure them. Attached
+        // here rather than in the scene so Start Streaming can collect the
+        // stream keys typed into the panel's rows (``streamKeys``).
+        .toolbar {
+            ToolbarItemGroup(placement: .primaryAction) {
+                StreamButton(model: model, keys: streamKeys)
+                RecordButton(model: model)
+            }
+        }
     }
 
-    /// The monitoring section: the input rows on the left, the preview and
-    /// program monitors on the right.
+    /// The monitoring section: the preview and program monitors side by side
+    /// across the full content width, the input rows beneath them.
     ///
-    /// The left pane is two rows — every available camera above, the
+    /// The monitors split the width evenly, which makes them the largest
+    /// surface in the window at every size — the two pictures an operator
+    /// reads most. Below them sit two rows — every available camera above, the
     /// generators and displays below (``InputRowsView``) — rather than one
     /// adaptive grid. Splitting cameras onto their own line is what makes the
-    /// pane scannable: cameras are what an operator reaches for and the row
+    /// rows scannable: cameras are what an operator reaches for and the row
     /// that changes as hardware comes and goes, so mixing them in among the
     /// patterns costs a search every time.
     ///
-    /// Both panes take their width from ``inputRowsWidthFraction`` and their
-    /// height from ``topSectionHeight(forWindowWidth:)``, so the section is
-    /// laid out by arithmetic rather than by negotiation — see those two for
-    /// why a fixed share beats a layout priority or an `HSplitView` here, and
-    /// why the height comes from the width.
+    /// Both parts take a definite height from the window's width — the
+    /// monitors from ``monitorsHeight(forWindowWidth:)``, the rows from
+    /// ``InputRowsView/height(forRowWidth:)`` — so the section is laid out by
+    /// arithmetic rather than by negotiation; see the body's note on why a
+    /// scroll view leaves no other choice, and ``monitorsHeight`` on why the
+    /// height comes from the width.
     ///
     /// - Parameter windowWidth: The window's width, from the body's geometry.
     /// - Returns: The monitoring section.
     private func topSection(windowWidth: CGFloat) -> some View {
-        let height = Self.topSectionHeight(forWindowWidth: windowWidth)
-        return HStack(spacing: Self.sectionSpacing) {
-            InputRowsView(model: model, height: height)
-                .frame(width: Self.inputRowsWidth(forWindowWidth: windowWidth))
-
+        let contentWidth = Self.contentWidth(forWindowWidth: windowWidth)
+        return VStack(spacing: Self.sectionSpacing) {
             HStack(spacing: Self.sectionSpacing) {
                 // Preview left of program, the switcher convention: the
                 // operator reads left to right, staging then taking.
@@ -238,8 +225,10 @@ struct ContentView: View {
                     statusBadge: model.isFadedToBlack ? fadedToBlackLabel : nil
                 )
             }
+            .frame(height: Self.monitorsHeight(forWindowWidth: windowWidth))
+
+            InputRowsView(model: model, height: InputRowsView.height(forRowWidth: contentWidth))
         }
-        .frame(height: height)
     }
 
     /// The localized name of the program bus, shared by its monitor's badge
@@ -283,7 +272,10 @@ struct ContentView: View {
                 .buttonStyle(.bordered)
                 .tint(isActive ? .accentColor : nil)
                 .contextMenu {
-                    presetCommands(for: preset)
+                    PresetContextMenu(model: model, preset: preset, surface: .switcher) { preset in
+                        presetRenameText = preset.name
+                        presetBeingRenamed = preset
+                    }
                 }
             }
 
@@ -298,120 +290,9 @@ struct ContentView: View {
                 }
             }
         }
-        .alert(
-            Text("Rename Preset", comment: "Rename preset dialog title"),
-            isPresented: isPresetRenamePresented,
-            presenting: presetBeingRenamed
-        ) { preset in
-            TextField(text: $presetRenameText) {
-                Text("Name", comment: "Name text field label — for a shot, a preset, or a destination")
-            }
-            Button {
-                model.eventBus.tap(
-                    "presetRenameConfirm.button",
-                    domain: .composition,
-                    params: ["preset": .string(preset.id.rawValue), "name": .string(presetRenameText)]
-                )
-                model.renamePreset(preset.id, to: presetRenameText)
-            } label: {
-                Text("Rename", comment: "Rename dialog confirm button, for a shot or a preset")
-            }
-            Button(role: .cancel) {
-                model.eventBus.tap(
-                    "presetRenameCancel.button",
-                    domain: .composition,
-                    params: ["preset": .string(preset.id.rawValue)]
-                )
-            } label: {
-                Text("Cancel", comment: "Rename dialog cancel button, for a shot or a preset")
-            }
-        }
-    }
-
-    /// Whether the preset rename dialog is up — presented while a preset is
-    /// being renamed, and clearing that preset when the dialog dismisses.
-    private var isPresetRenamePresented: Binding<Bool> {
-        Binding {
-            presetBeingRenamed != nil
-        } set: { presented in
-            if !presented { presetBeingRenamed = nil }
-        }
-    }
-
-    /// One preset button's context menu: duplicate, rename, reorder (Move Left
-    /// / Move Right), and remove that preset — the shot commands, one level up
-    /// (ARCHITECTURE.md, "Multiple presets in the UI", "Shot and preset
-    /// reordering"). Reorder is meaningful here too: the app adopts the first
-    /// preset at launch, so moving one to the front makes it the next session's
-    /// default. Remove is immediate like a shot's, but disabled on the last
-    /// remaining preset: a project always holds at least one.
-    @ViewBuilder private func presetCommands(for preset: Preset) -> some View {
-        let index = model.presets.firstIndex { $0.id == preset.id }
-
-        Button {
-            model.eventBus.tap(
-                "presetDuplicate.menu",
-                domain: .composition,
-                params: ["preset": .string(preset.id.rawValue), "name": .string(preset.name)]
-            )
-            model.duplicatePreset(preset.id)
-        } label: {
-            Text("Duplicate", comment: "Context menu: duplicate this shot or preset")
-        }
-
-        Button {
-            model.eventBus.tap(
-                "presetRename.menu",
-                domain: .composition,
-                params: ["preset": .string(preset.id.rawValue), "name": .string(preset.name)]
-            )
-            presetRenameText = preset.name
-            presetBeingRenamed = preset
-        } label: {
-            Text("Rename…", comment: "Context menu: rename this shot or preset")
-        }
-
-        Divider()
-
-        Button {
-            guard let index else { return }
-            model.eventBus.tap(
-                "presetMoveLeft.menu",
-                domain: .composition,
-                params: ["preset": .string(preset.id.rawValue), "index": .int(index)]
-            )
-            model.movePreset(preset.id, to: index - 1)
-        } label: {
-            Text("Move Left", comment: "Context menu: move this shot or preset earlier in the switcher order")
-        }
-        .disabled((index ?? 0) <= 0)
-
-        Button {
-            guard let index else { return }
-            model.eventBus.tap(
-                "presetMoveRight.menu",
-                domain: .composition,
-                params: ["preset": .string(preset.id.rawValue), "index": .int(index)]
-            )
-            model.movePreset(preset.id, to: index + 1)
-        } label: {
-            Text("Move Right", comment: "Context menu: move this shot or preset later in the switcher order")
-        }
-        .disabled(index.map { $0 >= model.presets.count - 1 } ?? true)
-
-        Divider()
-
-        Button(role: .destructive) {
-            model.eventBus.tap(
-                "presetRemove.menu",
-                domain: .composition,
-                params: ["preset": .string(preset.id.rawValue), "name": .string(preset.name)]
-            )
-            Task { await model.removePreset(preset.id) }
-        } label: {
-            Text("Remove Preset", comment: "Preset context menu: remove this preset from the project")
-        }
-        .disabled(model.presets.count == 1)
+        .presetRenameDialog(
+            model: model, surface: .switcher, preset: $presetBeingRenamed, text: $presetRenameText
+        )
     }
 
     /// The shot switcher: one button per available shot, taking it to program
@@ -943,19 +824,20 @@ struct ContentView: View {
         .pickerStyle(.menu)
     }
 
-    /// The streaming panel: the destination list, the session status, and the
-    /// Start/Stop control. Puts the program the operator already has on air
-    /// (ARCHITECTURE.md, "Streaming the program") — video from the
-    /// compositor, audio from the mixer panel's program mix — fanned out to
-    /// every enabled destination as one session with one leg each. The
-    /// destination rows lock while streaming.
+    /// The streaming panel: the destination list and the session status. Puts
+    /// the program the operator already has on air (ARCHITECTURE.md,
+    /// "Streaming the program") — video from the compositor, audio from the
+    /// mixer panel's program mix — fanned out to every enabled destination as
+    /// one session with one leg each. The destination rows lock while
+    /// streaming. The Start/Stop control itself is in the window's toolbar
+    /// (``StreamButton``), where it stays on screen while this panel scrolls.
     ///
     /// Each stream key is a `SecureField` bound to view-local state in its own
     /// row, collected only at Start — the keys are stored in the Keychain,
     /// never in the project document, an event, or a log.
     private var streamingPanel: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Streaming", comment: "Section heading over the destination and Start/Stop controls")
+            Text("Streaming", comment: "Section heading over the destination list and stream status")
                 .font(.headline)
 
             DestinationListView(model: model, keys: $streamKeys)
@@ -964,36 +846,6 @@ struct ContentView: View {
                 Spacer()
 
                 streamStatusLabel
-
-                Button {
-                    if model.isStreaming {
-                        model.eventBus.tap("streamStop.button", domain: .output)
-                        Task { await model.stopStreaming() }
-                    } else {
-                        model.eventBus.tap(
-                            "streamStart.button",
-                            domain: .output,
-                            params: ["destinations": .int(model.destinations.count(where: \.isStreamable))]
-                        )
-                        let keys = streamKeys
-                        Task { await model.startStreaming(keys: keys) }
-                    }
-                } label: {
-                    if model.isStreaming {
-                        Text("Stop Streaming", comment: "Button that takes the program off air")
-                    } else {
-                        Text("Start Streaming", comment: "Button that puts the program on air")
-                    }
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(model.isStreaming ? .red : .accentColor)
-                .disabled(!model.isStreaming && !model.hasStreamableDestination)
-                // ⌘G — Ecamm Live's own Go Live assignment, and the one
-                // shortcut that has to work without the operator hunting for
-                // this panel (``ProductionShortcut``). Bound to the control
-                // rather than to a menu item so it carries the stream keys
-                // typed into the rows above and the same disabled rule.
-                .keyboardShortcut(ProductionShortcut.goLive.shortcut)
             }
         }
     }

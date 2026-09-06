@@ -50,13 +50,37 @@ struct InputRowsView: View {
     let model: EngineModel
 
     /// The height available for both rows together, including the gap between
-    /// them. Passed in rather than measured because the caller derives the
-    /// whole top section's height from the window width
-    /// (``ContentView/topSectionHeight(forWindowWidth:)``).
+    /// them. Passed in rather than measured because the rows sit in a
+    /// scrolling column that proposes an unbounded height, so the caller
+    /// derives it from the window's width instead — normally through
+    /// ``height(forRowWidth:)``.
     let height: CGFloat
 
     /// The gap between the two rows, and between tiles within a row.
     private static let rowSpacing: CGFloat = 8
+
+    /// How many 16:9 tiles a row is sized to show across its width before it
+    /// scrolls. Sizing tiles by count rather than by a fixed height keeps them
+    /// proportional to the window — the same reason the monitors above take
+    /// their height from the width — while leaving each tile large enough to
+    /// read a face or a pattern in.
+    private static let tilesAcrossRow: CGFloat = 7
+
+    /// The shortest a single row may be, so tiles stay readable in a window
+    /// near the 640-point minimum width.
+    private static let minimumRowHeight: CGFloat = 60
+
+    /// The height both rows together need at a given row width: two rows of
+    /// 16:9 tiles, ``tilesAcrossRow`` of them fitting across the width, plus
+    /// the gap between the rows.
+    ///
+    /// - Parameter width: The width the rows span.
+    /// - Returns: The height to pass as ``height``.
+    static func height(forRowWidth width: CGFloat) -> CGFloat {
+        let tileWidth = (width - rowSpacing * (tilesAcrossRow - 1)) / tilesAcrossRow
+        let rowHeight = max(minimumRowHeight, tileWidth * 9 / 16)
+        return rowHeight * 2 + rowSpacing
+    }
 
     /// The two rows, cameras above everything else.
     var body: some View {

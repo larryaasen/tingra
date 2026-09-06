@@ -14,7 +14,9 @@ import TingraRecordingPlugIns
 import UniformTypeIdentifiers
 
 /// The recording panel: where the program is written, how much room is left,
-/// and the Record control (ARCHITECTURE.md, "Recording in the app").
+/// and the rolling status (ARCHITECTURE.md, "Recording in the app"). The
+/// Record control itself is in the window's toolbar (``RecordButton``), where
+/// it stays on screen while this panel scrolls.
 ///
 /// Its own panel beside the streaming one rather than a checkbox inside it,
 /// because the two are independent sessions: stopping the stream leaves a
@@ -37,14 +39,13 @@ struct RecordingPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Recording", comment: "Section heading over the recording folder and Record control")
+            Text("Recording", comment: "Section heading over the recording folder and status")
                 .font(.headline)
 
             HStack(spacing: 12) {
                 folderControls
                 Spacer()
                 statusLabel
-                recordButton
             }
         }
         .fileImporter(isPresented: $isChoosingFolder, allowedContentTypes: [.folder]) { result in
@@ -117,28 +118,6 @@ struct RecordingPanel: View {
                 model.setRecordingContainer(container)
             }
         )
-    }
-
-    /// The Record / Stop Recording control.
-    private var recordButton: some View {
-        Button {
-            if model.isRecording {
-                model.eventBus.tap("recordStop.button", domain: .output)
-                Task { await model.stopRecording() }
-            } else {
-                model.eventBus.tap("recordStart.button", domain: .output)
-                Task { await model.startRecording() }
-            }
-        } label: {
-            if model.isRecording {
-                Text("Stop Recording", comment: "Button that stops the local recording")
-            } else {
-                Text("Record", comment: "Button that starts recording the program to a local file")
-            }
-        }
-        .buttonStyle(.borderedProminent)
-        .tint(model.isRecording ? .red : .accentColor)
-        .keyboardShortcut(ProductionShortcut.record.shortcut)
     }
 
     /// The live recording status, rendered from ``EngineModel/RecordingStatus``.

@@ -23,10 +23,10 @@ import SwiftUI
 ///
 /// It carries **status only, no controls**. A bar that is always on screen is
 /// also always one stray click from whatever it holds, and the two actions it
-/// would hold are the two that go out to viewers. Record and Start Streaming
-/// stay in their panels, where they sit beside the destination rows and the
-/// folder they act on, and where ⌘R and ⌘G already reach them
-/// (``ProductionShortcut``).
+/// would hold are the two that go out to viewers. Those live in the toolbar
+/// (``StreamButton``, ``RecordButton``), which is a different surface with a
+/// different promise — it is where a window's primary actions belong — and
+/// ⌘G and ⌘R already reach them (``ProductionShortcut``).
 ///
 /// Shared by the main window and the multiview window, so a reading cannot
 /// differ between the two surfaces — the rule ``MonitorTile`` follows for

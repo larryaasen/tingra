@@ -56,8 +56,10 @@ import TingraPlugInKit
 /// preset is not staging, so ``EngineModel/switchPreset(to:)`` is what it
 /// calls, and the active preset wears a **checkmark** rather than a lamp —
 /// red means on program everywhere else in this app, and a preset is not on a
-/// bus. Preset *management* — duplicate, rename, reorder, remove — stays on
-/// the switcher's own context menu, one surface for those decisions.
+/// bus. Preset *management* — duplicate, rename, reorder, remove — is the
+/// switcher's context menu, and a preset row carries the same one
+/// (``PresetContextMenu``): one view on both surfaces, so the two cannot
+/// disagree about what a preset can have done to it.
 ///
 /// The audio sections and the destination section stay inert, which is the
 /// same rule rather than an inconsistency: staging has no meaning for a
@@ -103,6 +105,15 @@ struct SidebarView: View {
     /// key goes with it; a shot's does not exist), so they are two alerts, and
     /// an alert presents from its own subject.
     @State private var destinationPendingDeletion: SidebarRow?
+
+    /// The preset the rename dialog is editing, or `nil` while it is closed —
+    /// the switcher's own transient state, kept here for the sidebar's copy of
+    /// the dialog (``PresetRenameDialog``).
+    @State private var presetBeingRenamed: Preset?
+
+    /// The preset rename dialog's working text, prefilled with the preset's
+    /// current name when the dialog opens.
+    @State private var presetRenameText = ""
 
     /// The sections currently open, seeded from ``SidebarPreferences`` at
     /// launch and written back as the operator opens and closes them.
@@ -198,6 +209,9 @@ struct SidebarView: View {
             max: Self.maximumWidth
         )
         .accessibilityLabel(Text("Shots and Devices", comment: "Accessibility label of the main window's sidebar"))
+        .presetRenameDialog(
+            model: model, surface: .sidebar, preset: $presetBeingRenamed, text: $presetRenameText
+        )
         .alert(
             Text("Delete this shot?", comment: "Confirmation alert title before deleting a shot from the sidebar"),
             isPresented: isDeleteConfirmationPresented,
@@ -297,10 +311,14 @@ struct SidebarView: View {
     /// same helper, same label, same whole-row target — because a list of
     /// things you click to work in should behave one way. Only the call
     /// differs: ``EngineModel/switchPreset(to:)`` rather than a preview call,
-    /// which is why the help tag names switching rather than staging. It is
-    /// also the reason the rows carry no context menu: preset management
-    /// lives on the switcher's, and a second place to rename or remove a
-    /// preset is a second place for the two to disagree.
+    /// which is why the help tag names switching rather than staging.
+    ///
+    /// Each row carries the switcher's preset context menu — duplicate,
+    /// rename, reorder, remove — through the one shared ``PresetContextMenu``,
+    /// so a second place to manage a preset is not a second place for the two
+    /// to disagree: it is the same view with the sidebar's own `tap` names and
+    /// with Move Up / Move Down where the horizontal switcher says Left and
+    /// Right (``PresetMenuSurface``).
     ///
     /// Switching **never interrupts what is on program** (GLOSSARY.md,
     /// "Preset"), so this row is safe to click while live — the same promise
@@ -315,7 +333,11 @@ struct SidebarView: View {
                 "No presets in this project",
                 comment: "Sidebar placeholder when the project has no presets"
             ),
-            help: Text("Switch to this preset", comment: "Tooltip on a sidebar preset row")
+            help: Text("Switch to this preset", comment: "Tooltip on a sidebar preset row"),
+            menu: .preset { preset in
+                presetRenameText = preset.name
+                presetBeingRenamed = preset
+            }
         ) { row in
             model.eventBus.tap(
                 "sidebarPreset.row",
@@ -348,7 +370,7 @@ struct SidebarView: View {
                 "No shots in this preset",
                 comment: "Sidebar placeholder when the active preset has no shots"
             ),
-            onDelete: { row in
+            menu: .delete { row in
                 model.eventBus.tap(
                     "sidebarShotDelete.menu",
                     domain: .composition,
@@ -529,11 +551,8 @@ struct SidebarView: View {
     ///   - emptyLabel: What to show when `rows` is empty.
     ///   - help: The row's tooltip, naming what a click does (staging by
     ///     default, since every section but the presets stages).
-    ///   - onDelete: What the row's Delete context-menu item requests,
-    ///     including its `tap`, or nil (the default) for a section whose rows
-    ///     carry no context menu. A **request**, not the deletion: the item
-    ///     only raises the confirmation, and the alert's own button is what
-    ///     removes anything.
+    ///   - menu: The context menu the rows carry (``RowMenu``), or nil (the
+    ///     default) for a section whose rows carry none.
     ///   - action: What a click on a row performs, including its `tap`.
     /// - Returns: The section.
     private func stagingSection(
@@ -543,7 +562,7 @@ struct SidebarView: View {
         symbol: String,
         emptyLabel: Text,
         help: Text = Text("Stage on preview", comment: "Tooltip on an input tile that stages it on preview"),
-        onDelete: ((SidebarRow) -> Void)? = nil,
+        menu: RowMenu? = nil,
         action: @escaping (SidebarRow) -> Void
     ) -> some View {
         Section(isExpanded: expansion(of: id)) {
@@ -553,7 +572,7 @@ struct SidebarView: View {
                     .foregroundStyle(.secondary)
             } else {
                 ForEach(rows) { row in
-                    stagingRow(row, symbol: symbol, help: help, onDelete: onDelete, action: action)
+                    stagingRow(row, symbol: symbol, help: help, menu: menu, action: action)
                 }
             }
         } header: {
@@ -561,26 +580,41 @@ struct SidebarView: View {
         }
     }
 
-    /// One clickable row: the tally-lit label, with the shot rows' context
-    /// menu when the section supplies one.
+    /// The context menu a staging section's rows carry.
+    enum RowMenu {
+        /// A Delete item that **requests** a deletion, including its `tap` —
+        /// not the deletion itself: the item only raises the confirmation, and
+        /// the alert's own button is what removes anything. The shot rows'.
+        case delete((SidebarRow) -> Void)
+
+        /// The preset switcher's whole context menu (``PresetContextMenu``),
+        /// with what Rename… does after its `tap` — the sidebar opens its
+        /// rename dialog over the preset handed back. The preset rows'.
+        case preset(onRename: (Preset) -> Void)
+    }
+
+    /// One clickable row: the tally-lit label, with the section's context menu
+    /// when it supplies one.
     ///
     /// The menu is attached in a branch rather than always, with `nil` content
     /// for the camera section: an always-attached `.contextMenu` whose body is
     /// empty still claims the right-click, so a camera row would answer with a
-    /// blank menu instead of the nothing it means.
+    /// blank menu instead of the nothing it means. A preset row whose preset
+    /// the model no longer holds (a stale row mid-update) gets no menu either,
+    /// rather than a menu acting on nothing.
     ///
     /// - Parameters:
     ///   - row: The row to draw.
     ///   - symbol: The SF Symbol for the row's section.
     ///   - help: The row's tooltip, naming what a click does.
-    ///   - onDelete: The section's delete request, or nil for no menu.
+    ///   - menu: The section's context menu, or nil for none.
     ///   - action: What a click performs.
     /// - Returns: The row.
     @ViewBuilder private func stagingRow(
         _ row: SidebarRow,
         symbol: String,
         help: Text,
-        onDelete: ((SidebarRow) -> Void)?,
+        menu: RowMenu?,
         action: @escaping (SidebarRow) -> Void
     ) -> some View {
         let button = Button {
@@ -594,7 +628,8 @@ struct SidebarView: View {
         .buttonStyle(.plain)
         .help(help)
 
-        if let onDelete {
+        switch menu {
+        case .delete(let onDelete)?:
             button.contextMenu {
                 Button(role: .destructive) {
                     onDelete(row)
@@ -602,7 +637,15 @@ struct SidebarView: View {
                     Text("Delete", comment: "Sidebar shot context menu item, and its confirmation's confirm button")
                 }
             }
-        } else {
+        case .preset(let onRename)?:
+            if let preset = model.presets.first(where: { $0.id.rawValue == row.id }) {
+                button.contextMenu {
+                    PresetContextMenu(model: model, preset: preset, surface: .sidebar, onRename: onRename)
+                }
+            } else {
+                button
+            }
+        case nil:
             button
         }
     }

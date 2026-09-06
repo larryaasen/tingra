@@ -1381,7 +1381,7 @@
       }
     },
     "Move Down" : {
-      "comment" : "Button moving the selected layer toward the bottom of the stack",
+      "comment" : "Button moving the selected layer toward the bottom of the stack\nSidebar preset context menu: move this preset later in the project order",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1432,7 +1432,7 @@
       }
     },
     "Move Up" : {
-      "comment" : "Button moving the selected layer toward the top of the stack",
+      "comment" : "Button moving the selected layer toward the top of the stack\nSidebar preset context menu: move this preset earlier in the project order",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -2130,6 +2130,23 @@
         }
       }
     },
+    "Quit Tingra" : {
+      "comment" : "App menu item that quits the app",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tingra beenden"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Salir de Tingra"
+          }
+        }
+      }
+    },
     "R" : {
       "comment" : "Right label beside a channel strip's pan slider",
       "localizations" : {
@@ -2182,7 +2199,7 @@
       }
     },
     "Recording" : {
-      "comment" : "Section heading over the recording folder and Record control\nStatus bar reading: the program is being written to a file",
+      "comment" : "Section heading over the recording folder and status\nStatus bar reading: the program is being written to a file",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -2845,7 +2862,7 @@
       }
     },
     "Streaming" : {
-      "comment" : "Section heading over the destination and Start/Stop controls",
+      "comment" : "Section heading over the destination list and stream status",
       "localizations" : {
         "de" : {
           "stringUnit" : {

@@ -3159,6 +3159,36 @@ final class EngineModel {
 
     // MARK: Lifecycle
 
+    /// Records the app's shutdown on the bus and makes sure the record lands
+    /// before the process exits.
+    ///
+    /// Called from the app delegate for **every** quit AppKit dispatches
+    /// (``TingraAppDelegate/applicationShouldTerminate(_:)``). It emits one
+    /// `app.terminating` event (domain `platform`) carrying the cause and
+    /// whether a recording or a stream was open, finalizes the recording the
+    /// way quitting always has — an unfinalized movie is an unplayable one —
+    /// then shuts the bus down and **awaits the log sink's drain**, because
+    /// delivery is asynchronous and an event still buffered when the process
+    /// exits was never logged. Nothing else is torn down: the stream, the
+    /// inputs, and the compositor go with the process, as they did before.
+    ///
+    /// - Parameter reason: What brought the quit on (``TerminationReason``).
+    func shutDown(reason: TerminationReason) async {
+        eventBus.app(
+            "app.terminating",
+            domain: .platform,
+            params: [
+                "reason": .string(reason.rawValue),
+                "recording": .bool(isRecording),
+                "streaming": .bool(isStreaming),
+            ]
+        )
+        await finishRecording()
+        eventBus.shutdown()
+        await logSinkTask?.value
+        logSinkTask = nil
+    }
+
     /// Stops the compositor, the program and preview drains, and every active
     /// input, flushing any pending autosave first so the last edits reach disk.
     func stop() async {
