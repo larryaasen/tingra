@@ -359,7 +359,7 @@
       }
     },
     "Camera" : {
-      "comment" : "Camera input picker label\nShot: camera full-frame",
+      "comment" : "Camera input picker label\nPermissions settings: the camera permission's name\nShot: camera full-frame",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -392,6 +392,23 @@
         }
       }
     },
+    "Cameras as inputs, including an iPhone as a Continuity Camera." : {
+      "comment" : "Permissions settings: what the camera permission is used for",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kameras als Eingänge, einschließlich eines iPhone als Integrationskamera."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cámaras como entradas, incluido un iPhone como cámara de Continuidad."
+          }
+        }
+      }
+    },
     "Cancel" : {
       "comment" : "Rename dialog cancel button, for a shot or a preset",
       "localizations" : {
@@ -405,6 +422,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Cancelar"
+          }
+        }
+      }
+    },
+    "Checking…" : {
+      "comment" : "Permissions settings: status before the first read",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wird geprüft…"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Comprobando…"
           }
         }
       }
@@ -579,6 +613,23 @@
         }
       }
     },
+    "Denied" : {
+      "comment" : "Permissions settings: status of a permission macOS refuses",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verweigert"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Denegado"
+          }
+        }
+      }
+    },
     "Destination" : {
       "comment" : "Destination URL field label",
       "localizations" : {
@@ -678,6 +729,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Pantallas"
+          }
+        }
+      }
+    },
+    "Displays as inputs." : {
+      "comment" : "Permissions settings: what the Screen Recording permission is used for",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bildschirme als Eingänge."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pantallas como entradas."
           }
         }
       }
@@ -921,6 +989,23 @@
         }
       }
     },
+    "Granted" : {
+      "comment" : "Permissions settings: status of a permission macOS allows",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erlaubt"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Permitido"
+          }
+        }
+      }
+    },
     "Height" : {
       "comment" : "Layer frame slider label",
       "localizations" : {
@@ -1142,6 +1227,23 @@
         }
       }
     },
+    "macOS grants each permission to this app. Tingra checks again whenever it becomes active, so a change made in System Settings appears here when you return, and an input the change allows starts on its own." : {
+      "comment" : "Permissions settings: footer explaining when the statuses update",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS erteilt jede Berechtigung dieser App. Tingra prüft sie erneut, sobald die App aktiv wird. Eine in den Systemeinstellungen vorgenommene Änderung erscheint hier also bei der Rückkehr, und ein dadurch erlaubter Eingang startet von selbst."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS concede cada permiso a esta app. Tingra vuelve a comprobarlos cada vez que se activa, de modo que un cambio hecho en Ajustes del Sistema aparece aquí al volver, y una entrada que ese cambio permite se inicia por sí sola."
+          }
+        }
+      }
+    },
     "Master" : {
       "comment" : "Label of the mixer's master strip",
       "localizations" : {
@@ -1194,8 +1296,7 @@
       }
     },
     "Microphone" : {
-      "comment" : "Microphone input picker label",
-      "extractionState" : "stale",
+      "comment" : "Permissions settings: the microphone permission's name",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1207,6 +1308,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Micrófono"
+          }
+        }
+      }
+    },
+    "Microphones as inputs." : {
+      "comment" : "Permissions settings: what the microphone permission is used for",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mikrofone als Eingänge."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Micrófonos como entradas."
           }
         }
       }
@@ -1825,6 +1943,23 @@
         }
       }
     },
+    "Not Requested" : {
+      "comment" : "Permissions settings: status of a permission the app has never asked for",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht angefordert"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No solicitado"
+          }
+        }
+      }
+    },
     "Not streaming" : {
       "comment" : "Status bar reading: the program is not on air",
       "localizations" : {
@@ -1859,6 +1994,23 @@
         }
       }
     },
+    "Open System Settings…" : {
+      "comment" : "Permissions settings: button that opens the permission's switch in System Settings",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Systemeinstellungen öffnen…"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abrir Ajustes del Sistema…"
+          }
+        }
+      }
+    },
     "Pan" : {
       "comment" : "Label of a channel strip's pan slider",
       "localizations" : {
@@ -1872,6 +2024,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Panorámica"
+          }
+        }
+      }
+    },
+    "Permissions" : {
+      "comment" : "Settings window pane: the system permissions' status",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Berechtigungen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Permisos"
           }
         }
       }
@@ -2216,6 +2385,40 @@
         }
       }
     },
+    "Request…" : {
+      "comment" : "Permissions settings: button that shows the system permission prompt",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anfordern…"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Solicitar…"
+          }
+        }
+      }
+    },
+    "Restricted" : {
+      "comment" : "Permissions settings: status of a permission a policy forbids",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eingeschränkt"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Restringido"
+          }
+        }
+      }
+    },
     "Right" : {
       "comment" : "Wipe edge picker option: reveal from the right edge of the frame",
       "localizations" : {
@@ -2246,6 +2449,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "rtmp://server/app"
+          }
+        }
+      }
+    },
+    "Screen Recording" : {
+      "comment" : "Permissions settings: the Screen Recording permission's name",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bildschirmaufnahme"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grabación de pantalla"
           }
         }
       }

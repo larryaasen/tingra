@@ -159,6 +159,20 @@ internal surface a reader needs to navigate the target instead.
 - `PlugInLoader` — the host's plug-in lifecycle: activates plug-ins against a
   `PlugInContext`, reporting each outcome on the event bus; a throwing plug-in
   is skipped, never fatal.
+- `AuthorizationPermission` — the three TCC grants capture depends on — `camera`,
+  `microphone`, `screenRecording` — with raw values that are a stable contract.
+- `AuthorizationStatus` — where one stands: `notDetermined`, `granted`, `denied`,
+  `restricted`. Screen Recording reports only granted or denied, because
+  CoreGraphics' preflight is a yes-or-no question that cannot tell a refusal
+  from a permission never asked for.
+- `AuthorizationChecking` — the authorization seam (ARCHITECTURE.md, "The
+  host"): `status(of:)`, which never prompts, and `request(_:)`, which prompts
+  only for an undecided permission. The app's Permissions pane and its tests
+  run against it with a scripted answer.
+- `SystemAuthorization` — the production checker: AVFoundation for the camera
+  and microphone, `CGPreflightScreenCaptureAccess` for Screen Recording —
+  deliberately not `SCShareableContent`, whose read is the call that makes
+  macOS show the Screen Recording prompt.
 - `OSLogSink` — the system-of-record sink: routes every event to OSLog
   (`subsystem` `com.moonwink.tingra`, `category` = domain), params `.private`.
   `tingra-cli` skips attaching it when standard error is a terminal — the OS's
@@ -934,9 +948,9 @@ surface is:
   edge beside the split view rather than centered; and Escape closes the window
   beside the ⌘W every window has, since nothing here is committed for Escape to
   cancel.
-- `SettingsPane` — the closed list of panes — General, Shortcuts, About — each
-  deriving its own name and symbol, so the sidebar's label and the window's
-  title cannot drift.
+- `SettingsPane` — the closed list of panes — General, Permissions, Shortcuts,
+  About — each deriving its own name and symbol, so the sidebar's label and the
+  window's title cannot drift.
 - `SettingsCommands` — the app-menu Settings… item that opens it, replacing the
   one the `Settings` scene would have contributed.
 - `GeneralSettingsView` — the General pane: the app's Appearance, and a Show
@@ -950,6 +964,20 @@ surface is:
   every shortcut the app binds in **one** group, no headings and no footnote,
   drawn from `ProductionShortcut.allCases` so a seventh cannot be added and
   forgotten here.
+- `PermissionsSettingsView` / `PermissionRow` / `StatusLabel` — the Permissions
+  pane: one row per system permission (Camera, Microphone, Screen Recording)
+  with what Tingra uses it for, its status as a colored symbol and a word, and
+  the one action its state allows — Request… for a permission never asked for,
+  Open System Settings… for a refused one, nothing for a granted or restricted
+  one. Opening the pane never prompts; a status read is not a request.
+- `PermissionsModel` — the `@Observable @MainActor` model behind that pane and
+  the engine's record of what TCC allows: re-reads every permission on each app
+  activation (the event a System Settings change rides on — never a poll) and
+  on the pane appearing, reports the launch picture once as
+  `authorization.status` and each later change as `authorization.changed`, and
+  hands back the permissions that newly became granted so
+  `EngineModel.applyNewlyGranted(_:)` can rerun the reconfigure pass and start
+  the inputs the grant unblocked without being asked.
 - `AboutSettingsView` — the About pane: the app's icon, name, and version.
 - `AppearanceMode` — System, Light, or Dark — three cases rather than a boolean,
   because "follow the system" is a state and not the absence of a choice.

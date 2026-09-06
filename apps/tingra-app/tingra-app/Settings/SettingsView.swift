@@ -12,13 +12,16 @@ import TingraEventBus
 
 /// One pane of the settings window.
 ///
-/// A closed list rather than three hand-written tabs, so the sidebar's label
+/// A closed list rather than four hand-written tabs, so the sidebar's label
 /// and the title bar's heading are drawn from **one** name per pane and cannot
 /// drift apart — the rule ``SidebarSection`` follows for the main window's
 /// sidebar. A pane added without an entry here does not compile.
 enum SettingsPane: String, CaseIterable, Hashable, Sendable {
     /// The app's appearance.
     case general
+
+    /// Where the system permissions stand.
+    case permissions
 
     /// The production keyboard shortcuts.
     case shortcuts
@@ -31,6 +34,7 @@ enum SettingsPane: String, CaseIterable, Hashable, Sendable {
     var name: Text {
         switch self {
         case .general: Text("General", comment: "Settings window pane: general app settings")
+        case .permissions: Text("Permissions", comment: "Settings window pane: the system permissions' status")
         case .shortcuts: Text("Shortcuts", comment: "Settings window pane: the keyboard shortcuts listing")
         case .about: Text("About", comment: "Settings window pane: the app's version")
         }
@@ -40,6 +44,7 @@ enum SettingsPane: String, CaseIterable, Hashable, Sendable {
     var systemImage: String {
         switch self {
         case .general: "gearshape"
+        case .permissions: "lock.shield"
         case .shortcuts: "keyboard"
         case .about: "info.circle"
         }
@@ -47,7 +52,7 @@ enum SettingsPane: String, CaseIterable, Hashable, Sendable {
 }
 
 /// The settings window, reached from the app menu with ⌘, the way macOS
-/// reserves — three panes for now, General, Shortcuts, and About.
+/// reserves — four panes for now: General, Permissions, Shortcuts, and About.
 ///
 /// It is a `Window` scene with its own Settings… command (``TingraApp``)
 /// rather than SwiftUI's `Settings` scene, for a reason that is only visible
@@ -103,7 +108,7 @@ struct SettingsView: View {
     /// window with those buttons sitting on it.
     private static let minimumSize = CGSize(width: 700, height: 460)
 
-    /// The three panes, with the open one's name as the window's title.
+    /// The panes, with the open one's name as the window's title.
     ///
     /// **The title lands on the leading edge, not centered**, which is Xcode
     /// 26's settings window and what the pane name wants — a heading sits over
@@ -220,6 +225,7 @@ struct SettingsView: View {
     @ViewBuilder private func paneBody(for pane: SettingsPane) -> some View {
         switch pane {
         case .general: GeneralSettingsView(model: model, appearance: appearance, statusBar: statusBar)
+        case .permissions: PermissionsSettingsView(model: model)
         case .shortcuts: ShortcutsSettingsView()
         case .about: AboutSettingsView()
         }

@@ -42,6 +42,15 @@ public enum CaptureInputError: Error, Equatable {
     /// The capture framework rejected the configuration; the string names
     /// the rejected step.
     case configurationRejected(InputID, String)
+
+    /// The capture session started and reported no error, yet delivered no
+    /// frame within the given window — a device macOS lists but is not
+    /// producing video from: a MacBook's built-in camera with the lid
+    /// closed, a USB camera whose stream never came up, a device another
+    /// application holds. Distinct from ``configurationRejected(_:_:)`` so a
+    /// front end can treat it as "silent until something changes" rather
+    /// than retrying it on every pass.
+    case startedSilent(InputID, within: Duration)
 }
 
 extension CaptureInputError {
@@ -52,6 +61,7 @@ extension CaptureInputError {
         case .authorizationDenied: return .authorizationDenied
         case .deviceUnavailable: return .inputNotFound
         case .configurationRejected: return .pipelineError
+        case .startedSilent: return .pipelineError
         }
     }
 }
@@ -84,9 +94,19 @@ extension CaptureInputError: CustomStringConvertible {
                 `tingra-cli devices` to pick one that is currently available.
                 """
         case .configurationRejected(let id, let step):
+            // The step names its own cause and fix (a rejected input, a
+            // session that would not run, a runtime error's reason); no
+            // generic hint is appended, since one that does not apply reads
+            // as a wrong diagnosis.
+            return "The input '\(id.rawValue)' could not be configured for capture: \(step)."
+        case .startedSilent(let id, let window):
             return """
-                The input '\(id.rawValue)' could not be configured for capture: \(step). The device \
-                may be in use by another app — close it and try again.
+                The input '\(id.rawValue)' started but delivered no frame within \
+                \(window.components.seconds) seconds, so its capture stream never came up. macOS lists \
+                the device but is not producing video from it: a built-in camera is unavailable while \
+                the lid is closed, and a USB camera can be held by another application or fail to \
+                bring its stream up. Open the lid, close the other application, or reconnect the \
+                camera, then reselect it.
                 """
         }
     }

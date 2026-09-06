@@ -1151,16 +1151,71 @@ or two in the doc that owns them — none need a rewrite.
 
 ## Decisions to settle
 
-- [ ] **Named destinations — proposed 2026-08-11, awaiting approval**
-  (recorded in DESTINATIONS.md, the veto gate). The second of the two gaps
+- [x] **The app's secure storage, and the daemon's — decided and recorded
+  2026-08-30 (DESTINATIONS.md, "What the probe measured" and "The decision,
+  in two halves"), go-ahead given the same day; half (a) built, half (b)
+  sequenced with packaging.** The scoping call after named destinations, and
+  the one that turned out not to be the question it was filed as. The open
+  question read "how does the daemon reach a key the operator filed in the
+  app", which assumes keys were being filed. **They were not.** Measuring the
+  mechanism first — real binaries signed with the project's own identities,
+  reading each other's items, rather than reasoning from the entitlement docs
+  — showed that a binary with no keychain access group cannot use the
+  data-protection keychain at all, and that the app had had none since it
+  became an Xcode project: every stream key it stored was rejected with
+  `errSecMissingEntitlement` and kept in memory for the session only.
+
+  **(a) Built 2026-08-30.** `keychain-access-groups` returns to the app's
+  entitlements, which gives the app a keychain group and makes automatic
+  signing embed a profile; `EngineModel` names the group explicitly instead
+  of relying on the entitlement array's order, matching `DestinationStore`'s
+  default. The whole fix is two files plus doc comments — the seam,
+  `sharedAccessGroup()`, and the store's default were all already right and
+  are untouched. **The one real trap** is that the entitlement must carry
+  `$(AppIdentifierPrefix)`, not `$(TeamIdentifierPrefix)`: on an account
+  whose legacy App ID prefix differs from its team identifier they are
+  different strings, and the profile grants the former. That single
+  substitution is the whole difference between a failing build and a working
+  one — no explicit App ID, no portal registration, and no Signing &
+  Capabilities click, all of which the 2026-08-15 note had concluded were
+  required.
+
+  **(b) Deferred to the packaging iteration, deliberately.** The daemon joins
+  the group only by shipping as its own bundle with its own embedded profile
+  — a bare helper inside a provisioned bundle is SIGKILLed exactly as v0.1.1
+  was, so "put `tingra-cli` in `Contents/MacOS`" is not an option. That is
+  distribution work, it belongs with the `Tingra.app` cask decided
+  2026-07-11, and it resolves the Login Items naming item below in the same
+  pass.
+
+  **The rule that falls out:** saved destinations *with keys* are an
+  app-install feature. The bare `tingra-cli` on the Homebrew path can never
+  carry a restricted entitlement, so a headless install resolves destination
+  names and URLs and takes keys only as `url`/`key` tool input, permanently.
+
+  Verification is by `codesign -d --entitlements -` on the built bundle and
+  by a probe carrying the app's exact entitlements and profile (write and
+  read both succeed), never by whether the app launched — Xcode silently
+  drops an entitlement it cannot provision, which is how v0.1.1's cause
+  stayed hidden. No test covers it: the app's tests run under
+  `CODE_SIGNING_ALLOWED=NO` in CI, where there are no entitlements to carry,
+  so a test asserting the keychain works would assert the opposite there.
+
+- [x] **Named destinations — proposed 2026-08-11, approved 2026-08-15, built
+  2026-08-15** (recorded in DESTINATIONS.md, the veto gate; all four
+  sequencing steps done, and the store, the tools, and the app's adoption of
+  it all shipped). *(Checkbox corrected 2026-08-30: this had been left
+  unticked while the document it points at recorded every step of it as
+  built.)* The second of the two gaps
   keeping the MCP surface from answering "stream to my Twitch" / "check my
   backup ingest" — the first, session addressing, was decided and built
   2026-08-11 (MCP.md, "Tool surface"). The proposal: destinations become
   operator-global (a project *references* them by id), held by a
   `DestinationStore` host service — names/URLs in Application Support JSON,
   keys in the existing Keychain-backed secure storage reached from both the
-  app and the daemon through a shared keychain access group
-  (`$(TeamIdentifierPrefix)`-prefixed, so no Team ID enters a tracked file).
+  app and the daemon through a shared keychain access group (prefixed by a
+  build variable, so no literal prefix enters a tracked file; which variable
+  was corrected 2026-08-30).
   Agents get `destinations_list` and a `destination` selector on
   `stream_start`/`probe` (read-only: the app remains the editor, so keys
   never transit an agent conversation); the daemon's transient-key policy is
@@ -1562,6 +1617,56 @@ or two in the doc that owns them — none need a rewrite.
   landed since its previous run. Recording the result here because the gate
   was tracked in no file: an unexercised TCC path leaves no trace in a build
   log, a test run, or a diff, so nothing in CI can ever close it.
+
+- [x] **Three defects read out of one app session log — fixed 2026-09-06.**
+  The log of a launch with four cameras, two displays, and no Screen Recording
+  grant showed: a USB camera whose CoreMedia I/O stream start timed out in
+  IOKit (`kIOReturnTimeout`, `CMIOGraphStart` asserted) yet logged
+  `input.started`, because `AVCaptureSession.startRunning()` reports nothing
+  and its runtime error notification arrives after the startup-window check
+  has been torn down; that one device's ten-second stall holding every other
+  input, the compositor's input set, and the preset load behind it, because
+  the reconfigure pass started inputs one after another; and the two display
+  inputs staying denied after Screen Recording was granted in System
+  Settings, because nothing reran the pass. Fixed, in order: `CameraInput`
+  now reports a start only once the session has delivered a frame (the
+  microphone's tap gate, applied to video), raced against a runtime error and
+  a five-second window, and keeps the runtime error observed for the session's
+  lifetime, reporting a mid-show death as an `input.runtimeError` error event
+  and finishing its stream — the engine drops the input and republishes the
+  set on that event, with no automatic retry. Both reconfigure passes start
+  their pending inputs in a task group, reporting each outcome as it lands.
+  And the app gained a Permissions settings pane on a new host authorization
+  seam (`AuthorizationChecking`, ARCHITECTURE.md "Authorization is a host
+  seam"), whose model re-reads on every app activation and reruns the pass
+  for whatever newly reads granted. One thing deliberately left alone: the
+  denied-input error text still names the CLI's `--video-generator` flags
+  inside the app, because the message is the shared `CaptureInputError`
+  description and the CLI is its first reader.
+
+  **Second pass the same afternoon, from the fixed build's own logs.** With
+  the lid closed on the MacBook Pro — a normal way to run the app on external
+  displays — macOS lists the built-in FaceTime HD Camera but produces nothing
+  from it (Photo Booth greys it out too), and a standalone probe confirmed
+  the silence is the device's, not the gate's. The honest gate then charged
+  every reconfigure pass the full verification window for it: the preset
+  loaded at 6.3 s while every available input was live at 1.5 s, and a
+  hot-plugged camera that started in 2.8 s reached the compositor 4 s later.
+  Four changes: (1) a loaded project's preset goes into the compositor before
+  any input is waited on (only a fresh project's seed still waits, since its
+  shots are laid out around which cast devices started); (2) each input is
+  published to the compositor the moment its first frame is proven, with
+  `compositor.inputs` reported once at the end of the pass; (3) a start that
+  ends silent is its own error case, `CaptureInputError.startedSilent`, and
+  the engine remembers it in `silentInputs` — skipped with an `input.skipped`
+  event on later passes until any device connects (a lid opening connects the
+  built-in display, so it rides the same event), a permission is granted, or
+  the operator picks it; (4) the window went from 5 to 10 seconds, because a
+  Continuity Camera's first frame arrived at 5.05 s with four sessions
+  starting at once, and the skip policy means the window is paid once per
+  change rather than once per pass. Also dropped the generic "may be in use
+  by another app" sentence `configurationRejected` appended to every message —
+  each step now names its own cause.
 
 - [x] **Live device lists in the app — decided 2026-07-28, go-ahead given
   with display hot-plug included, and built the same day.** The app never refreshes its device lists after boot: `cameras`,
@@ -2930,8 +3035,10 @@ fixed together on 2026-08-06.
 
 ## Housekeeping
 
-- [ ] **Commit the doc baseline** (the full doc set plus the LICENSE change is
-  staged but uncommitted) so scaffolding diffs cleanly.
+- [x] **Commit the doc baseline** (the full doc set plus the LICENSE change is
+  staged but uncommitted) so scaffolding diffs cleanly. *(Checkbox corrected
+  2026-08-30: long done — the doc set and the LICENSE have been committed
+  since the scaffold, and every document has been revised many times since.)*
 
 - [x] **Fix the dangling "the Tingra plan" references in CLI.md** ("decided in
   the Tingra plan", "tracked in the plan") — done 2026-07-04: the pre-repo

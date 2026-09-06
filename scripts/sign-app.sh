@@ -25,7 +25,22 @@
 #
 # Entitlements are preserved from the bundle being signed (Xcode applies
 # tingra-app/tingra-app.entitlements at build time): the hardened runtime
-# denies camera and microphone access without them.
+# denies camera and microphone access without them. Preserving rather than
+# passing the file also keeps this script correct now that the entitlements
+# contain a build variable — codesign does not expand $(AppIdentifierPrefix),
+# and embedding it literally is what made tingra-cli v0.1.1 unrunnable.
+#
+# One hazard the entitlements added on 2026-08-30 (DESTINATIONS.md, "The
+# decision, in two halves"): keychain-access-groups is a RESTRICTED
+# entitlement, authorized by the provisioning profile Xcode embedded in the
+# bundle, which is issued to one team and one certificate kind. Re-signing
+# with an identity that profile does not cover — a Developer ID certificate
+# via TINGRA_SIGN_IDENTITY, say, over a development-profile build — leaves a
+# signature the kernel refuses at exec: the app is SIGKILLed with no error,
+# no log line, and no crash report. Before this entitlement existed, any
+# identity was harmless here. If a re-signed build dies instantly, that is
+# the first thing to check; the diagnostic is to re-sign without the
+# entitlement and see whether it then runs.
 #
 # This is a DEVELOPER-CONVENIENCE step only. The shipping build is Developer ID
 # signed (hardened runtime) and notarized per CLI.md "Distribution"; this script

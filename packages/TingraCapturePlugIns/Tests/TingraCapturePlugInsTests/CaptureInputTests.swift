@@ -195,6 +195,7 @@ struct CaptureInputErrorTests {
         #expect(CaptureInputError.authorizationDenied(.camera, id).identifier == .authorizationDenied)
         #expect(CaptureInputError.deviceUnavailable(id).identifier == .inputNotFound)
         #expect(CaptureInputError.configurationRejected(id, "step").identifier == .pipelineError)
+        #expect(CaptureInputError.startedSilent(id, within: .seconds(10)).identifier == .pipelineError)
     }
 
     @Test("descriptions name the input, the cause, and the fix")
@@ -207,5 +208,19 @@ struct CaptureInputErrorTests {
         #expect(unavailable.contains("no longer connected"))
         let rejected = String(describing: CaptureInputError.configurationRejected(id, "the session said no"))
         #expect(rejected.contains("the session said no"))
+        // No generic hint rides along: the step is the diagnosis.
+        #expect(!rejected.contains("another app"))
+        let silent = String(describing: CaptureInputError.startedSilent(id, within: .seconds(10)))
+        #expect(silent.contains("0x1"))
+        #expect(silent.contains("10 seconds"))
+        #expect(silent.contains("lid"))
+    }
+
+    @Test("a silent start compares equal only to the same input and window")
+    func silentEquality() {
+        let id = InputID(rawValue: "0x1")
+        #expect(CaptureInputError.startedSilent(id, within: .seconds(10)) == .startedSilent(id, within: .seconds(10)))
+        #expect(CaptureInputError.startedSilent(id, within: .seconds(10)) != .startedSilent(id, within: .seconds(5)))
+        #expect(CaptureInputError.startedSilent(id, within: .seconds(10)) != .configurationRejected(id, "x"))
     }
 }

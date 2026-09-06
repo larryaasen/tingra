@@ -18,20 +18,32 @@
   sandbox entitlement: Tingra is deliberately unsandboxed. Screen Recording
   needs no entitlement — it is TCC-only.
 
-  There is deliberately no keychain-access-groups entry. One was added for the
-  destination store's shared keychain group, and it is gone for two reasons
-  that arrived together (DESTINATIONS.md, "Key sharing between the app and the
-  daemon"): tingra-cli cannot carry the entitlement at all — it is restricted,
-  the kernel authorizes it from an embedded provisioning profile, and a bare
-  Mach-O has nowhere to put one, which is what made v0.1.1 unrunnable — so
-  there is no second party left to share a group with; and on this side it
-  never took effect anyway, because automatic signing has only a wildcard App
-  ID, whose profile cannot carry a keychain group. Xcode's response is not
-  uniform: it silently dropped the entitlement from the signature in one
-  configuration and failed the build outright in another, so a built app that
-  launched was never evidence the group was working. Restoring it means
-  provisioning Keychain Sharing on an explicit App ID, and that should follow
-  the reopened key-sharing decision rather than precede it.
+  keychain-access-groups is back as of 2026-08-30, and it is not optional
+  polish: without a keychain group this app cannot use the data-protection
+  keychain at all, so every stream key it filed was rejected with
+  errSecMissingEntitlement (-34018) and kept only in memory for the session
+  (DESTINATIONS.md, "What the probe measured"). Declaring the group is what
+  makes the app's own secure storage work; sharing it with a second Tingra
+  binary is a later benefit, not the reason it is here.
+
+  Note $(AppIdentifierPrefix), not $(TeamIdentifierPrefix) — they are the same
+  string on most accounts and are not the same here, because this one carries
+  a legacy App ID prefix distinct from its team identifier. The entitlement
+  must name the prefix the provisioning profile actually grants, which is the
+  App ID prefix; $(TeamIdentifierPrefix) fails the build with "Provisioning
+  profile ... doesn't match the entitlements file's value". Either way no
+  literal prefix appears in this file: the variable expands at signing
+  (CLAUDE.md, "Signing"), and KeychainSecureStorage.sharedAccessGroup() reads
+  the expanded value back out of the running binary, matching on the suffix so
+  it never has to know which prefix it got.
+
+  The build needs no manual provisioning step: with this entitlement present,
+  automatic signing resolves the team's wildcard profile, which grants the
+  whole <prefix>.* keychain group space, and embeds it in the bundle. CI is
+  unaffected — it builds CODE_SIGNING_ALLOWED=NO, and entitlements bind at
+  signing. Verify a build with codesign -d --entitlements - on the bundle,
+  never by whether it launched: Xcode silently drops an entitlement it cannot
+  provision, which is how v0.1.1's cause stayed hidden.
 -->
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -42,5 +54,9 @@
     <true/>
     <key>com.apple.security.cs.disable-library-validation</key>
     <true/>
+    <key>keychain-access-groups</key>
+    <array>
+        <string>$(AppIdentifierPrefix)com.moonwink.tingra.shared</string>
+    </array>
 </dict>
 </plist>

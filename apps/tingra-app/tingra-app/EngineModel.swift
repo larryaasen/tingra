@@ -505,6 +505,17 @@ final class EngineModel {
     /// The input registry the plug-ins register into.
     @ObservationIgnored private lazy var registry = InputRegistry(eventBus: eventBus)
 
+    /// The authorization seam the permissions are read through — the real
+    /// TCC reads in production, a scripted answer in tests.
+    @ObservationIgnored private let authorization: any AuthorizationChecking
+
+    /// Where each system permission stands (Camera, Microphone, Screen
+    /// Recording): the Permissions settings pane's model, refreshed on every
+    /// app activation so a grant made in System Settings starts the inputs
+    /// it unblocks when the operator returns (``applyNewlyGranted(_:)``).
+    @ObservationIgnored private(set) lazy var permissions = PermissionsModel(
+        authorization: authorization, eventBus: eventBus)
+
     /// The output registry the streaming plug-in registers into — the same
     /// seam the CLI resolves a destination scheme against
     /// (`OutputRegistry.provider(forScheme:)`).
@@ -518,7 +529,18 @@ final class EngineModel {
     /// The host's Keychain-backed secret store: the stream key lives only
     /// here, keyed by the destination URL — never the project document, never
     /// an event, never a log (CLAUDE.md, "Error Handling").
-    @ObservationIgnored private let secureStorage: any SecureStorage = KeychainSecureStorage()
+    ///
+    /// Filed in the shared keychain access group the app's entitlement
+    /// declares, which is what makes the item reachable by a second Tingra
+    /// binary later (DESTINATIONS.md, "Key sharing between the app and the
+    /// daemon"). Named explicitly rather than left to the implicit default:
+    /// an item written with no group lands in the *first* entry of the
+    /// entitlement's list, so the group a key is filed under would otherwise
+    /// be decided by the order of an XML array — the way the two would drift
+    /// the moment a second group is ever added. ``DestinationStore`` takes
+    /// the same group by default, so both writers agree.
+    @ObservationIgnored private let secureStorage: any SecureStorage = KeychainSecureStorage(
+        accessGroup: KeychainSecureStorage.sharedAccessGroup())
 
     /// The operator's saved destinations (DESTINATIONS.md). Operator-global,
     /// not per-project: the app is the editor, and the daemon reads the same
@@ -709,6 +731,17 @@ final class EngineModel {
     /// preset even when nothing is selected (a background-only program).
     @ObservationIgnored private var hasAppliedConfiguration = false
 
+    /// Inputs whose last start attempt ended ``CaptureInputError/startedSilent(_:within:)``
+    /// — listed by macOS, started without error, and delivering nothing
+    /// (a built-in camera behind a closed lid, typically).
+    ///
+    /// A pass skips these rather than paying the verification window again
+    /// for a device nothing has changed about, and the set is cleared by the
+    /// things that can change it: any device connecting (a lid opening
+    /// connects the built-in display, so that case rides on the same event),
+    /// a permission grant, or the operator selecting the input in a picker.
+    @ObservationIgnored private var silentInputs: Set<InputID> = []
+
     /// Whether a ``reconfigure()`` pass is currently running. `reconfigure()`
     /// suspends at `input.start()`/`stop()`, so without this guard the
     /// startup selection changes (two `onChange` handlers) and the explicit
@@ -736,12 +769,16 @@ final class EngineModel {
     ///     (the real `AVAudioEngine`-backed one by default; a double in
     ///     tests, so no audio hardware is needed).
     ///   - monitorPreferences: Where the monitor device and level persist.
+    ///   - authorization: Where the system permissions are read from (the
+    ///     real TCC reads by default; a scripted answer in tests).
     init(
         monitor: any AudioMonitor = AVAudioEngineMonitor(),
-        monitorPreferences: MonitorPreferences = MonitorPreferences()
+        monitorPreferences: MonitorPreferences = MonitorPreferences(),
+        authorization: any AuthorizationChecking = SystemAuthorization()
     ) {
         self.monitor = monitor
         self.monitorPreferences = monitorPreferences
+        self.authorization = authorization
         self.monitorDeviceUID = monitorPreferences.deviceUID
         self.monitorDeviceName = monitorPreferences.deviceName
         self.monitorLevel = monitorPreferences.level
@@ -770,7 +807,16 @@ final class EngineModel {
             for await event in busEvents {
                 self?.handleStreamStatusEvent(event)
                 await self?.handleDeviceEvent(event)
+                await self?.handleInputRuntimeError(event)
             }
+        }
+        // The permissions picture goes on the bus before any input asks for
+        // one, so a session log opens with what TCC allowed at launch; from
+        // here on each app activation re-reads it (never a poll), and a grant
+        // made in System Settings starts the inputs it unblocks.
+        permissions.refresh()
+        permissions.observeActivation { [weak self] granted in
+            await self?.applyNewlyGranted(granted)
         }
         let context = PlugInContext(
             eventBus: eventBus,
@@ -938,6 +984,11 @@ final class EngineModel {
     /// - Parameter event: An event drained from the bus.
     private func handleDeviceEvent(_ event: EventBusEvent) async {
         guard event.name == "device.connected" || event.name == "device.disconnected" else { return }
+        // A connection is a topology change, and the one a silent input
+        // needs: a lid opening connects the built-in display, a hub
+        // re-enumerating brings a stalled camera back. Every silent input is
+        // retried on the next pass; a disconnection changes nothing for them.
+        if event.name == "device.connected" { silentInputs.removeAll() }
         await readDeviceLists()
         await refreshMixerStrips()
         // The video pass stops an input that has left and starts one whose
@@ -1000,7 +1051,9 @@ final class EngineModel {
     ///
     /// An input that cannot start (authorization denied, device gone) is
     /// reported on the bus and left out — the program keeps showing whatever
-    /// else is available, never a failure state.
+    /// else is available, never a failure state. One that started silent last
+    /// time is skipped, with an `input.skipped` event, until something that
+    /// could have changed it happens (``silentInputs``).
     ///
     /// The running set is the union of three things: the devices cast in the
     /// built-in camera and display roles, every input the active preset's
@@ -1014,6 +1067,24 @@ final class EngineModel {
         // before the desired-input computation below so the new device starts
         // and the old one stops in this same pass. Picking "None" parks the
         // role's device: no rebind, the layers keep their binding.
+        // The operator picking an input is the one signal that can retry a
+        // silent one without a device event: the pick says "try this now".
+        if selectionChanged {
+            if let cameraID = selectedCameraID { silentInputs.remove(cameraID) }
+            if let displayID = selectedDisplayID { silentInputs.remove(displayID) }
+        }
+        // A loaded project's preset goes into the compositor **before** any
+        // input is waited on: the shots reference inputs by id and render
+        // whatever of them is running, so nothing about the preset depends on
+        // which starts succeed. Waiting would put the whole verification
+        // window — ten seconds for a camera macOS lists but has switched off
+        // — between launch and the first program frame (observed 2026-09-06,
+        // lid closed: the preset loaded at 6.3 s while every available input
+        // was live at 1.5 s). Only a fresh project's seed still waits, because
+        // its shots are laid out around which cast devices actually started.
+        let presetEstablishedEarly = !hasAppliedConfiguration && hasSessionPreset
+        if presetEstablishedEarly { establishSessionPreset() }
+
         if selectionChanged, hasAppliedConfiguration {
             var edited = false
             if let camera = selectedCameraID, camera != boundCameraID {
@@ -1085,52 +1156,32 @@ final class EngineModel {
                 ]
             )
         }
-        for (id, input) in desired where activeInputs[id] == nil {
-            do {
-                try await input.start()
-                activeInputs[id] = input
-                eventBus.event(
-                    "input.started",
-                    domain: .capture,
-                    params: ["id": .string(id.rawValue), "name": .string(input.name)]
-                )
-            } catch {
-                eventBus.error(
-                    "input.start",
-                    domain: .capture,
-                    params: [
-                        "id": .string(id.rawValue),
-                        "error": .string(String(describing: error)),
-                    ]
-                )
-            }
+        var pending = desired.filter { activeInputs[$0.key] == nil }
+        for id in pending.keys where silentInputs.contains(id) {
+            pending[id] = nil
+            eventBus.event(
+                "input.skipped",
+                domain: .capture,
+                params: ["id": .string(id.rawValue), "reason": .string("silentSinceLastAttempt")]
+            )
         }
-
-        compositor.setInputs(Array(activeInputs.values))
-        // Multiview tiles exactly what is running — never what is merely
-        // discovered — in a stable name order, so a tile does not jump when
-        // another device connects. A tile shows picture, so the filter is
-        // the media question: everything running that produces video, which
-        // now includes the video generators (ARCHITECTURE.md, "The `Input`
-        // media capability").
-        multiviewInputs =
-            activeInputs.values
-            .filter { $0.media.contains(.video) }
-            .map { InputChoice(id: $0.id, name: $0.name, kind: $0.kind) }
-            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        // Each input joins the program the moment its first frame is proven,
+        // not when the slowest device in the pass gives up: the compositor's
+        // set is republished per start, and reported once at the end.
+        await startConcurrently(pending) { [self] id, input in
+            activeInputs[id] = input
+            publishActiveInputs()
+        }
+        publishActiveInputs()
+        reportActiveInputs()
         // A rebind above can have changed which input a layer names.
         syncTally()
-        eventBus.event(
-            "compositor.inputs",
-            domain: .composition,
-            params: ["ids": .string(activeInputs.keys.map(\.rawValue).sorted().joined(separator: ","))]
-        )
         if selectionChanged {
             appliedDisplayID = selectedDisplayID
             appliedCameraID = selectedCameraID
             if !hasAppliedConfiguration {
                 hasAppliedConfiguration = true
-                establishSessionPreset()
+                if !presetEstablishedEarly { establishSessionPreset() }
             }
         }
     }
@@ -1464,26 +1515,8 @@ final class EngineModel {
                 params: ["id": .string(id.rawValue), "reason": .string("stripMutedOrRemoved")]
             )
         }
-        for (id, input) in desired where activeAudioInputs[id] == nil {
-            do {
-                try await input.start()
-                activeAudioInputs[id] = input
-                eventBus.event(
-                    "input.started",
-                    domain: .capture,
-                    params: ["id": .string(id.rawValue), "name": .string(input.name)]
-                )
-            } catch {
-                eventBus.error(
-                    "input.start",
-                    domain: .capture,
-                    params: [
-                        "id": .string(id.rawValue),
-                        "error": .string(String(describing: error)),
-                    ]
-                )
-            }
-        }
+        let pending = desired.filter { activeAudioInputs[$0.key] == nil }
+        await startConcurrently(pending) { [self] id, input in activeAudioInputs[id] = input }
 
         // The mixer gets every strip whose device is running, with its
         // current level, pan, and mute — the engine-side strips of the mix.
@@ -1504,6 +1537,166 @@ final class EngineModel {
             "mixer.channels",
             domain: .audio,
             params: ["ids": .string(activeAudioInputs.keys.map(\.rawValue).sorted().joined(separator: ","))]
+        )
+    }
+
+    /// Hands the running input set to the compositor and the multiview
+    /// list — the one place the active set becomes the program's, so a pass,
+    /// a per-start publish, and a mid-show release cannot do it differently.
+    /// Silent: a pass calls this once per started input and reports the set
+    /// once at the end with ``reportActiveInputs()``.
+    ///
+    /// Multiview tiles exactly what is running — never what is merely
+    /// discovered — in a stable name order, so a tile does not jump when
+    /// another device connects. A tile shows picture, so the filter is the
+    /// media question: everything running that produces video, which now
+    /// includes the video generators (ARCHITECTURE.md, "The `Input` media
+    /// capability").
+    private func publishActiveInputs() {
+        compositor.setInputs(Array(activeInputs.values))
+        multiviewInputs =
+            activeInputs.values
+            .filter { $0.media.contains(.video) }
+            .map { InputChoice(id: $0.id, name: $0.name, kind: $0.kind) }
+            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
+    /// Reports the compositor's current input set on the bus — once per
+    /// pass, after every start has landed, so the log carries the settled set
+    /// rather than one line per device.
+    private func reportActiveInputs() {
+        eventBus.event(
+            "compositor.inputs",
+            domain: .composition,
+            params: ["ids": .string(activeInputs.keys.map(\.rawValue).sorted().joined(separator: ","))]
+        )
+    }
+
+    /// Starts every given input at once, handing each one to the caller the
+    /// moment it is proven live.
+    ///
+    /// **Concurrently, never one after another** — the sequential loop this
+    /// replaces let a single device stall the whole pass. Observed 2026-09-06:
+    /// a USB camera whose stream start timed out inside IOKit held
+    /// `input.start()` for ten seconds, and because every other input waited
+    /// behind it, the compositor received no input set and the active preset
+    /// did not load until that timeout expired, while the two Continuity
+    /// Cameras that had already started backed up their CoreMedia I/O queues
+    /// for the duration. A device's start now costs only that device.
+    ///
+    /// Each outcome is reported on the bus as it lands, in completion order,
+    /// so the log's timestamps say when each device actually came up, and
+    /// `onStarted` runs in that same order — which is what lets a caller put
+    /// a fast device into the program while a slow one is still verifying.
+    /// An input that cannot start (authorization denied, device gone, a
+    /// session that reported a runtime error) is reported as an `input.start`
+    /// error and left out — the caller keeps whatever else is available,
+    /// never a failure state. One that started but stayed silent is reported
+    /// the same way and remembered in ``silentInputs``, so the next pass does
+    /// not pay its verification window again.
+    ///
+    /// - Parameters:
+    ///   - inputs: The inputs to start, by identifier.
+    ///   - onStarted: Called on the main actor for each input that started,
+    ///     before its `input.started` event.
+    private func startConcurrently(
+        _ inputs: [InputID: any Input],
+        onStarted: (InputID, any Input) -> Void
+    ) async {
+        await withTaskGroup(of: (InputID, Result<any Input, any Error>).self) { group in
+            for (id, input) in inputs {
+                group.addTask {
+                    do {
+                        try await input.start()
+                        return (id, .success(input))
+                    } catch {
+                        return (id, .failure(error))
+                    }
+                }
+            }
+            for await (id, outcome) in group {
+                switch outcome {
+                case .success(let input):
+                    onStarted(id, input)
+                    eventBus.event(
+                        "input.started",
+                        domain: .capture,
+                        params: ["id": .string(id.rawValue), "name": .string(input.name)]
+                    )
+                case .failure(let error):
+                    if case CaptureInputError.startedSilent = error { silentInputs.insert(id) }
+                    eventBus.error(
+                        "input.start",
+                        domain: .capture,
+                        params: [
+                            "id": .string(id.rawValue),
+                            "error": .string(String(describing: error)),
+                        ]
+                    )
+                }
+            }
+        }
+    }
+
+    /// Starts the inputs a permission grant has just unblocked.
+    ///
+    /// A display input denied Screen Recording at boot stays out of the
+    /// active set until a reconfigure pass tries it again, and before this
+    /// existed that pass only came along with a picker change or a device
+    /// event — so a grant made in System Settings looked like it had done
+    /// nothing (observed 2026-09-06). The video pass covers the camera and
+    /// Screen Recording grants; the audio pass covers the microphone, whose
+    /// strips start their devices. Both coalesce, and both skip an input
+    /// already running, so calling this with a grant that changed nothing
+    /// costs a registry read.
+    ///
+    /// - Parameter granted: The permissions that newly became granted, as
+    ///   ``PermissionsModel/refresh()`` reports them; an empty set does
+    ///   nothing.
+    func applyNewlyGranted(_ granted: Set<AuthorizationPermission>) async {
+        guard !granted.isEmpty else { return }
+        // A grant is a change worth retrying a silent input for.
+        silentInputs.removeAll()
+        if granted.contains(.camera) || granted.contains(.screenRecording) {
+            await reconfigure()
+        }
+        if granted.contains(.microphone) {
+            await reconfigureAudio()
+        }
+    }
+
+    /// Releases an input whose capture session died after a successful
+    /// start, on its `input.runtimeError` event.
+    ///
+    /// The input has already torn its session down and finished its frame
+    /// stream by the time the event is on the bus (``CameraInput``); what
+    /// remains is the engine's bookkeeping. Dropping it from the active set
+    /// is what lets the next reconfigure pass — a picker change, a device
+    /// event — try the device again, and handing the compositor the reduced
+    /// set is what takes the frozen last frame out of the program rather
+    /// than leaving a dead input rendering. No automatic retry here: a
+    /// device that dies on every start would otherwise loop, and the pass
+    /// that retries it is one the operator or a device event asks for.
+    ///
+    /// - Parameter event: An event drained from the bus.
+    private func handleInputRuntimeError(_ event: EventBusEvent) async {
+        guard event.name == "input.runtimeError", let rawID = event.params?["id"].flatMap(Self.stringValue) else {
+            return
+        }
+        let id = InputID(rawValue: rawID)
+        if let input = activeInputs.removeValue(forKey: id) {
+            await input.stop()
+            publishActiveInputs()
+            reportActiveInputs()
+        }
+        if let input = activeAudioInputs.removeValue(forKey: id) {
+            await input.stop()
+            await reconfigureAudio()
+        }
+        eventBus.event(
+            "input.stopped",
+            domain: .capture,
+            params: ["id": .string(rawID), "reason": .string("runtimeError")]
         )
     }
 
@@ -2976,6 +3169,7 @@ final class EngineModel {
         await stopStreaming()
         streamStatusTask?.cancel()
         streamStatusTask = nil
+        permissions.stopObservingActivation()
         if autosaveTask != nil { saveProject() }
         programTask?.cancel()
         programTask = nil

@@ -95,12 +95,13 @@ public struct AVFoundationCapturePlugIn: PlugIn {
     ///   - device: The discovered device to build an input for.
     ///   - eventBus: The host's event bus, handed to the input so it can
     ///     report its own capture diagnostics (the negotiated audio format,
-    ///     a retried bring-up) rather than leaving them to AVFoundation's
-    ///     console logging, which never reaches a sink.
+    ///     a retried bring-up, a camera session that dies after starting)
+    ///     rather than leaving them to AVFoundation's console logging, which
+    ///     never reaches a sink.
     /// - Returns: The input.
     private static func makeInput(for device: CaptureDevice, eventBus: EventBus) -> any Input {
         device.kind == .camera
-            ? CameraInput(device: device)
+            ? CameraInput(device: device, eventBus: eventBus)
             : MicrophoneInput(device: device, eventBus: eventBus)
     }
 

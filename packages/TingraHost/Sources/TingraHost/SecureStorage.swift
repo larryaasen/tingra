@@ -96,13 +96,15 @@ public struct KeychainSecureStorage: SecureStorage {
     /// declares one (DESTINATIONS.md, "Key sharing between the app and the
     /// daemon").
     ///
-    /// As of 0.1.2 no shipped binary declares one, so this is nil in practice
-    /// and the two processes do not share keys. `keychain-access-groups` is a
-    /// restricted entitlement: the kernel authorizes it from an embedded
-    /// provisioning profile, which the bare `tingra-cli` executable cannot
-    /// carry — v0.1.1 shipped it and was SIGKILLed at every launch. The seam
-    /// stays because the mechanism is right and only the CLI's packaging is
-    /// wrong; DESTINATIONS.md owns the replacement.
+    /// The app declares one again as of 2026-08-30; `tingra-cli` cannot and
+    /// passes nil. `keychain-access-groups` is a restricted entitlement: the
+    /// kernel authorizes it from an embedded provisioning profile, which only
+    /// a bundle's **main executable** can carry — v0.1.1 shipped it on the
+    /// bare CLI and was SIGKILLed at every launch, and a bare helper placed
+    /// inside a provisioned bundle is killed the same way (measured
+    /// 2026-08-30; DESTINATIONS.md, "What the probe measured"). So the daemon
+    /// joins this group only by becoming a bundle of its own, which is
+    /// packaging work sequenced with the app cask.
     private let accessGroup: String?
 
     /// Creates a Keychain-backed store.
@@ -125,6 +127,13 @@ public struct KeychainSecureStorage: SecureStorage {
     /// `tingra-cli` declared the same group until 0.1.2 and no longer can —
     /// see ``sharedAccessGroup()``.
     ///
+    /// The group's **prefix** is deliberately not written here either, and for
+    /// a second reason beyond secrecy: the app's entitlement carries
+    /// `$(AppIdentifierPrefix)`, which on an older Apple account is not the
+    /// team identifier at all (it is the legacy App ID prefix, and Tingra's
+    /// two differ). Matching on the suffix is what keeps this code correct
+    /// under either.
+    ///
     /// Only the suffix is a constant. The full group string carries the team
     /// identifier prefix, which a public repository must never hold in a
     /// tracked file (CLAUDE.md, "Signing") — hence ``sharedAccessGroup()``,
@@ -139,15 +148,20 @@ public struct KeychainSecureStorage: SecureStorage {
     /// value this needs — reading it back is how the group is known at runtime
     /// without a Team ID ever appearing in source.
     ///
-    /// Returns nil whenever the running binary declares no such group, which
-    /// as of 0.1.2 is every build of both products. In `tingra-cli` — unsigned
-    /// `swift build` (no entitlements at all) and signed release alike — the
-    /// entitlement had to be removed to keep the binary launchable; in the app
-    /// it was removed once the CLI could no longer join, leaving nothing to
-    /// share with. That is a real state, not an error: the caller degrades
-    /// honestly — names and URLs
-    /// still resolve, and a key the process cannot read is reported as absent
-    /// with a structured error explaining why (see ``DestinationStore``).
+    /// Returns nil whenever the running binary declares no such group: every
+    /// `tingra-cli` build (unsigned `swift build` and signed release alike,
+    /// since the entitlement had to be removed to keep the binary launchable)
+    /// and every unsigned build of the app. That is a real state, not an
+    /// error: the caller degrades honestly — names and URLs still resolve, and
+    /// a key the process cannot read is reported as absent with a structured
+    /// error explaining why (see ``DestinationStore``).
+    ///
+    /// Note that nil is not the only way a process ends up without the
+    /// data-protection keychain, and the difference matters when reading a
+    /// failure: a binary with **no keychain group at all** does not merely
+    /// miss this group, it cannot use the data-protection keychain — writes
+    /// return `errSecMissingEntitlement` (−34018) and reads see an empty
+    /// group. See ``baseQuery(forAccount:)``.
     ///
     /// - Returns: The full access group string, or nil when the binary
     ///   declares none.
@@ -165,6 +179,18 @@ public struct KeychainSecureStorage: SecureStorage {
     /// the `kSecAttrAccessible` accessibility attribute (the legacy file-based
     /// login keychain ignores it). It keys items to the app's own identity, so
     /// reads and writes need no user unlock prompt.
+    ///
+    /// **It has a precondition worth stating, because failing it is silent:**
+    /// the running binary must carry a keychain access group, which it gets
+    /// from a provisioning profile (either `keychain-access-groups` or the
+    /// `com.apple.application-identifier` every provisioned bundle carries).
+    /// A binary with neither — any bare executable, and any app bundle signed
+    /// without a profile — gets `errSecMissingEntitlement` (−34018) on write
+    /// and an empty group on read, measured across both signing identities
+    /// and both launch paths on 2026-08-30. The app carried exactly that shape
+    /// from its conversion to an Xcode project until this was fixed, so every
+    /// stream key it filed was rejected and reported as a `securestore.write`
+    /// error while the session carried on with the key in memory.
     private func baseQuery(forAccount account: String) -> [CFString: Any] {
         var query: [CFString: Any] = [
             kSecClass: kSecClassGenericPassword,
