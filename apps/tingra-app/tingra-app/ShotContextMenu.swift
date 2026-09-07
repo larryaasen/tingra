@@ -11,8 +11,8 @@ import SwiftUI
 import TingraComposition
 import TingraEventBus
 
-/// Which surface a shot's context menu is attached to: the switcher rows'
-/// shot buttons across the main window, or the sidebar's shot rows.
+/// Which surface a shot's context menu is attached to: the shot bank's tiles
+/// across the main window (``ShotBankView``), or the sidebar's shot rows.
 ///
 /// ``PresetMenuSurface`` one level down. The menu is one view
 /// (``ShotContextMenu``) on both, so the two cannot drift — but two controls
@@ -23,11 +23,12 @@ import TingraEventBus
 /// asks first. The surface is what says which `tap` names and which words a
 /// given menu carries.
 ///
-/// The switcher surface exists even though the rows are hidden by default
-/// (``SwitcherRowsPreferences``): an operator who turns them on gets the same
-/// menu on them the sidebar has, under the names the rows always reported.
+/// The switcher surface kept its name and its `shot…` tap names when the
+/// Program row of buttons it was written for became the shot bank
+/// (ARCHITECTURE.md, "The shot bank"): the bank *is* the switcher, and a log
+/// reader sees one surface across the change.
 enum ShotMenuSurface: Sendable, CaseIterable {
-    /// The Program row of the main window's switcher rows.
+    /// The shot bank's tiles across the main window — the switcher.
     case switcher
 
     /// The Shots section of the main window's sidebar.
@@ -106,11 +107,9 @@ enum ShotMenuSurface: Sendable, CaseIterable {
 /// reorder, and remove that shot (ARCHITECTURE.md, "Shot management", "Shot
 /// and preset reordering", "Per-shot default transitions").
 ///
-/// Shared by the switcher rows' shot buttons and the sidebar's shot rows, so
+/// Shared by the shot bank's tiles and the sidebar's shot rows, so
 /// right-clicking a shot offers the same commands wherever the shot is
-/// listed — which matters now that the switcher rows are hidden by default:
-/// the sidebar is where an operator manages shots unless they turn the rows
-/// on. ``ShotMenuSurface`` supplies each surface's `tap` names and the
+/// listed. ``ShotMenuSurface`` supplies each surface's `tap` names and the
 /// direction words its reorder items use. Reorder rides the menu rather than
 /// drag-and-drop so a shot button's single click stays reserved for the
 /// on-air take.

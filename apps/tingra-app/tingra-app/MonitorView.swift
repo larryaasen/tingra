@@ -225,17 +225,21 @@ struct MonitorView: NSViewRepresentable {
 /// One framed monitor: the `MTKView` over a frame source, letterboxed on
 /// black, rounded, and badged with what it is showing.
 ///
-/// Shared by the main window's program and preview monitors and by every
-/// multiview tile, so the two surfaces cannot drift in how a monitor reads —
-/// the lesson `MeterCapsule` learned on the audio side.
+/// Shared by the main window's program and preview monitors, every multiview
+/// tile, and the shot bank's tiles, so the surfaces cannot drift in how a
+/// monitor reads — the lesson `MeterCapsule` learned on the audio side.
 struct MonitorTile: View {
     /// Where the monitor reads its frames.
     let source: any MonitorFrameSource
 
-    /// What this monitor is showing: a bus name, or an input's name.
-    let label: Text
+    /// What this monitor is showing — a bus name, or an input's name — worn
+    /// as a badge on the picture, or nil for no badge. The shot bank passes
+    /// nil: its tiles are captioned beneath, the way the main window's
+    /// monitors are captioned with the shot they show, so a small thumbnail
+    /// is not half covered by its own name.
+    let label: Text?
 
-    /// The badge's tint.
+    /// The badge's tint. Unused when ``label`` is nil.
     let badgeTint: Color
 
     /// The **tally** border's tint, or nil for no border (GLOSSARY.md,
@@ -265,12 +269,14 @@ struct MonitorTile: View {
                 }
             }
             .overlay(alignment: .topLeading) {
-                label
-                    .font(.caption.weight(.semibold))
-                    .padding(6)
-                    .background(badgeTint.opacity(0.85), in: .capsule)
-                    .foregroundStyle(.white)
-                    .padding(8)
+                if let label {
+                    label
+                        .font(.caption.weight(.semibold))
+                        .padding(6)
+                        .background(badgeTint.opacity(0.85), in: .capsule)
+                        .foregroundStyle(.white)
+                        .padding(8)
+                }
             }
             .overlay(alignment: .topTrailing) {
                 if let statusBadge {

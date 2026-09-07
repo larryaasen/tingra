@@ -40,7 +40,7 @@ struct SidebarRow: Identifiable, Equatable {
     /// What this row's symbol reads, or nil for a row that does not stage.
     ///
     /// ``MultiviewTile/Tally`` rather than a second enum, so the tally means
-    /// one thing across every surface that draws one — the input rows, the
+    /// one thing across every surface that draws one — the shot bank, the
     /// multiview window, and the sidebar's shot, camera, display, and
     /// generator sections. Nil everywhere else, and that is the tally's own
     /// rule rather than an omission: a microphone is on no bus the operator

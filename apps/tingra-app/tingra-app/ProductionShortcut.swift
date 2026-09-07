@@ -110,6 +110,17 @@ enum ProductionShortcut: String, CaseIterable, Sendable {
         stageShotKey(forIndex: index).map { KeyboardShortcut($0, modifiers: stageShot.modifiers) }
     }
 
+    /// The shortcut that stages the shot at the given switcher position, as
+    /// macOS prints it — "⌘1" through "⌘9" — or nil past ``stageShotLimit``.
+    /// What the shot bank's captions append to a shot's name, so the tile
+    /// answers "which shot is ⌘4" without a trip to the Shots menu.
+    ///
+    /// - Parameter index: The shot's zero-based position in the switcher order.
+    /// - Returns: The printed shortcut, or nil when the position has none.
+    static func stageShotSymbol(forIndex index: Int) -> String? {
+        stageShotKey(forIndex: index).map { symbol(modifiers: stageShot.modifiers, keyLabel: String($0.character)) }
+    }
+
     /// The key the shortcut is bound to, or nil for ``stageShot``, which is a
     /// range of keys rather than one (see ``stageShotKey(forIndex:)``).
     var key: KeyEquivalent? {

@@ -1,6 +1,17 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "%@ (%@)" : {
+      "comment" : "Shot bank tile caption: the shot's name, then the shortcut that stages it, e.g. Default (⌘1)",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ (%2$@)"
+          }
+        }
+      }
+    },
     "%@ (Not connected)" : {
       "comment" : "Picker entry for a selected device that is not currently connected",
       "localizations" : {
@@ -82,6 +93,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@ se eliminará del preajuste. Esta acción no se puede deshacer."
+          }
+        }
+      }
+    },
+    "%1$@ (%2$@)" : {
+      "comment" : "Shot bank tile caption: the shot's name, then the shortcut that stages it, e.g. Default (⌘1)",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ (%2$@)"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ (%2$@)"
           }
         }
       }
@@ -174,8 +203,22 @@
     "Add a new empty preset to the project" : {
       "comment" : "Tooltip on the sidebar's Add Preset button"
     },
-    "Add a new empty shot to the active preset" : {
-      "comment" : "Tooltip on the sidebar's Add Shot button"
+    "Add a shot to the active preset" : {
+      "comment" : "Tooltip on the Add Shot menu",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eine Einstellung zur aktiven Voreinstellung hinzufügen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Añadir una toma al preajuste activo"
+          }
+        }
+      }
     },
     "Add Destination" : {
       "comment" : "Button that adds a stream destination",
@@ -262,6 +305,23 @@
         }
       }
     },
+    "Add Shot Showing %@" : {
+      "comment" : "Sidebar input row context menu: add a full-frame shot of this input; the placeholder is the input's name",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einstellung mit %@ hinzufügen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Añadir toma con %@"
+          }
+        }
+      }
+    },
     "Appearance" : {
       "comment" : "General settings: label of the light/dark appearance control",
       "localizations" : {
@@ -326,6 +386,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Salidas de audio"
+          }
+        }
+      }
+    },
+    "Bars" : {
+      "comment" : "Shot: SMPTE color bars full-frame",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Farbbalken"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Barras"
           }
         }
       }
@@ -773,6 +850,23 @@
         }
       }
     },
+    "Drag a camera, display, or generator here, or choose Add Shot." : {
+      "comment" : "Placeholder tile in the shot bank when the preset has no shots",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ziehe eine Kamera, einen Bildschirm oder einen Generator hierher oder wähle „Einstellung hinzufügen“."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Arrastra aquí una cámara, una pantalla o un generador, o elige «Añadir toma»."
+          }
+        }
+      }
+    },
     "Duplicate" : {
       "comment" : "Context menu: duplicate this shot or preset",
       "localizations" : {
@@ -871,6 +965,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Efectos"
+          }
+        }
+      }
+    },
+    "Empty Shot" : {
+      "comment" : "Add Shot menu item: a new shot with no layers",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Leere Einstellung"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Toma vacía"
           }
         }
       }
@@ -1144,6 +1255,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Iris"
+          }
+        }
+      }
+    },
+    "Keep" : {
+      "comment" : "Button on a transient shot tile keeping the shot in the preset",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Behalten"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conservar"
+          }
+        }
+      }
+    },
+    "Keep this shot in the preset" : {
+      "comment" : "Tooltip on a transient shot tile's Keep button",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Einstellung in der Voreinstellung behalten"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conservar esta toma en el preajuste"
           }
         }
       }
@@ -1488,6 +1633,23 @@
         }
       }
     },
+    "Multiple layers" : {
+      "comment" : "Accessibility label of the glyph on a shot tile with more than one layer",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mehrere Ebenen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Varias capas"
+          }
+        }
+      }
+    },
     "Multiview" : {
       "comment" : "Title of the multiview monitoring window, and its View-menu command",
       "localizations" : {
@@ -1678,6 +1840,7 @@
     },
     "No cameras" : {
       "comment" : "Shown in place of the camera row when none is discovered",
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1832,6 +1995,7 @@
     },
     "No other inputs" : {
       "comment" : "Shown in place of the generator and display row when none is discovered",
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -2656,7 +2820,7 @@
       }
     },
     "Shots" : {
-      "comment" : "Heading over the input rows beneath the monitors — the automatic shots\nSidebar section heading over the active preset's shots\nTitle of the Shots menu, listing the active preset's shots",
+      "comment" : "Heading over the shot bank beneath the monitors\nSidebar section heading over the active preset's shots\nTitle of the Shots menu, listing the active preset's shots",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -2705,9 +2869,6 @@
           }
         }
       }
-    },
-    "Show Program and Preview Rows" : {
-      "comment" : "General settings: checkbox showing or hiding the main window's rows of shot buttons"
     },
     "Show Sidebar" : {
       "comment" : "View menu item that shows the main window's sidebar",
@@ -3190,6 +3351,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Versión no disponible"
+          }
+        }
+      }
+    },
+    "Video Generator" : {
+      "comment" : "Add Shot menu submenu listing the video generators",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Videogenerator"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Generador de vídeo"
           }
         }
       }

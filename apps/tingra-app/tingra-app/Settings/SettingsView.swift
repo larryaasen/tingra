@@ -88,10 +88,6 @@ struct SettingsView: View {
     /// Whether the windows carry a status bar, edited by the General pane.
     @Bindable var statusBar: StatusBarModel
 
-    /// Whether the main window shows its switcher rows, edited by the General
-    /// pane.
-    @Bindable var switcherRows: SwitcherRowsModel
-
     /// Closes the settings window — what Escape does (see ``body``).
     @Environment(\.dismiss) private var dismiss
 
@@ -229,7 +225,7 @@ struct SettingsView: View {
     @ViewBuilder private func paneBody(for pane: SettingsPane) -> some View {
         switch pane {
         case .general:
-            GeneralSettingsView(model: model, appearance: appearance, statusBar: statusBar, switcherRows: switcherRows)
+            GeneralSettingsView(model: model, appearance: appearance, statusBar: statusBar)
         case .permissions: PermissionsSettingsView(model: model)
         case .shortcuts: ShortcutsSettingsView()
         case .about: AboutSettingsView()

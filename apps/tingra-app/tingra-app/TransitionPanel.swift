@@ -18,10 +18,11 @@ import TingraEventBus
 /// them, FTB off to the side).
 ///
 /// Its own panel, under its own heading, because these controls used to
-/// trail the preview row of shot buttons and that row is now hidden by
-/// default (``SwitcherRowsPreferences``): the take must have a home that is
-/// always on screen, and it deserves one anyway — Take is the one step to
-/// air, and it should not be the last button on a row of nine.
+/// trail the preview row of shot buttons, and that row is gone (the shot
+/// bank is the switcher row now — ARCHITECTURE.md, "The shot bank"): the take
+/// must have a home that is always on screen, and it deserves one anyway —
+/// Take is the one step to air, and it should not be the last button on a
+/// row of nine.
 ///
 /// **What the panel does not repeat.** Which shot is staged and which is on
 /// program are read off the monitors' captions directly above; the panel

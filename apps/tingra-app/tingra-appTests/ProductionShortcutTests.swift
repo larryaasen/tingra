@@ -92,12 +92,21 @@ struct ProductionShortcutTests {
         #expect(ProductionShortcut.stageShotShortcut(forIndex: 0)?.modifiers == .command)
     }
 
+    @Test("a shot position prints its stage shortcut the way the menu bar does")
+    func positionsPrintTheirShortcut() {
+        #expect(ProductionShortcut.stageShotSymbol(forIndex: 0) == "⌘1")
+        #expect(ProductionShortcut.stageShotSymbol(forIndex: 3) == "⌘4")
+        #expect(ProductionShortcut.stageShotSymbol(forIndex: 8) == "⌘9")
+    }
+
     @Test("a tenth shot, and a nonsensical position, are simply unbound")
     func positionsOutsideTheRangeAreUnbound() {
         #expect(ProductionShortcut.stageShotKey(forIndex: 9) == nil)
         #expect(ProductionShortcut.stageShotKey(forIndex: 42) == nil)
         #expect(ProductionShortcut.stageShotKey(forIndex: -1) == nil)
         #expect(ProductionShortcut.stageShotShortcut(forIndex: 9) == nil)
+        #expect(ProductionShortcut.stageShotSymbol(forIndex: 9) == nil)
+        #expect(ProductionShortcut.stageShotSymbol(forIndex: -1) == nil)
     }
 
     @Test("every bound position produces a shortcut, and no position past the limit does")

@@ -17,9 +17,9 @@ import TingraPlugInKit
 ///
 /// The ``MultiviewView`` window's grid, beneath its two monitors. The main
 /// window used to carry this same grid in its top-left area; it now carries
-/// ``InputRowsView`` there instead — two provenance-ordered rows rather than
-/// one adaptive grid, listing what is *available* where this grid tiles what
-/// is *running*. The two surfaces still cannot drift in how a tile **reads**,
+/// ``ShotBankView`` beneath its monitors instead — the preset's *shots*,
+/// where this grid tiles the inputs that are *running*. The two surfaces
+/// still cannot drift in how a tile **reads**,
 /// because both draw ``MonitorTile`` and both take their lamp colours from
 /// ``MultiviewTile/Tally`` (the `MeterCapsule` lesson, one media over).
 ///

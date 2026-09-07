@@ -44,13 +44,22 @@ import TingraPlugInKit
 /// **A shot row stages that shot; a camera, display, or generator row stages
 /// that input; a preset row switches to that preset.** The staging rows are the
 /// preview bus, through the two calls that already own it —
-/// ``EngineModel/setPreview(_:)`` for a shot (identical to the switcher's
-/// preview row; clicking the staged shot again leaves it staged) and
-/// ``EngineModel/stagePreview(showing:)`` for an input, which
-/// stages it **full frame and nothing else**. They all carry the same
-/// **tally** the input rows' tiles do, from the shared `Tally` tints, so a
-/// lamp cannot mean red here and green there. Nothing reaches program from the
-/// sidebar: staging is not taking, and Take remains the one step to air.
+/// ``EngineModel/setPreview(_:)`` for a shot (identical to the shot bank's
+/// tiles; clicking the staged shot again leaves it staged) and
+/// ``EngineModel/stagePreview(showing:)`` for an input, which stages it
+/// **full frame and nothing else** as a **transient** shot — a dashed tile in
+/// the bank that is kept only if the operator keeps, edits, or airs it
+/// (ARCHITECTURE.md, "The shot bank"). They all carry the same **tally** the
+/// bank's tiles do, from the shared `Tally` tints, so a lamp cannot mean red
+/// here and green there. Nothing reaches program from the sidebar: staging is
+/// not taking, and Take remains the one step to air.
+///
+/// **An input row is also how an input becomes a shot.** Each camera,
+/// display, and generator row is draggable (``DraggedInput``): dropped on the
+/// shot bank it inserts a full-frame authored shot of that input, dropped on
+/// the layer editor's list it adds a layer. Its context menu offers the same
+/// as a command — **Add Shot Showing …** — for the operator working from the
+/// list rather than the bank.
 ///
 /// A preset row is the odd one and is marked differently on purpose: switching
 /// preset is not staging, so ``EngineModel/switchPreset(to:)`` is what it
@@ -59,16 +68,21 @@ import TingraPlugInKit
 /// bus. Preset *management* — duplicate, rename, reorder, remove — is the
 /// row's context menu (``PresetContextMenu``), and a shot row carries the
 /// matching one (``ShotContextMenu``: duplicate, rename, default transition,
-/// reorder, delete — the last asking first). **Adding** either is one of the
-/// two buttons pinned to the sidebar's bottom edge, Add Shot over Add Preset:
-/// the sidebar is the one place presets and shots are always listed (the
-/// main window's preset switcher row was removed 2026-09-06 as a repeat of
-/// this list, and its shot rows are hidden by default since 2026-09-07), so
-/// it is the place they are made. The buttons sit where Notes puts New
-/// Folder, Reminders puts Add List, and Calendar puts its **+**: plain,
-/// borderless `plus.circle` labels across the bottom of the source list, in
-/// a bottom safe-area inset rather than last rows, so they stay put while
-/// the sections above them scroll.
+/// reorder, delete — the last asking first). **Adding a preset** is the one
+/// control pinned to the sidebar's bottom edge: the sidebar is the one place
+/// presets are always listed (the main window's preset switcher row was
+/// removed 2026-09-06 as a repeat of this list), so Add Preset sits where
+/// Notes puts New Folder, Reminders puts Add List, and Calendar puts its
+/// **+**: a plain, borderless `plus.circle` label across the bottom of the
+/// source list, in a bottom safe-area inset rather than a last row, so it
+/// stays put while the sections above it scroll. **Adding a shot** is the
+/// Shots section header's context menu — an **Add Shot** submenu of the same
+/// items the plus button beside the bank's Shots heading and the menu bar's
+/// Shots menu offer (``AddShotMenuItems``: an empty shot, or a full-frame
+/// shot of any camera, display, or video generator). It replaced an Add Shot
+/// row over Add Preset at the bottom edge (2026-09-07): with the bank's
+/// button and the Shots menu both in reach, a third always-visible control
+/// for the same action was one more than the sidebar needed.
 ///
 /// The audio sections and the destination section stay inert, which is the
 /// same rule rather than an inconsistency: staging has no meaning for a
@@ -86,9 +100,10 @@ import TingraPlugInKit
 /// devices (``EngineModel/readDeviceLists()``) and the monitor's Core Audio
 /// device stream for the outputs — so a device that comes or goes reaches the
 /// sidebar as an event rather than a poll (CLAUDE.md). Listing a device also
-/// starts nothing: unlike ``InputRowsView``, whose live tiles are a deliberate
-/// and priced exception, a name in a list needs no frames, so nothing here
-/// lights a camera indicator or opens a microphone.
+/// starts nothing: a name in a list needs no frames, so nothing here lights a
+/// camera indicator or opens a microphone — a camera starts when a shot
+/// references it, including the transient one a click on its row stages, and
+/// stops again when that shot is discarded.
 struct SidebarView: View {
     /// The engine model. Read for every list; written only through the two
     /// preview calls a row's action makes, and the one delete its shot context
@@ -222,7 +237,7 @@ struct SidebarView: View {
         }
         .listStyle(.sidebar)
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            addButtons
+            addPresetButton
         }
         .navigationSplitViewColumnWidth(
             min: Self.minimumWidth,
@@ -370,51 +385,34 @@ struct SidebarView: View {
         }
     }
 
-    /// The two add buttons across the sidebar's bottom edge — Add Shot over
-    /// Add Preset — appending a new empty shot to the active preset
-    /// (``EngineModel/addShot()``) or a new empty preset to the project
-    /// (``EngineModel/addPreset()``).
+    /// The Add Preset button across the sidebar's bottom edge, adding a new
+    /// empty preset to the project (``EngineModel/addPreset()``).
     ///
     /// This is the standard macOS placement for "make another of the things
     /// this sidebar lists" — Notes' New Folder, Reminders' Add List, Calendar's
-    /// **+** — and they are drawn the way those are: borderless buttons, a
-    /// `plus.circle` beside each title, leading-aligned with the rows above,
-    /// with the system's own sidebar material showing through. No hand-drawn
-    /// bar and no divider — the material is the sidebar's, and the inset is
-    /// what keeps the buttons in view while the sections scroll. Two stacked
-    /// rows rather than one **+** with a menu, because the two actions are
-    /// equally frequent and a menu would hide the one an operator reaches
-    /// for most. Shot above preset because adding a shot is the everyday
-    /// action; a preset is made once per show. Neither is ever disabled: a
-    /// preset can always hold one more shot, and a project one more preset.
-    private var addButtons: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            addButton(
-                Text("Add Shot", comment: "Button adding a new empty shot to the preset"),
-                help: Text(
-                    "Add a new empty shot to the active preset",
-                    comment: "Tooltip on the sidebar's Add Shot button"
-                )
-            ) {
-                model.eventBus.tap("sidebarShotAdd.button", domain: .composition)
-                model.addShot()
-            }
-
-            addButton(
-                Text("Add Preset", comment: "Button adding a new empty preset to the project"),
-                help: Text(
-                    "Add a new empty preset to the project", comment: "Tooltip on the sidebar's Add Preset button")
-            ) {
-                model.eventBus.tap("sidebarPresetAdd.button", domain: .composition)
-                model.addPreset()
-            }
+    /// **+** — and it is drawn the way those are: borderless, a `plus.circle`
+    /// beside the title, leading-aligned with the rows above, with the
+    /// system's own sidebar material showing through. No hand-drawn bar and no
+    /// divider — the material is the sidebar's, and the inset is what keeps
+    /// the control in view while the sections scroll. Never disabled: a
+    /// project can always hold one more preset. Add Shot was a second row
+    /// above it until 2026-09-07 and moved into the Shots section's context
+    /// menu, the bank's heading, and the menu bar (``AddShotMenuItems``).
+    private var addPresetButton: some View {
+        addButton(
+            Text("Add Preset", comment: "Button adding a new empty preset to the project"),
+            help: Text(
+                "Add a new empty preset to the project", comment: "Tooltip on the sidebar's Add Preset button")
+        ) {
+            model.eventBus.tap("sidebarPresetAdd.button", domain: .composition)
+            model.addPreset()
         }
         .padding(.horizontal, Self.addButtonsInset)
         .padding(.vertical, Self.addButtonsInset - Self.addButtonRowPadding)
     }
 
-    /// One of the ``addButtons``: a borderless `plus.circle` label spanning
-    /// the sidebar's width, so the whole row answers the click.
+    /// The ``addPresetButton``'s shape: a borderless `plus.circle` label
+    /// spanning the sidebar's width, so the whole row answers the click.
     ///
     /// - Parameters:
     ///   - title: The button's title.
@@ -423,38 +421,64 @@ struct SidebarView: View {
     /// - Returns: The button.
     private func addButton(_ title: Text, help: Text, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Label {
-                title
-            } icon: {
-                Image(systemName: "plus.circle")
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.vertical, Self.addButtonRowPadding)
-            .contentShape(.rect)
+            addLabel(title)
         }
         .buttonStyle(.borderless)
         .foregroundStyle(.secondary)
         .help(help)
     }
 
-    /// The add buttons' inset from the sidebar's edges: the list's own row
-    /// inset, so their glyphs line up with the row glyphs above them.
+    /// The label of an add control: a `plus.circle` beside the title, the
+    /// whole row wide so the whole row answers the click.
+    ///
+    /// - Parameter title: The control's title.
+    /// - Returns: The label.
+    private func addLabel(_ title: Text) -> some View {
+        Label {
+            title
+        } icon: {
+            Image(systemName: "plus.circle")
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, Self.addButtonRowPadding)
+        .contentShape(.rect)
+    }
+
+    /// The add button's inset from the sidebar's edges: the list's own row
+    /// inset, so its glyph lines up with the row glyphs above it.
     private static let addButtonsInset: CGFloat = 10
 
-    /// The vertical padding inside each add button's row, which is also the
-    /// gap between the two.
+    /// The vertical padding inside the add button's row.
     private static let addButtonRowPadding: CGFloat = 4
 
     /// The shot section: one row per **authored** shot in the active preset,
     /// staging it on preview when clicked and lit with that shot's tally.
     ///
-    /// The automatic shots the app creates to stage a clicked input are left
-    /// out (``SidebarRow/rows(shots:onProgram:onPreview:)``); they stay in the
-    /// switcher, so nothing becomes unreachable by being absent here.
+    /// The transient shot the app creates to stage a clicked input is left
+    /// out (``SidebarRow/rows(shots:onProgram:onPreview:)``); it is the
+    /// bank's dashed tile, so nothing becomes unreachable by being absent
+    /// here.
+    ///
+    /// The header carries the section's own context menu: an **Add Shot**
+    /// submenu of the shared items (``AddShotMenuItems``), so a right-click on
+    /// the heading that names the shots is a way to make one — the only
+    /// section header with a menu, because it is the only section listing
+    /// things the operator makes here (presets have their bottom-edge button,
+    /// devices are discovered). The whole header row answers the right-click,
+    /// not just the word.
     private var shotSection: some View {
         stagingSection(
             .shots,
-            header: Text("Shots", comment: "Sidebar section heading over the active preset's shots"),
+            header: Text("Shots", comment: "Sidebar section heading over the active preset's shots")
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(.rect)
+                .contextMenu {
+                    Menu {
+                        AddShotMenuItems(model: model, surface: .sidebar)
+                    } label: {
+                        Text("Add Shot", comment: "Button adding a new empty shot to the preset")
+                    }
+                },
             rows: SidebarRow.rows(
                 shots: model.shots,
                 onProgram: model.activeShotID,
@@ -502,7 +526,8 @@ struct SidebarView: View {
             emptyLabel: Text(
                 "No cameras connected",
                 comment: "Device rail placeholder when no camera is discovered"
-            )
+            ),
+            menu: .input
         ) { row in
             model.eventBus.tap(
                 "sidebarCamera.row",
@@ -540,7 +565,8 @@ struct SidebarView: View {
             emptyLabel: Text(
                 "No displays available",
                 comment: "Sidebar placeholder when no display is discovered"
-            )
+            ),
+            menu: .input
         ) { row in
             model.eventBus.tap(
                 "sidebarDisplay.row",
@@ -599,8 +625,8 @@ struct SidebarView: View {
     /// too, and a row that staged it would put an audio input on a video layer
     /// that renders nothing. The tone is listed a section below instead,
     /// inert, beside the microphones it mixes with. Filtering the
-    /// **media-role** list by `kind` is the input rows' own arrangement, one
-    /// surface over.
+    /// **media-role** list by `kind` is the Add Shot menu's own arrangement,
+    /// one surface over.
     ///
     /// The heading says **Video** Generators for the same reason: with both
     /// kinds listed, an unqualified "Generators" would name only half of what
@@ -619,7 +645,8 @@ struct SidebarView: View {
             emptyLabel: Text(
                 "No video generators available",
                 comment: "Sidebar placeholder when no video generator is registered"
-            )
+            ),
+            menu: .input
         ) { row in
             model.eventBus.tap(
                 "sidebarGenerator.row",
@@ -641,7 +668,8 @@ struct SidebarView: View {
     ///
     /// - Parameters:
     ///   - id: Which section this is, for its expansion and its `tap` name.
-    ///   - header: The section's heading.
+    ///   - header: The section's heading — a `Text`, or one carrying the
+    ///     section's own context menu (the shots).
     ///   - rows: The section's rows, already in row order.
     ///   - symbol: The SF Symbol each row is labeled with.
     ///   - emptyLabel: What to show when `rows` is empty.
@@ -653,7 +681,7 @@ struct SidebarView: View {
     /// - Returns: The section.
     private func stagingSection(
         _ id: SidebarSection,
-        header: Text,
+        header: some View,
         rows: [SidebarRow],
         symbol: String,
         emptyLabel: Text,
@@ -689,17 +717,26 @@ struct SidebarView: View {
         /// with what Rename… does after its `tap` — the sidebar opens its
         /// rename dialog over the preset handed back. The preset rows'.
         case preset(onRename: (Preset) -> Void)
+
+        /// An input row's menu — **Add Shot Showing …**, adding a full-frame
+        /// authored shot of the input (``EngineModel/addShot(showing:at:)``)
+        /// — and its drag: the row is draggable onto the shot bank and the
+        /// layer list (``DraggedInput``). The camera, display, and video
+        /// generator rows'.
+        case input
     }
 
     /// One clickable row: the tally-lit label, with the section's context menu
     /// when it supplies one.
     ///
     /// The menu is attached in a branch rather than always, with `nil` content
-    /// for the camera section: an always-attached `.contextMenu` whose body is
-    /// empty still claims the right-click, so a camera row would answer with a
-    /// blank menu instead of the nothing it means. A shot or preset row whose
-    /// subject the model no longer holds (a stale row mid-update) gets no
-    /// menu either, rather than a menu acting on nothing.
+    /// for a section without one: an always-attached `.contextMenu` whose body
+    /// is empty still claims the right-click, so such a row would answer with
+    /// a blank menu instead of the nothing it means. A shot or preset row
+    /// whose subject the model no longer holds (a stale row mid-update) gets
+    /// no menu either, rather than a menu acting on nothing. An input row
+    /// gets its drag here too, beside its menu, since both are "this row is
+    /// an input you can make a shot of".
     ///
     /// - Parameters:
     ///   - row: The row to draw.
@@ -743,6 +780,28 @@ struct SidebarView: View {
             } else {
                 button
             }
+        case .input?:
+            // Exact: `InputID` is a raw-string wrapper, so the row's id is the
+            // input's own identifier and nothing is inferred.
+            let input = InputID(rawValue: row.id)
+            button
+                .draggable(DraggedInput(id: input))
+                .contextMenu {
+                    Button {
+                        model.eventBus.tap(
+                            "sidebarInputAddShot.menu",
+                            domain: .composition,
+                            params: ["input": .string(row.id), "name": .string(row.name)]
+                        )
+                        Task { await model.addShot(showing: input) }
+                    } label: {
+                        Text(
+                            "Add Shot Showing \(row.name)",
+                            comment:
+                                "Sidebar input row context menu: add a full-frame shot of this input; the placeholder is the input's name"
+                        )
+                    }
+                }
         case nil:
             button
         }
@@ -793,7 +852,7 @@ struct SidebarView: View {
     /// One inert row: the label, with a Delete context menu when the section
     /// supplies one.
     ///
-    /// Branched rather than always-attached for the reason ``stagingRow(_:symbol:help:onDelete:action:)``
+    /// Branched rather than always-attached for the reason ``stagingRow(_:symbol:help:menu:action:)``
     /// records: an empty `.contextMenu` still claims the right-click, so a
     /// microphone row would answer with a blank menu instead of the nothing it
     /// means.

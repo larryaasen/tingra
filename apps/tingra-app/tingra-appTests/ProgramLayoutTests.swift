@@ -90,31 +90,36 @@ struct ProgramLayoutTests {
         #expect(first.map(\.id) == second.map(\.id))
     }
 
-    @Test("each built-in shot button gets its own distinct tap event name")
-    func tapNamesAreDistinctPerShot() {
-        #expect(ProgramLayout.tapName(forShotID: ProgramLayout.cameraShotID) == "camera.button")
-        #expect(ProgramLayout.tapName(forShotID: ProgramLayout.displayShotID) == "display.button")
-        #expect(ProgramLayout.tapName(forShotID: ProgramLayout.pictureInPictureShotID) == "pip.button")
+    @Test("a bars generator adds a full-frame bars shot after the device shots")
+    func barsShotIsSeededLast() {
+        let bars = InputID(rawValue: "bars")
+        let shots = ProgramLayout.shots(displayID: display, cameraID: camera, barsID: bars)
+
+        #expect(
+            shots.map(\.id) == [
+                ProgramLayout.pictureInPictureShotID,
+                ProgramLayout.displayShotID,
+                ProgramLayout.cameraShotID,
+                ProgramLayout.barsShotID,
+            ])
+        #expect(shots.last?.layers == [Layer(input: bars)])
+        #expect(shots.last?.origin == .authored)
+        #expect(shots.last.map { !$0.name.isEmpty } == true)
     }
 
-    @Test("an unrecognized shot id falls back to a generic tap event name")
-    func tapNameFallsBackForUnknownShot() {
-        #expect(ProgramLayout.tapName(forShotID: ShotID(rawValue: "future-user-shot")) == "shot.button")
+    @Test("a bars generator alone seeds a one-shot preset rather than an empty one")
+    func barsAloneSeedsOneShot() {
+        let bars = InputID(rawValue: "bars")
+
+        #expect(
+            ProgramLayout.shots(displayID: nil, cameraID: nil, barsID: bars).map(\.id) == [ProgramLayout.barsShotID])
     }
 
-    @Test("each built-in shot's preview button gets its own tap event name, distinct from its take")
-    func previewTapNamesAreDistinctPerShotAndFromTheProgramRow() {
-        #expect(ProgramLayout.previewTapName(forShotID: ProgramLayout.cameraShotID) == "previewCamera.button")
-        #expect(ProgramLayout.previewTapName(forShotID: ProgramLayout.displayShotID) == "previewDisplay.button")
-        #expect(ProgramLayout.previewTapName(forShotID: ProgramLayout.pictureInPictureShotID) == "previewPip.button")
-        // Staging a shot must be traceable separately from taking it to air.
-        for id in [ProgramLayout.cameraShotID, ProgramLayout.displayShotID, ProgramLayout.pictureInPictureShotID] {
-            #expect(ProgramLayout.previewTapName(forShotID: id) != ProgramLayout.tapName(forShotID: id))
-        }
-    }
+    @Test("without a bars generator the seed is the device shots alone")
+    func noBarsNoBarsShot() {
+        let shots = ProgramLayout.shots(displayID: display, cameraID: camera, barsID: nil)
 
-    @Test("an unrecognized shot id falls back to a generic preview tap event name")
-    func previewTapNameFallsBackForUnknownShot() {
-        #expect(ProgramLayout.previewTapName(forShotID: ShotID(rawValue: "future-user-shot")) == "preview.button")
+        #expect(!shots.contains { $0.id == ProgramLayout.barsShotID })
+        #expect(shots == ProgramLayout.shots(displayID: display, cameraID: camera))
     }
 }

@@ -659,7 +659,10 @@ surface is:
   document, switches among them without ever interrupting what is on program
   (the active preset, like the active shot, is session state), manages the
   presets — add, duplicate, rename, reorder, remove — and the active preset's
-  shots — add, duplicate, rename, reorder, remove — applies layer-tree edits to
+  shots — add (empty, or showing a chosen input), duplicate, rename, reorder,
+  remove, and keep — stages a clicked input as a **transient** shot that is
+  promoted when kept, edited, or aired and discarded when the operator stages
+  something else (never written to the document), applies layer-tree edits to
   the active shot, rebinds the built-in roles' layers when a picker's selection
   changes, starts and stops each channel strip's device as it is unmuted and
   muted, and puts the program on air by feeding the compositor's frames and the
@@ -689,20 +692,26 @@ surface is:
   is what makes both headings say which medium they mean. Shot, camera, display,
   generator, and preset rows behave identically — one `stagingSection` draws all
   five, so they cannot drift — staging on preview and lighting the same tally
-  the input rows' tiles carry, red on air and green staged, from the shared
+  the shot bank's tiles carry, red on air and green staged, from the shared
   `Tally` tints; only the call differs, `setPreview(_:)` for a shot,
   `stagePreview(showing:)` for an input, and `switchPreset(to:)` for a preset —
   which is also why the active preset wears a checkmark rather than a lamp,
   since a preset is not on a bus and red means on air everywhere else in the
-  app. Nothing reaches program from here. Every section collapses, with the
+  app. An input row's click stages a transient shot; the row is also draggable
+  onto the shot bank (a full-frame authored shot) and the layer list (a layer),
+  and its context menu offers Add Shot Showing … (2026-09-07). Nothing reaches
+  program from here. Every section collapses, with the
   standard source-list disclosure, and which ones are folded away persists
   across launches. A shot row carries the shared shot context menu
   (`ShotContextMenu`: Duplicate, Rename…, Default Transition, Move Up / Move
   Down, and Delete, which raises a confirmation naming the shot before anything
-  is removed — unlike the switcher rows' Remove Shot, which is immediate); a
+  is removed — unlike the shot bank's Remove Shot, which is immediate); a
   destination row carries a Delete of its own, whose confirmation says that the
-  stored stream key goes with it. Two buttons pinned to the sidebar's bottom
-  edge, Add Shot over Add Preset, make a new empty one of each (2026-09-07). The
+  stored stream key goes with it. Two controls pinned to the sidebar's bottom
+  edge, the Add Shot menu (`AddShotMenu`) over Add Preset, made a new one of
+  each (2026-09-07), until the Add Shot row went the same day — adding a shot
+  is now the Shots section header's context menu, an Add Shot submenu of the
+  shared `AddShotMenuItems`, leaving Add Preset alone at the bottom. The
   audio and destination rows otherwise read rather than switch — the channel
   strips, the monitor picker, and the streaming panel already own those
   decisions — and listing a device starts nothing, so no camera indicator lights
@@ -725,20 +734,19 @@ surface is:
 - `ContentView` — the main window's detail column, in two sections — a
   monitoring section across the top, the preview and program monitors side by
   side across the full width, each captioned beneath with the name of the shot
-  on its bus (2026-09-07), with the input rows beneath them under a **Shots**
-  heading, over a control section holding everything the operator works. The
-  whole column scrolls, and the monitoring section's height is derived from the
-  window's width — two 16:9 monitors have no use for surplus vertical room, and
-  a plain stack resolved a shortfall by collapsing the monitors and pushing the
-  pickers off the bottom edge. The control section holds the optional
-  **switcher rows** — a Program row of shot buttons that takes on click, each
-  with the shared `ShotContextMenu`, over a Preview row that stages; hidden
-  unless the General settings checkbox shows them (`SwitcherRowsModel`) — the
-  `TransitionPanel`, the layer editor, the camera/display pickers, the mixer,
-  and a streaming panel — the destination list and live status; Start/Stop and
-  Record are toolbar items. Presets and shots are made and managed in the
-  sidebar (its Add Preset and Add Shot buttons, its rows' menus) and staged by
-  number from the Shots menu.
+  on its bus (2026-09-07), with the **shot bank** (`ShotBankView`) beneath them
+  under a **Shots** heading, over a control section holding everything the
+  operator works. The whole column scrolls, and the monitoring section's height
+  is derived from the window's width — two 16:9 monitors have no use for
+  surplus vertical room, and a plain stack resolved a shortfall by collapsing
+  the monitors and pushing the pickers off the bottom edge. The control section
+  holds the `TransitionPanel`, the layer editor, the camera/display pickers, the
+  mixer, and a streaming panel — the destination list and live status;
+  Start/Stop and Record are toolbar items. Shots are staged from the bank, the
+  sidebar's shot rows, and by number from the Shots menu; presets are made and
+  managed in the sidebar. (The optional Program and Preview rows of shot
+  buttons, and their General settings checkbox, lived here for one day and
+  went with the bank — ARCHITECTURE.md, "The shot bank".)
 - `TransitionPanel` — the Cut, Take, and transition controls under their own
   heading (2026-09-07): a segmented picker — Default (each shot's own default
   transition, the initial selection), or an explicit Cut, Dissolve, Wipe, or
@@ -866,12 +874,6 @@ surface is:
   settings checkbox and the View-menu item write — shared rather than each
   window reading `UserDefaults` for itself, since `UserDefaults` is not
   observable and the two controls live outside the windows they change.
-- `SwitcherRowsPreferences` — whether the main window's Program and Preview
-  rows of shot buttons are shown: machine-local `UserDefaults` on the
-  `StatusBarPreferences` pattern, hidden on a fresh install, the presence of the
-  key checked first so the default is stated in one place.
-- `SwitcherRowsModel` — the `@Observable` the main window reads and the General
-  settings checkbox writes, `StatusBarModel`'s shape for its reason.
 - `TingraAppDelegate` — the two AppKit hooks: it answers every quit with
   `.terminateLater` so the shutdown is recorded on the bus and drained to the
   log before the process exits (`EngineModel.shutDown(reason:)`, with the cause
@@ -895,14 +897,14 @@ surface is:
   presents the one dialog over its own content with its own subject and `tap`
   names.
 - `ShotContextMenu` — one shot's context menu — duplicate, rename, default
-  transition, reorder, remove — shared by the switcher rows' shot buttons and
-  the sidebar's shot rows; Rename… and the remove item hand the shot back to
+  transition, reorder, remove — shared by the shot bank's tiles and the
+  sidebar's shot rows; Rename… and the remove item hand the shot back to
   the owning view, which opens the dialog or, in the sidebar, asks first.
-- `ShotMenuSurface` — which surface a shot menu is on, switcher or sidebar: the
-  pure, unit-tested source of each surface's `tap` names (the switcher keeps its
-  `shot…` names, the sidebar reports `sidebarShot…`, keeping
-  `sidebarShotDelete.menu`) and of the reorder words — Move Left / Move Right
-  across the switcher, Move Up / Move Down in the sidebar.
+- `ShotMenuSurface` — which surface a shot menu is on, the switcher (the shot
+  bank's tiles) or the sidebar: the pure, unit-tested source of each surface's
+  `tap` names (the switcher keeps its `shot…` names, the sidebar reports
+  `sidebarShot…`, keeping `sidebarShotDelete.menu`) and of the reorder words —
+  Move Left / Move Right across the bank, Move Up / Move Down in the sidebar.
 - `ShotRenameDialog` — the shot rename alert as a modifier, `PresetRenameDialog`
   one level down.
 - `TerminationReason` — why the app is quitting, as far as AppKit can say: the
@@ -920,8 +922,9 @@ surface is:
   boot no longer records a tap nobody made; see EVENTS.md, "Where a picker's tap
   is reported".
 - `LayerTreeEditorView` — the layer-tree editor: add a layer bound to any
-  discovered camera or display, remove, reorder, and adjust a layer's frame and
-  opacity with live sliders. It follows the shot staged on preview, falling back
+  discovered camera, display, or video generator — from the Add Layer menu or
+  by dropping a sidebar input row on the layer list — remove, reorder, and
+  adjust a layer's frame and opacity with live sliders. It follows the shot staged on preview, falling back
   to the shot on program when nothing is staged (`EditedShot`), and heads itself
   with that shot's name beside the shared tally lamp — red, with a note that
   edits are live, while the shot is on program; every edit reaches the compositor
@@ -933,9 +936,12 @@ surface is:
 - `LayerTreeEdit` — the pure, unit-tested edit operations over a `Shot`,
   including the rebind a picker change applies.
 - `ShotEdit` — the pure, unit-tested shot-management operations: a new empty
-  shot, a shot showing one input full frame (the one kind the app marks
-  `automatic`), a duplicate under a fresh id, a rename that ignores empty names —
-  and that promotes an automatic shot to authored, the operator claiming it —
+  shot, a shot showing one input full frame (transient — `automatic` — when
+  the app makes it to stage a clicked input, authored when the operator asked
+  for it by drop or menu), a duplicate under a fresh id, a rename that ignores
+  empty names — and that promotes an automatic shot to authored, the operator
+  claiming it — `claiming`, the promotion every other edit and Keep go
+  through, `persistedShots`, the authored shots a save writes and a load keeps,
   setting or clearing a shot's default transition, and the match that decides
   which existing shot staging an input reuses — one showing *only* that input,
   never one that merely contains it, so clicking a camera previews the camera
@@ -957,9 +963,10 @@ surface is:
 - `MonitorFrameSource` — the seam a monitor reads through, so those three cases
   share one draw path: a bus's `ProgramFrameRelay`, or an `InputFrameSource`.
 - `MonitorTile` — the framed monitor — video letterboxed on black, an optional
-  tally border, a name badge, and an optional status badge, which is what tells
-  a program monitor faded to black apart from a dead one — shared by the main
-  window's two monitors and every multiview tile.
+  tally border, an optional name badge, and an optional status badge, which is
+  what tells a program monitor faded to black apart from a dead one — shared by
+  the main window's two monitors, every multiview tile, and the shot bank's
+  tiles, which pass no badge and are captioned beneath instead.
 - `MonitorRenderContext` — the one Metal device, command queue, and `CIContext`
   every monitor draws through, rather than one per view.
 - `InputGridView` — the multiview window's input grid: one tile per *running*
@@ -967,15 +974,43 @@ surface is:
   idle. The tiles are deliberately inert: a tile is an *input* while preview
   stages a *shot*, and a guess one click from air is exactly what the preview
   bus refused.
-- `InputRowsView` — the rows under the monitors, headed **Shots** since they
-  are the preset's automatic shot list: every available camera in a
-  horizontal row, the generators and displays in a second row beneath it, split
-  by provenance because cameras are what an operator reaches for. Every tile is
-  live — the engine runs every discovered video input for monitoring, a
-  deliberate exception to the multiview rule, paid for in camera indicator
-  lights and an awake Continuity Camera — and clicking a tile stages that input
-  on preview, resolving the input-versus-shot question in favour of an authored
-  shot that already shows it and only inventing one when none does.
+- `ShotBankView` — the **shot bank** under the monitors, headed **Shots**
+  (2026-09-07; ARCHITECTURE.md, "The shot bank"): one 16:9 tile per shot of
+  the active preset in switcher order, each a `MonitorTile` showing the latest
+  frame of the shot's dominant layer, captioned beneath with the shot's name as
+  the monitors are — followed by its stage shortcut, "Default (⌘1)", for the
+  first nine — tally-bordered red on program and green staged, clicked to
+  stage, with the shared `ShotContextMenu` on the switcher
+  surface; a stacked-layers glyph on a shot with more than one layer; a dashed
+  tile with a Keep button for the transient shot a sidebar click staged; a
+  placeholder naming both ways in when the preset has no shots; and a drop target for a sidebar input
+  — before or after the tile it lands on, or appended at the end. It replaced
+  `InputRowsView`, which tiled every discovered video input live and had the
+  engine running every camera for monitoring; the engine again runs only what
+  the show references.
+- `ShotBankTile` — the pure, unit-tested tile derivation behind it: one tile
+  per shot with the shot-level tally (red winning over green), the thumbnail
+  input — the layer covering the largest area of the frame, the lowest winning
+  a tie, so a picture-in-picture shot shows its display rather than its camera
+  inset — the layer count, and whether the shot is transient.
+- `AddShotMenu` — the **Add Shot** menu the plus button beside the Shots
+  heading opens: `AddShotMenuItems` under a caller-drawn label.
+- `AddShotMenuItems` — the Add Shot items every surface shares — Empty Shot,
+  then Camera, Display, and Video Generator submenus listing each discovered
+  input, each adding a full-frame authored shot of it; a submenu with nothing
+  to list shows the sidebar's placeholder for that section, disabled. A view
+  rather than a menu because two of its three hosts are menus already: the
+  sidebar's Shots section header context menu and the menu bar's Shots menu
+  each carry them as an Add Shot submenu.
+- `AddShotMenuSurface` — which surface the items are on, sidebar, bank, or
+  menu bar: the pure, unit-tested source of each surface's `tap` names
+  (`sidebarShotAddEmpty.menuItem` / `sidebarShotAddInput.menuItem`,
+  `shotBankAddEmpty.menuItem` / `shotBankAddInput.menuItem`,
+  `shotsMenuAddEmpty.menuItem` / `shotsMenuAddInput.menuItem`).
+- `DraggedInput` — the `Transferable` payload of an input dragged from the
+  sidebar — its id under the app's exported `com.moonwink.tingra.input` type,
+  declared in the target's `Info.plist` — accepted by the shot bank (a new
+  shot) and the layer list (a new layer), and by nothing else.
 - `MultiviewView` — the multiview window: program and preview across the top
   with the input grid beneath, at full tile size on a display of its own, over
   the same status bar the main window carries — which earns its place here more
@@ -993,13 +1028,16 @@ surface is:
   red winning over green, plus the `Tally` tint pair both tile surfaces draw
   from so they cannot read a lamp differently.
 - `MultiviewCommands` — the View-menu command that opens the window, ⌥⌘M.
-- `ShotCommands` — the Shots menu: one item per shot in the active preset, in
+- `ShotCommands` — the Shots menu: an Add Shot submenu of the shared
+  `AddShotMenuItems`, then one item per shot in the active preset, in
   switcher order and under the shot's own name, staging it on preview; the
   first nine carry ⌘1–⌘9, which moved here from the preview row's buttons when
   those became optional — a key whose control may be off screen belongs in the
   menu bar.
 - `ProgramLayout` — the pure, unit-tested arrangement that seeds a fresh
-  project's picture-in-picture, display, and camera shots.
+  project's picture-in-picture, display, and camera shots, and — when the bars
+  generator is registered — a full-frame Bars shot after them, the one
+  generator an operator wants as a shot.
 - `ProductionShortcut` — the closed list of production keyboard shortcuts —
   staging ⌘1–⌘9, Cut ⇧⌘↩, Take ⌘↩, Fade to Black ⇧⌘B, Go Live ⌘G, Record ⌘R,
   Show or Hide Status Bar ⌘/ — that is both the binding the controls apply and

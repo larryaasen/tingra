@@ -21,10 +21,10 @@ import SwiftUI
 /// preview-sampling rule). Nothing here runs while the window is closed, and
 /// the engine's tick task is untouched by its existence.
 ///
-/// The main window carries its own input tiles in its top section, but a
-/// different arrangement: ``InputRowsView`` lists what is *available* in two
-/// provenance-ordered rows, where this window's ``InputGridView`` tiles what is
-/// *running* in one adaptive grid. This window still earns its place — a
+/// The main window carries tiles in its top section too, but of a different
+/// thing: its ``ShotBankView`` tiles the preset's *shots*, where this window's
+/// ``InputGridView`` tiles the inputs that are *running* in one adaptive grid
+/// — and this is the only surface that does. This window still earns its place — a
 /// multiview's conventional home is a second display, which a window gives for
 /// free, and there its tiles are as large as the screen rather than as large as
 /// the space the switcher leaves them (ARCHITECTURE.md, "The main window's two

@@ -84,10 +84,10 @@ extension MultiviewTile.Tally {
     /// The name badge's tint for this tally state — the broadcast convention,
     /// with a neutral badge for an input on neither bus.
     ///
-    /// Held on the tally rather than in a view so the two surfaces that draw
-    /// tiles — the multiview's ``InputGridView`` and the main window's
-    /// ``InputRowsView`` — cannot drift in what a lamp means, the same reason
-    /// ``MonitorTile`` itself is shared.
+    /// Held on the tally rather than in a view so the surfaces that draw
+    /// tiles and lamps — the multiview's ``InputGridView``, the main window's
+    /// ``ShotBankView``, and the sidebar's rows — cannot drift in what a lamp
+    /// means, the same reason ``MonitorTile`` itself is shared.
     var badgeTint: Color {
         switch self {
         case .onAir: .red

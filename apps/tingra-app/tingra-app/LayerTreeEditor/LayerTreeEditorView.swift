@@ -29,8 +29,10 @@ import TingraPlugInKit
 /// The list shows the shot's layers **topmost first** (the design-tool
 /// convention); the underlying `layers` array stacks bottom to top, so the
 /// list is the array reversed and every operation addresses the layer by its
-/// bottom-to-top array index. Add binds a new layer to any discovered camera
-/// or display; move up/down steps the selected layer through the stack; the
+/// bottom-to-top array index. Add binds a new layer to any discovered camera,
+/// display, or video generator — as does dropping a sidebar input row on the
+/// list (``DraggedInput``; ARCHITECTURE.md, "The shot bank"); move up/down
+/// steps the selected layer through the stack; the
 /// sliders adjust its normalized top-left-origin frame and its opacity —
 /// every edit is on program at the next tick, no separate "apply" step
 /// (CLOCK.md, the live canvas).
@@ -243,7 +245,9 @@ struct LayerTreeEditorView: View {
     }
 
     /// The layer list, topmost layer first, selecting the layer the
-    /// inspector edits.
+    /// inspector edits — and a drop target: an input dragged from the sidebar
+    /// becomes a new layer on top, the drag-from-grid the multiview record
+    /// deferred, landing where a layer is actually made.
     private func layerList(for shot: Shot) -> some View {
         List(selection: $selectedLayerIndex) {
             ForEach(Array(shot.layers.indices.reversed()), id: \.self) { index in
@@ -265,6 +269,20 @@ struct LayerTreeEditorView: View {
                 domain: .composition,
                 params: ["index": .int(newValue ?? -1)]
             )
+        }
+        .dropDestination(for: DraggedInput.self) { items, _ in
+            // Only a discovered video input can be a layer; a payload naming
+            // anything else is a device that went away mid-drag.
+            guard let input = items.first?.id, model.layerInputChoices.contains(where: { $0.id == input }) else {
+                return false
+            }
+            model.eventBus.tap(
+                "layerList.drop",
+                domain: .composition,
+                params: ["input": .string(input.rawValue), "name": .string(model.inputName(for: input))]
+            )
+            Task { await model.addLayer(boundTo: input) }
+            return true
         }
     }
 

@@ -11,12 +11,13 @@ import SwiftUI
 import TingraEventBus
 
 /// The General settings pane: the app's Appearance, System / Light / Dark,
-/// whether the windows carry a status bar, and whether the main window shows
-/// its switcher rows.
+/// and whether the windows carry a status bar.
 ///
 /// A grouped `Form` with the control on the trailing edge of a labeled row —
 /// the shape every settings pane on macOS 26 has, and the one that keeps a
-/// second and third setting from needing a new layout.
+/// second setting from needing a new layout. (A third, the switcher rows
+/// checkbox, lived here for a day and left with the rows — ARCHITECTURE.md,
+/// "The shot bank".)
 struct GeneralSettingsView: View {
     /// The engine model — here for its event bus, so a change is reported as
     /// a `tap`.
@@ -28,15 +29,11 @@ struct GeneralSettingsView: View {
     /// Whether the windows carry a status bar.
     @Bindable var statusBar: StatusBarModel
 
-    /// Whether the main window shows its Program and Preview rows of shot
-    /// buttons.
-    @Bindable var switcherRows: SwitcherRowsModel
-
     /// The pane.
     ///
-    /// All three settings sit in one section: they are the same kind of
-    /// thing — how the operator's windows are dressed — and three rows do
-    /// not need a heading between them to be told apart.
+    /// Both settings sit in one section: they are the same kind of thing —
+    /// how the operator's windows are dressed — and two rows do not need a
+    /// heading between them to be told apart.
     var body: some View {
         Form {
             Section {
@@ -52,14 +49,6 @@ struct GeneralSettingsView: View {
                         comment: "General settings: checkbox showing or hiding the bar across the bottom of the windows"
                     )
                 }
-
-                Toggle(isOn: switcherRowsSelection) {
-                    Text(
-                        "Show Program and Preview Rows",
-                        comment:
-                            "General settings: checkbox showing or hiding the main window's rows of shot buttons"
-                    )
-                }
             }
         }
         .formStyle(.grouped)
@@ -72,17 +61,6 @@ struct GeneralSettingsView: View {
         $statusBar.isVisible.reportingTap(
             to: model.eventBus,
             "statusBar.checkbox",
-            domain: .platform,
-            params: { ["visible": .bool($0)] }
-        )
-    }
-
-    /// The switcher rows binding, reporting its own `tap` before the change
-    /// lands (the ``statusBarSelection`` rule).
-    private var switcherRowsSelection: Binding<Bool> {
-        $switcherRows.isVisible.reportingTap(
-            to: model.eventBus,
-            "switcherRows.checkbox",
             domain: .platform,
             params: { ["visible": .bool($0)] }
         )

@@ -101,6 +101,53 @@ struct ShotEditTests {
         #expect(ShotEdit.duplicate(of: automatic).origin == .authored)
     }
 
+    @Test("a shot showing an input can be authored when the operator asked for it by name")
+    func shotShowingInputCanBeAuthored() {
+        let shot = ShotEdit.shot(showing: InputID(rawValue: "bars"), named: "SMPTE Bars", origin: .authored)
+
+        #expect(shot.origin == .authored)
+        #expect(shot.layers.count == 1)
+    }
+
+    @Test("claiming an automatic shot makes it authored and preserves everything else")
+    func claimingPromotes() {
+        let automatic = ShotEdit.settingDefaultTransition(
+            .dissolve, of: ShotEdit.shot(showing: InputID(rawValue: "camera-1"), named: "Razer Kiyo Pro"))
+
+        let claimed = ShotEdit.claiming(automatic)
+
+        #expect(claimed.origin == .authored)
+        #expect(claimed.id == automatic.id)
+        #expect(claimed.name == automatic.name)
+        #expect(claimed.layers == automatic.layers)
+        #expect(claimed.background == automatic.background)
+        #expect(claimed.defaultTransition == automatic.defaultTransition)
+    }
+
+    @Test("claiming an authored shot returns it unchanged")
+    func claimingAuthoredIsIdentity() {
+        let authored = makeShot()
+
+        #expect(ShotEdit.claiming(authored) == authored)
+    }
+
+    @Test("the persisted shots are the authored ones, in order, with the transient left out")
+    func persistedShotsDropTransient() {
+        let wide = makeShot(id: "wide", name: "Wide")
+        let transient = ShotEdit.shot(showing: InputID(rawValue: "camera-1"), named: "Razer Kiyo Pro")
+        let close = makeShot(id: "close", name: "Close")
+
+        #expect(ShotEdit.persistedShots(of: [wide, transient, close]) == [wide, close])
+    }
+
+    @Test("a pool of only authored shots persists unchanged, and an empty pool persists as empty")
+    func persistedShotsKeepAuthored() {
+        let pool = [makeShot(id: "a", name: "A"), makeShot(id: "b", name: "B")]
+
+        #expect(ShotEdit.persistedShots(of: pool) == pool)
+        #expect(ShotEdit.persistedShots(of: []).isEmpty)
+    }
+
     @Test("setting a default transition leaves an automatic shot automatic")
     func defaultTransitionPreservesOrigin() {
         let automatic = ShotEdit.shot(showing: InputID(rawValue: "camera-1"), named: "Razer Kiyo Pro")

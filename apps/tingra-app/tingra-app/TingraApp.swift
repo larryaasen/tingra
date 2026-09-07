@@ -33,12 +33,6 @@ struct TingraApp: App {
     /// (see ``StatusBarModel``).
     @State private var statusBar = StatusBarModel()
 
-    /// Whether the main window shows its switcher rows — the Program and
-    /// Preview rows of shot buttons — owned for the app's lifetime so the
-    /// General settings pane's checkbox reaches the window at once (see
-    /// ``SwitcherRowsModel``).
-    @State private var switcherRows = SwitcherRowsModel()
-
     /// Whether the main window's sidebar is showing — the split view's own
     /// state, held here so the View menu's Show/Hide Sidebar item can read and
     /// write it (see ``SidebarVisibilityCommands``).
@@ -83,7 +77,7 @@ struct TingraApp: App {
             NavigationSplitView(columnVisibility: $sidebarVisibility) {
                 SidebarView(model: model)
             } detail: {
-                ContentView(model: model, switcherRows: switcherRows)
+                ContentView(model: model)
                     .frame(minWidth: 640, minHeight: 480)
                     .safeAreaInset(edge: .bottom, spacing: 0) {
                         StatusBarView(model: model, statusBar: statusBar)
@@ -104,7 +98,7 @@ struct TingraApp: App {
         }
 
         // Multiview is a **separate window**, not a panel: the main window
-        // already carries both monitors, both switcher rows, the layer
+        // already carries both monitors, the shot bank, the layer
         // editor, the mixer, and the destination list, and a tile grid would
         // compete with the very surfaces it duplicates. A window also puts it
         // on a second display for free — and its closed state is what makes
@@ -141,7 +135,7 @@ struct TingraApp: App {
             String(localized: "Settings", comment: "Title of the settings window"),
             id: Self.settingsWindowID
         ) {
-            SettingsView(model: model, appearance: appearance, statusBar: statusBar, switcherRows: switcherRows)
+            SettingsView(model: model, appearance: appearance, statusBar: statusBar)
         }
         .windowResizability(.contentMinSize)
         .commandsRemoved()

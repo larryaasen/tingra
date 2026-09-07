@@ -369,9 +369,14 @@ final class EngineModel {
     /// document's first preset, never a persisted "active" field.
     private(set) var activePresetID: PresetID?
 
-    /// The active preset's shots, in switcher order — what the shot switcher
-    /// lists (roadmap step 7). The live session copy: edits land here (and in
-    /// the compositor) first, and flow back into ``presets`` on save/switch.
+    /// The active preset's shots, in switcher order — what the shot bank
+    /// shows (roadmap step 7; ARCHITECTURE.md, "The shot bank"). The live
+    /// session copy: edits land here (and in the compositor) first, and the
+    /// **authored** ones flow back into ``presets`` on save/switch. A
+    /// **transient** shot (``ShotOrigin/automatic``) — made to stage an input
+    /// the operator clicked — lives here and in the compositor only while it
+    /// is staged, and is never written to the document; see
+    /// ``reconcileTransientShots()``.
     private(set) var shots: [Shot] = []
 
     /// The id of the shot currently on program, so the switcher can highlight
@@ -380,7 +385,7 @@ final class EngineModel {
 
     /// The id of the shot staged on preview, or `nil` when nothing is staged
     /// — the staging bus's selection, mirrored from the compositor so the
-    /// preview row can highlight it. Session state: what is staged when the
+    /// shot bank can light it. Session state: what is staged when the
     /// app quits is not part of the show, so it never enters the project
     /// document (ARCHITECTURE.md, "The preview bus").
     ///
@@ -452,7 +457,7 @@ final class EngineModel {
 
     /// The shot staged on preview, as the preview monitor's caption names it,
     /// or `nil` while nothing is staged. Resolved against ``shots``, which
-    /// holds the automatic shots ``stagePreview(showing:)`` makes as well as
+    /// holds the transient shot ``stagePreview(showing:)`` makes as well as
     /// the authored ones.
     var previewShot: Shot? {
         shots.first { $0.id == previewShotID }
@@ -1104,10 +1109,13 @@ final class EngineModel {
     /// time is skipped, with an `input.skipped` event, until something that
     /// could have changed it happens (``silentInputs``).
     ///
-    /// The running set is the union of three things: the devices cast in the
-    /// built-in camera and display roles, every input the active preset's
-    /// layers reference, and — so the monitoring rows are live — every
-    /// discovered **video** input.
+    /// The running set is the union of two things: the devices cast in the
+    /// built-in camera and display roles, and every input the active preset's
+    /// shots reference — transient shots included, so the shot the operator
+    /// is looking at on preview has its input running — plus whatever the
+    /// program is holding. Nothing runs for monitoring alone: the shot bank's
+    /// thumbnails read inputs the show already references, and the multiview
+    /// window tiles only what is running (ARCHITECTURE.md, "The shot bank").
     private func applyConfiguration() async {
         let selectionChanged =
             !hasAppliedConfiguration || selectedDisplayID != appliedDisplayID || selectedCameraID != appliedCameraID
@@ -1171,28 +1179,11 @@ final class EngineModel {
             }
         }
 
-        // Every video input the monitoring rows list also runs, so each tile
-        // carries live picture rather than its name over black
-        // (``InputRowsView``). This is the one place the app starts a device
-        // for **monitoring** rather than for the program, and it is a
-        // deliberate exception to the rule the multiview window still keeps:
-        // the rows are the operator's "what can I cut to" surface, and a black
-        // rectangle answers that question only in the negative. The cost is
-        // real and accepted — every camera holds its indicator light on and a
-        // Continuity Camera keeps its iPhone awake for as long as the app runs.
-        //
-        // Audio inputs are untouched: a channel strip starts its device when
-        // the operator unmutes it, and there is no audio tile to keep live.
-        let registered = await registry.allInputs
-        for input in registered where input.media.contains(.video) && desired[input.id] == nil {
-            desired[input.id] = input
-        }
-
         // Which inputs still exist at all, so a stop can say *why*. An input
         // the registry no longer holds was unplugged; one it still holds is
         // merely no longer referenced. Reporting both as "unreferenced" was a
         // lie the moment the app started reacting to disconnections.
-        let registeredIDs = Set(registered.map(\.id))
+        let registeredIDs = Set(await registry.allInputs.map(\.id))
         for (id, input) in activeInputs where desired[id] == nil {
             await input.stop()
             activeInputs[id] = nil
@@ -1909,9 +1900,11 @@ final class EngineModel {
         let transition = resolvedTransition(for: shotID)
         compositor.take(shotID: shotID, transition: transition)
         activeShotID = compositor.activeShotID
+        // A transient shot taken straight to air is the operator's now.
+        let discarded = reconcileTransientShots()
         syncTally()
         scheduleTallyRefresh(after: transition)
-        if wasHoldingSnapshot {
+        if wasHoldingSnapshot || discarded {
             Task { await reconfigure() }
         }
     }
@@ -1924,18 +1917,25 @@ final class EngineModel {
     /// preview off (the toggle this once had was dropped 2026-09-07 —
     /// ARCHITECTURE.md, "The preview bus").
     ///
-    /// Nothing to reconfigure or autosave: every shot of the active preset
-    /// already has its inputs running (``applyConfiguration()`` references
-    /// the whole pool), and what is staged is session state that never
-    /// enters the project document.
+    /// Nothing to autosave: every shot of the active preset already has its
+    /// inputs running (``applyConfiguration()`` references the whole pool),
+    /// and what is staged is session state that never enters the project
+    /// document. The one thing staging can change in the engine is a
+    /// **transient** shot losing its place — the shot that was staged, if the
+    /// app made it to show a clicked input, is discarded now that the
+    /// operator has looked away (``reconcileTransientShots()``), and a
+    /// reconfigure stops an input only it referenced.
     ///
-    /// Reports no `tap` event itself — the preview button's action closure in
-    /// `ContentView` reports it (EVENTS.md, "The `tap` convention").
+    /// Reports no `tap` event itself — the tile's or row's action closure
+    /// reports it (EVENTS.md, "The `tap` convention").
     ///
     /// - Parameter shotID: The id of the shot to stage.
     func setPreview(_ shotID: ShotID) {
         compositor.setPreview(shotID: shotID)
         previewShotID = compositor.previewShotID
+        if reconcileTransientShots() {
+            Task { await reconfigure() }
+        }
         syncTally()
     }
 
@@ -2010,9 +2010,11 @@ final class EngineModel {
         // outside the pool; the refill stages the next shot instead.
         previewShotID = compositor.previewShotID
         ensurePreviewStaged()
+        // A transient shot that just went to air is the operator's now.
+        let discarded = reconcileTransientShots()
         syncTally()
         scheduleTallyRefresh(after: transition)
-        if wasHoldingSnapshot {
+        if wasHoldingSnapshot || discarded {
             Task { await reconfigure() }
         }
     }
@@ -2031,8 +2033,10 @@ final class EngineModel {
     ///   - shotID: The id of the shot to edit.
     func setShotDefaultTransition(_ transition: Transition?, for shotID: ShotID) {
         guard let index = shots.firstIndex(where: { $0.id == shotID }) else { return }
-        let edited = ShotEdit.settingDefaultTransition(transition, of: shots[index])
+        var edited = ShotEdit.settingDefaultTransition(transition, of: shots[index])
         guard edited != shots[index] else { return }
+        // Choosing a transition for a transient shot is an act of authorship.
+        edited = ShotEdit.claiming(edited)
         shots[index] = edited
         compositor.updateShot(edited)
         scheduleAutosave()
@@ -2054,48 +2058,120 @@ final class EngineModel {
         scheduleAutosave()
     }
 
-    /// Stages an **input** on the preview bus — what clicking a tile in the
-    /// main window's input rows does (``InputRowsView``).
+    /// Stages an **input** on the preview bus — what clicking a camera,
+    /// display, or video generator row in the sidebar does.
     ///
     /// Preview stages a **shot**, never an input (GLOSSARY.md), so an input
     /// the operator clicks has to be resolved to one. The rule is that
     /// **clicking an input previews that input** — the shot staged shows the
     /// clicked input full frame and nothing else. The operator picked a
-    /// camera, not a composition; a shot is what the shot rows and the
-    /// switcher are for (Larry, 2026-08-08).
+    /// camera, not a composition; a shot is what the shot bank and the
+    /// sidebar's shot rows are for (Larry, 2026-08-08).
     ///
-    /// So the shot reused is the one that *is* that input: an authored shot
-    /// whose layer tree matches the one this method would create — a single
-    /// full-frame layer bound to the input, no crop, no overlay, no effect
-    /// chain. A shot that merely *contains* the input no longer matches, which
-    /// is the change: a camera shot carrying a PLUGE overlay and a cropped
-    /// camera layer is a composition the operator did not ask for by clicking
-    /// the camera. When nothing matches, a shot is created for the input,
-    /// appended to the preset and saved, so the switcher gains a button
-    /// matching what was clicked rather than a shot the operator cannot get
-    /// back to — and that appended shot is what the *next* click matches,
-    /// which is what still keeps repeated clicks from filling the switcher
-    /// with near-duplicates.
+    /// So the shot reused is the one that *is* that input: a shot whose layer
+    /// tree matches the one this method would create — a single full-frame
+    /// layer bound to the input, no crop, no overlay, no effect chain. A shot
+    /// that merely *contains* the input does not match: a camera shot
+    /// carrying a PLUGE overlay and a cropped camera layer is a composition
+    /// the operator did not ask for by clicking the camera. When nothing
+    /// matches, a **transient** shot is made for the input — appended to the
+    /// session pool and the compositor so preview can render it, shown in the
+    /// bank as a dashed tile with a Keep button, and **never saved**: it is
+    /// promoted to authored when the operator keeps, edits, or airs it, and
+    /// discarded the moment it is no longer staged
+    /// (``reconcileTransientShots()``; ARCHITECTURE.md, "The shot bank"). That
+    /// is what keeps a preset from filling with shots nobody asked for while
+    /// a clicked input is still one click from preview.
     ///
-    /// Reports no `tap` event itself — the tile's or sidebar row's action
-    /// closure reports it (EVENTS.md, "The `tap` convention").
+    /// Reports no `tap` event itself — the sidebar row's action closure
+    /// reports it (EVENTS.md, "The `tap` convention").
     ///
     /// - Parameter input: The input to stage.
     func stagePreview(showing input: InputID) async {
         guard hasSessionPreset else { return }
-        if let authored = ShotEdit.shot(in: shots, showingOnly: input) {
-            setPreview(authored.id)
+        if let existing = ShotEdit.shot(in: shots, showingOnly: input) {
+            setPreview(existing.id)
             return
         }
         let shot = ShotEdit.shot(showing: input, named: inputName(for: input))
         shots.append(shot)
         compositor.addShot(shot)
-        scheduleAutosave()
+        // Staging the new shot is also what discards the transient shot it
+        // replaces, if the last click made one.
         setPreview(shot.id)
-        // The new shot may name an input nothing was running yet — a camera
-        // whose start was refused earlier, say — so the pass that starts it has
-        // to run before its layer can contribute.
+        // The new shot names an input nothing may be running yet — a camera
+        // the show never referenced — so the pass that starts it has to run
+        // before its layer can contribute.
         await reconfigure()
+    }
+
+    /// Adds an **authored** shot showing one input full frame, named after
+    /// it — what dropping a sidebar input on the shot bank, choosing it from
+    /// the Add Shot menu, or its row's "Add Shot Showing …" does
+    /// (ARCHITECTURE.md, "The shot bank"). The operator asked for this shot
+    /// by name, so unlike the transient shot ``stagePreview(showing:)`` makes
+    /// it persists like any shot they made. Adding is not taking: the program
+    /// is untouched. The edit autosaves through the project-document path and
+    /// reconfigures so the input starts.
+    ///
+    /// - Parameters:
+    ///   - input: The input the shot's one layer binds to.
+    ///   - index: Where in the switcher order to insert, clamped to the pool;
+    ///     nil (the default) appends after the last authored shot — ahead of
+    ///     a transient one, which stays last as the bank's dashed tile.
+    func addShot(showing input: InputID, at index: Int? = nil) async {
+        guard hasSessionPreset else { return }
+        let shot = ShotEdit.shot(showing: input, named: inputName(for: input), origin: .authored)
+        let end = shots.firstIndex { $0.origin == .automatic } ?? shots.count
+        let position = min(max(index ?? end, 0), shots.count)
+        shots.insert(shot, at: position)
+        compositor.addShot(shot, at: position)
+        // The first shot of an empty pool is the one preview was waiting for.
+        ensurePreviewStaged()
+        syncTally()
+        scheduleAutosave()
+        await reconfigure()
+    }
+
+    /// Keeps a transient shot: promotes it to authored, so it persists and
+    /// stays in the bank when the operator stages something else — the Keep
+    /// button on a dashed tile (ARCHITECTURE.md, "The shot bank"). A shot
+    /// that is already the operator's is unchanged.
+    ///
+    /// - Parameter shotID: The id of the shot to keep.
+    func keepShot(_ shotID: ShotID) {
+        guard let index = shots.firstIndex(where: { $0.id == shotID }) else { return }
+        let claimed = ShotEdit.claiming(shots[index])
+        guard claimed != shots[index] else { return }
+        shots[index] = claimed
+        compositor.updateShot(claimed)
+        scheduleAutosave()
+    }
+
+    /// Brings the transient shots in line with the buses, after every change
+    /// to what is staged or on program: a transient shot **on program** is
+    /// promoted — it aired, so it is part of the show whether it got there
+    /// by Take, by Cut, or by the compositor cutting to it when the program
+    /// shot was removed — and a transient shot on **neither bus** is
+    /// discarded from the pool and the compositor, since it existed only to
+    /// show a clicked input on preview and the operator has looked away.
+    /// A transient shot still staged is left alone.
+    ///
+    /// - Returns: Whether a shot was discarded — its input may now be
+    ///   unreferenced, so the caller reconfigures to stop it.
+    @discardableResult
+    private func reconcileTransientShots() -> Bool {
+        var discarded = false
+        for shot in shots where shot.origin == .automatic {
+            if shot.id == activeShotID {
+                keepShot(shot.id)
+            } else if shot.id != previewShotID {
+                shots.removeAll { $0.id == shot.id }
+                compositor.removeShot(shotID: shot.id)
+                discarded = true
+            }
+        }
+        return discarded
     }
 
     /// Duplicates a shot — the source's layer tree and background under a
@@ -2147,6 +2223,9 @@ final class EngineModel {
         // which shot preview is left holding, then refill it from the pool.
         previewShotID = compositor.previewShotID
         ensurePreviewStaged()
+        // The cut may have landed on a transient shot, which is then aired
+        // and kept; one left on neither bus is discarded.
+        reconcileTransientShots()
         syncTally()
         scheduleAutosave()
         await reconfigure()
@@ -2172,6 +2251,8 @@ final class EngineModel {
         let shot = shots.remove(at: from)
         shots.insert(shot, at: to)
         compositor.moveShot(shotID: shotID, to: to)
+        // Placing a transient shot in the order is an act of authorship.
+        keepShot(shotID)
         scheduleAutosave()
     }
 
@@ -2366,8 +2447,12 @@ final class EngineModel {
         guard let index = presets.firstIndex(where: { $0.id == activePresetID }) else { return }
         let active = presets[index]
         let channels = mixerStrips.map(\.audioChannel)
-        guard active.shots != shots || active.audioChannels != channels else { return }
-        presets[index] = Preset(id: active.id, name: active.name, shots: shots, audioChannels: channels)
+        // A transient shot is session state, like what is staged: the
+        // document gets the authored shots only (ARCHITECTURE.md, "The shot
+        // bank").
+        let persisted = ShotEdit.persistedShots(of: shots)
+        guard active.shots != persisted || active.audioChannels != channels else { return }
+        presets[index] = Preset(id: active.id, name: active.name, shots: persisted, audioChannels: channels)
     }
 
     /// Adopts a newly active preset's authored audio configuration as the
@@ -2528,12 +2613,16 @@ final class EngineModel {
     /// compositor so a shot on program shows the change at the next tick,
     /// and schedules the debounced autosave so it reaches the project file.
     /// A no-op edit (out-of-range index, no shot followed, no actual change)
-    /// touches nothing.
+    /// touches nothing. A real edit to a **transient** shot promotes it: the
+    /// operator is composing in it, which is authorship (ARCHITECTURE.md,
+    /// "The shot bank" — the picker's rebind, the one layer edit that is not,
+    /// takes ``rebindLayers(from:to:)`` and never reaches a transient shot).
     private func applyShotEdit(_ edit: (Shot) -> Shot) {
         guard let followed = editedShot, let index = shots.firstIndex(where: { $0.id == followed.shot.id })
         else { return }
-        let edited = edit(shots[index])
+        var edited = edit(shots[index])
         guard edited != shots[index] else { return }
+        edited = ShotEdit.claiming(edited)
         shots[index] = edited
         compositor.updateShot(edited)
         // A layer edit can add, remove, or rebind a layer's input, which is
@@ -3323,7 +3412,28 @@ final class EngineModel {
         let path = store.fileURL.path(percentEncoded: false)
         do {
             if let project = try store.load() {
-                presets = project.presets
+                // A document written before transient shots existed carries
+                // the automatic shots the app made to stage clicked inputs;
+                // under the rule they were never the operator's, so they are
+                // dropped rather than promoted, and the next save writes them
+                // out (ARCHITECTURE.md, "The shot bank").
+                presets = project.presets.map { preset in
+                    Preset(
+                        id: preset.id,
+                        name: preset.name,
+                        shots: ShotEdit.persistedShots(of: preset.shots),
+                        audioChannels: preset.audioChannels
+                    )
+                }
+                let dropped = zip(project.presets, presets).reduce(0) { $0 + $1.0.shots.count - $1.1.shots.count }
+                if dropped > 0 {
+                    eventBus.event(
+                        "project.transientShotsDropped",
+                        domain: .composition,
+                        params: ["path": .string(path), "count": .int(dropped)]
+                    )
+                    scheduleAutosave()
+                }
                 // Hold this project's references; ``loadDestinations()``
                 // merges them with the operator's store to build the panel
                 // rows (each key stays in secure storage, read lazily when the
@@ -3387,7 +3497,9 @@ final class EngineModel {
 
     /// Completes the first configuration pass: when no project file supplied
     /// a preset, seeds one from the built-in ``ProgramLayout`` arrangement
-    /// (using only the inputs that actually started) and saves the fresh
+    /// (the cast devices that actually started, plus a bars shot when the
+    /// bars generator is registered — which requests one more reconfigure
+    /// pass to start it) and saves the fresh
     /// project immediately so the file exists from first launch; then loads
     /// the active preset into the compositor, which cuts to its first shot —
     /// nothing is on program yet, the one case where loading cuts (the active
@@ -3397,7 +3509,12 @@ final class EngineModel {
         if !hasSessionPreset {
             let displayID = selectedDisplayID.flatMap { activeInputs[$0] != nil ? $0 : nil }
             let cameraID = selectedCameraID.flatMap { activeInputs[$0] != nil ? $0 : nil }
-            shots = ProgramLayout.shots(displayID: displayID, cameraID: cameraID)
+            // The bars generator is discovered rather than started: a
+            // generator needs no authorization, so the seed can reference it
+            // before it runs and ask for the pass that starts it.
+            let barsID = videoInputs.first { $0.id == BarsGenerator.inputID }?.id
+            shots = ProgramLayout.shots(displayID: displayID, cameraID: cameraID, barsID: barsID)
+            if barsID != nil { reconfigureRequested = true }
             boundDisplayID = displayID
             boundCameraID = cameraID
             let seeded = Preset(

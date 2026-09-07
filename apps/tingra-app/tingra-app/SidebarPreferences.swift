@@ -46,7 +46,7 @@ enum SidebarSection: String, CaseIterable {
     /// closes it.
     ///
     /// One name per section rather than a shared name told apart by a param —
-    /// the rule `ProgramLayout.tapName(forShotID:)` records, so each
+    /// the rule the shot bank's per-control names follow, so each
     /// disclosure's use is independently traceable in the log (EVENTS.md, "The
     /// `tap` convention"). Spelled out in a switch rather than assembled from
     /// the raw value, so the event names are greppable.

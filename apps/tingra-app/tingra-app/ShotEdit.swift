@@ -12,8 +12,9 @@ import TingraComposition
 import TingraPlugInKit
 
 /// The pure shot-management operations the switcher applies to the session
-/// preset: create a new shot, duplicate one, and rename one (removal needs no
-/// transform — the shot simply leaves the array). Each operation returns a
+/// preset: create a new shot, duplicate one, rename one, claim a transient
+/// one, and pick which shots a save writes (removal needs no transform — the
+/// shot simply leaves the array). Each operation returns a
 /// plain `Shot` value, so shot management is unit-testable without the
 /// compositor, any UI, or hardware — the same design as ``LayerTreeEdit``
 /// (see ARCHITECTURE.md, "Shot management").
@@ -35,26 +36,67 @@ enum ShotEdit {
 
     /// A new shot showing one input full frame, named after it.
     ///
-    /// What clicking a tile in the main window's input rows needs when no
-    /// authored shot shows that input yet: preview stages a **shot**, never an
-    /// input (GLOSSARY.md, "Preview", "Shot"), so an input the operator clicks
-    /// has to be resolved to one. A single full-frame layer over the default
-    /// opaque-black background is the shot that shows exactly that input and
-    /// nothing else.
+    /// Preview stages a **shot**, never an input (GLOSSARY.md, "Preview",
+    /// "Shot"), so an input the operator clicks in the sidebar has to be
+    /// resolved to one — and an input the operator drags onto the shot bank,
+    /// or picks from the Add Shot menu, becomes one. A single full-frame
+    /// layer over the default opaque-black background is the shot that shows
+    /// exactly that input and nothing else.
     ///
-    /// The shot is **automatic** (``ShotOrigin/automatic``): the app made it,
-    /// and it carries a device's name rather than one the operator chose, so
-    /// surfaces listing the operator's own shots leave it out. It is a shot in
-    /// every other respect — it persists, it is in the switcher, it can be
-    /// taken, and renaming it makes it the operator's.
+    /// The origin says which of those it was. **Automatic** (the default):
+    /// the app made it to stage a clicked input, and it is **transient** — it
+    /// lives in the session pool while staged, is never written to the
+    /// document, and is promoted by ``claiming(_:)`` when the operator keeps,
+    /// edits, or airs it (ARCHITECTURE.md, "The shot bank"). **Authored**: the
+    /// operator asked for it by name, through a drop or the menu, and it
+    /// persists like any shot they made.
     ///
     /// - Parameters:
     ///   - input: The input the shot's one layer binds to.
     ///   - name: The shot's user-facing name — the input's own name, so the
-    ///     switcher button reads as the thing the operator clicked.
+    ///     tile reads as the thing the operator chose.
+    ///   - origin: Who made the shot (default: the app, transient).
     /// - Returns: The new shot.
-    static func shot(showing input: InputID, named name: String) -> Shot {
-        LayerTreeEdit.addingLayer(boundTo: input, to: Shot(name: name, origin: .automatic))
+    static func shot(showing input: InputID, named name: String, origin: ShotOrigin = .automatic) -> Shot {
+        LayerTreeEdit.addingLayer(boundTo: input, to: Shot(name: name, origin: origin))
+    }
+
+    /// The shot as the operator's own: an automatic shot becomes authored,
+    /// preserving everything else; an authored shot comes back unchanged.
+    ///
+    /// The one promotion path for a transient shot — behind Keep, behind a
+    /// take that puts it on air, and behind every edit that touches it
+    /// (``EngineModel/keepShot(_:)``, ``EngineModel/reconcileTransientShots()``).
+    /// A rename promotes through ``renaming(_:to:)`` on its own, since a name
+    /// is what it changes.
+    ///
+    /// - Parameter shot: The shot to claim.
+    /// - Returns: The shot, authored.
+    static func claiming(_ shot: Shot) -> Shot {
+        guard shot.origin != .authored else { return shot }
+        return Shot(
+            id: shot.id,
+            name: shot.name,
+            layers: shot.layers,
+            background: shot.background,
+            defaultTransition: shot.defaultTransition,
+            origin: .authored
+        )
+    }
+
+    /// The shots that belong in the project document: the authored ones, in
+    /// their given order.
+    ///
+    /// A transient shot is session state — it exists to show a clicked input
+    /// on preview and is gone when the operator looks away — so it is left
+    /// out of every save, the way what is staged is (ARCHITECTURE.md, "The
+    /// shot bank"). Applied on load too, so a document written before the
+    /// rule loses the automatic shots it carried rather than promoting them.
+    ///
+    /// - Parameter shots: The session pool.
+    /// - Returns: The authored shots.
+    static func persistedShots(of shots: [Shot]) -> [Shot] {
+        shots.filter { $0.origin == .authored }
     }
 
     /// The existing shot that shows exactly one input and nothing else — what
@@ -71,8 +113,8 @@ enum ShotEdit {
     /// the rule rather than an oversight (Larry, 2026-08-08): clicking a
     /// camera previews *that camera*, so a shot carrying the camera cropped
     /// under an overlay is a composition the operator did not ask for. Such a
-    /// shot is still one click away in the sidebar's shot section and on the
-    /// switcher's preview row, which is where a shot is chosen as a shot.
+    /// shot is still one click away in the sidebar's shot section and in the
+    /// shot bank, which is where a shot is chosen as a shot.
     ///
     /// - Parameters:
     ///   - shots: The shots to search, in switcher order.
@@ -111,12 +153,13 @@ enum ShotEdit {
     /// unchanged — a switcher button needs a label, so the UI never produces
     /// an unnamed shot.
     ///
-    /// **A rename makes an automatic shot authored**, and this is the only
-    /// promotion there is. An automatic shot carries a device's name because
-    /// the app had to call it something; giving it a name of your own is the
-    /// operator claiming it, and it is also the only edit that changes what a
-    /// list of the operator's shots would read. A rejected rename promotes
-    /// nothing — an unchanged shot is unchanged in every respect.
+    /// **A rename makes an automatic shot authored.** An automatic shot
+    /// carries a device's name because the app had to call it something;
+    /// giving it a name of your own is the operator claiming it. It was the
+    /// only promotion until transient shots (ARCHITECTURE.md, "The shot
+    /// bank"); now every edit claims through ``claiming(_:)``, and a rename
+    /// still claims on its own. A rejected rename promotes nothing — an
+    /// unchanged shot is unchanged in every respect.
     ///
     /// - Parameters:
     ///   - shot: The shot to rename.

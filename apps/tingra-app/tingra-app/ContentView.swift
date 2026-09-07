@@ -14,28 +14,31 @@ import TingraPlugInKit
 
 /// The main window, in two sections: a **monitoring section** across the top
 /// — the preview and program monitors side by side across the full width,
-/// the input rows beneath them under a **Shots** heading — over a **control
-/// section** carrying the optional switcher rows, the transition panel, the
-/// layer-tree editor, the input pickers, the mixer, and the streaming panel.
+/// the **shot bank** beneath them under a **Shots** heading — over a
+/// **control section** carrying the transition panel, the layer-tree editor,
+/// the input pickers, the mixer, and the streaming panel.
 ///
 /// That is the broadcast switcher's own arrangement (ARCHITECTURE.md, "The
 /// main window's two sections"): everything the operator *watches* is above
 /// everything the operator *works*, so an eye checking what is about to go to
-/// air never has to cross the controls that put it there. The input rows'
-/// tiles are the same ``MonitorTile`` over the same ``MultiviewTile`` tally
-/// derivation the multiview window uses, so what a tile shows and what its
-/// tally reads cannot differ between the two surfaces.
+/// air never has to cross the controls that put it there. The bank's tiles
+/// are the same ``MonitorTile`` the monitors and the multiview window draw,
+/// over the shared tally tints, so what a tile shows and what its tally
+/// reads cannot differ between surfaces.
 ///
 /// Presets are not here at all: the sidebar's Presets section switches among
 /// — and manages — the project's presets (``SidebarView``), and a second row
 /// of them across the content only repeated what that list already says
 /// (removed 2026-09-06; ARCHITECTURE.md, "Multiple presets in the UI").
-/// Shots are managed there too — the sidebar's Add Shot button and its shot
-/// rows' context menu — and staged from the input rows, the sidebar, or the
-/// Shots menu (⌘1–⌘9). The **switcher rows** — the Program row of shot
-/// buttons that takes on click and the Preview row that stages — are
-/// optional and hidden by default (``SwitcherRowsModel``), since they repeat
-/// those surfaces. The **transition panel** (``TransitionPanel``) is where
+/// Shots are the bank's (``ShotBankView``): one tile per shot of the active
+/// preset, clicked to stage, with the shared context menu, a plus button in
+/// the Shots heading that adds one from any camera, display, or video
+/// generator, and a drop target for an input dragged from the sidebar; the
+/// sidebar's shot rows and the
+/// Shots menu (⌘1–⌘9) stage the same shots. The Program and Preview rows of
+/// shot buttons this window carried until 2026-09-07 listed exactly what the
+/// bank shows and went with it (ARCHITECTURE.md, "The shot bank"). The
+/// **transition panel** (``TransitionPanel``) is where
 /// what is staged goes to air: Cut, Take with the selected transition — each
 /// shot's own default while the picker is on Default, or an explicit cut,
 /// dissolve, wipe, or shader as the override (GLOSSARY.md, "Transition") —
@@ -54,13 +57,9 @@ struct ContentView: View {
     /// The engine model, bindable so the pickers drive its selection.
     @Bindable var model: EngineModel
 
-    /// Whether the switcher rows are shown (``shotRows``) — the General
-    /// settings choice, observed so the checkbox reaches this window at once.
-    let switcherRows: SwitcherRowsModel
-
-    /// The shot the rename dialog is editing, or `nil` while it is closed.
-    /// View-local, like the layer editor's selection: which shot is being
-    /// renamed is transient session state.
+    /// The shot the bank's rename dialog is editing, or `nil` while it is
+    /// closed. View-local, like the layer editor's selection: which shot is
+    /// being renamed is transient session state.
     @State private var shotBeingRenamed: Shot?
 
     /// The rename dialog's working text, prefilled with the shot's current
@@ -83,7 +82,7 @@ struct ContentView: View {
 
     /// The gap between stacked surfaces — and, in the monitoring section,
     /// between the two monitors and between the monitors, the Shots heading,
-    /// and the input rows.
+    /// and the shot bank.
     private static let sectionSpacing: CGFloat = 12
 
     /// The shortest the monitors may be, so both stay readable in a window
@@ -107,8 +106,8 @@ struct ContentView: View {
     /// section only grows the letterbox bars above and below the picture. This
     /// way the monitors grow when the window widens, waste nothing when it
     /// heightens, and the surfaces below scroll into reach either way. The
-    /// input rows beneath them size their own tiles from the same width
-    /// (``InputRowsView/height(forRowWidth:)``).
+    /// shot bank beneath them sizes its own tiles from the same width
+    /// (``ShotBankView/height(forRowWidth:)``).
     ///
     /// - Parameter width: The window's width.
     /// - Returns: The monitors' height, floored at ``minimumMonitorsHeight``.
@@ -121,10 +120,10 @@ struct ContentView: View {
     /// the whole column scrollable.
     ///
     /// **Why it scrolls, and why the top section is measured rather than
-    /// flexible.** The column stacks eight surfaces — the monitors, the
-    /// switcher rows when shown, the transition panel, the layer editor, the
-    /// device pickers, the mixer, and the streaming and recording panels —
-    /// and a plain `VStack` resolves a shortfall by
+    /// flexible.** The column stacks seven surfaces — the monitors and the
+    /// bank, the transition panel, the layer editor, the device pickers, the
+    /// mixer, and the streaming and recording panels — and a plain `VStack`
+    /// resolves a shortfall by
     /// compressing whatever yields first. That is always the monitors, because
     /// they are the only surface with no intrinsic height to defend. At
     /// ordinary window sizes they collapsed to a sliver *and* pushed the camera
@@ -136,7 +135,7 @@ struct ContentView: View {
     /// show a portion of it. That in turn makes the top section's height a
     /// decision rather than a leftover, which it has to be: a scroll view
     /// proposes an **unbounded** height, and under that proposal
-    /// ``InputRowsView``'s own scroll views and the monitors'
+    /// ``ShotBankView``'s own scroll view and the monitors'
     /// `maxHeight: .infinity` have nothing to resolve against. So the section
     /// takes a definite height, derived from the window's width, which is also
     /// what makes the monitors grow when the window does rather than merely
@@ -146,10 +145,6 @@ struct ContentView: View {
             ScrollView {
                 VStack(spacing: Self.sectionSpacing) {
                     topSection(windowWidth: proxy.size.width)
-
-                    if switcherRows.isVisible {
-                        shotRows
-                    }
 
                     TransitionPanel(model: model)
 
@@ -193,7 +188,7 @@ struct ContentView: View {
 
     /// The monitoring section: the preview and program monitors side by side
     /// across the full content width, each captioned beneath with the shot it
-    /// is showing, then a **Shots** heading over the input rows.
+    /// is showing, then a **Shots** heading over the shot bank.
     ///
     /// The monitors split the width evenly, which makes them the largest
     /// surface in the window at every size — the two pictures an operator
@@ -203,19 +198,15 @@ struct ContentView: View {
     /// monitor and differ in what they reference, and the shot switcher's
     /// highlight is scrolled away while the operator watches. The captions
     /// ride outside the monitors' measured height, in their own row, so they
-    /// cost the pictures nothing. Below them, under a heading that names them
-    /// for what they are — every tile is a shot, the automatic full-frame one
-    /// ``EngineModel/stagePreview(showing:)`` stages, so the rows are the
-    /// preset's automatic shot list — sit two rows — every available camera above, the
-    /// generators and displays below (``InputRowsView``) — rather than one
-    /// adaptive grid. Splitting cameras onto their own line is what makes the
-    /// rows scannable: cameras are what an operator reaches for and the row
-    /// that changes as hardware comes and goes, so mixing them in among the
-    /// patterns costs a search every time.
+    /// cost the pictures nothing. Below them, under a heading that names it,
+    /// sits the **shot bank** (``ShotBankView``): one tile per shot of the
+    /// active preset, so the row reads as what the operator can take rather
+    /// than as every input the Mac can see (ARCHITECTURE.md, "The shot
+    /// bank").
     ///
     /// Both parts take a definite height from the window's width — the
-    /// monitors from ``monitorsHeight(forWindowWidth:)``, the rows from
-    /// ``InputRowsView/height(forRowWidth:)`` — so the section is laid out by
+    /// monitors from ``monitorsHeight(forWindowWidth:)``, the bank from
+    /// ``ShotBankView/height(forRowWidth:)`` — so the section is laid out by
     /// arithmetic rather than by negotiation; see the body's note on why a
     /// scroll view leaves no other choice, and ``monitorsHeight`` on why the
     /// height comes from the width.
@@ -253,12 +244,42 @@ struct ContentView: View {
                 )
             }
 
-            Text("Shots", comment: "Heading over the input rows beneath the monitors — the automatic shots")
-                .font(.headline)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            HStack(spacing: 6) {
+                Text("Shots", comment: "Heading over the shot bank beneath the monitors")
+                    .font(.headline)
+                addShotMenu
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
-            InputRowsView(model: model, height: InputRowsView.height(forRowWidth: contentWidth))
+            ShotBankView(model: model, height: ShotBankView.height(forRowWidth: contentWidth)) { shot in
+                renameText = shot.name
+                shotBeingRenamed = shot
+            }
         }
+    }
+
+    /// The Add Shot menu right after the word Shots in the heading: a
+    /// plus-in-a-circle glyph opening ``AddShotMenu`` on the bank surface,
+    /// the same items as the Shots menu's and the sidebar's Shots section's
+    /// Add Shot submenus. It sits beside the heading rather than
+    /// as a tile at the end of the bank — or at the far right of the heading,
+    /// where a wide window strands it — so the row holds nothing but shots and
+    /// the control is next to the word that names what it adds. Not focusable: it is a menu opened by
+    /// click, and a focus ring around a bare glyph reads as a stray border.
+    private var addShotMenu: some View {
+        AddShotMenu(model: model, surface: .bank) {
+            Image(systemName: "plus.circle")
+                .font(.title3)
+                .foregroundStyle(.secondary)
+                .contentShape(.rect)
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .focusable(false)
+        .focusEffectDisabled()
+        .help(Text("Add a shot to the active preset", comment: "Tooltip on the Add Shot menu"))
+        .accessibilityLabel(Text("Add Shot", comment: "Button adding a new empty shot to the preset"))
     }
 
     /// One monitor's shot caption: the shot's name, centered under the
@@ -285,10 +306,8 @@ struct ContentView: View {
         .frame(maxWidth: .infinity)
     }
 
-    /// The localized name of the program bus, shared by its monitor's badge
-    /// and its switcher row's label. Held in one place so both call sites
-    /// carry the identical comment, which is what keeps string extraction
-    /// from splitting one key in two.
+    /// The localized name of the program bus, its monitor's badge. Kept as a
+    /// property so the string carries one comment wherever it is used.
     private var programLabel: Text {
         Text("Program", comment: "Name of the program bus — labels its monitor and its switcher row")
     }
@@ -296,97 +315,6 @@ struct ContentView: View {
     /// The localized name of the preview bus (see ``programLabel``).
     private var previewLabel: Text {
         Text("Preview", comment: "Name of the preview bus — labels its monitor and its switcher row")
-    }
-
-    /// The **switcher rows**: the Program row — one button per shot in the
-    /// active preset, taking it to program on click with the transition the
-    /// panel beneath selects, the on-program shot highlighted — over the
-    /// Preview row, the same shots again staging rather than taking, the
-    /// staged one highlighted green; a radio row like the Program row, so
-    /// clicking the staged shot again leaves it staged (ARCHITECTURE.md, "The
-    /// preview bus").
-    ///
-    /// Optional, and hidden by default (``SwitcherRowsModel``, the General
-    /// settings checkbox): the sidebar lists every authored shot, the input
-    /// rows above are the automatic ones, and the Shots menu stages by
-    /// number, so these rows repeat what the window already shows — an
-    /// operator who wants the hardware panel's horizontal bank of shot
-    /// buttons turns them on once. A second row rather than a modifier-click
-    /// on the program row, because the program row's single click is the
-    /// live on-air take: a mis-modified click must never put the wrong shot
-    /// to air. Each program button's context menu is the shared
-    /// ``ShotContextMenu``; adding a shot is the sidebar's Add Shot button,
-    /// Cut and Take are the ``TransitionPanel``'s, and the ⌘1–⌘9 staging
-    /// keys are the Shots menu's (``ShotCommands``), so nothing here is the
-    /// only way to do anything.
-    @ViewBuilder private var shotRows: some View {
-        if model.shots.isEmpty {
-            Text("No shots in this preset", comment: "Sidebar placeholder when the active preset has no shots")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        } else {
-            VStack(alignment: .leading, spacing: 6) {
-                programRow
-                previewRow
-            }
-        }
-    }
-
-    /// The Program row of ``shotRows``.
-    private var programRow: some View {
-        HStack(spacing: 8) {
-            programLabel
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-
-            ForEach(model.shots) { shot in
-                let isOnProgram = shot.id == model.activeShotID
-                Button(shot.name) {
-                    model.eventBus.tap(
-                        ProgramLayout.tapName(forShotID: shot.id),
-                        domain: .composition,
-                        params: ["shot": .string(shot.id.rawValue), "name": .string(shot.name)]
-                    )
-                    model.take(shot.id)
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(isOnProgram ? .accentColor : .gray)
-                .contextMenu {
-                    ShotContextMenu(model: model, shot: shot, surface: .switcher) { shot in
-                        renameText = shot.name
-                        shotBeingRenamed = shot
-                    } onRemove: { shot in
-                        // Immediate, no confirmation: shots are quick to
-                        // create, switch, and discard (GLOSSARY.md, "Shot").
-                        Task { await model.removeShot(shot.id) }
-                    }
-                }
-            }
-        }
-    }
-
-    /// The Preview row of ``shotRows``.
-    private var previewRow: some View {
-        HStack(spacing: 8) {
-            previewLabel
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-
-            ForEach(model.shots) { shot in
-                let isStaged = shot.id == model.previewShotID
-                Button(shot.name) {
-                    model.eventBus.tap(
-                        ProgramLayout.previewTapName(forShotID: shot.id),
-                        domain: .composition,
-                        params: ["shot": .string(shot.id.rawValue), "name": .string(shot.name)]
-                    )
-                    model.setPreview(shot.id)
-                }
-                .buttonStyle(.bordered)
-                .tint(isStaged ? .green : nil)
-            }
-        }
     }
 
     /// The localized badge shown on the program monitor while the program is
