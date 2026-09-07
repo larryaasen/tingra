@@ -89,7 +89,7 @@ enum ProductionShortcut: String, CaseIterable, Sendable {
     /// The key a shot at the given switcher position is staged with, or nil
     /// for a position past ``stageShotLimit``.
     ///
-    /// - Parameter index: The shot's zero-based position in the preview row.
+    /// - Parameter index: The shot's zero-based position in the switcher order.
     /// - Returns: The digit key that stages it, or nil when it has none.
     static func stageShotKey(forIndex index: Int) -> KeyEquivalent? {
         guard index >= 0, index < stageShotLimit else { return nil }
@@ -100,11 +100,11 @@ enum ProductionShortcut: String, CaseIterable, Sendable {
     }
 
     /// The shortcut that stages the shot at the given switcher position, or
-    /// nil past ``stageShotLimit`` — what the preview row hands
-    /// `keyboardShortcut(_:)`, whose optional overload leaves a tenth shot
-    /// unbound rather than needing a branch at the call site.
+    /// nil past ``stageShotLimit`` — what the Shots menu (``ShotCommands``)
+    /// hands `keyboardShortcut(_:)`, whose optional overload leaves a tenth
+    /// shot unbound rather than needing a branch at the call site.
     ///
-    /// - Parameter index: The shot's zero-based position in the preview row.
+    /// - Parameter index: The shot's zero-based position in the switcher order.
     /// - Returns: The shortcut that stages it, or nil when it has none.
     static func stageShotShortcut(forIndex index: Int) -> KeyboardShortcut? {
         stageShotKey(forIndex: index).map { KeyboardShortcut($0, modifiers: stageShot.modifiers) }

@@ -24,9 +24,10 @@ import SwiftUI
 /// every tile share one draw path instead of three that could drift.
 @MainActor
 protocol MonitorFrameSource {
-    /// The frame to draw now, or nil before the first one arrives (which
-    /// for preview means until a shot is staged, and for an input tile
-    /// means until that input delivers).
+    /// The frame to draw now, or nil when there is nothing to show: before
+    /// the first one arrives (for an input tile, until that input delivers),
+    /// and for preview whenever no shot is staged — the relay empties when
+    /// preview is cleared, and the monitor clears with it.
     var latest: CVPixelBuffer? { get }
 }
 
@@ -132,6 +133,13 @@ struct MonitorView: NSViewRepresentable {
         /// monitor in the app.
         private let renderContext = MonitorRenderContext.shared
 
+        /// Whether a frame is on the drawable right now. A draw that finds
+        /// no frame and returns leaves whatever was last presented on
+        /// screen, so when the source goes empty after showing frames
+        /// (preview cleared) the monitor must present one cleared drawable
+        /// — once, not at display rate for as long as it stays empty.
+        private var hasPresentedFrame = false
+
         /// Creates a coordinator sampling the given source.
         init(source: any MonitorFrameSource) {
             self.source = source
@@ -141,18 +149,23 @@ struct MonitorView: NSViewRepresentable {
         func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
 
         /// Renders the source's current frame, aspect-fit and centered, into
-        /// the drawable. Draws nothing (leaving the black clear color) until
-        /// the first frame arrives — which for preview means until a shot is
-        /// staged, and for a multiview tile means until that input delivers.
+        /// the drawable. Shows the black clear color while the source has no
+        /// frame — before the first one arrives (for a multiview tile, until
+        /// that input delivers), and for preview while no shot is staged: a
+        /// source that empties after showing frames gets one cleared
+        /// drawable, so a cleared preview never reads as a frozen picture.
         ///
         /// The frame is read, drawn, and dropped within this call: a monitor
         /// never accumulates frames, which would starve a capture
         /// framework's buffer pool (ARCHITECTURE.md, "Frame ownership across
         /// the `Input` seam", clause 4).
         func draw(in view: MTKView) {
+            guard let commandQueue = renderContext.commandQueue else { return }
+            guard let pixelBuffer = source.latest else {
+                clearIfNeeded(view, commandQueue: commandQueue)
+                return
+            }
             guard
-                let commandQueue = renderContext.commandQueue,
-                let pixelBuffer = source.latest,
                 let drawable = view.currentDrawable,
                 let commandBuffer = commandQueue.makeCommandBuffer()
             else { return }
@@ -183,6 +196,28 @@ struct MonitorView: NSViewRepresentable {
             )
             commandBuffer.present(drawable)
             commandBuffer.commit()
+            hasPresentedFrame = true
+        }
+
+        /// Presents one drawable holding only the view's clear color, if a
+        /// frame is on screen — the view's own render pass descriptor loads
+        /// with a clear, so an empty encoder is the whole job. A monitor
+        /// that has never shown a frame is already black and skips this.
+        ///
+        /// - Parameters:
+        ///   - view: The view whose drawable to clear.
+        ///   - commandQueue: The queue the clearing command buffer comes from.
+        private func clearIfNeeded(_ view: MTKView, commandQueue: MTLCommandQueue) {
+            guard hasPresentedFrame,
+                let descriptor = view.currentRenderPassDescriptor,
+                let drawable = view.currentDrawable,
+                let commandBuffer = commandQueue.makeCommandBuffer(),
+                let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: descriptor)
+            else { return }
+            encoder.endEncoding()
+            commandBuffer.present(drawable)
+            commandBuffer.commit()
+            hasPresentedFrame = false
         }
     }
 }

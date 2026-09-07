@@ -33,6 +33,12 @@ struct TingraApp: App {
     /// (see ``StatusBarModel``).
     @State private var statusBar = StatusBarModel()
 
+    /// Whether the main window shows its switcher rows — the Program and
+    /// Preview rows of shot buttons — owned for the app's lifetime so the
+    /// General settings pane's checkbox reaches the window at once (see
+    /// ``SwitcherRowsModel``).
+    @State private var switcherRows = SwitcherRowsModel()
+
     /// Whether the main window's sidebar is showing — the split view's own
     /// state, held here so the View menu's Show/Hide Sidebar item can read and
     /// write it (see ``SidebarVisibilityCommands``).
@@ -77,7 +83,7 @@ struct TingraApp: App {
             NavigationSplitView(columnVisibility: $sidebarVisibility) {
                 SidebarView(model: model)
             } detail: {
-                ContentView(model: model)
+                ContentView(model: model, switcherRows: switcherRows)
                     .frame(minWidth: 640, minHeight: 480)
                     .safeAreaInset(edge: .bottom, spacing: 0) {
                         StatusBarView(model: model, statusBar: statusBar)
@@ -90,6 +96,7 @@ struct TingraApp: App {
         }
         .commands {
             SidebarVisibilityCommands(model: model, visibility: $sidebarVisibility)
+            ShotCommands(model: model)
             MultiviewCommands(model: model)
             StatusBarCommands(model: model, statusBar: statusBar)
             SettingsCommands(model: model)
@@ -126,13 +133,18 @@ struct TingraApp: App {
         //
         // `SettingsCommands` puts Settings… back where macOS reserves it,
         // under ⌘, in the app menu, so nothing an operator can see moved.
+        // A `Window` scene also lists itself in the Window menu, which for
+        // this one is a second Settings item two menus over from the real
+        // one; `commandsRemoved()` drops the scene's own commands so the app
+        // menu's is the only Settings item, as in every other Mac app.
         Window(
             String(localized: "Settings", comment: "Title of the settings window"),
             id: Self.settingsWindowID
         ) {
-            SettingsView(model: model, appearance: appearance, statusBar: statusBar)
+            SettingsView(model: model, appearance: appearance, statusBar: statusBar, switcherRows: switcherRows)
         }
         .windowResizability(.contentMinSize)
+        .commandsRemoved()
     }
 }
 

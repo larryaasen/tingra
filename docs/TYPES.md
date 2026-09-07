@@ -696,14 +696,17 @@ surface is:
   since a preset is not on a bus and red means on air everywhere else in the
   app. Nothing reaches program from here. Every section collapses, with the
   standard source-list disclosure, and which ones are folded away persists
-  across launches. A shot row also carries a context menu with one item, Delete,
-  which raises a confirmation naming the shot before anything is removed —
-  unlike the switcher's own Remove Shot, which is immediate; a destination row
-  carries the same Delete, whose confirmation says that the stored stream key
-  goes with it. The audio and destination rows otherwise read rather than switch
-  — the channel strips, the monitor picker, and the streaming panel already own
-  those decisions — and listing a device starts nothing, so no camera indicator
-  lights for the sidebar.
+  across launches. A shot row carries the shared shot context menu
+  (`ShotContextMenu`: Duplicate, Rename…, Default Transition, Move Up / Move
+  Down, and Delete, which raises a confirmation naming the shot before anything
+  is removed — unlike the switcher rows' Remove Shot, which is immediate); a
+  destination row carries a Delete of its own, whose confirmation says that the
+  stored stream key goes with it. Two buttons pinned to the sidebar's bottom
+  edge, Add Shot over Add Preset, make a new empty one of each (2026-09-07). The
+  audio and destination rows otherwise read rather than switch — the channel
+  strips, the monitor picker, and the streaming panel already own those
+  decisions — and listing a device starts nothing, so no camera indicator lights
+  for the sidebar.
 - `SidebarRow` — the pure, unit-tested row derivation behind it: one identity
   across shots, presets, capture devices, destinations, and Core Audio outputs;
   the shot tally with red winning over green; the checkmark that marks the
@@ -721,25 +724,30 @@ surface is:
   absence of a value rather than its content.
 - `ContentView` — the main window's detail column, in two sections — a
   monitoring section across the top, the preview and program monitors side by
-  side across the full width with the input rows beneath them, over a control
-  section holding everything the operator works. The whole column scrolls, and
-  the monitoring section's height is derived from the window's width — two 16:9
-  monitors have no use for surplus vertical room, and a plain stack resolved a
-  shortfall by collapsing the monitors and pushing the pickers off the bottom
-  edge. The control section
-  holds the camera/display pickers, a streaming panel — the destination list
-  and live status; Start/Stop and Record are toolbar items — and a preset switcher that switches and manages the
-  project's presets — an Add Preset button plus a per-preset context menu with
-  Duplicate, Rename…, Move Left / Move Right, and Remove Preset, disabled on the
-  last remaining preset — above a shot switcher that also manages shots: an Add
-  Shot button plus a per-shot context menu with Duplicate, Rename…, a Default
-  Transition submenu setting the shot's persisted default, Move Left / Move
-  Right, and Remove Shot, and a segmented transition picker — Default (each
-  shot's own default transition, the initial selection), or an explicit Cut,
-  Dissolve, or Wipe, with an edge pop-up while Wipe is selected — choosing how
-  the next take reaches program, and beneath it a latching Fade to Black button
-  (⇧⌘B) that takes the whole program off air, picture and sound together, and
-  stays available when the preset has no shots.
+  side across the full width, each captioned beneath with the name of the shot
+  on its bus (2026-09-07), with the input rows beneath them under a **Shots**
+  heading, over a control section holding everything the operator works. The
+  whole column scrolls, and the monitoring section's height is derived from the
+  window's width — two 16:9 monitors have no use for surplus vertical room, and
+  a plain stack resolved a shortfall by collapsing the monitors and pushing the
+  pickers off the bottom edge. The control section holds the optional
+  **switcher rows** — a Program row of shot buttons that takes on click, each
+  with the shared `ShotContextMenu`, over a Preview row that stages; hidden
+  unless the General settings checkbox shows them (`SwitcherRowsModel`) — the
+  `TransitionPanel`, the layer editor, the camera/display pickers, the mixer,
+  and a streaming panel — the destination list and live status; Start/Stop and
+  Record are toolbar items. Presets and shots are made and managed in the
+  sidebar (its Add Preset and Add Shot buttons, its rows' menus) and staged by
+  number from the Shots menu.
+- `TransitionPanel` — the Cut, Take, and transition controls under their own
+  heading (2026-09-07): a segmented picker — Default (each shot's own default
+  transition, the initial selection), or an explicit Cut, Dissolve, Wipe, or
+  Shader — with the wipe edge or shader name beside it while that kind is
+  selected; Cut and Take as a matched large pair, Take prominent and red, both
+  disabled with a one-line hint while nothing is staged; and a latching Fade to
+  Black button (⇧⌘B) at the trailing end that takes the whole program off air,
+  picture and sound together, and stays available when the preset has no
+  shots. Cut ⇧⌘↩ and Take ⌘↩ stay on the buttons.
 - `DestinationListView` — the streaming panel's destination list: one row per
   destination the program fans out to, each with an enable toggle, a name, a
   URL, a secure stream-key field, its own live state — its bitrate and frame
@@ -858,6 +866,12 @@ surface is:
   settings checkbox and the View-menu item write — shared rather than each
   window reading `UserDefaults` for itself, since `UserDefaults` is not
   observable and the two controls live outside the windows they change.
+- `SwitcherRowsPreferences` — whether the main window's Program and Preview
+  rows of shot buttons are shown: machine-local `UserDefaults` on the
+  `StatusBarPreferences` pattern, hidden on a fresh install, the presence of the
+  key checked first so the default is stated in one place.
+- `SwitcherRowsModel` — the `@Observable` the main window reads and the General
+  settings checkbox writes, `StatusBarModel`'s shape for its reason.
 - `TingraAppDelegate` — the two AppKit hooks: it answers every quit with
   `.terminateLater` so the shutdown is recorded on the bus and drained to the
   log before the process exits (`EngineModel.shutDown(reason:)`, with the cause
@@ -869,18 +883,28 @@ surface is:
   main window is one per show, and multiview's whole point is a second display
   rather than a tab beside the window it monitors.
 - `PresetContextMenu` — one preset's context menu — duplicate, rename, reorder,
-  remove — shared by the preset switcher's buttons and the sidebar's preset
-  rows so right-clicking a preset offers the same commands wherever it is
-  listed; Rename… hands the preset back to the owning view, which opens the
-  dialog.
-- `PresetMenuSurface` — which surface a preset menu is on, switcher or sidebar:
-  the pure, unit-tested source of each surface's `tap` names (the switcher
-  keeps its `preset…` names, the sidebar reports `sidebarPreset…`) and of the
-  reorder words — Move Left / Move Right across the switcher, Move Up / Move
-  Down in the sidebar.
+  remove — attached to the sidebar's preset rows, and to any surface that
+  lists presets, so right-clicking a preset offers the same commands wherever
+  it is listed; Rename… hands the preset back to the owning view, which opens
+  the dialog.
+- `PresetMenuSurface` — which surface a preset menu is on — today only the
+  sidebar, since the main window's preset switcher row was removed 2026-09-06:
+  the pure, unit-tested source of the surface's `tap` names (`sidebarPreset…`)
+  and of its reorder words (Move Up / Move Down, a vertical list's).
 - `PresetRenameDialog` — the preset rename alert as a modifier, so each surface
   presents the one dialog over its own content with its own subject and `tap`
   names.
+- `ShotContextMenu` — one shot's context menu — duplicate, rename, default
+  transition, reorder, remove — shared by the switcher rows' shot buttons and
+  the sidebar's shot rows; Rename… and the remove item hand the shot back to
+  the owning view, which opens the dialog or, in the sidebar, asks first.
+- `ShotMenuSurface` — which surface a shot menu is on, switcher or sidebar: the
+  pure, unit-tested source of each surface's `tap` names (the switcher keeps its
+  `shot…` names, the sidebar reports `sidebarShot…`, keeping
+  `sidebarShotDelete.menu`) and of the reorder words — Move Left / Move Right
+  across the switcher, Move Up / Move Down in the sidebar.
+- `ShotRenameDialog` — the shot rename alert as a modifier, `PresetRenameDialog`
+  one level down.
 - `TerminationReason` — why the app is quitting, as far as AppKit can say: the
   app's own `terminate(_:)` (the Quit item, ⌘Q), or a quit Apple event from the
   Dock, a script, or the login window on logout, restart, and shutdown, read
@@ -897,8 +921,15 @@ surface is:
   is reported".
 - `LayerTreeEditorView` — the layer-tree editor: add a layer bound to any
   discovered camera or display, remove, reorder, and adjust a layer's frame and
-  opacity with live sliders — every edit on program at the next tick, and
-  autosaved to the project file.
+  opacity with live sliders. It follows the shot staged on preview, falling back
+  to the shot on program when nothing is staged (`EditedShot`), and heads itself
+  with that shot's name beside the shared tally lamp — red, with a note that
+  edits are live, while the shot is on program; every edit reaches the compositor
+  at the next tick and is autosaved to the project file.
+- `EditedShot` — the pure, unit-tested rule for which shot the layer-tree editor
+  follows (preview first, program as the fallback, never a held snapshot outside
+  the pool) and the tally its header shows, red winning when the same shot is on
+  both buses.
 - `LayerTreeEdit` — the pure, unit-tested edit operations over a `Shot`,
   including the rebind a picker change applies.
 - `ShotEdit` — the pure, unit-tested shot-management operations: a new empty
@@ -908,7 +939,9 @@ surface is:
   setting or clearing a shot's default transition, and the match that decides
   which existing shot staging an input reuses — one showing *only* that input,
   never one that merely contains it, so clicking a camera previews the camera
-  rather than a composition built around it.
+  rather than a composition built around it — and the preview refill: the shot
+  staged whenever preview would otherwise be empty, the first not on program,
+  else the program shot itself.
 - `PresetEdit` — the same operations one level up: a new empty preset, a
   duplicate under a fresh id with the source's shot ids preserved — so switching
   between original and copy holds the on-program shot — and a rename that
@@ -919,7 +952,8 @@ surface is:
 - `MonitorView` — the Core Image `MTKView` that samples one frame source at
   display rate — one instance over program, another over preview, and one per
   input tile in multiview; it was `ProgramPreviewView` while program was the
-  only bus.
+  only bus. A source that empties after showing frames (preview cleared) gets
+  one cleared drawable, so the monitor never holds a stale frame.
 - `MonitorFrameSource` — the seam a monitor reads through, so those three cases
   share one draw path: a bus's `ProgramFrameRelay`, or an `InputFrameSource`.
 - `MonitorTile` — the framed monitor — video letterboxed on black, an optional
@@ -933,7 +967,8 @@ surface is:
   idle. The tiles are deliberately inert: a tile is an *input* while preview
   stages a *shot*, and a guess one click from air is exactly what the preview
   bus refused.
-- `InputRowsView` — the main window's top-left pane: every available camera in a
+- `InputRowsView` — the rows under the monitors, headed **Shots** since they
+  are the preset's automatic shot list: every available camera in a
   horizontal row, the generators and displays in a second row beneath it, split
   by provenance because cameras are what an operator reaches for. Every tile is
   live — the engine runs every discovered video input for monitoring, a
@@ -958,6 +993,11 @@ surface is:
   red winning over green, plus the `Tally` tint pair both tile surfaces draw
   from so they cannot read a lamp differently.
 - `MultiviewCommands` — the View-menu command that opens the window, ⌥⌘M.
+- `ShotCommands` — the Shots menu: one item per shot in the active preset, in
+  switcher order and under the shot's own name, staging it on preview; the
+  first nine carry ⌘1–⌘9, which moved here from the preview row's buttons when
+  those became optional — a key whose control may be off screen belongs in the
+  menu bar.
 - `ProgramLayout` — the pure, unit-tested arrangement that seeds a fresh
   project's picture-in-picture, display, and camera shots.
 - `ProductionShortcut` — the closed list of production keyboard shortcuts —
@@ -988,9 +1028,10 @@ surface is:
   window's title cannot drift.
 - `SettingsCommands` — the app-menu Settings… item that opens it, replacing the
   one the `Settings` scene would have contributed.
-- `GeneralSettingsView` — the General pane: the app's Appearance, and a Show
+- `GeneralSettingsView` — the General pane: the app's Appearance, a Show
   Status Bar checkbox showing or hiding the bar across the bottom of both
-  windows.
+  windows, and a Show Program and Preview Rows checkbox showing or hiding the
+  main window's switcher rows.
 - `AppearancePicker` / `AppearanceSwatch` / `AppearanceMiniDesktop` — the
   three-thumbnail appearance control and the miniature desktop each thumbnail
   draws — the System swatch composites the other two rather than being a third

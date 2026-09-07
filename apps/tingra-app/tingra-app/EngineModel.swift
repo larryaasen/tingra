@@ -383,7 +383,16 @@ final class EngineModel {
     /// preview row can highlight it. Session state: what is staged when the
     /// app quits is not part of the show, so it never enters the project
     /// document (ARCHITECTURE.md, "The preview bus").
-    private(set) var previewShotID: ShotID?
+    ///
+    /// Clearing it also empties ``previewRelay``: the compositor yields no
+    /// preview frame while nothing is staged, so without this the monitor
+    /// would keep drawing the last staged frame as if it had frozen. An
+    /// empty preview shows nothing (ARCHITECTURE.md, "The preview bus").
+    private(set) var previewShotID: ShotID? {
+        didSet {
+            if previewShotID == nil { previewRelay.latest = nil }
+        }
+    }
 
     /// Whether the program is faded to black — picture *and* sound
     /// (GLOSSARY.md, "Fade to black"). The **latch**, so it flips the moment
@@ -417,10 +426,45 @@ final class EngineModel {
     /// nothing to union here.
     private(set) var previewInputIDs: Set<InputID> = []
 
-    /// The shot currently selected in the switcher — the one the layer-tree
-    /// editor edits. `nil` when there are no shots.
+    /// The shot on program, as the switcher highlights it — `nil` when there
+    /// are no shots, or while a preset switch holds a snapshot from outside
+    /// the pool (see ``programShot``).
     var activeShot: Shot? {
         shots.first { $0.id == activeShotID }
+    }
+
+    /// The shot on program, as the program monitor's caption names it: the
+    /// active shot, or — while a preset switch holds the outgoing shot on
+    /// program as a snapshot from outside the loaded pool
+    /// (``Compositor/loadPreset(_:)``) — the held shot, which no id in
+    /// ``shots`` resolves. `nil` when the program is background-only: no
+    /// shot at all, or the nameless empty shot a removed preset leaves.
+    ///
+    /// Read through the compositor for the held case rather than mirrored
+    /// into a stored property, because every transition into and out of a
+    /// hold already reassigns ``activeShotID``, which this getter reads — so
+    /// the caption re-evaluates exactly when the answer can change.
+    var programShot: Shot? {
+        if let activeShot { return activeShot }
+        let rendering = compositor.programShot
+        return rendering.name.isEmpty ? nil : rendering
+    }
+
+    /// The shot staged on preview, as the preview monitor's caption names it,
+    /// or `nil` while nothing is staged. Resolved against ``shots``, which
+    /// holds the automatic shots ``stagePreview(showing:)`` makes as well as
+    /// the authored ones.
+    var previewShot: Shot? {
+        shots.first { $0.id == previewShotID }
+    }
+
+    /// The shot the layer-tree editor follows, with its tally: the shot
+    /// staged on preview, or the shot on program when nothing is staged —
+    /// ``EditedShot``'s rule over the two bus ids. `nil` when neither bus
+    /// carries a shot from ``shots`` (an empty pool, or a held program
+    /// snapshot with nothing staged, which no edit could be stored into).
+    var editedShot: EditedShot? {
+        EditedShot.following(shots: shots, previewShotID: previewShotID, activeShotID: activeShotID)
     }
 
     /// The discovered inputs producing the given media, in a stable
@@ -478,7 +522,8 @@ final class EngineModel {
 
     /// The latest preview frame, for the preview monitor to sample at display
     /// cadence — the program relay's twin, one bus over (GLOSSARY.md,
-    /// "Preview").
+    /// "Preview"). Emptied whenever ``previewShotID`` goes nil, so a cleared
+    /// preview reads as empty rather than as a frozen frame.
     @ObservationIgnored let previewRelay = ProgramFrameRelay()
 
     /// The latest mix tick's meter readings, handed to the strip meters to
@@ -868,7 +913,11 @@ final class EngineModel {
         compositor.start()
         previewTask = Task { [weak self] in
             for await frame in preview {
-                self?.previewRelay.latest = frame.pixelBuffer
+                // A frame the tick rendered just before preview was cleared
+                // can still be in flight here; storing it would repaint the
+                // monitor the clear just emptied, so it is dropped.
+                guard let self, previewShotID != nil else { continue }
+                previewRelay.latest = frame.pixelBuffer
             }
         }
         programTask = Task { [weak self] in
@@ -1870,8 +1919,10 @@ final class EngineModel {
     /// Stages a shot on preview — the staging bus, where the next shot is
     /// composed and checked before being taken to program (GLOSSARY.md,
     /// "Preview"). Staging is **not** taking: the program is untouched.
-    /// Staging the shot already staged clears preview, so the preview row's
-    /// button toggles.
+    /// Staging the shot already staged leaves it staged: a desk's preview
+    /// bus is a radio row, and pressing the lit button is not a way to turn
+    /// preview off (the toggle this once had was dropped 2026-09-07 —
+    /// ARCHITECTURE.md, "The preview bus").
     ///
     /// Nothing to reconfigure or autosave: every shot of the active preset
     /// already has its inputs running (``applyConfiguration()`` references
@@ -1883,10 +1934,28 @@ final class EngineModel {
     ///
     /// - Parameter shotID: The id of the shot to stage.
     func setPreview(_ shotID: ShotID) {
-        let staged = shotID == previewShotID ? nil : shotID
-        compositor.setPreview(shotID: staged)
+        compositor.setPreview(shotID: shotID)
         previewShotID = compositor.previewShotID
         syncTally()
+    }
+
+    /// Keeps a shot staged whenever the pool has one: if preview is empty
+    /// after a bus change, stages ``ShotEdit/previewRefill(in:activeShotID:)``'s
+    /// pick — the first shot not on program, else the program shot itself.
+    ///
+    /// The compositor is honest about an empty preview (a take that replaced
+    /// a held snapshot, a removed or preset-switched staged shot, a pool that
+    /// was empty until now), and the app's answer is the same as at boot: a
+    /// desk's preview bus always has a button lit, so the operator is never
+    /// one click further from the next take than they need to be. Only an
+    /// empty pool leaves preview empty, and then program is empty too. Called
+    /// after every path that mirrors ``previewShotID`` from the compositor,
+    /// before the tally is synced, so the lamps show the refill.
+    private func ensurePreviewStaged() {
+        guard previewShotID == nil, let refill = ShotEdit.previewRefill(in: shots, activeShotID: activeShotID)
+        else { return }
+        compositor.setPreview(shotID: refill)
+        previewShotID = compositor.previewShotID
     }
 
     /// Takes the staged shot to program, swapping the buses: what was on
@@ -1937,7 +2006,10 @@ final class EngineModel {
         let wasHoldingSnapshot = activeShotID == nil && hasSessionPreset
         compositor.takePreview(transition: transition)
         activeShotID = compositor.activeShotID
+        // The swap leaves preview empty when program held a snapshot from
+        // outside the pool; the refill stages the next shot instead.
         previewShotID = compositor.previewShotID
+        ensurePreviewStaged()
         syncTally()
         scheduleTallyRefresh(after: transition)
         if wasHoldingSnapshot {
@@ -1976,6 +2048,9 @@ final class EngineModel {
         let shot = ShotEdit.newShot()
         shots.append(shot)
         compositor.addShot(shot)
+        // The first shot of an empty pool is the one preview was waiting for.
+        ensurePreviewStaged()
+        syncTally()
         scheduleAutosave()
     }
 
@@ -2069,8 +2144,9 @@ final class EngineModel {
         compositor.removeShot(shotID: shotID)
         activeShotID = compositor.activeShotID
         // A removed shot cannot stay staged — re-read rather than second-guess
-        // which shot preview is left holding.
+        // which shot preview is left holding, then refill it from the pool.
         previewShotID = compositor.previewShotID
+        ensurePreviewStaged()
         syncTally()
         scheduleAutosave()
         await reconfigure()
@@ -2123,8 +2199,10 @@ final class EngineModel {
         compositor.loadPreset(target)
         activeShotID = compositor.activeShotID
         // Preview follows the same by-id rule the program does across a preset
-        // switch: it survives only when the incoming preset holds the shot.
+        // switch: it survives only when the incoming preset holds the shot,
+        // and is refilled from the incoming pool otherwise.
         previewShotID = compositor.previewShotID
+        ensurePreviewStaged()
         syncTally()
         await reconfigure()
         await adoptAudioChannels(of: target)
@@ -2222,6 +2300,10 @@ final class EngineModel {
                 }
             }
             activeShotID = compositor.activeShotID
+            // The removed preset's staged shot left with it; refill from the
+            // adjacent pool.
+            previewShotID = compositor.previewShotID
+            ensurePreviewStaged()
             syncTally()
         }
         eventBus.event(
@@ -2306,7 +2388,7 @@ final class EngineModel {
         await reconfigureAudio()
     }
 
-    /// Adds a layer bound to the given input on top of the active shot's
+    /// Adds a layer bound to the given input on top of the edited shot's
     /// layer tree, then reconfigures so the input is running — a layer bound
     /// to a not-yet-started input contributes nothing until its first frame
     /// arrives, so the edit is visible on program the moment frames flow.
@@ -2317,7 +2399,7 @@ final class EngineModel {
         await reconfigure()
     }
 
-    /// Removes the layer at the given bottom-to-top index from the active
+    /// Removes the layer at the given bottom-to-top index from the edited
     /// shot, then reconfigures so an input no shot references anymore (and
     /// that is not the selected camera or display) is stopped.
     ///
@@ -2328,7 +2410,7 @@ final class EngineModel {
     }
 
     /// Moves the layer at the given bottom-to-top index one step through the
-    /// active shot's stack.
+    /// edited shot's stack.
     ///
     /// - Parameters:
     ///   - index: The layer's index in the shot's `layers` array.
@@ -2337,7 +2419,7 @@ final class EngineModel {
         applyShotEdit { LayerTreeEdit.movingLayer(at: index, direction, in: $0) }
     }
 
-    /// Sets the frame of the active shot's layer at the given bottom-to-top
+    /// Sets the frame of the edited shot's layer at the given bottom-to-top
     /// index — its position and size in normalized, top-left-origin program
     /// coordinates. Applied live, so a slider drag is visible on program
     /// tick by tick.
@@ -2349,7 +2431,7 @@ final class EngineModel {
         applyShotEdit { LayerTreeEdit.settingFrame(frame, ofLayerAt: index, in: $0) }
     }
 
-    /// Sets the opacity of the active shot's layer at the given bottom-to-top
+    /// Sets the opacity of the edited shot's layer at the given bottom-to-top
     /// index. Applied live, like ``setLayerFrame(_:at:)``.
     ///
     /// - Parameters:
@@ -2359,7 +2441,7 @@ final class EngineModel {
         applyShotEdit { LayerTreeEdit.settingOpacity(opacity, ofLayerAt: index, in: $0) }
     }
 
-    /// Appends a video effect to the active shot's layer at the given
+    /// Appends a video effect to the edited shot's layer at the given
     /// index, at its neutral settings. A layer-tree edit like any other:
     /// live on program at the next tick and autosaved debounced; the Add
     /// Effect menu's `tap` carries the observability (EVENTS.md).
@@ -2371,7 +2453,7 @@ final class EngineModel {
         applyShotEdit { LayerTreeEdit.addingEffect(effect, toLayerAt: index, in: $0) }
     }
 
-    /// Removes one slot from the active shot's layer's effect chain.
+    /// Removes one slot from the edited shot's layer's effect chain.
     ///
     /// - Parameters:
     ///   - effectIndex: The chain slot to remove.
@@ -2380,7 +2462,7 @@ final class EngineModel {
         applyShotEdit { LayerTreeEdit.removingEffect(at: effectIndex, fromLayerAt: index, in: $0) }
     }
 
-    /// Moves one slot of the active shot's layer's effect chain — order is
+    /// Moves one slot of the edited shot's layer's effect chain — order is
     /// signal order, so a move is a visible processing change.
     ///
     /// - Parameters:
@@ -2393,7 +2475,7 @@ final class EngineModel {
         }
     }
 
-    /// Sets one parameter of one slot in the active shot's layer's effect
+    /// Sets one parameter of one slot in the edited shot's layer's effect
     /// chain, applied live tick by tick like the frame and opacity
     /// sliders. Gesture-rate, so it reports nothing itself — the slider's
     /// drag-end `tap` carries the observability (EVENTS.md).
@@ -2439,15 +2521,17 @@ final class EngineModel {
         layerInputChoices.first { $0.id == id }?.name ?? lastKnownInputNames[id] ?? id.rawValue
     }
 
-    /// Applies one layer-tree edit to the shot currently selected in the
-    /// switcher: transforms it, stores the edited shot back into the session
-    /// preset (so it survives shot switches — GLOSSARY.md, "Preset"), pushes
-    /// it through the compositor so the change is on program at the next
-    /// tick, and schedules the debounced autosave so it reaches the project
-    /// file. A no-op edit (out-of-range index, no shot selected, no actual
-    /// change) touches nothing.
+    /// Applies one layer-tree edit to the shot the editor follows
+    /// (``editedShot``: staged on preview, else on program): transforms it,
+    /// stores the edited shot back into the session preset (so it survives
+    /// shot switches — GLOSSARY.md, "Preset"), pushes it through the
+    /// compositor so a shot on program shows the change at the next tick,
+    /// and schedules the debounced autosave so it reaches the project file.
+    /// A no-op edit (out-of-range index, no shot followed, no actual change)
+    /// touches nothing.
     private func applyShotEdit(_ edit: (Shot) -> Shot) {
-        guard let activeShotID, let index = shots.firstIndex(where: { $0.id == activeShotID }) else { return }
+        guard let followed = editedShot, let index = shots.firstIndex(where: { $0.id == followed.shot.id })
+        else { return }
         let edited = edit(shots[index])
         guard edited != shots[index] else { return }
         shots[index] = edited
@@ -3334,6 +3418,9 @@ final class EngineModel {
             compositor.loadPreset(Preset(id: active.id, name: active.name, shots: shots))
         }
         activeShotID = compositor.activeShotID
+        // Preview starts lit like program does: the first shot not on
+        // program is staged from boot, ready to take.
+        ensurePreviewStaged()
         syncTally()
     }
 
@@ -3475,8 +3562,10 @@ enum TakeTransitionKind: String, CaseIterable {
 @MainActor
 final class ProgramFrameRelay: MonitorFrameSource {
     /// The most recent program frame's pixel buffer, or nil before the
-    /// first frame. Under the frame ownership rule the relay is the one
-    /// holder; the coordinator only reads it to draw.
+    /// first frame — and, for the preview relay, again whenever preview is
+    /// cleared, so the monitor empties instead of holding a stale frame.
+    /// Under the frame ownership rule the relay is the one holder; the
+    /// coordinator only reads it to draw.
     var latest: CVPixelBuffer?
 
     /// Creates an empty relay.

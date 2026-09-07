@@ -156,4 +156,23 @@ enum ShotEdit {
             origin: shot.origin
         )
     }
+
+    /// The shot to stage when preview would otherwise be empty — the rule
+    /// behind "preview always holds a shot while the pool has one"
+    /// (ARCHITECTURE.md, "The preview bus").
+    ///
+    /// A desk's preview bus always has a button lit, and the useful one is
+    /// the **next** thing to take: so the first shot in switcher order that
+    /// is not on program, falling back to the program shot itself when it is
+    /// the only shot (a desk lets an operator line up what is already on
+    /// air). Only an empty pool yields nothing, and then program is empty
+    /// too.
+    ///
+    /// - Parameters:
+    ///   - shots: The active preset's shots, in switcher order.
+    ///   - activeShotID: The shot on program, if any.
+    /// - Returns: The id to stage, or nil when there is no shot at all.
+    static func previewRefill(in shots: [Shot], activeShotID: ShotID?) -> ShotID? {
+        shots.first { $0.id != activeShotID }?.id ?? shots.first?.id
+    }
 }

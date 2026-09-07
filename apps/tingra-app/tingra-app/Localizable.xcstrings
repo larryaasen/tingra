@@ -171,6 +171,12 @@
         }
       }
     },
+    "Add a new empty preset to the project" : {
+      "comment" : "Tooltip on the sidebar's Add Preset button"
+    },
+    "Add a new empty shot to the active preset" : {
+      "comment" : "Tooltip on the sidebar's Add Shot button"
+    },
     "Add Destination" : {
       "comment" : "Button that adds a stream destination",
       "localizations" : {
@@ -801,6 +807,40 @@
         }
       }
     },
+    "Editing %@" : {
+      "comment" : "Layer editor header naming the shot being edited; the placeholder is the shot's name",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "„%@“ wird bearbeitet"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Editando “%@”"
+          }
+        }
+      }
+    },
+    "Edits are live on air." : {
+      "comment" : "Layer editor header note while the edited shot is on program",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Änderungen gehen sofort auf Sendung."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Los cambios salen al aire en directo."
+          }
+        }
+      }
+    },
     "Effect not available" : {
       "comment" : "Note on a chain slot whose effect plug-in is not installed",
       "localizations" : {
@@ -1381,7 +1421,7 @@
       }
     },
     "Move Down" : {
-      "comment" : "Button moving the selected layer toward the bottom of the stack\nSidebar preset context menu: move this preset later in the project order",
+      "comment" : "Button moving the selected layer toward the bottom of the stack\nSidebar preset context menu: move this preset later in the project order\nSidebar shot context menu: move this shot later in the preset's order",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1432,7 +1472,7 @@
       }
     },
     "Move Up" : {
-      "comment" : "Button moving the selected layer toward the top of the stack\nSidebar preset context menu: move this preset earlier in the project order",
+      "comment" : "Button moving the selected layer toward the top of the stack\nSidebar preset context menu: move this preset earlier in the project order\nSidebar shot context menu: move this shot earlier in the preset's order",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1841,6 +1881,15 @@
         }
       }
     },
+    "No shot on program" : {
+      "comment" : "Caption under the program monitor when the program is background-only"
+    },
+    "No shot staged" : {
+      "comment" : "Caption under the preview monitor when nothing is staged"
+    },
+    "No Shots" : {
+      "comment" : "Placeholder item in the Shots menu when the active preset has none"
+    },
     "No shots in this preset" : {
       "comment" : "Sidebar placeholder when the active preset has no shots",
       "localizations" : {
@@ -1977,6 +2026,40 @@
         }
       }
     },
+    "On preview" : {
+      "comment" : "Accessibility label of the layer editor's lamp: the edited shot is staged on preview",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auf Vorschau"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "En previsualización"
+          }
+        }
+      }
+    },
+    "On program" : {
+      "comment" : "Accessibility label of the layer editor's lamp: the edited shot is on program",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auf Programm"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "En programa"
+          }
+        }
+      }
+    },
     "Opacity" : {
       "comment" : "Layer opacity slider label",
       "localizations" : {
@@ -2063,7 +2146,7 @@
       }
     },
     "Presets" : {
-      "comment" : "Label leading the preset switcher row",
+      "comment" : "Sidebar section heading over the project's presets",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -2573,7 +2656,7 @@
       }
     },
     "Shots" : {
-      "comment" : "Sidebar section heading over the active preset's shots",
+      "comment" : "Heading over the input rows beneath the monitors — the automatic shots\nSidebar section heading over the active preset's shots\nTitle of the Shots menu, listing the active preset's shots",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -2622,6 +2705,9 @@
           }
         }
       }
+    },
+    "Show Program and Preview Rows" : {
+      "comment" : "General settings: checkbox showing or hiding the main window's rows of shot buttons"
     },
     "Show Sidebar" : {
       "comment" : "View menu item that shows the main window's sidebar",
@@ -2673,6 +2759,9 @@
           }
         }
       }
+    },
+    "Stage a shot on preview to take it." : {
+      "comment" : "Hint beside the Take button while nothing is staged on preview"
     },
     "Stage on preview" : {
       "comment" : "Tooltip on an input tile that stages it on preview",
@@ -2946,6 +3035,12 @@
         }
       }
     },
+    "Take the staged shot to program instantly" : {
+      "comment" : "Tooltip on the Cut button"
+    },
+    "Take the staged shot to program with the selected transition" : {
+      "comment" : "Tooltip on the Take button"
+    },
     "Takes the staged shot to program instantly, whatever transition is selected." : {
       "comment" : "Shortcuts settings: what the cut shortcut does",
       "localizations" : {
@@ -3049,7 +3144,7 @@
       }
     },
     "Transition" : {
-      "comment" : "Label of the picker choosing the transition kind for the next shot take",
+      "comment" : "Label of the picker choosing the transition kind for the next shot take\nSection heading over the Cut, Take, and transition controls",
       "localizations" : {
         "de" : {
           "stringUnit" : {

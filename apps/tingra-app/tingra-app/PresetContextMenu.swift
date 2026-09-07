@@ -11,18 +11,19 @@ import SwiftUI
 import TingraComposition
 import TingraEventBus
 
-/// Which surface a preset's context menu is attached to: the preset switcher's
-/// buttons across the main window, or the sidebar's preset rows.
+/// Which surface a preset's context menu is attached to — today only the
+/// sidebar's preset rows.
 ///
-/// The menu is one view (``PresetContextMenu``) on both, so the two cannot
-/// drift — but two controls performing one action still report separately
-/// (EVENTS.md, "The `tap` convention"), and a horizontal row moves things
-/// left and right where a vertical list moves them up and down. The surface
-/// is what says which `tap` names and which words a given menu carries.
+/// The menu is one view (``PresetContextMenu``), and this is what says which
+/// `tap` names and which reorder words a given attachment carries: two
+/// controls performing one action report separately (EVENTS.md, "The `tap`
+/// convention"), and a vertical list moves things up and down where a
+/// horizontal row would move them left and right. It had two cases while the
+/// main window carried a preset switcher row beside the sidebar; that row was
+/// removed 2026-09-06 as a repeat of the sidebar's list, and the seam stays
+/// so the next surface that lists presets attaches the same menu the same
+/// way.
 enum PresetMenuSurface: Sendable, CaseIterable {
-    /// The preset switcher row in the main window's control section.
-    case switcher
-
     /// The Presets section of the main window's sidebar.
     case sidebar
 
@@ -34,12 +35,12 @@ enum PresetMenuSurface: Sendable, CaseIterable {
         /// The Rename… item, which opens the dialog.
         case rename
 
-        /// The item moving the preset one place earlier: Move Left on the
-        /// switcher, Move Up in the sidebar.
+        /// The item moving the preset one place earlier: Move Up in the
+        /// sidebar.
         case moveEarlier
 
-        /// The item moving the preset one place later: Move Right on the
-        /// switcher, Move Down in the sidebar.
+        /// The item moving the preset one place later: Move Down in the
+        /// sidebar.
         case moveLater
 
         /// The Remove Preset item.
@@ -54,18 +55,16 @@ enum PresetMenuSurface: Sendable, CaseIterable {
 
     /// The `tap` name one of the menu's actions reports from this surface.
     ///
-    /// The switcher keeps the names it has always reported (`presetRename.menu`
-    /// and so on); the sidebar's are prefixed `sidebarPreset`, on the pattern
-    /// its rows already follow (`sidebarPreset.row`). The move items are
-    /// named for the direction the operator sees, since that is what a log
-    /// reader replaying a session would look for.
+    /// The sidebar's are prefixed `sidebarPreset`, on the pattern its rows
+    /// already follow (`sidebarPreset.row`). The move items are named for the
+    /// direction the operator sees, since that is what a log reader replaying
+    /// a session would look for.
     ///
     /// - Parameter action: The action reporting.
     /// - Returns: The tap name.
     func tapName(for action: Action) -> String {
         let prefix =
             switch self {
-            case .switcher: "preset"
             case .sidebar: "sidebarPreset"
             }
         switch action {
@@ -74,9 +73,9 @@ enum PresetMenuSurface: Sendable, CaseIterable {
         case .rename:
             return "\(prefix)Rename.menu"
         case .moveEarlier:
-            return "\(prefix)\(self == .switcher ? "MoveLeft" : "MoveUp").menu"
+            return "\(prefix)MoveUp.menu"
         case .moveLater:
-            return "\(prefix)\(self == .switcher ? "MoveRight" : "MoveDown").menu"
+            return "\(prefix)MoveDown.menu"
         case .remove:
             return "\(prefix)Remove.menu"
         case .renameConfirm:
@@ -91,14 +90,13 @@ enum PresetMenuSurface: Sendable, CaseIterable {
 /// preset — the shot commands, one level up (ARCHITECTURE.md, "Multiple
 /// presets in the UI", "Shot and preset reordering").
 ///
-/// Shared by the preset switcher's buttons and the sidebar's preset rows, so
-/// right-clicking a preset offers the same commands wherever the preset is
-/// listed; ``PresetMenuSurface`` supplies each surface's `tap` names and the
-/// direction words its reorder items use. Reorder is meaningful on both: the
-/// app adopts the first preset at launch, so moving one to the front makes it
-/// the next session's default. Remove is immediate like a shot's, but
-/// disabled on the last remaining preset: a project always holds at least
-/// one.
+/// Attached to the sidebar's preset rows — and to any surface that lists
+/// presets, so right-clicking a preset offers the same commands wherever it
+/// is listed; ``PresetMenuSurface`` supplies the surface's `tap` names and
+/// the direction words its reorder items use. Reorder matters: the app adopts
+/// the first preset at launch, so moving one to the front makes it the next
+/// session's default. Remove is immediate like a shot's, but disabled on the
+/// last remaining preset: a project always holds at least one.
 ///
 /// The rename **dialog** is the caller's (``PresetRenameDialog``): a context
 /// menu cannot present an alert from inside itself, so Rename… hands the
@@ -156,8 +154,6 @@ struct PresetContextMenu: View {
             model.movePreset(preset.id, to: index - 1)
         } label: {
             switch surface {
-            case .switcher:
-                Text("Move Left", comment: "Context menu: move this shot or preset earlier in the switcher order")
             case .sidebar:
                 Text("Move Up", comment: "Sidebar preset context menu: move this preset earlier in the project order")
             }
@@ -174,8 +170,6 @@ struct PresetContextMenu: View {
             model.movePreset(preset.id, to: index + 1)
         } label: {
             switch surface {
-            case .switcher:
-                Text("Move Right", comment: "Context menu: move this shot or preset later in the switcher order")
             case .sidebar:
                 Text("Move Down", comment: "Sidebar preset context menu: move this preset later in the project order")
             }

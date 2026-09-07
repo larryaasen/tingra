@@ -14,9 +14,9 @@ import TingraPlugInKit
 
 /// The main window, in two sections: a **monitoring section** across the top
 /// — the preview and program monitors side by side across the full width,
-/// the input rows beneath them — over a **control section** carrying the
-/// preset switcher, the shot switcher, the layer-tree editor, the input
-/// pickers, the mixer, and the streaming panel.
+/// the input rows beneath them under a **Shots** heading — over a **control
+/// section** carrying the optional switcher rows, the transition panel, the
+/// layer-tree editor, the input pickers, the mixer, and the streaming panel.
 ///
 /// That is the broadcast switcher's own arrangement (ARCHITECTURE.md, "The
 /// main window's two sections"): everything the operator *watches* is above
@@ -26,22 +26,23 @@ import TingraPlugInKit
 /// derivation the multiview window uses, so what a tile shows and what its
 /// tally reads cannot differ between the two surfaces.
 ///
-/// The preset switcher switches among — and manages — the project's presets
-/// (ARCHITECTURE.md, "Multiple presets in the UI"): switching never
-/// interrupts what is on program, an Add Preset button appends a new empty
-/// preset, and each preset button's context menu duplicates, renames,
-/// reorders (Move Left / Move Right), or removes it. The pickers pick one
-/// camera and one display; the shot switcher takes the chosen shot to
-/// program — each shot's own default transition while the switcher's
-/// transition picker is on Default, or an explicit cut, dissolve, or wipe
-/// (with its edge picker) as the override (GLOSSARY.md, "Transition") — and
-/// manages the active preset's shots the same way, one level down
-/// (ARCHITECTURE.md, "Shot management", "Shot and preset reordering"). A
-/// second row of the same shots stages one on **preview** — the staging bus,
-/// monitored beside program — and the Take button promotes it, swapping the
-/// buses (ARCHITECTURE.md, "The preview bus"); the
-/// editor (``LayerTreeEditorView``) edits the selected shot's layer tree
-/// live; the mixer panel (``MixerView``) mixes the audio inputs into the
+/// Presets are not here at all: the sidebar's Presets section switches among
+/// — and manages — the project's presets (``SidebarView``), and a second row
+/// of them across the content only repeated what that list already says
+/// (removed 2026-09-06; ARCHITECTURE.md, "Multiple presets in the UI").
+/// Shots are managed there too — the sidebar's Add Shot button and its shot
+/// rows' context menu — and staged from the input rows, the sidebar, or the
+/// Shots menu (⌘1–⌘9). The **switcher rows** — the Program row of shot
+/// buttons that takes on click and the Preview row that stages — are
+/// optional and hidden by default (``SwitcherRowsModel``), since they repeat
+/// those surfaces. The **transition panel** (``TransitionPanel``) is where
+/// what is staged goes to air: Cut, Take with the selected transition — each
+/// shot's own default while the picker is on Default, or an explicit cut,
+/// dissolve, wipe, or shader as the override (GLOSSARY.md, "Transition") —
+/// and Fade to Black (ARCHITECTURE.md, "The preview bus"). The pickers pick
+/// one camera and one display; the
+/// editor (``LayerTreeEditorView``) edits the staged shot's layer tree — the
+/// program shot's when nothing is staged — live; the mixer panel (``MixerView``) mixes the audio inputs into the
 /// program mix the streaming panel puts on air. This is the step-7 shape —
 /// the remaining production surfaces grow from here.
 ///
@@ -53,6 +54,10 @@ struct ContentView: View {
     /// The engine model, bindable so the pickers drive its selection.
     @Bindable var model: EngineModel
 
+    /// Whether the switcher rows are shown (``shotRows``) — the General
+    /// settings choice, observed so the checkbox reaches this window at once.
+    let switcherRows: SwitcherRowsModel
+
     /// The shot the rename dialog is editing, or `nil` while it is closed.
     /// View-local, like the layer editor's selection: which shot is being
     /// renamed is transient session state.
@@ -61,15 +66,6 @@ struct ContentView: View {
     /// The rename dialog's working text, prefilled with the shot's current
     /// name when the dialog opens.
     @State private var renameText = ""
-
-    /// The preset the rename dialog is editing, or `nil` while it is closed
-    /// (see ``shotBeingRenamed`` — the same transient session state, one
-    /// level up).
-    @State private var presetBeingRenamed: Preset?
-
-    /// The preset rename dialog's working text, prefilled with the preset's
-    /// current name when the dialog opens.
-    @State private var presetRenameText = ""
 
     /// Each destination's stream-key field text, by destination id. View-local
     /// and never handed to the model as observable state: the keys flow
@@ -86,7 +82,8 @@ struct ContentView: View {
     static let columnPadding: CGFloat = 20
 
     /// The gap between stacked surfaces — and, in the monitoring section,
-    /// between the two monitors and between the monitors and the input rows.
+    /// between the two monitors and between the monitors, the Shots heading,
+    /// and the input rows.
     private static let sectionSpacing: CGFloat = 12
 
     /// The shortest the monitors may be, so both stay readable in a window
@@ -124,9 +121,10 @@ struct ContentView: View {
     /// the whole column scrollable.
     ///
     /// **Why it scrolls, and why the top section is measured rather than
-    /// flexible.** The column stacks seven surfaces — the monitors, both
-    /// switcher rows, the layer editor, the device pickers, the mixer, and the
-    /// streaming panel — and a plain `VStack` resolves a shortfall by
+    /// flexible.** The column stacks eight surfaces — the monitors, the
+    /// switcher rows when shown, the transition panel, the layer editor, the
+    /// device pickers, the mixer, and the streaming and recording panels —
+    /// and a plain `VStack` resolves a shortfall by
     /// compressing whatever yields first. That is always the monitors, because
     /// they are the only surface with no intrinsic height to defend. At
     /// ordinary window sizes they collapsed to a sliver *and* pushed the camera
@@ -149,9 +147,11 @@ struct ContentView: View {
                 VStack(spacing: Self.sectionSpacing) {
                     topSection(windowWidth: proxy.size.width)
 
-                    presetSwitcher
+                    if switcherRows.isVisible {
+                        shotRows
+                    }
 
-                    shotSwitcher
+                    TransitionPanel(model: model)
 
                     LayerTreeEditorView(model: model)
 
@@ -166,6 +166,7 @@ struct ContentView: View {
                 .padding(Self.columnPadding)
             }
         }
+        .shotRenameDialog(model: model, surface: .switcher, shot: $shotBeingRenamed, text: $renameText)
         // Only the *effect* of a selection change lives here — it must run
         // however the value changed, including when the model assigns the
         // default at boot. The `tap` rides the pickers' own bindings instead
@@ -191,11 +192,21 @@ struct ContentView: View {
     }
 
     /// The monitoring section: the preview and program monitors side by side
-    /// across the full content width, the input rows beneath them.
+    /// across the full content width, each captioned beneath with the shot it
+    /// is showing, then a **Shots** heading over the input rows.
     ///
     /// The monitors split the width evenly, which makes them the largest
     /// surface in the window at every size — the two pictures an operator
-    /// reads most. Below them sit two rows — every available camera above, the
+    /// reads most. Under each sits its **shot caption** — the name of the shot
+    /// staged on preview, the name of the shot on program — because a picture
+    /// alone does not say which shot made it: two shots can look alike on a
+    /// monitor and differ in what they reference, and the shot switcher's
+    /// highlight is scrolled away while the operator watches. The captions
+    /// ride outside the monitors' measured height, in their own row, so they
+    /// cost the pictures nothing. Below them, under a heading that names them
+    /// for what they are — every tile is a shot, the automatic full-frame one
+    /// ``EngineModel/stagePreview(showing:)`` stages, so the rows are the
+    /// preset's automatic shot list — sit two rows — every available camera above, the
     /// generators and displays below (``InputRowsView``) — rather than one
     /// adaptive grid. Splitting cameras onto their own line is what makes the
     /// rows scannable: cameras are what an operator reaches for and the row
@@ -227,8 +238,51 @@ struct ContentView: View {
             }
             .frame(height: Self.monitorsHeight(forWindowWidth: windowWidth))
 
+            HStack(spacing: Self.sectionSpacing) {
+                shotCaption(
+                    model.previewShot,
+                    placeholder: Text(
+                        "No shot staged", comment: "Caption under the preview monitor when nothing is staged")
+                )
+                shotCaption(
+                    model.programShot,
+                    placeholder: Text(
+                        "No shot on program",
+                        comment: "Caption under the program monitor when the program is background-only"
+                    )
+                )
+            }
+
+            Text("Shots", comment: "Heading over the input rows beneath the monitors — the automatic shots")
+                .font(.headline)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
             InputRowsView(model: model, height: InputRowsView.height(forRowWidth: contentWidth))
         }
+    }
+
+    /// One monitor's shot caption: the shot's name, centered under the
+    /// monitor it describes, or the given placeholder in secondary color when
+    /// that bus carries no shot. The two captions share the monitors' column
+    /// split, so each sits under its own picture.
+    ///
+    /// - Parameters:
+    ///   - shot: The shot on that bus, or nil for none.
+    ///   - placeholder: What to say when there is none.
+    /// - Returns: The caption.
+    private func shotCaption(_ shot: Shot?, placeholder: Text) -> some View {
+        Group {
+            if let shot {
+                Text(shot.name)
+            } else {
+                placeholder
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .font(.callout)
+        .lineLimit(1)
+        .truncationMode(.tail)
+        .frame(maxWidth: .infinity)
     }
 
     /// The localized name of the program bus, shared by its monitor's badge
@@ -244,499 +298,101 @@ struct ContentView: View {
         Text("Preview", comment: "Name of the preview bus — labels its monitor and its switcher row")
     }
 
-    /// The preset switcher: one button per preset in the project, switching
-    /// the switcher (never the program — a preset switch is seamless,
-    /// GLOSSARY.md, "Preset") to it on tap. The active preset's button is
-    /// highlighted — or none is, while a preset switch holds the outgoing
-    /// shot on program from outside the pool; its context menu duplicates,
-    /// renames, or removes the preset (Remove is disabled on the last
-    /// remaining preset — a project always holds at least one), and the
-    /// trailing Add Preset button appends a new empty one, mirroring the shot
-    /// switcher one level up (ARCHITECTURE.md, "Multiple presets in the UI").
-    private var presetSwitcher: some View {
+    /// The **switcher rows**: the Program row — one button per shot in the
+    /// active preset, taking it to program on click with the transition the
+    /// panel beneath selects, the on-program shot highlighted — over the
+    /// Preview row, the same shots again staging rather than taking, the
+    /// staged one highlighted green; a radio row like the Program row, so
+    /// clicking the staged shot again leaves it staged (ARCHITECTURE.md, "The
+    /// preview bus").
+    ///
+    /// Optional, and hidden by default (``SwitcherRowsModel``, the General
+    /// settings checkbox): the sidebar lists every authored shot, the input
+    /// rows above are the automatic ones, and the Shots menu stages by
+    /// number, so these rows repeat what the window already shows — an
+    /// operator who wants the hardware panel's horizontal bank of shot
+    /// buttons turns them on once. A second row rather than a modifier-click
+    /// on the program row, because the program row's single click is the
+    /// live on-air take: a mis-modified click must never put the wrong shot
+    /// to air. Each program button's context menu is the shared
+    /// ``ShotContextMenu``; adding a shot is the sidebar's Add Shot button,
+    /// Cut and Take are the ``TransitionPanel``'s, and the ⌘1–⌘9 staging
+    /// keys are the Shots menu's (``ShotCommands``), so nothing here is the
+    /// only way to do anything.
+    @ViewBuilder private var shotRows: some View {
+        if model.shots.isEmpty {
+            Text("No shots in this preset", comment: "Sidebar placeholder when the active preset has no shots")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            VStack(alignment: .leading, spacing: 6) {
+                programRow
+                previewRow
+            }
+        }
+    }
+
+    /// The Program row of ``shotRows``.
+    private var programRow: some View {
         HStack(spacing: 8) {
-            Text("Presets", comment: "Label leading the preset switcher row")
+            programLabel
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
 
-            ForEach(model.presets) { preset in
-                let isActive = preset.id == model.activePresetID
-                Button(preset.name) {
+            ForEach(model.shots) { shot in
+                let isOnProgram = shot.id == model.activeShotID
+                Button(shot.name) {
                     model.eventBus.tap(
-                        "preset.button",
+                        ProgramLayout.tapName(forShotID: shot.id),
                         domain: .composition,
-                        params: ["preset": .string(preset.id.rawValue), "name": .string(preset.name)]
+                        params: ["shot": .string(shot.id.rawValue), "name": .string(shot.name)]
                     )
-                    Task { await model.switchPreset(to: preset.id) }
-                }
-                .buttonStyle(.bordered)
-                .tint(isActive ? .accentColor : nil)
-                .contextMenu {
-                    PresetContextMenu(model: model, preset: preset, surface: .switcher) { preset in
-                        presetRenameText = preset.name
-                        presetBeingRenamed = preset
-                    }
-                }
-            }
-
-            Button {
-                model.eventBus.tap("presetAdd.button", domain: .composition)
-                model.addPreset()
-            } label: {
-                Label {
-                    Text("Add Preset", comment: "Button adding a new empty preset to the project")
-                } icon: {
-                    Image(systemName: "plus")
-                }
-            }
-        }
-        .presetRenameDialog(
-            model: model, surface: .switcher, preset: $presetBeingRenamed, text: $presetRenameText
-        )
-    }
-
-    /// The shot switcher: one button per available shot, taking it to program
-    /// on tap with the transition the segmented picker selects
-    /// (``EngineModel/takeTransitionKind`` — Default resolves the taken
-    /// shot's own default transition; Cut, Dissolve, and Wipe override it; a
-    /// wipe's edge comes from the adjacent pop-up, shown only while Wipe is
-    /// selected). The button for the shot currently on program is
-    /// highlighted; its context menu duplicates, renames, or removes the
-    /// shot, and the trailing Add Shot button appends a new empty one — the
-    /// button stays available even when the preset has no shots, so the
-    /// operator is never stranded on an empty switcher.
-    private var shotSwitcher: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
-                programLabel
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-
-                ForEach(model.shots) { shot in
-                    let isOnProgram = shot.id == model.activeShotID
-                    Button(shot.name) {
-                        model.eventBus.tap(
-                            ProgramLayout.tapName(forShotID: shot.id),
-                            domain: .composition,
-                            params: ["shot": .string(shot.id.rawValue), "name": .string(shot.name)]
-                        )
-                        model.take(shot.id)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(isOnProgram ? .accentColor : .gray)
-                    .contextMenu {
-                        shotCommands(for: shot)
-                    }
-                }
-
-                Button {
-                    model.eventBus.tap("shotAdd.button", domain: .composition)
-                    model.addShot()
-                } label: {
-                    Label {
-                        Text("Add Shot", comment: "Button adding a new empty shot to the preset")
-                    } icon: {
-                        Image(systemName: "plus")
-                    }
-                }
-            }
-
-            previewRow
-
-            if !model.shots.isEmpty {
-                HStack(spacing: 12) {
-                    Picker(
-                        selection: $model.takeTransitionKind.reportingTap(
-                            to: model.eventBus, "transition.picker", domain: .composition,
-                            params: { ["kind": .string($0.rawValue)] })
-                    ) {
-                        Text(
-                            "Default",
-                            comment: "Transition picker option: take each shot with its own default transition"
-                        )
-                        .tag(TakeTransitionKind.default)
-                        Text(
-                            "Cut",
-                            comment:
-                                "Switch to the next shot taken instantly — the transition picker option, and the Cut button"
-                        )
-                        .tag(TakeTransitionKind.cut)
-                        Text("Dissolve", comment: "Transition picker option: crossfade to the next shot taken")
-                            .tag(TakeTransitionKind.dissolve)
-                        Text(
-                            "Wipe",
-                            comment:
-                                "Transition picker option: reveal the next shot taken across the frame from an edge"
-                        )
-                        .tag(TakeTransitionKind.wipe)
-                        Text(
-                            "Shader",
-                            comment:
-                                "Transition picker option: reveal the next shot taken through a built-in custom shader"
-                        )
-                        .tag(TakeTransitionKind.shader)
-                    } label: {
-                        Text(
-                            "Transition",
-                            comment: "Label of the picker choosing the transition kind for the next shot take")
-                    }
-                    .pickerStyle(.segmented)
-                    .fixedSize()
-
-                    if model.takeTransitionKind == .wipe {
-                        Picker(
-                            selection: $model.wipeEdge.reportingTap(
-                                to: model.eventBus, "wipeEdge.picker", domain: .composition,
-                                params: { ["edge": .string($0.rawValue)] })
-                        ) {
-                            Text("Left", comment: "Wipe edge picker option: reveal from the left edge of the frame")
-                                .tag(WipeEdge.left)
-                            Text("Right", comment: "Wipe edge picker option: reveal from the right edge of the frame")
-                                .tag(WipeEdge.right)
-                            Text("Top", comment: "Wipe edge picker option: reveal from the top edge of the frame")
-                                .tag(WipeEdge.top)
-                            Text("Bottom", comment: "Wipe edge picker option: reveal from the bottom edge of the frame")
-                                .tag(WipeEdge.bottom)
-                        } label: {
-                            Text(
-                                "Edge",
-                                comment: "Label of the picker choosing the frame edge a wipe reveals the next shot from"
-                            )
-                        }
-                        .fixedSize()
-                    }
-
-                    if model.takeTransitionKind == .shader {
-                        Picker(
-                            selection: $model.shaderName.reportingTap(
-                                to: model.eventBus, "shaderName.picker", domain: .composition,
-                                params: { ["shader": .string($0.rawValue)] })
-                        ) {
-                            Text("Iris", comment: "Shader picker option: circular reveal opening from the center")
-                                .tag(TransitionShader.iris)
-                            Text(
-                                "Diagonal",
-                                comment: "Shader picker option: diagonal sweep from the top-left corner"
-                            )
-                            .tag(TransitionShader.diagonal)
-                            Text("Blinds", comment: "Shader picker option: horizontal bands revealing in parallel")
-                                .tag(TransitionShader.blinds)
-                        } label: {
-                            Text(
-                                "Shader",
-                                comment:
-                                    "Label of the picker choosing the built-in shader a shader transition reveals with"
-                            )
-                        }
-                        .fixedSize()
-                    }
-                }
-            }
-
-            fadeToBlackControl
-        }
-        .alert(
-            Text("Rename Shot", comment: "Rename shot dialog title"),
-            isPresented: isRenamePresented,
-            presenting: shotBeingRenamed
-        ) { shot in
-            TextField(text: $renameText) {
-                Text("Name", comment: "Name text field label — for a shot, a preset, or a destination")
-            }
-            Button {
-                model.eventBus.tap(
-                    "shotRenameConfirm.button",
-                    domain: .composition,
-                    params: ["shot": .string(shot.id.rawValue), "name": .string(renameText)]
-                )
-                model.renameShot(shot.id, to: renameText)
-            } label: {
-                Text("Rename", comment: "Rename dialog confirm button, for a shot or a preset")
-            }
-            Button(role: .cancel) {
-                model.eventBus.tap(
-                    "shotRenameCancel.button",
-                    domain: .composition,
-                    params: ["shot": .string(shot.id.rawValue)]
-                )
-            } label: {
-                Text("Cancel", comment: "Rename dialog cancel button, for a shot or a preset")
-            }
-        }
-    }
-
-    /// The preview row: the same shots again, one row down, staging rather
-    /// than taking (ARCHITECTURE.md, "The preview bus"). A second row rather
-    /// than a modifier-click on the program row, because the program row's
-    /// single click is the live on-air take — the reasoning that kept
-    /// drag-and-drop off those buttons: a mis-modified click must never put
-    /// the wrong shot to air. Clicking the staged shot again clears preview,
-    /// so the row toggles.
-    ///
-    /// The trailing Take button promotes what is staged, swapping the buses,
-    /// with the transition the picker below selects. It is disabled while
-    /// nothing is staged — there is nothing to take.
-    @ViewBuilder private var previewRow: some View {
-        if !model.shots.isEmpty {
-            HStack(spacing: 8) {
-                previewLabel
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-
-                ForEach(Array(model.shots.enumerated()), id: \.element.id) { index, shot in
-                    let isStaged = shot.id == model.previewShotID
-                    Button(shot.name) {
-                        model.eventBus.tap(
-                            ProgramLayout.previewTapName(forShotID: shot.id),
-                            domain: .composition,
-                            params: ["shot": .string(shot.id.rawValue), "name": .string(shot.name)]
-                        )
-                        model.setPreview(shot.id)
-                    }
-                    .buttonStyle(.bordered)
-                    .tint(isStaged ? .green : nil)
-                    // ⌘1…⌘9 by position, the switcher convention every
-                    // surveyed app shares (``ProductionShortcut``). A tenth
-                    // shot simply has none — the optional overload takes nil.
-                    .keyboardShortcut(ProductionShortcut.stageShotShortcut(forIndex: index))
-                }
-
-                // Cut left of Take, the order the two live side by side on a
-                // hardware panel: CUT takes instantly, AUTO takes over the
-                // armed transition.
-                Button {
-                    model.eventBus.tap(
-                        "cut.button",
-                        domain: .composition,
-                        params: ["shot": .string(model.previewShotID?.rawValue ?? "none")]
-                    )
-                    model.cutPreview()
-                } label: {
-                    ProductionShortcut.cut.name
-                }
-                .buttonStyle(.bordered)
-                .disabled(model.previewShotID == nil)
-                .keyboardShortcut(ProductionShortcut.cut.shortcut)
-
-                Button {
-                    model.eventBus.tap(
-                        "take.button",
-                        domain: .composition,
-                        params: ["shot": .string(model.previewShotID?.rawValue ?? "none")]
-                    )
-                    model.takePreview()
-                } label: {
-                    Text("Take", comment: "Button taking the shot staged on preview to program")
+                    model.take(shot.id)
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(.red)
-                .disabled(model.previewShotID == nil)
-                .keyboardShortcut(ProductionShortcut.take.shortcut)
+                .tint(isOnProgram ? .accentColor : .gray)
+                .contextMenu {
+                    ShotContextMenu(model: model, shot: shot, surface: .switcher) { shot in
+                        renameText = shot.name
+                        shotBeingRenamed = shot
+                    } onRemove: { shot in
+                        // Immediate, no confirmation: shots are quick to
+                        // create, switch, and discard (GLOSSARY.md, "Shot").
+                        Task { await model.removeShot(shot.id) }
+                    }
+                }
             }
         }
     }
 
-    /// The **fade to black** control: one latching button that takes the
-    /// whole program off air — picture *and* sound together — and brings it
-    /// back (GLOSSARY.md, "Fade to black").
-    ///
-    /// Its own row beneath the transition controls, because it is a **master
-    /// stage rather than a transition**: a transition is the move from one
-    /// shot to the next, where this holds across shot switches. It stays
-    /// available when the preset has no shots — the operator must always be
-    /// able to take the program down — which is why it sits outside the
-    /// switcher's shots guard. Prominent and red while active, the broadcast
-    /// convention for a latched FTB.
-    private var fadeToBlackControl: some View {
+    /// The Preview row of ``shotRows``.
+    private var previewRow: some View {
         HStack(spacing: 8) {
-            Button {
-                model.eventBus.tap(
-                    "fadeToBlack.button",
-                    domain: .composition,
-                    params: ["state": .string(model.isFadedToBlack ? "clear" : "black")]
-                )
-                model.setFadeToBlack(!model.isFadedToBlack)
-            } label: {
-                fadeToBlackLabel
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(model.isFadedToBlack ? .red : .gray)
-            .keyboardShortcut(ProductionShortcut.fadeToBlack.shortcut)
+            previewLabel
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
 
-            if model.isFadedToBlack {
-                fadedToBlackHint
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            ForEach(model.shots) { shot in
+                let isStaged = shot.id == model.previewShotID
+                Button(shot.name) {
+                    model.eventBus.tap(
+                        ProgramLayout.previewTapName(forShotID: shot.id),
+                        domain: .composition,
+                        params: ["shot": .string(shot.id.rawValue), "name": .string(shot.name)]
+                    )
+                    model.setPreview(shot.id)
+                }
+                .buttonStyle(.bordered)
+                .tint(isStaged ? .green : nil)
             }
         }
-    }
-
-    /// The localized name of the fade-to-black control.
-    private var fadeToBlackLabel: Text {
-        Text("Fade to Black", comment: "Button taking the whole program — picture and sound — off air, and back")
     }
 
     /// The localized badge shown on the program monitor while the program is
     /// faded to black (see ``MonitorTile/statusBadge``).
     private var fadedToBlackLabel: Text {
         Text("Faded to Black", comment: "Badge on the program monitor while the program is faded to black")
-    }
-
-    /// The localized hint beside the control while the program is down,
-    /// naming what is still live behind the fade.
-    private var fadedToBlackHint: Text {
-        Text(
-            "Viewers see and hear nothing. Preview and multiview stay live.",
-            comment: "Hint beside the fade to black control while the program is off air"
-        )
-    }
-
-    /// Whether the rename dialog is up — presented while a shot is being
-    /// renamed, and clearing that shot when the dialog dismisses.
-    private var isRenamePresented: Binding<Bool> {
-        Binding {
-            shotBeingRenamed != nil
-        } set: { presented in
-            if !presented { shotBeingRenamed = nil }
-        }
-    }
-
-    /// One shot button's context menu: duplicate, rename, set the shot's
-    /// default transition, reorder (Move Left / Move Right), and remove that
-    /// shot (ARCHITECTURE.md, "Shot management", "Shot and preset
-    /// reordering", "Per-shot default transitions"). Reorder rides the
-    /// context menu — not drag-and-drop — so the shot buttons' single click
-    /// stays reserved for the on-air take; the commands mirror the layer
-    /// editor's Move Up / Move Down one level up, on the horizontal switcher
-    /// axis, and disable at the ends. Remove is immediate — a
-    /// destructive-role item, no confirmation: shots are quick to create,
-    /// switch, and discard (GLOSSARY.md, "Shot").
-    @ViewBuilder private func shotCommands(for shot: Shot) -> some View {
-        let index = model.shots.firstIndex { $0.id == shot.id }
-
-        Button {
-            model.eventBus.tap(
-                "shotDuplicate.menu",
-                domain: .composition,
-                params: ["shot": .string(shot.id.rawValue), "name": .string(shot.name)]
-            )
-            model.duplicateShot(shot.id)
-        } label: {
-            Text("Duplicate", comment: "Context menu: duplicate this shot or preset")
-        }
-
-        Button {
-            model.eventBus.tap(
-                "shotRename.menu",
-                domain: .composition,
-                params: ["shot": .string(shot.id.rawValue), "name": .string(shot.name)]
-            )
-            renameText = shot.name
-            shotBeingRenamed = shot
-        } label: {
-            Text("Rename…", comment: "Context menu: rename this shot or preset")
-        }
-
-        Menu {
-            defaultTransitionPicker(for: shot)
-        } label: {
-            Text("Default Transition", comment: "Shot context menu: submenu setting this shot's default transition")
-        }
-
-        Divider()
-
-        Button {
-            guard let index else { return }
-            model.eventBus.tap(
-                "shotMoveLeft.menu",
-                domain: .composition,
-                params: ["shot": .string(shot.id.rawValue), "index": .int(index)]
-            )
-            model.moveShot(shot.id, to: index - 1)
-        } label: {
-            Text("Move Left", comment: "Context menu: move this shot or preset earlier in the switcher order")
-        }
-        .disabled((index ?? 0) <= 0)
-
-        Button {
-            guard let index else { return }
-            model.eventBus.tap(
-                "shotMoveRight.menu",
-                domain: .composition,
-                params: ["shot": .string(shot.id.rawValue), "index": .int(index)]
-            )
-            model.moveShot(shot.id, to: index + 1)
-        } label: {
-            Text("Move Right", comment: "Context menu: move this shot or preset later in the switcher order")
-        }
-        .disabled(index.map { $0 >= model.shots.count - 1 } ?? true)
-
-        Divider()
-
-        Button(role: .destructive) {
-            model.eventBus.tap(
-                "shotRemove.menu",
-                domain: .composition,
-                params: ["shot": .string(shot.id.rawValue), "name": .string(shot.name)]
-            )
-            Task { await model.removeShot(shot.id) }
-        } label: {
-            Text("Remove Shot", comment: "Shot context menu: remove this shot from the preset")
-        }
-    }
-
-    /// The Default Transition submenu's picker: a checkmarked radio group
-    /// choosing the shot's ``Shot/defaultTransition`` — None (an unresolved
-    /// take is a cut), Cut, Dissolve, a wipe from each frame edge, or a
-    /// built-in shader transition, all at
-    /// the default durations, matching what the switcher's own picker offers
-    /// (ARCHITECTURE.md, "Per-shot default transitions"). The selection
-    /// binding reports its `tap` event in its setter — the menu item is where
-    /// this user action executes (EVENTS.md, "The `tap` convention") — then
-    /// hands the edit to the model, which autosaves it like any other
-    /// document edit.
-    private func defaultTransitionPicker(for shot: Shot) -> some View {
-        let selection = Binding<DefaultTransitionChoice> {
-            DefaultTransitionChoice(shot.defaultTransition)
-        } set: { choice in
-            var params: [String: EventValue] = [
-                "shot": .string(shot.id.rawValue),
-                "transition": .string(choice.tapValue),
-            ]
-            if case .wipe(let edge) = choice { params["edge"] = .string(edge.rawValue) }
-            if case .shader(let name) = choice { params["shader"] = .string(name.rawValue) }
-            model.eventBus.tap("shotDefaultTransition.menu", domain: .composition, params: params)
-            model.setShotDefaultTransition(choice.transition, for: shot.id)
-        }
-        return Picker(selection: selection) {
-            Text("No Default", comment: "Default transition option: this shot has no default, so it is taken as set")
-                .tag(DefaultTransitionChoice.none)
-            Text("Cut", comment: "Transition picker option: switch to the next shot taken instantly")
-                .tag(DefaultTransitionChoice.cut)
-            Text("Dissolve", comment: "Transition picker option: crossfade to the next shot taken")
-                .tag(DefaultTransitionChoice.dissolve)
-            Text("Wipe from Left", comment: "Default transition option: wipe revealing this shot from the left edge")
-                .tag(DefaultTransitionChoice.wipe(.left))
-            Text("Wipe from Right", comment: "Default transition option: wipe revealing this shot from the right edge")
-                .tag(DefaultTransitionChoice.wipe(.right))
-            Text("Wipe from Top", comment: "Default transition option: wipe revealing this shot from the top edge")
-                .tag(DefaultTransitionChoice.wipe(.top))
-            Text(
-                "Wipe from Bottom",
-                comment: "Default transition option: wipe revealing this shot from the bottom edge"
-            )
-            .tag(DefaultTransitionChoice.wipe(.bottom))
-            Text("Iris", comment: "Shader picker option: circular reveal opening from the center")
-                .tag(DefaultTransitionChoice.shader(.iris))
-            Text("Diagonal", comment: "Shader picker option: diagonal sweep from the top-left corner")
-                .tag(DefaultTransitionChoice.shader(.diagonal))
-            Text("Blinds", comment: "Shader picker option: horizontal bands revealing in parallel")
-                .tag(DefaultTransitionChoice.shader(.blinds))
-        } label: {
-            EmptyView()
-        }
-        .pickerStyle(.inline)
-        .labelsHidden()
     }
 
     /// The camera picker's selection, reporting the picker's `tap` when the
@@ -883,75 +539,6 @@ struct ContentView: View {
             Text("Error", comment: "Stream status: the stream ended on a failure")
                 .foregroundStyle(.red)
                 .help(message)
-        }
-    }
-}
-
-/// The Default Transition submenu's selectable choices, mapping a shot's
-/// stored ``Shot/defaultTransition`` to and from a checkmarkable menu
-/// selection. The mapping is by kind and edge only — a stored default with a
-/// hand-edited duration still checkmarks its kind, and choosing a kind here
-/// stores it at the default duration, matching what the switcher's own
-/// transition picker takes with.
-private enum DefaultTransitionChoice: Hashable {
-    /// No default: an unresolved take of this shot is a cut.
-    case none
-
-    /// An instant cut.
-    case cut
-
-    /// A crossfade at the default dissolve duration.
-    case dissolve
-
-    /// A directional reveal from the given frame edge at the default wipe
-    /// duration.
-    case wipe(WipeEdge)
-
-    /// A custom-shader reveal with the given built-in shader at the default
-    /// shader-transition duration.
-    case shader(TransitionShader)
-
-    /// The choice a stored default transition checkmarks.
-    ///
-    /// - Parameter transition: The shot's stored default, or nil for none.
-    /// (`Transition` is module-qualified here: at this file's scope the name
-    /// would otherwise collide with SwiftUI's `Transition` protocol.)
-    init(_ transition: TingraComposition.Transition?) {
-        switch transition {
-        case Optional.none:
-            self = .none
-        case .some(.cut):
-            self = .cut
-        case .some(.dissolve(duration: _)):
-            self = .dissolve
-        case .some(.wipe(edge: let edge, duration: _)):
-            self = .wipe(edge)
-        case .some(.shader(name: let name, duration: _)):
-            self = .shader(name)
-        }
-    }
-
-    /// The default transition this choice stores on the shot — nil for
-    /// ``none``, the concrete transition at its default duration otherwise.
-    var transition: TingraComposition.Transition? {
-        switch self {
-        case .none: nil
-        case .cut: .cut
-        case .dissolve: .dissolve
-        case .wipe(let edge): .wipe(edge: edge)
-        case .shader(let name): .shader(name: name)
-        }
-    }
-
-    /// The choice's stable name for the menu's `tap` event params (the wipe
-    /// edge and the shader name ride in separate `edge`/`shader` params).
-    var tapValue: String {
-        switch self {
-        case .none: "none"
-        case .cut: "cut"
-        case .dissolve: "dissolve"
-        case .wipe: "wipe"
-        case .shader: "shader"
         }
     }
 }

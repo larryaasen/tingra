@@ -263,4 +263,36 @@ struct ShotEditTests {
         let shot = makeShot()
         #expect(ShotEdit.settingDefaultTransition(shot.defaultTransition, of: shot) == shot)
     }
+
+    @Test("the preview refill stages the first shot that is not on program")
+    func previewRefillPrefersAShotNotOnProgram() {
+        let onAir = makeShot(id: "on-air", name: "On Air")
+        let next = makeShot(id: "next", name: "Next")
+        let later = makeShot(id: "later", name: "Later")
+
+        let refill = ShotEdit.previewRefill(in: [onAir, next, later], activeShotID: onAir.id)
+
+        #expect(refill == next.id)
+    }
+
+    @Test("the preview refill falls back to the program shot when it is the only one")
+    func previewRefillFallsBackToTheProgramShot() {
+        let only = makeShot(id: "only", name: "Only")
+
+        #expect(ShotEdit.previewRefill(in: [only], activeShotID: only.id) == only.id)
+    }
+
+    @Test("the preview refill takes the first shot when nothing is on program")
+    func previewRefillWithNothingOnProgramTakesTheFirst() {
+        let first = makeShot(id: "first", name: "First")
+        let second = makeShot(id: "second", name: "Second")
+
+        #expect(ShotEdit.previewRefill(in: [first, second], activeShotID: nil) == first.id)
+    }
+
+    @Test("the preview refill stages nothing from an empty pool")
+    func previewRefillFromAnEmptyPoolIsNil() {
+        #expect(ShotEdit.previewRefill(in: [], activeShotID: nil) == nil)
+        #expect(ShotEdit.previewRefill(in: [], activeShotID: ShotID(rawValue: "held")) == nil)
+    }
 }

@@ -13,8 +13,18 @@ import TingraComposition
 import TingraEventBus
 import TingraPlugInKit
 
-/// The layer-tree editor: edits the layer tree of the shot currently
-/// selected in the switcher, live on program (roadmap step 7).
+/// The layer-tree editor: edits the layer tree of the shot staged on
+/// preview — or, when nothing is staged, of the shot on program — live
+/// (roadmap step 7; ARCHITECTURE.md, "The layer-tree editor").
+///
+/// **Which shot is edited is answered by the switcher, not by a toggle
+/// here.** ``EditedShot`` resolves it: preview first, program as the
+/// fallback. The header names that shot beside the shared tally lamp —
+/// green while the shot is only staged, red while it is on program, red
+/// winning when it is on both — and, in the red case, says outright that
+/// edits are on air, because every edit flows through
+/// `Compositor.updateShot(_:)` and a shot on program shows it at the next
+/// tick whether the operator meant a rehearsal or not.
 ///
 /// The list shows the shot's layers **topmost first** (the design-tool
 /// convention); the underlying `layers` array stacks bottom to top, so the
@@ -29,13 +39,18 @@ import TingraPlugInKit
 /// sliders report one `tap` when a drag ends with the final value — never
 /// per-drag-step traffic (EVENTS.md, "The `tap` convention").
 struct LayerTreeEditorView: View {
-    /// The engine model whose active shot is edited.
+    /// The engine model whose followed shot (``EngineModel/editedShot``) is
+    /// edited.
     @Bindable var model: EngineModel
 
     /// The selected layer's index in the shot's bottom-to-top `layers`
-    /// array, or `nil` for no selection. View-local: like the active shot,
+    /// array, or `nil` for no selection. View-local: like what is staged,
     /// which layer is being inspected is transient session state.
     @State private var selectedLayerIndex: Int?
+
+    /// The lamp's diameter in the header — a dot beside the shot's name,
+    /// sized to the caption text it sits with.
+    private static let lampDiameter: CGFloat = 8
 
     /// One adjustable component of a layer's normalized frame.
     private enum FrameComponent: CaseIterable {
@@ -85,11 +100,14 @@ struct LayerTreeEditorView: View {
         }
     }
 
-    /// The editor body: hidden while no shot is selected (there is no layer
-    /// tree to edit).
+    /// The editor body: hidden while no shot is followed (an empty pool, or a
+    /// held program snapshot with nothing staged — there is no layer tree to
+    /// edit).
     var body: some View {
-        if let shot = model.activeShot {
+        if let edited = model.editedShot {
+            let shot = edited.shot
             VStack(alignment: .leading, spacing: 6) {
+                shotHeader(for: edited)
                 header(for: shot)
                 layerList(for: shot)
                 if let index = selectedLayerIndex, shot.layers.indices.contains(index) {
@@ -100,11 +118,51 @@ struct LayerTreeEditorView: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            .onChange(of: model.activeShotID) {
-                // The editor follows the switcher: a different shot has a
+            .onChange(of: model.editedShot?.shot.id) {
+                // The editor follows the buses: a different shot has a
                 // different layer tree, so the old selection is meaningless.
                 selectedLayerIndex = nil
             }
+        }
+    }
+
+    /// The header naming the followed shot: the tally lamp, the shot's name,
+    /// and — while the shot is on program — the note that edits are live.
+    ///
+    /// The lamp takes ``MultiviewTile/Tally/badgeTint``, the same red and
+    /// green the input tiles and the sidebar's rows light with, so a lamp
+    /// means one thing everywhere in the window. The name is authored, so it
+    /// is drawn verbatim.
+    private func shotHeader(for edited: EditedShot) -> some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(edited.tally.badgeTint)
+                .frame(width: Self.lampDiameter, height: Self.lampDiameter)
+                .accessibilityLabel(
+                    edited.isOnAir
+                        ? Text(
+                            "On program",
+                            comment: "Accessibility label of the layer editor's lamp: the edited shot is on program")
+                        : Text(
+                            "On preview",
+                            comment:
+                                "Accessibility label of the layer editor's lamp: the edited shot is staged on preview")
+                )
+
+            Text(
+                "Editing \(edited.shot.name)",
+                comment: "Layer editor header naming the shot being edited; the placeholder is the shot's name"
+            )
+            .font(.caption.weight(.semibold))
+            .lineLimit(1)
+
+            if edited.isOnAir {
+                Text("Edits are live on air.", comment: "Layer editor header note while the edited shot is on program")
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+
+            Spacer()
         }
     }
 
@@ -259,10 +317,10 @@ struct LayerTreeEditorView: View {
         }
     }
 
-    /// The active shot's layer at the given bottom-to-top index, freshly read
-    /// from the model so slider bindings always see the latest edit.
+    /// The followed shot's layer at the given bottom-to-top index, freshly
+    /// read from the model so slider bindings always see the latest edit.
     private func currentLayer(at index: Int) -> Layer? {
-        guard let layers = model.activeShot?.layers, layers.indices.contains(index) else { return nil }
+        guard let layers = model.editedShot?.shot.layers, layers.indices.contains(index) else { return nil }
         return layers[index]
     }
 

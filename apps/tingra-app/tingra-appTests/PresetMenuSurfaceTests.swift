@@ -13,18 +13,6 @@ import Testing
 
 @Suite("PresetMenuSurface")
 struct PresetMenuSurfaceTests {
-    @Test("the switcher keeps the tap names it has always reported")
-    func switcherKeepsItsNames() {
-        let surface = PresetMenuSurface.switcher
-        #expect(surface.tapName(for: .duplicate) == "presetDuplicate.menu")
-        #expect(surface.tapName(for: .rename) == "presetRename.menu")
-        #expect(surface.tapName(for: .moveEarlier) == "presetMoveLeft.menu")
-        #expect(surface.tapName(for: .moveLater) == "presetMoveRight.menu")
-        #expect(surface.tapName(for: .remove) == "presetRemove.menu")
-        #expect(surface.tapName(for: .renameConfirm) == "presetRenameConfirm.button")
-        #expect(surface.tapName(for: .renameCancel) == "presetRenameCancel.button")
-    }
-
     @Test("the sidebar reports its own names, moving up and down rather than left and right")
     func sidebarReportsItsOwnNames() {
         let surface = PresetMenuSurface.sidebar

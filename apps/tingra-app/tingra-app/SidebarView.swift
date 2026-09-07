@@ -45,8 +45,8 @@ import TingraPlugInKit
 /// that input; a preset row switches to that preset.** The staging rows are the
 /// preview bus, through the two calls that already own it —
 /// ``EngineModel/setPreview(_:)`` for a shot (identical to the switcher's
-/// preview row, including its toggle: clicking the staged shot again clears
-/// preview) and ``EngineModel/stagePreview(showing:)`` for an input, which
+/// preview row; clicking the staged shot again leaves it staged) and
+/// ``EngineModel/stagePreview(showing:)`` for an input, which
 /// stages it **full frame and nothing else**. They all carry the same
 /// **tally** the input rows' tiles do, from the shared `Tally` tints, so a
 /// lamp cannot mean red here and green there. Nothing reaches program from the
@@ -57,9 +57,18 @@ import TingraPlugInKit
 /// calls, and the active preset wears a **checkmark** rather than a lamp —
 /// red means on program everywhere else in this app, and a preset is not on a
 /// bus. Preset *management* — duplicate, rename, reorder, remove — is the
-/// switcher's context menu, and a preset row carries the same one
-/// (``PresetContextMenu``): one view on both surfaces, so the two cannot
-/// disagree about what a preset can have done to it.
+/// row's context menu (``PresetContextMenu``), and a shot row carries the
+/// matching one (``ShotContextMenu``: duplicate, rename, default transition,
+/// reorder, delete — the last asking first). **Adding** either is one of the
+/// two buttons pinned to the sidebar's bottom edge, Add Shot over Add Preset:
+/// the sidebar is the one place presets and shots are always listed (the
+/// main window's preset switcher row was removed 2026-09-06 as a repeat of
+/// this list, and its shot rows are hidden by default since 2026-09-07), so
+/// it is the place they are made. The buttons sit where Notes puts New
+/// Folder, Reminders puts Add List, and Calendar puts its **+**: plain,
+/// borderless `plus.circle` labels across the bottom of the source list, in
+/// a bottom safe-area inset rather than last rows, so they stay put while
+/// the sections above them scroll.
 ///
 /// The audio sections and the destination section stay inert, which is the
 /// same rule rather than an inconsistency: staging has no meaning for a
@@ -91,11 +100,11 @@ struct SidebarView: View {
     /// `ContentView`: which row a dialog is asking about is transient session
     /// state and never reaches the model.
     ///
-    /// The **row** rather than the `ShotID` so the confirmation can name the
-    /// shot without looking it up again — and so a shot removed by another
+    /// The **shot** rather than the `ShotID` so the confirmation can name it
+    /// without looking it up again — and so a shot removed by another
     /// surface while the dialog is up simply resolves to nothing when
     /// ``EngineModel/removeShot(_:)`` cannot find the id.
-    @State private var shotPendingDeletion: SidebarRow?
+    @State private var shotPendingDeletion: Shot?
 
     /// The destination row whose Delete is awaiting confirmation, or nil while
     /// no confirmation is up — the shot subject's twin, one section down.
@@ -106,9 +115,18 @@ struct SidebarView: View {
     /// an alert presents from its own subject.
     @State private var destinationPendingDeletion: SidebarRow?
 
+    /// The shot the rename dialog is editing, or `nil` while it is closed —
+    /// transient session state, like ``shotPendingDeletion``, for the
+    /// sidebar's shot rename dialog (``ShotRenameDialog``).
+    @State private var shotBeingRenamed: Shot?
+
+    /// The shot rename dialog's working text, prefilled with the shot's
+    /// current name when the dialog opens.
+    @State private var shotRenameText = ""
+
     /// The preset the rename dialog is editing, or `nil` while it is closed —
-    /// the switcher's own transient state, kept here for the sidebar's copy of
-    /// the dialog (``PresetRenameDialog``).
+    /// transient session state, like ``shotPendingDeletion``, for the sidebar's
+    /// rename dialog (``PresetRenameDialog``).
     @State private var presetBeingRenamed: Preset?
 
     /// The preset rename dialog's working text, prefilled with the preset's
@@ -203,6 +221,9 @@ struct SidebarView: View {
             destinationSection
         }
         .listStyle(.sidebar)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            addButtons
+        }
         .navigationSplitViewColumnWidth(
             min: Self.minimumWidth,
             ideal: Self.idealWidth,
@@ -212,18 +233,19 @@ struct SidebarView: View {
         .presetRenameDialog(
             model: model, surface: .sidebar, preset: $presetBeingRenamed, text: $presetRenameText
         )
+        .shotRenameDialog(model: model, surface: .sidebar, shot: $shotBeingRenamed, text: $shotRenameText)
         .alert(
             Text("Delete this shot?", comment: "Confirmation alert title before deleting a shot from the sidebar"),
             isPresented: isDeleteConfirmationPresented,
             presenting: shotPendingDeletion
-        ) { row in
+        ) { shot in
             Button(role: .destructive) {
                 model.eventBus.tap(
                     "sidebarShotDeleteConfirm.button",
                     domain: .composition,
-                    params: ["shot": .string(row.id), "name": .string(row.name)]
+                    params: ["shot": .string(shot.id.rawValue), "name": .string(shot.name)]
                 )
-                Task { await model.removeShot(ShotID(rawValue: row.id)) }
+                Task { await model.removeShot(shot.id) }
             } label: {
                 Text("Delete", comment: "Sidebar shot context menu item, and its confirmation's confirm button")
             }
@@ -231,14 +253,14 @@ struct SidebarView: View {
                 model.eventBus.tap(
                     "sidebarShotDeleteCancel.button",
                     domain: .composition,
-                    params: ["shot": .string(row.id)]
+                    params: ["shot": .string(shot.id.rawValue)]
                 )
             } label: {
                 Text("Cancel", comment: "Rename dialog cancel button, for a shot or a preset")
             }
-        } message: { row in
+        } message: { shot in
             Text(
-                "\(row.name) will be removed from the preset. This cannot be undone.",
+                "\(shot.name) will be removed from the preset. This cannot be undone.",
                 comment: "Confirmation alert message before deleting a shot; the placeholder is the shot's name"
             )
         }
@@ -313,20 +335,18 @@ struct SidebarView: View {
     /// differs: ``EngineModel/switchPreset(to:)`` rather than a preview call,
     /// which is why the help tag names switching rather than staging.
     ///
-    /// Each row carries the switcher's preset context menu — duplicate,
-    /// rename, reorder, remove — through the one shared ``PresetContextMenu``,
-    /// so a second place to manage a preset is not a second place for the two
-    /// to disagree: it is the same view with the sidebar's own `tap` names and
-    /// with Move Up / Move Down where the horizontal switcher says Left and
-    /// Right (``PresetMenuSurface``).
+    /// Each row carries the preset context menu — duplicate, rename, reorder,
+    /// remove — through ``PresetContextMenu``, with the sidebar's own `tap`
+    /// names and Move Up / Move Down, since a vertical list moves things
+    /// vertically (``PresetMenuSurface``). Adding a preset is
+    /// ``addPresetButton``, below the list.
     ///
     /// Switching **never interrupts what is on program** (GLOSSARY.md,
-    /// "Preset"), so this row is safe to click while live — the same promise
-    /// the switcher's buttons make, since it is the same call.
+    /// "Preset"), so this row is safe to click while live.
     private var presetSection: some View {
         stagingSection(
             .presets,
-            header: Text("Presets", comment: "Label leading the preset switcher row"),
+            header: Text("Presets", comment: "Sidebar section heading over the project's presets"),
             rows: SidebarRow.rows(presets: model.presets, active: model.activePresetID),
             symbol: "square.stack",
             emptyLabel: Text(
@@ -350,6 +370,81 @@ struct SidebarView: View {
         }
     }
 
+    /// The two add buttons across the sidebar's bottom edge — Add Shot over
+    /// Add Preset — appending a new empty shot to the active preset
+    /// (``EngineModel/addShot()``) or a new empty preset to the project
+    /// (``EngineModel/addPreset()``).
+    ///
+    /// This is the standard macOS placement for "make another of the things
+    /// this sidebar lists" — Notes' New Folder, Reminders' Add List, Calendar's
+    /// **+** — and they are drawn the way those are: borderless buttons, a
+    /// `plus.circle` beside each title, leading-aligned with the rows above,
+    /// with the system's own sidebar material showing through. No hand-drawn
+    /// bar and no divider — the material is the sidebar's, and the inset is
+    /// what keeps the buttons in view while the sections scroll. Two stacked
+    /// rows rather than one **+** with a menu, because the two actions are
+    /// equally frequent and a menu would hide the one an operator reaches
+    /// for most. Shot above preset because adding a shot is the everyday
+    /// action; a preset is made once per show. Neither is ever disabled: a
+    /// preset can always hold one more shot, and a project one more preset.
+    private var addButtons: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            addButton(
+                Text("Add Shot", comment: "Button adding a new empty shot to the preset"),
+                help: Text(
+                    "Add a new empty shot to the active preset",
+                    comment: "Tooltip on the sidebar's Add Shot button"
+                )
+            ) {
+                model.eventBus.tap("sidebarShotAdd.button", domain: .composition)
+                model.addShot()
+            }
+
+            addButton(
+                Text("Add Preset", comment: "Button adding a new empty preset to the project"),
+                help: Text(
+                    "Add a new empty preset to the project", comment: "Tooltip on the sidebar's Add Preset button")
+            ) {
+                model.eventBus.tap("sidebarPresetAdd.button", domain: .composition)
+                model.addPreset()
+            }
+        }
+        .padding(.horizontal, Self.addButtonsInset)
+        .padding(.vertical, Self.addButtonsInset - Self.addButtonRowPadding)
+    }
+
+    /// One of the ``addButtons``: a borderless `plus.circle` label spanning
+    /// the sidebar's width, so the whole row answers the click.
+    ///
+    /// - Parameters:
+    ///   - title: The button's title.
+    ///   - help: Its tooltip.
+    ///   - action: What a click performs, including its `tap`.
+    /// - Returns: The button.
+    private func addButton(_ title: Text, help: Text, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label {
+                title
+            } icon: {
+                Image(systemName: "plus.circle")
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, Self.addButtonRowPadding)
+            .contentShape(.rect)
+        }
+        .buttonStyle(.borderless)
+        .foregroundStyle(.secondary)
+        .help(help)
+    }
+
+    /// The add buttons' inset from the sidebar's edges: the list's own row
+    /// inset, so their glyphs line up with the row glyphs above them.
+    private static let addButtonsInset: CGFloat = 10
+
+    /// The vertical padding inside each add button's row, which is also the
+    /// gap between the two.
+    private static let addButtonRowPadding: CGFloat = 4
+
     /// The shot section: one row per **authored** shot in the active preset,
     /// staging it on preview when clicked and lit with that shot's tally.
     ///
@@ -370,14 +465,15 @@ struct SidebarView: View {
                 "No shots in this preset",
                 comment: "Sidebar placeholder when the active preset has no shots"
             ),
-            menu: .delete { row in
-                model.eventBus.tap(
-                    "sidebarShotDelete.menu",
-                    domain: .composition,
-                    params: ["shot": .string(row.id), "name": .string(row.name)]
-                )
-                shotPendingDeletion = row
-            }
+            menu: .shot(
+                onRename: { shot in
+                    shotRenameText = shot.name
+                    shotBeingRenamed = shot
+                },
+                // The menu item only *requests* the deletion (its `tap`
+                // reported by the menu); the alert's own button removes.
+                onRemove: { shot in shotPendingDeletion = shot }
+            )
         ) { row in
             model.eventBus.tap(
                 "sidebarShot.row",
@@ -582,12 +678,14 @@ struct SidebarView: View {
 
     /// The context menu a staging section's rows carry.
     enum RowMenu {
-        /// A Delete item that **requests** a deletion, including its `tap` —
-        /// not the deletion itself: the item only raises the confirmation, and
+        /// The whole shot context menu (``ShotContextMenu``), with what
+        /// Rename… does after its `tap` — the sidebar opens its rename dialog
+        /// over the shot handed back — and what Delete does after its: the
+        /// sidebar **requests** the deletion, raising its confirmation, and
         /// the alert's own button is what removes anything. The shot rows'.
-        case delete((SidebarRow) -> Void)
+        case shot(onRename: (Shot) -> Void, onRemove: (Shot) -> Void)
 
-        /// The preset switcher's whole context menu (``PresetContextMenu``),
+        /// The whole preset context menu (``PresetContextMenu``),
         /// with what Rename… does after its `tap` — the sidebar opens its
         /// rename dialog over the preset handed back. The preset rows'.
         case preset(onRename: (Preset) -> Void)
@@ -599,9 +697,9 @@ struct SidebarView: View {
     /// The menu is attached in a branch rather than always, with `nil` content
     /// for the camera section: an always-attached `.contextMenu` whose body is
     /// empty still claims the right-click, so a camera row would answer with a
-    /// blank menu instead of the nothing it means. A preset row whose preset
-    /// the model no longer holds (a stale row mid-update) gets no menu either,
-    /// rather than a menu acting on nothing.
+    /// blank menu instead of the nothing it means. A shot or preset row whose
+    /// subject the model no longer holds (a stale row mid-update) gets no
+    /// menu either, rather than a menu acting on nothing.
     ///
     /// - Parameters:
     ///   - row: The row to draw.
@@ -629,13 +727,13 @@ struct SidebarView: View {
         .help(help)
 
         switch menu {
-        case .delete(let onDelete)?:
-            button.contextMenu {
-                Button(role: .destructive) {
-                    onDelete(row)
-                } label: {
-                    Text("Delete", comment: "Sidebar shot context menu item, and its confirmation's confirm button")
+        case .shot(let onRename, let onRemove)?:
+            if let shot = model.shots.first(where: { $0.id.rawValue == row.id }) {
+                button.contextMenu {
+                    ShotContextMenu(model: model, shot: shot, surface: .sidebar, onRename: onRename, onRemove: onRemove)
                 }
+            } else {
+                button
             }
         case .preset(let onRename)?:
             if let preset = model.presets.first(where: { $0.id.rawValue == row.id }) {
