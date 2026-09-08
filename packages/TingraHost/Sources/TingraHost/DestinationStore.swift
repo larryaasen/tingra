@@ -205,11 +205,13 @@ public actor DestinationStore {
     /// The file name of the destinations document.
     public static let fileName = "destinations.json"
 
-    /// The directory holding the destinations file.
-    public let directoryURL: URL
+    /// The directory holding the destinations file. `nonisolated`, as the
+    /// file's location is fixed at creation and a front end lists it without
+    /// entering the actor.
+    public nonisolated let directoryURL: URL
 
     /// The destinations file's location.
-    public let fileURL: URL
+    public nonisolated let fileURL: URL
 
     /// The secret store each destination's stream key is filed in.
     private let secureStorage: any SecureStorage

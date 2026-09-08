@@ -48,6 +48,28 @@ private final class ScriptedAuthorization: AuthorizationChecking {
         set(permission, to: .granted)
         return .granted
     }
+
+    /// The error every ``reset(_:)`` throws, or nil to reset normally.
+    var resetFailure: AuthorizationError? {
+        get { resetFailureBox.withLock { $0 } }
+        set { resetFailureBox.withLock { $0 = newValue } }
+    }
+
+    /// Storage for ``resetFailure``.
+    private let resetFailureBox = Mutex<AuthorizationError?>(nil)
+
+    /// Every permission `reset(_:)` was called for, in order.
+    var resets: [AuthorizationPermission] { resetBox.withLock { $0 } }
+
+    /// Storage for ``resets``.
+    private let resetBox = Mutex<[AuthorizationPermission]>([])
+
+    func reset(_ permission: AuthorizationPermission) async throws {
+        resetBox.withLock { $0.append(permission) }
+        if let resetFailure { throw resetFailure }
+        // The system forgot: the permission reads undecided again.
+        set(permission, to: .notDetermined)
+    }
 }
 
 @MainActor
@@ -153,6 +175,58 @@ struct PermissionsModelTests {
         #expect(authorization.requests == [.camera])
         #expect(granted == [.camera])
         #expect(events.contains { $0.name == "authorization.changed" && $0.params?["to"] == .string("granted") })
+    }
+
+    @Test("reset() asks the seam to forget, then refreshes to Not Requested and reports both")
+    func resetForgetsAndReports() async throws {
+        let authorization = ScriptedAuthorization([.camera: .granted, .microphone: .denied])
+        var statusAfter: AuthorizationStatus?
+        let events = await recordedEvents { bus in
+            let model = PermissionsModel(authorization: authorization, eventBus: bus)
+            model.refresh()
+            await model.reset(.camera)
+            statusAfter = model.status(of: .camera)
+        }
+
+        #expect(authorization.resets == [.camera])
+        #expect(statusAfter == .notDetermined)
+        let reset = try #require(events.first { $0.name == "authorization.reset" })
+        #expect(reset.group == .event)
+        #expect(reset.params?["permission"] == .string("camera"))
+        let changed = try #require(events.first { $0.name == "authorization.changed" })
+        #expect(changed.params?["from"] == .string("granted"))
+        #expect(changed.params?["to"] == .string("notDetermined"))
+    }
+
+    @Test("a reset the system refuses is an error event naming the reason, and the status is re-read as it stands")
+    func refusedResetIsReported() async throws {
+        let authorization = ScriptedAuthorization([.camera: .granted])
+        authorization.resetFailure = .resetRefused(permission: .camera, status: 1, output: "refused")
+        var statusAfter: AuthorizationStatus?
+        let events = await recordedEvents { bus in
+            let model = PermissionsModel(authorization: authorization, eventBus: bus)
+            model.refresh()
+            await model.reset(.camera)
+            statusAfter = model.status(of: .camera)
+        }
+
+        #expect(statusAfter == .granted)
+        let error = try #require(events.first { $0.name == "authorization.reset" })
+        #expect(error.group == .error)
+        #expect(error.params?["permission"] == .string("camera"))
+        #expect(
+            error.params?["error"]
+                == .string(
+                    AuthorizationError.resetRefused(permission: .camera, status: 1, output: "refused").description)
+        )
+        #expect(!events.contains { $0.name == "authorization.changed" })
+    }
+
+    @Test("every permission names the TCC service tccutil resets it by")
+    func tccServiceNames() {
+        #expect(AuthorizationPermission.camera.tccServiceName == "Camera")
+        #expect(AuthorizationPermission.microphone.tccServiceName == "Microphone")
+        #expect(AuthorizationPermission.screenRecording.tccServiceName == "ScreenCapture")
     }
 
     @Test("every permission points at its own Privacy & Security pane")

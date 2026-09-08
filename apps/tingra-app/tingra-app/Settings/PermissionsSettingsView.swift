@@ -17,12 +17,16 @@ import TingraHost
 /// one action each state allows.
 ///
 /// A row per permission in the General pane's grouped-form shape: the
-/// permission and what Tingra uses it for on the leading edge, its status and
-/// its action on the trailing edge. The action is whichever single thing
-/// helps: a permission never asked for gets a Request button, which shows the
-/// system prompt; a refused one gets a button to the System Settings switch,
-/// the only place it can be changed; a granted or policy-restricted one gets
-/// none, because nothing the app can do would change it.
+/// permission and what Tingra uses it for on the leading edge, its status,
+/// its action, and a Reset button on the trailing edge. The action is
+/// whichever single thing helps: a permission never asked for gets a Request
+/// button, which shows the system prompt; a refused one gets a button to the
+/// System Settings switch, the only place it can be changed; a granted or
+/// policy-restricted one gets none, because nothing the app can do would
+/// change it. **Reset** (2026-09-07) is the one move an app can make on its
+/// own: it asks the system to forget a decision — granted or denied — so the
+/// status reads Not Requested again and macOS asks the next time an input
+/// needs it. Disabled while there is no decision to forget.
 ///
 /// The pane never prompts by being opened — a status read is not a request
 /// (``AuthorizationChecking``) — and it never needs a Refresh button: the
@@ -42,8 +46,8 @@ struct PermissionsSettingsView: View {
                 }
             } footer: {
                 Text(
-                    "macOS grants each permission to this app. Tingra checks again whenever it becomes active, so a change made in System Settings appears here when you return, and an input the change allows starts on its own.",
-                    comment: "Permissions settings: footer explaining when the statuses update"
+                    "macOS grants each permission to this app. Tingra checks again whenever it becomes active, so a change made in System Settings appears here when you return, and an input the change allows starts on its own. Reset forgets a decision, so macOS asks again the next time the permission is needed.",
+                    comment: "Permissions settings: footer explaining when the statuses update and what Reset does"
                 )
             }
         }
@@ -72,11 +76,32 @@ struct PermissionRow: View {
             HStack(spacing: 12) {
                 StatusLabel(status: status)
                 action
+                resetButton
             }
         } label: {
             Text(Self.name(of: permission))
             Text(Self.purpose(of: permission))
         }
+    }
+
+    /// The Reset button: forgets the system's decision for this permission.
+    /// Disabled while there is none to forget — never asked, restricted by
+    /// policy, or not yet read.
+    private var resetButton: some View {
+        Button {
+            model.eventBus.tap(
+                "permissionReset.button", domain: .platform, params: ["permission": .string(permission.rawValue)])
+            Task { await model.permissions.reset(permission) }
+        } label: {
+            Text("Reset", comment: "Permissions settings: button that forgets the system's decision for a permission")
+        }
+        .disabled(status != .granted && status != .denied)
+        .help(
+            Text(
+                "Forget this permission, so macOS asks again the next time an input needs it",
+                comment: "Tooltip on a permission's Reset button"
+            )
+        )
     }
 
     /// The permission's last-read status, or `nil` before the first refresh.

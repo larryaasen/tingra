@@ -21,9 +21,9 @@ import Security
 /// keychain, and no prompt on a CI runner.
 ///
 /// Secrets are addressed by an opaque `account` string (the destination URL,
-/// for a stream key); the store keeps no index of accounts and never returns
-/// a secret through an event or a log — reads and writes are the only way in
-/// and out.
+/// for a stream key); the store can say which accounts it holds — never what
+/// they hold — and never returns a secret through an event or a log: reads
+/// and writes are the only way in and out.
 public protocol SecureStorage: Sendable {
     /// Stores (or replaces) the secret for the given account.
     ///
@@ -48,6 +48,24 @@ public protocol SecureStorage: Sendable {
     /// - Parameter account: The opaque key to clear.
     /// - Throws: ``SecureStorageError`` if the store rejects the delete.
     func removeSecret(forAccount account: String) throws
+
+    /// The accounts that currently hold a secret — the keys, never the
+    /// values — so a caller can count what is stored or clear it item by
+    /// item. An empty store returns an empty list.
+    ///
+    /// - Returns: The accounts holding a secret, in a stable order.
+    /// - Throws: ``SecureStorageError`` if the store rejects the read.
+    func accounts() throws -> [String]
+
+    /// Removes every secret the store holds — the whole of Tingra's items,
+    /// nothing of any other app's. Clearing an empty store is not an error.
+    ///
+    /// The app's remove-all-data action uses this rather than removing
+    /// account by account, so a secret whose destination is gone from every
+    /// document (an orphan) is cleared with the rest.
+    ///
+    /// - Throws: ``SecureStorageError`` if the store rejects the delete.
+    func removeAllSecrets() throws
 }
 
 /// A failure from ``SecureStorage``. Recoverable and developer-facing — the
@@ -192,10 +210,19 @@ public struct KeychainSecureStorage: SecureStorage {
     /// stream key it filed was rejected and reported as a `securestore.write`
     /// error while the session carried on with the key in memory.
     private func baseQuery(forAccount account: String) -> [CFString: Any] {
+        var query = serviceQuery()
+        query[kSecAttrAccount] = account
+        return query
+    }
+
+    /// The query matching **every** generic-password item Tingra filed: the
+    /// service, the data-protection keychain, and the access group when there
+    /// is one — ``baseQuery(forAccount:)`` narrowed to nothing. Never matches
+    /// another app's items, because the service is Tingra's own namespace.
+    private func serviceQuery() -> [CFString: Any] {
         var query: [CFString: Any] = [
             kSecClass: kSecClassGenericPassword,
             kSecAttrService: service,
-            kSecAttrAccount: account,
             kSecUseDataProtectionKeychain: true,
         ]
         if let accessGroup {
@@ -237,6 +264,32 @@ public struct KeychainSecureStorage: SecureStorage {
     /// clear is idempotent.
     public func removeSecret(forAccount account: String) throws {
         let status = SecItemDelete(baseQuery(forAccount: account) as CFDictionary)
+        guard status == errSecSuccess || status == errSecItemNotFound else {
+            throw SecureStorageError.keychain(status)
+        }
+    }
+
+    /// Lists the accounts of every item under Tingra's service, reading the
+    /// items' attributes only — `kSecReturnData` is deliberately absent, so
+    /// no secret leaves the Keychain on this path. A binary the
+    /// data-protection keychain refuses sees an empty group here rather than
+    /// an error (see ``baseQuery(forAccount:)``).
+    public func accounts() throws -> [String] {
+        var query = serviceQuery()
+        query[kSecReturnAttributes] = true
+        query[kSecMatchLimit] = kSecMatchLimitAll
+        var result: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        if status == errSecItemNotFound { return [] }
+        guard status == errSecSuccess else { throw SecureStorageError.keychain(status) }
+        guard let items = result as? [[String: Any]] else { return [] }
+        return items.compactMap { $0[kSecAttrAccount as String] as? String }.sorted()
+    }
+
+    /// Deletes every item under Tingra's service in one call, treating "not
+    /// found" as success so clearing an empty store is idempotent.
+    public func removeAllSecrets() throws {
+        let status = SecItemDelete(serviceQuery() as CFDictionary)
         guard status == errSecSuccess || status == errSecItemNotFound else {
             throw SecureStorageError.keychain(status)
         }

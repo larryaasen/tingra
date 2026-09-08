@@ -284,6 +284,15 @@ final class InMemorySecureStorage: SecureStorage {
     func removeSecret(forAccount account: String) throws {
         secrets.withLock { $0[account] = nil }
     }
+
+    func accounts() throws -> [String] {
+        if let readFailure { throw readFailure }
+        return secrets.withLock { $0.keys.sorted() }
+    }
+
+    func removeAllSecrets() throws {
+        secrets.withLock { $0.removeAll() }
+    }
 }
 
 /// A ``DestinationStore`` over a temporary directory, seeded with the

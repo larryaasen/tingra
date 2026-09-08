@@ -41,8 +41,9 @@ import TingraPlugInKit
 /// **transition panel** (``TransitionPanel``) is where
 /// what is staged goes to air: Cut, Take with the selected transition — each
 /// shot's own default while the picker is on Default, or an explicit cut,
-/// dissolve, wipe, or shader as the override (GLOSSARY.md, "Transition") —
-/// and Fade to Black (ARCHITECTURE.md, "The preview bus"). The pickers pick
+/// dissolve, wipe, or shader as the override (GLOSSARY.md, "Transition")
+/// (ARCHITECTURE.md, "The preview bus"); Fade to Black is in the toolbar
+/// with Start Streaming and Record (``FadeToBlackButton``). The pickers pick
 /// one camera and one display; the
 /// editor (``LayerTreeEditorView``) edits the staged shot's layer tree — the
 /// program shot's when nothing is staged — live; the mixer panel (``MixerView``) mixes the audio inputs into the
@@ -173,13 +174,16 @@ struct ContentView: View {
         .onChange(of: model.selectedDisplayID) { _, _ in
             Task { await model.reconfigure() }
         }
-        // The two actions that go out to viewers are the window's primary
-        // actions, and the toolbar is where those live: always on screen,
-        // never scrolled away with the panels that configure them. Attached
-        // here rather than in the scene so Start Streaming can collect the
-        // stream keys typed into the panel's rows (``streamKeys``).
+        // The actions that change what goes out to viewers are the window's
+        // primary actions, and the toolbar is where those live: always on
+        // screen, never scrolled away with the panels that configure them.
+        // Fade to Black leads — the production control, a master stage over
+        // the program — then the two outputs. Attached here rather than in
+        // the scene so Start Streaming can collect the stream keys typed into
+        // the panel's rows (``streamKeys``).
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
+                FadeToBlackButton(model: model)
                 StreamButton(model: model, keys: streamKeys)
                 RecordButton(model: model)
             }

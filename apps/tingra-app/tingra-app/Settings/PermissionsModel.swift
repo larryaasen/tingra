@@ -125,6 +125,35 @@ final class PermissionsModel {
         return refresh()
     }
 
+    /// Forgets the system's decision for a permission, then refreshes — the
+    /// Permissions pane's Reset button.
+    ///
+    /// Reported as an `authorization.reset` event on success and an
+    /// `authorization.reset` error naming the reason otherwise; the refresh
+    /// that follows either way reports what the system now says, which is
+    /// the only status the pane shows. A reset never starts or stops an
+    /// input: a running one keeps the access it opened, and macOS asks again
+    /// the next time the permission is needed.
+    ///
+    /// - Parameter permission: The permission to reset.
+    func reset(_ permission: AuthorizationPermission) async {
+        do {
+            try await authorization.reset(permission)
+            eventBus.event(
+                "authorization.reset", domain: .platform, params: ["permission": .string(permission.rawValue)])
+        } catch {
+            eventBus.error(
+                "authorization.reset",
+                domain: .platform,
+                params: [
+                    "permission": .string(permission.rawValue),
+                    "error": .string((error as? AuthorizationError)?.description ?? String(describing: error)),
+                ]
+            )
+        }
+        refresh()
+    }
+
     /// Re-reads the permissions each time the app becomes active, handing any
     /// newly granted ones to the callback.
     ///

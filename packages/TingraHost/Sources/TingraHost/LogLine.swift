@@ -132,11 +132,16 @@ public struct LogLineFormatter: Sendable {
 /// state of the engine); this is purely a log anchor. When the `serve`
 /// daemon arrives (roadmap step 4), its warm starts will keep the same ID.
 public enum LogSession {
+    /// The counter file the identifier persists in: `log-session-id` in
+    /// Tingra's Application Support directory, beside the project document
+    /// and the daemon's socket. Public so the app can list it among the data
+    /// it writes and remove it with the rest, naming the same file this
+    /// increments rather than a copy of the path.
+    public static let counterFileURL = URL.applicationSupportDirectory.appending(path: "Tingra/log-session-id")
+
     /// This process's log session identifier, read-and-incremented once
     /// per launch.
-    public static let currentID: Int = increment(
-        at: URL.applicationSupportDirectory.appending(path: "Tingra/log-session-id")
-    )
+    public static let currentID: Int = increment(at: counterFileURL)
 
     /// Reads the last identifier from `url`, increments it (wrapping to
     /// four digits), persists, and returns it. Best effort by design: an

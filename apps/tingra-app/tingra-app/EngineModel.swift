@@ -367,7 +367,9 @@ final class EngineModel {
     /// layer-tree editor operate within, highlighted in the preset switcher.
     /// Session state, like the active shot: at launch the app adopts the
     /// document's first preset, never a persisted "active" field.
-    private(set) var activePresetID: PresetID?
+    private(set) var activePresetID: PresetID? {
+        didSet { recordSessionPosition() }
+    }
 
     /// The active preset's shots, in switcher order — what the shot bank
     /// shows (roadmap step 7; ARCHITECTURE.md, "The shot bank"). The live
@@ -380,14 +382,20 @@ final class EngineModel {
     private(set) var shots: [Shot] = []
 
     /// The id of the shot currently on program, so the switcher can highlight
-    /// it. `nil` when there are no shots (no input selected).
-    private(set) var activeShotID: ShotID?
+    /// it. `nil` when there are no shots (no input selected). Session state
+    /// that never enters the project document, remembered machine-locally so
+    /// a launch can put it back (``recordSessionPosition()``).
+    private(set) var activeShotID: ShotID? {
+        didSet { recordSessionPosition() }
+    }
 
     /// The id of the shot staged on preview, or `nil` when nothing is staged
     /// — the staging bus's selection, mirrored from the compositor so the
     /// shot bank can light it. Session state: what is staged when the
     /// app quits is not part of the show, so it never enters the project
-    /// document (ARCHITECTURE.md, "The preview bus").
+    /// document (ARCHITECTURE.md, "The preview bus") — but it is remembered
+    /// machine-locally, so the next launch stages it again
+    /// (``recordSessionPosition()``).
     ///
     /// Clearing it also empties ``previewRelay``: the compositor yields no
     /// preview frame while nothing is staged, so without this the monitor
@@ -396,6 +404,7 @@ final class EngineModel {
     private(set) var previewShotID: ShotID? {
         didSet {
             if previewShotID == nil { previewRelay.latest = nil }
+            recordSessionPosition()
         }
     }
 
@@ -501,24 +510,33 @@ final class EngineModel {
 
     /// The transition kind the next shot switcher tap takes with
     /// (GLOSSARY.md, "Transition") — session state bound from `ContentView`'s
-    /// transition picker, never part of the saved document. Starts on
+    /// transition picker, never part of the saved document — but remembered
+    /// machine-locally with the rest of the operator's position, so a launch
+    /// arms what was armed (``recordSessionPosition()``). Starts on
     /// ``TakeTransitionKind/default``, so each take resolves the taken shot's
     /// own ``Shot/defaultTransition`` until the operator overrides it with an
     /// explicit kind (ARCHITECTURE.md, "Per-shot default transitions"). The
     /// switcher itself still always reports the choice it used, never guesses
     /// at intent.
-    var takeTransitionKind: TakeTransitionKind = .default
+    var takeTransitionKind: TakeTransitionKind = .default {
+        didSet { recordSessionPosition() }
+    }
 
     /// The frame edge the next wipe reveals the incoming shot from — session
     /// state bound from the switcher's edge picker, read only while
-    /// ``takeTransitionKind`` is ``TakeTransitionKind/wipe``.
-    var wipeEdge: WipeEdge = .left
+    /// ``takeTransitionKind`` is ``TakeTransitionKind/wipe``; remembered
+    /// like ``takeTransitionKind``.
+    var wipeEdge: WipeEdge = .left {
+        didSet { recordSessionPosition() }
+    }
 
     /// The built-in shader the next shader transition reveals the incoming
     /// shot with — session state bound from the switcher's shader picker,
     /// read only while ``takeTransitionKind`` is
-    /// ``TakeTransitionKind/shader``.
-    var shaderName: TransitionShader = .iris
+    /// ``TakeTransitionKind/shader``; remembered like ``takeTransitionKind``.
+    var shaderName: TransitionShader = .iris {
+        didSet { recordSessionPosition() }
+    }
 
     /// The latest program frame, handed to the preview view to draw. Held
     /// in a plain relay (not observed) so the ~30 fps program does not churn
@@ -669,9 +687,47 @@ final class EngineModel {
     /// The store the project document loads from and autosaves to.
     @ObservationIgnored private let store = ProjectStore()
 
+    /// Where the operator's position — active preset, program shot, staged
+    /// shot — persists between launches (``SessionPreferences``).
+    @ObservationIgnored private let sessionPreferences = SessionPreferences()
+
+    /// The position recorded by the last run, read at the top of
+    /// ``loadProject()`` before any assignment can overwrite it, and consumed
+    /// once by ``establishSessionPreset()``; nil after that, and on every
+    /// launch that seeds a fresh project.
+    @ObservationIgnored private var restoredPosition: SessionPosition?
+
     /// The pending debounced autosave, if any — each edit restarts the delay
     /// so a slider drag coalesces into one write (see ``scheduleAutosave()``).
     @ObservationIgnored private var autosaveTask: Task<Void, Never>?
+
+    /// Whether ``removeAllData()`` has run: from then on nothing autosaves,
+    /// so the document the operator just removed is not written back by the
+    /// next edit or by the quit that follows (``saveProject()``).
+    @ObservationIgnored private var isRemovingData = false
+
+    /// What the app has saved on this Mac, and the way to remove all of it —
+    /// the Data settings pane's model, built over the same project store,
+    /// destination store, and secret store this engine writes through, so
+    /// the pane and the engine cannot name different files
+    /// (``AppDataStore``).
+    ///
+    /// The preferences domain is the bundle identifier — the domain
+    /// `UserDefaults.standard` persists under — falling back to the process
+    /// name, which is what the standard defaults use for an unbundled
+    /// process.
+    @ObservationIgnored private(set) lazy var appData = AppDataModel(
+        store: AppDataStore(
+            projectStore: store,
+            destinationsFileURL: destinationStore.fileURL,
+            logSessionFileURL: LogSession.counterFileURL,
+            defaults: .standard,
+            defaultsDomain: Bundle.main.bundleIdentifier ?? ProcessInfo.processInfo.processName,
+            secureStorage: secureStorage,
+            recordingFolder: { [recordingPreferences] in recordingPreferences.folder }
+        ),
+        eventBus: eventBus
+    )
 
     /// The camera currently cast in the built-in camera role — the device the
     /// preset's camera-bound layers were last bound to. A camera picker
@@ -3410,6 +3466,14 @@ final class EngineModel {
     /// ARCHITECTURE.md, "Project save/load").
     private func loadProject() {
         let path = store.fileURL.path(percentEncoded: false)
+        // Read before anything below assigns a preset or a shot: each
+        // assignment records the new position over the old.
+        let recorded = sessionPreferences.position
+        // The armed transition needs no document to come back: it is the
+        // switcher's own setting, restored whatever the project holds.
+        if let kind = recorded.transitionKind { takeTransitionKind = kind }
+        if let edge = recorded.wipeEdge { wipeEdge = edge }
+        if let shader = recorded.shaderName { shaderName = shader }
         do {
             if let project = try store.load() {
                 // A document written before transient shots existed carries
@@ -3462,7 +3526,10 @@ final class EngineModel {
             }
         }
 
-        guard let loadedPreset = presets.first else {
+        // The recorded preset when the document still holds it, else the
+        // first — and the recorded shots wait for the compositor to have the
+        // pool (``establishSessionPreset()``).
+        guard let loadedPreset = recorded.launchPreset(in: presets) else {
             // A fresh project: default to the first discovered devices; the
             // first configuration pass seeds the built-in arrangement from
             // whatever actually starts.
@@ -3471,6 +3538,7 @@ final class EngineModel {
             return
         }
 
+        restoredPosition = recorded
         activePresetID = loadedPreset.id
         shots = loadedPreset.shots
 
@@ -3532,13 +3600,68 @@ final class EngineModel {
             saveProject()
         }
         if let active = presets.first(where: { $0.id == activePresetID }) {
-            compositor.loadPreset(Preset(id: active.id, name: active.name, shots: shots))
+            let loaded = Preset(id: active.id, name: active.name, shots: shots)
+            compositor.loadPreset(loaded)
+            restoreSessionPosition(in: loaded)
         }
         activeShotID = compositor.activeShotID
-        // Preview starts lit like program does: the first shot not on
-        // program is staged from boot, ready to take.
+        // Preview starts lit like program does: the restored shot, else the
+        // first shot not on program, is staged from boot, ready to take.
         ensurePreviewStaged()
         syncTally()
+    }
+
+    /// Puts the last run's program and staged shots back, once, on the first
+    /// load of a document's preset — the position ``loadProject()`` read
+    /// (ARCHITECTURE.md, "Restoring the operator's position").
+    ///
+    /// The program shot is taken with a cut: nothing is on air yet, so there
+    /// is nothing to transition from, and the compositor's own first load
+    /// cut the same way. Each shot is restored only while it still exists in
+    /// the pool (``SessionPosition/shots(validIn:)``); a missing one leaves
+    /// the established rule for that bus — the first shot on program,
+    /// ``ensurePreviewStaged()``'s pick on preview. A seeded fresh project
+    /// never has a position to restore.
+    ///
+    /// - Parameter preset: The preset the compositor just loaded.
+    private func restoreSessionPosition(in preset: Preset) {
+        guard let recorded = restoredPosition else { return }
+        restoredPosition = nil
+        let restored = recorded.shots(validIn: preset)
+        if let program = restored.program, program != compositor.activeShotID {
+            compositor.take(shotID: program, transition: .cut)
+        }
+        if let preview = restored.preview {
+            compositor.setPreview(shotID: preview)
+        }
+        previewShotID = compositor.previewShotID
+        eventBus.event(
+            "session.restored",
+            domain: .composition,
+            params: [
+                "preset": .string(preset.id.rawValue),
+                "program": .string(restored.program?.rawValue ?? "none"),
+                "preview": .string(restored.preview?.rawValue ?? "none"),
+            ]
+        )
+    }
+
+    /// Records the operator's position for the next launch — called from the
+    /// observers of ``activePresetID``, ``activeShotID``, ``previewShotID``,
+    /// ``takeTransitionKind``, ``wipeEdge``, and ``shaderName``, so no path
+    /// that moves a bus or arms a transition can forget to. Silent while data
+    /// is being removed, so the preferences the operator just cleared are not
+    /// written back by the quit that follows.
+    private func recordSessionPosition() {
+        guard !isRemovingData else { return }
+        sessionPreferences.position = SessionPosition(
+            presetID: activePresetID,
+            activeShotID: activeShotID,
+            previewShotID: previewShotID,
+            transitionKind: takeTransitionKind,
+            wipeEdge: wipeEdge,
+            shaderName: shaderName
+        )
     }
 
     /// Rebinds every layer bound to one device to another across all the
@@ -3577,7 +3700,7 @@ final class EngineModel {
     /// and the session continues: the edits are still live on program, only
     /// unsaved.
     private func saveProject() {
-        guard hasSessionPreset else { return }
+        guard hasSessionPreset, !isRemovingData else { return }
         autosaveTask?.cancel()
         autosaveTask = nil
         syncActivePreset()
@@ -3612,6 +3735,7 @@ final class EngineModel {
     /// single save (the same reasoning that keeps successful `updateShot`
     /// calls off the event bus; see ARCHITECTURE.md, "Project save/load").
     private func scheduleAutosave() {
+        guard !isRemovingData else { return }
         autosaveTask?.cancel()
         autosaveTask = Task { [weak self] in
             do {
@@ -3621,6 +3745,34 @@ final class EngineModel {
             }
             self?.saveProject()
         }
+    }
+
+    /// Removes everything the app has saved on this Mac — the project
+    /// document, the destinations, the stream keys, the preferences, and the
+    /// log session counter; never a recording — and stops the engine saving
+    /// anything further, so the caller can quit and the next launch is a
+    /// first run (ARCHITECTURE.md, "The Data settings pane").
+    ///
+    /// The pending autosave is cancelled and every later save refused
+    /// **before** the files go, because the engine still holds the show in
+    /// memory: an autosave landing after the removal would write the
+    /// document straight back, and the quit's own flush would do the same.
+    /// The engine keeps running — the stream, the recording, and the
+    /// compositor go with the process, as they do on every quit — so a
+    /// recording in flight is still finalized by the quit that follows.
+    ///
+    /// Saving stays off even when a kind could not be removed: the caller
+    /// shows what remains rather than quitting, and an edit made then must
+    /// not recreate what was just removed.
+    ///
+    /// - Returns: Whether everything was removed (``AppDataModel/failures``
+    ///   names what was not).
+    @discardableResult
+    func removeAllData() -> Bool {
+        isRemovingData = true
+        autosaveTask?.cancel()
+        autosaveTask = nil
+        return appData.removeAll()
     }
 
     /// The concrete transition ``take(_:)`` passes to the compositor for the

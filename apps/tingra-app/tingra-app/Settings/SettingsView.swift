@@ -12,7 +12,7 @@ import TingraEventBus
 
 /// One pane of the settings window.
 ///
-/// A closed list rather than four hand-written tabs, so the sidebar's label
+/// A closed list rather than five hand-written tabs, so the sidebar's label
 /// and the title bar's heading are drawn from **one** name per pane and cannot
 /// drift apart — the rule ``SidebarSection`` follows for the main window's
 /// sidebar. A pane added without an entry here does not compile.
@@ -26,6 +26,9 @@ enum SettingsPane: String, CaseIterable, Hashable, Sendable {
     /// The production keyboard shortcuts.
     case shortcuts
 
+    /// What the app has saved on this Mac, and the way to remove all of it.
+    case data
+
     /// The app's version.
     case about
 
@@ -36,6 +39,7 @@ enum SettingsPane: String, CaseIterable, Hashable, Sendable {
         case .general: Text("General", comment: "Settings window pane: general app settings")
         case .permissions: Text("Permissions", comment: "Settings window pane: the system permissions' status")
         case .shortcuts: Text("Shortcuts", comment: "Settings window pane: the keyboard shortcuts listing")
+        case .data: Text("Data", comment: "Settings window pane: what the app has saved on this Mac")
         case .about: Text("About", comment: "Settings window pane: the app's version")
         }
     }
@@ -46,13 +50,15 @@ enum SettingsPane: String, CaseIterable, Hashable, Sendable {
         case .general: "gearshape"
         case .permissions: "lock.shield"
         case .shortcuts: "keyboard"
+        case .data: "internaldrive"
         case .about: "info.circle"
         }
     }
 }
 
 /// The settings window, reached from the app menu with ⌘, the way macOS
-/// reserves — four panes for now: General, Permissions, Shortcuts, and About.
+/// reserves — five panes for now: General, Permissions, Shortcuts, Data, and
+/// About.
 ///
 /// It is a `Window` scene with its own Settings… command (``TingraApp``)
 /// rather than SwiftUI's `Settings` scene, for a reason that is only visible
@@ -228,6 +234,7 @@ struct SettingsView: View {
             GeneralSettingsView(model: model, appearance: appearance, statusBar: statusBar)
         case .permissions: PermissionsSettingsView(model: model)
         case .shortcuts: ShortcutsSettingsView()
+        case .data: DataSettingsView(model: model)
         case .about: AboutSettingsView()
         }
     }

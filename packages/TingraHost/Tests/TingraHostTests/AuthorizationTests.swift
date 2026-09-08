@@ -37,7 +37,11 @@ struct AuthorizationTests {
             let status: AuthorizationStatus
         }
         let record = Record(permission: .screenRecording, status: .restricted)
-        let data = try JSONEncoder().encode(record)
+        // Sorted keys, so the comparison below does not depend on the order
+        // the encoder happens to emit a keyed container's fields in.
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let data = try encoder.encode(record)
         #expect(String(decoding: data, as: UTF8.self) == #"{"permission":"screenRecording","status":"restricted"}"#)
         #expect(try JSONDecoder().decode(Record.self, from: data) == record)
     }

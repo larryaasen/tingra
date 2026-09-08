@@ -9,6 +9,7 @@
 
 @preconcurrency import AVFoundation
 import CoreGraphics
+import Foundation
 
 /// A system permission Tingra's capture depends on — one of the TCC
 /// (Transparency, Consent, and Control) grants macOS keys to the app's
@@ -81,6 +82,43 @@ public protocol AuthorizationChecking: Sendable {
     /// - Parameter permission: The permission to request.
     /// - Returns: The status after the request.
     func request(_ permission: AuthorizationPermission) async -> AuthorizationStatus
+
+    /// Forgets the system's recorded decision for a permission — granted or
+    /// denied — so it reads ``AuthorizationStatus/notDetermined`` again and
+    /// macOS asks the next time the permission is needed.
+    ///
+    /// The one way an app can move a TCC decision on its own: it cannot grant
+    /// itself anything, but it can ask the system to forget. Resetting a
+    /// permission that was never decided is not an error.
+    ///
+    /// - Parameter permission: The permission to reset.
+    /// - Throws: ``AuthorizationError`` when the system refuses or the
+    ///   process has no bundle identifier to reset for.
+    func reset(_ permission: AuthorizationPermission) async throws
+}
+
+/// A failure from ``AuthorizationChecking/reset(_:)``. Recoverable and
+/// developer-facing — the reset runs a system tool, and the tool's own words
+/// are the diagnosis.
+public enum AuthorizationError: Error, Equatable, CustomStringConvertible {
+    /// The running process has no bundle identifier, so there is no TCC
+    /// client to reset — a bare executable such as `tingra-cli`.
+    case noBundleIdentifier
+
+    /// `tccutil` exited with a status other than success; carries the status
+    /// and what the tool printed.
+    case resetRefused(permission: AuthorizationPermission, status: Int32, output: String)
+
+    /// A developer-facing description.
+    public var description: String {
+        switch self {
+        case .noBundleIdentifier:
+            return "The process has no bundle identifier, so there is no permission record to reset."
+        case .resetRefused(let permission, let status, let output):
+            let detail = output.isEmpty ? "no output" : output
+            return "tccutil could not reset the \(permission.rawValue) permission (exit status \(status): \(detail))."
+        }
+    }
 }
 
 /// The production ``AuthorizationChecking``: AVFoundation for the camera and
@@ -92,6 +130,18 @@ public protocol AuthorizationChecking: Sendable {
 /// display input uses when it *starts* — is the very call that makes macOS
 /// show the Screen Recording prompt, and a settings pane that prompted just
 /// by being opened would be wrong.
+extension AuthorizationPermission {
+    /// The service name `tccutil` knows this permission by — the TCC
+    /// service identifiers, which are not the framework names.
+    public var tccServiceName: String {
+        switch self {
+        case .camera: "Camera"
+        case .microphone: "Microphone"
+        case .screenRecording: "ScreenCapture"
+        }
+    }
+}
+
 public struct SystemAuthorization: AuthorizationChecking {
     /// Creates the production checker.
     public init() {}
@@ -125,6 +175,43 @@ public struct SystemAuthorization: AuthorizationChecking {
     /// - Parameter status: AVFoundation's answer for a media type.
     /// - Returns: The seam's equivalent; an unknown future case reads as
     ///   `denied`, the safe answer for a permission the app cannot vouch for.
+    /// Resets the permission through `tccutil`, the system's own tool for
+    /// forgetting a TCC decision, for this process's bundle identifier.
+    ///
+    /// `tccutil reset <Service> <bundle id>` acts on the user's own TCC
+    /// database and needs no privilege for the user-level services capture
+    /// uses (Camera, Microphone, ScreenCapture). There is no framework API
+    /// for this — resetting is deliberately out of an app's reach except by
+    /// asking the system — so the tool is spawned and its exit status read.
+    /// A running input keeps the access it already opened; the decision is
+    /// asked again the next time the permission is needed.
+    public func reset(_ permission: AuthorizationPermission) async throws {
+        guard let bundleIdentifier = Bundle.main.bundleIdentifier else {
+            throw AuthorizationError.noBundleIdentifier
+        }
+        let process = Process()
+        process.executableURL = URL(filePath: "/usr/bin/tccutil")
+        process.arguments = ["reset", permission.tccServiceName, bundleIdentifier]
+        let output = Pipe()
+        process.standardOutput = output
+        process.standardError = output
+        let status: Int32 = try await withCheckedThrowingContinuation { continuation in
+            process.terminationHandler = { finished in
+                continuation.resume(returning: finished.terminationStatus)
+            }
+            do {
+                try process.run()
+            } catch {
+                continuation.resume(throwing: error)
+            }
+        }
+        let printed = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard status == 0 else {
+            throw AuthorizationError.resetRefused(permission: permission, status: status, output: printed)
+        }
+    }
+
     private static func status(of status: AVAuthorizationStatus) -> AuthorizationStatus {
         switch status {
         case .notDetermined: .notDetermined

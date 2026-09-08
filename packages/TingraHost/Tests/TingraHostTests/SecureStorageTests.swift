@@ -7,6 +7,7 @@
 //  SPDX-License-Identifier: MIT
 //
 
+import Foundation
 import Testing
 
 @testable import TingraHost
@@ -55,6 +56,57 @@ struct SecureStorageTests {
         try storage.setSecret("key-b", forAccount: "b")
         #expect(try storage.secret(forAccount: "a") == "key-a")
         #expect(try storage.secret(forAccount: "b") == "key-b")
+    }
+
+    @Test("The accounts listing names every account holding a secret, and never a value")
+    func accountsListsKeysOnly() throws {
+        let storage = InMemorySecureStorage()
+        #expect(try storage.accounts().isEmpty)
+        try storage.setSecret("key-b", forAccount: "b")
+        try storage.setSecret("key-a", forAccount: "a")
+        let accounts = try storage.accounts()
+        #expect(accounts == ["a", "b"])
+        #expect(!accounts.contains("key-a"))
+        #expect(!accounts.contains("key-b"))
+    }
+
+    @Test("Removing every secret empties the store, and clearing an empty store is not an error")
+    func removeAllClearsEveryAccount() throws {
+        let storage = InMemorySecureStorage()
+        try storage.setSecret("key-a", forAccount: "a")
+        try storage.setSecret("key-b", forAccount: "b")
+        try storage.removeAllSecrets()
+        #expect(try storage.accounts().isEmpty)
+        #expect(try storage.secret(forAccount: "a") == nil)
+        // Clearing again finds nothing, and that is not a failure.
+        try storage.removeAllSecrets()
+        #expect(try storage.accounts().isEmpty)
+    }
+
+    @Test("Listing accounts on a store that refuses reads returns the read error rather than an empty list")
+    func accountsListingSurfacesReadError() throws {
+        let storage = InMemorySecureStorage(readFailure: .keychain(-34018))
+        #expect(throws: SecureStorageError.keychain(-34018)) {
+            try storage.accounts()
+        }
+    }
+
+    @Test("The Keychain store lists no accounts in a build the data-protection keychain refuses, rather than trapping")
+    func keychainAccountsInUnentitledBuild() throws {
+        // An unsigned test process has no keychain access group, so the
+        // data-protection keychain shows it an empty group on read; whatever
+        // the status, the call must return or throw a structured error, and
+        // never a secret.
+        let storage = KeychainSecureStorage(service: "com.moonwink.tingra.tests.\(UUID().uuidString)")
+        do {
+            let accounts = try storage.accounts()
+            #expect(accounts.isEmpty)
+        } catch let error as SecureStorageError {
+            guard case .keychain = error else {
+                Issue.record("unexpected error \(error)")
+                return
+            }
+        }
     }
 
     @Test("The shared access group is nil in a build that declares none, rather than trapping")

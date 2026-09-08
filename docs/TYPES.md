@@ -166,13 +166,22 @@ internal surface a reader needs to navigate the target instead.
   CoreGraphics' preflight is a yes-or-no question that cannot tell a refusal
   from a permission never asked for.
 - `AuthorizationChecking` — the authorization seam (ARCHITECTURE.md, "The
-  host"): `status(of:)`, which never prompts, and `request(_:)`, which prompts
-  only for an undecided permission. The app's Permissions pane and its tests
-  run against it with a scripted answer.
+  host"): `status(of:)`, which never prompts; `request(_:)`, which prompts
+  only for an undecided permission; and `reset(_:)` (2026-09-07), which asks
+  the system to forget a decision so the permission reads undecided again —
+  the one move an app can make on a TCC record. The app's Permissions pane
+  and its tests run against it with a scripted answer.
+- `AuthorizationError` — a recoverable failure from `reset(_:)`: the process
+  has no bundle identifier to reset for, or `tccutil` refused, with its exit
+  status and what it printed.
 - `SystemAuthorization` — the production checker: AVFoundation for the camera
   and microphone, `CGPreflightScreenCaptureAccess` for Screen Recording —
   deliberately not `SCShareableContent`, whose read is the call that makes
-  macOS show the Screen Recording prompt.
+  macOS show the Screen Recording prompt. Its reset spawns
+  `tccutil reset <service> <bundle id>`, the system's own tool, since no
+  framework offers the operation; `AuthorizationPermission.tccServiceName`
+  names each permission's TCC service (`ScreenCapture`, not the framework's
+  name).
 - `OSLogSink` — the system-of-record sink: routes every event to OSLog
   (`subsystem` `com.moonwink.tingra`, `category` = domain), params `.private`.
   `tingra-cli` skips attaching it when standard error is a terminal — the OS's
@@ -185,6 +194,8 @@ internal surface a reader needs to navigate the target instead.
 - `LogSession` — the four-digit log session id stamped into every log line:
   incremented once per cold start and persisted in Application Support, a
   reliable cold-start anchor (distinct from the engine session in GLOSSARY.md).
+  The counter file's location is public (`counterFileURL`), so the app lists
+  and removes the same file this increments rather than a copy of the path.
 - `OutputRegistry` — the actor where output plug-ins register their providers —
   streaming (resolved by destination URL scheme) and recording (resolved by
   file extension) — in one registry; the host's concrete `OutputRegistering`.
@@ -226,7 +237,11 @@ internal surface a reader needs to navigate the target instead.
   its data-protection-Keychain implementation: stream keys live here (keyed by
   destination id under Tingra's identifier namespace), never in the project
   document, an event, or a log. A seam so the app runs against the real
-  Keychain and tests against an in-memory double. Its optional access group —
+  Keychain and tests against an in-memory double. Beside the per-account
+  read, write, and remove it lists the accounts it holds — the keys, never a
+  value — and clears every item under Tingra's service in one call, which is
+  what the app's Remove All Data uses so an orphaned key goes with the rest
+  (2026-09-07). Its optional access group —
   resolved at runtime by `sharedAccessGroup()` from the running binary's own
   entitlements, so no Team ID appears in source — is the seam by which the app
   and `tingra-cli` would reach one another's keys. It resolves to nil in both
@@ -748,14 +763,21 @@ surface is:
   buttons, and their General settings checkbox, lived here for one day and
   went with the bank — ARCHITECTURE.md, "The shot bank".)
 - `TransitionPanel` — the Cut, Take, and transition controls under their own
-  heading (2026-09-07): a segmented picker — Default (each shot's own default
+  heading (2026-09-07), on **one row** in the order the operator works it: a
+  pop-up menu naming the armed transition — Default (each shot's own default
   transition, the initial selection), or an explicit Cut, Dissolve, Wipe, or
   Shader — with the wipe edge or shader name beside it while that kind is
-  selected; Cut and Take as a matched large pair, Take prominent and red, both
-  disabled with a one-line hint while nothing is staged; and a latching Fade to
-  Black button (⇧⌘B) at the trailing end that takes the whole program off air,
-  picture and sound together, and stays available when the preset has no
-  shots. Cut ⇧⌘↩ and Take ⌘↩ stay on the buttons.
+  selected; then Cut and Take as a matched large pair, Take prominent and red,
+  both disabled with a one-line hint while nothing is staged. Cut ⇧⌘↩ and Take
+  ⌘↩ stay on the buttons. Fade to Black left the panel for the toolbar the same
+  day (`FadeToBlackButton`): it is a master stage, not a transition.
+- `FadeToBlackButton` — the latching Fade to Black control in the main
+  window's toolbar, leading Start Streaming and Record (2026-09-07): it takes
+  the whole program off air, picture and sound together, stays available when
+  the preset has no shots, reads Fade Up with a filled red frame while
+  latched, and keeps ⇧⌘B and the `fadeToBlack.button` tap. The panel's
+  "viewers see and hear nothing" hint went with it — the program monitor's
+  badge already says so.
 - `DestinationListView` — the streaming panel's destination list: one row per
   destination the program fans out to, each with an enable toggle, a name, a
   URL, a secure stream-key field, its own live state — its bitrate and frame
@@ -807,6 +829,23 @@ surface is:
   observation.
 - `MeterBallistics` — the unit-tested draw-time ballistics: instant attack,
   20 dB/s decay on a −60…0 dBFS scale.
+- `SessionPreferences` / `SessionPosition` — where the operator's position
+  persists between launches (2026-09-07): the active preset, the shot on
+  program, the shot staged on preview, and the transition armed on the
+  switcher (its kind, the wipe edge, and the shader), as ids and raw values in
+  machine-local `UserDefaults` on the `MonitorPreferences` pattern — not the
+  project document, which stays a pure description of the show. The armed
+  transition comes back whatever the document holds; a value the app no
+  longer knows reads nil and leaves the picker on its default. `EngineModel` records
+  it from the three properties' own observers, so no path that moves a bus
+  can forget, and reads it once at the top of `loadProject()` before any
+  assignment overwrites it. `SessionPosition` validates the record against
+  what actually loaded: `launchPreset(in:)` adopts the recorded preset while
+  the document holds it and the first otherwise, and `shots(validIn:)` keeps
+  each recorded shot only while it exists in the adopted pool — each on its
+  own, so a deleted staged shot does not cost the program shot its place.
+  Before this every cold start put the first preset's first shot on program
+  and its second on preview, whatever had been staged at quit.
 - `MonitorPreferences` — where the monitor device and level persist:
   machine-local `UserDefaults`, not the project document — which headphones are
   plugged into this Mac is not part of the show — and not session state, since
@@ -1049,7 +1088,7 @@ surface is:
   hang a shortcut on — and the View-menu item binds this case, so the pane and
   the menu bar still cannot disagree.
 - `SettingsView` — the settings window, ⌘, — a `NavigationSplitView` whose
-  source list holds three panes, the shape System Settings and Xcode 26 settled
+  source list holds five panes, the shape System Settings and Xcode 26 settled
   on. A `Window` scene with its own Settings… command rather than SwiftUI's
   `Settings` scene, because that scene starts its content below the title bar
   and leaves the source list floating as a card instead of running the full
@@ -1062,8 +1101,8 @@ surface is:
   beside the ⌘W every window has, since nothing here is committed for Escape to
   cancel.
 - `SettingsPane` — the closed list of panes — General, Permissions, Shortcuts,
-  About — each deriving its own name and symbol, so the sidebar's label and the
-  window's title cannot drift.
+  Data, About — each deriving its own name and symbol, so the sidebar's label
+  and the window's title cannot drift.
 - `SettingsCommands` — the app-menu Settings… item that opens it, replacing the
   one the `Settings` scene would have contributed.
 - `GeneralSettingsView` — the General pane: the app's Appearance, a Show
@@ -1083,7 +1122,10 @@ surface is:
   with what Tingra uses it for, its status as a colored symbol and a word, and
   the one action its state allows — Request… for a permission never asked for,
   Open System Settings… for a refused one, nothing for a granted or restricted
-  one. Opening the pane never prompts; a status read is not a request.
+  one — and, since 2026-09-07, a Reset button that asks the system to forget
+  the decision so the status reads Not Requested again and macOS asks the next
+  time an input needs it, disabled while there is no decision to forget.
+  Opening the pane never prompts; a status read is not a request.
 - `PermissionsModel` — the `@Observable @MainActor` model behind that pane and
   the engine's record of what TCC allows: re-reads every permission on each app
   activation (the event a System Settings change rides on — never a poll) and
@@ -1091,7 +1133,40 @@ surface is:
   `authorization.status` and each later change as `authorization.changed`, and
   hands back the permissions that newly became granted so
   `EngineModel.applyNewlyGranted(_:)` can rerun the reconfigure pass and start
-  the inputs the grant unblocked without being asked.
+  the inputs the grant unblocked without being asked. `reset(_:)` asks the
+  seam to forget a decision and refreshes, reporting `authorization.reset` as
+  an event on success and as an error naming the reason otherwise.
+- `DataSettingsView` / `AppDataRow` — the Data pane (2026-09-07): everything
+  Tingra has saved on this Mac, one row per kind with its name, how much
+  there is (files, keys, or entries, with the size on disk), and where — the
+  folder for the documents, the counter, and the recordings, as a link that
+  opens it in the Finder while it is on disk; the file for the preferences;
+  the Keychain for the keys — no description line; a Not Removed section that
+  appears only after a removal left something behind, with the reason; and
+  Remove All Data…, whose confirmation lists every kind with the counts of the
+  moment, says the recordings are kept, and on Remove and Quit removes
+  everything and terminates the app so the next launch is a first run.
+  Permissions are the Permissions pane's, where each row has its own Reset.
+- `AppDataModel` — the `@Observable @MainActor` model behind that pane: the
+  inventory, refreshed on the pane appearing and after a removal (never
+  polled); the removal, reported as one `appdata.removed` event carrying the
+  count of each kind cleared and an `appdata.remove` error per kind that was
+  not — counts only, never a path of the operator's and never a secret.
+- `AppDataStore` / `AppDataKind` / `AppDataItem` / `AppDataRemovalFailure` —
+  where everything the app saves is and how to remove it, over injected paths
+  so tests run the real inventory and removal against a temporary directory
+  and a throwaway defaults suite. The kinds are a closed list — the project
+  document (with its `.unreadable` sibling), the destinations document, the
+  stream keys in the Keychain, the preferences domain, the log session
+  counter, and the recordings — and every place the app persists has an entry
+  or the pane cannot list it. Recordings are inventoried and never removed:
+  the operator's shows, not the app's state. Removal is per kind and never
+  stops early, so one refusal leaves the others gone and named; the
+  Application Support directory goes only if it is empty afterwards (the
+  daemon's socket lives there). `EngineModel.removeAllData()` builds the store
+  over the engine's own project, destination, and secret stores and turns
+  autosave off before the files go, so the quit's flush cannot write the show
+  back.
 - `AboutSettingsView` — the About pane: the app's icon, name, and version.
 - `AppearanceMode` — System, Light, or Dark — three cases rather than a boolean,
   because "follow the system" is a state and not the absence of a choice.
