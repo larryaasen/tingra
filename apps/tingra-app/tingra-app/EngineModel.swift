@@ -556,9 +556,10 @@ final class EngineModel {
     /// meters").
     @ObservationIgnored let meterRelay = MeterRelay()
 
-    /// The host event bus. In this dev scaffold its events are printed to
-    /// stdout (the Xcode console) via ``ConsoleEventSink`` rather than routed
-    /// to OSLog, which does not surface in Xcode's debug console.
+    /// The host event bus. Three sinks drain it (``start()``): the
+    /// ``ConsoleEventSink`` printing to stdout for the Xcode console, the
+    /// host's `OSLogSink` as the system of record, and the host's `FileSink`
+    /// appending every event to ``logFile`` (EVENTS.md, "Sinks").
     ///
     /// Not `private`: every `tap` event is reported by the UI code that
     /// executes the action (a `Button`'s action closure, a picker's
@@ -566,6 +567,12 @@ final class EngineModel {
     /// calls `model.eventBus.tap(...)` directly (EVENTS.md, "The `tap`
     /// convention").
     @ObservationIgnored let eventBus = EventBus()
+
+    /// The app's one log file, `~/Library/Logs/Tingra/Tingra.log` — the file
+    /// the file sink appends to, and the one the Logging settings pane sizes,
+    /// snapshots, and clears. One locator for both, so the sink and the pane
+    /// cannot name different files (EVENTS.md, "File sink").
+    @ObservationIgnored let logFile = LogFile()
 
     /// The master clock (see CLOCK.md).
     @ObservationIgnored private let clock = HostClock()
@@ -721,6 +728,7 @@ final class EngineModel {
             projectStore: store,
             destinationsFileURL: destinationStore.fileURL,
             logSessionFileURL: LogSession.counterFileURL,
+            logFileURL: logFile.url,
             defaults: .standard,
             defaultsDomain: Bundle.main.bundleIdentifier ?? ProcessInfo.processInfo.processName,
             secureStorage: secureStorage,
@@ -728,6 +736,11 @@ final class EngineModel {
         ),
         eventBus: eventBus
     )
+
+    /// The log file's size and its two actions — the Logging settings pane's
+    /// model and the Help menu's Share Log File… — over the same ``logFile``
+    /// the file sink appends to (``LogFileModel``).
+    @ObservationIgnored private(set) lazy var logFileModel = LogFileModel(logFile: logFile, eventBus: eventBus)
 
     /// The camera currently cast in the built-in camera role — the device the
     /// preset's camera-bound layers were last bound to. A camera picker
@@ -784,9 +797,10 @@ final class EngineModel {
     /// a poll (CLAUDE.md).
     @ObservationIgnored private var monitorDeviceTask: Task<Void, Never>?
 
-    /// The console sink's drain task, retained so the sink keeps consuming
-    /// the bus for the app's lifetime.
-    @ObservationIgnored private var logSinkTask: Task<Void, Never>?
+    /// The log sinks' drain tasks — console, OSLog, and file — retained so
+    /// each keeps consuming the bus for the app's lifetime, and awaited at
+    /// shutdown so the last events reach every one (``shutDown(reason:)``).
+    @ObservationIgnored private var logSinkTasks: [Task<Void, Never>] = []
 
     /// The inputs currently started, keyed by id, so selection changes start
     /// and stop only what actually changed.
@@ -892,16 +906,29 @@ final class EngineModel {
         self.recordingContainer = recordingPreferences.container
     }
 
-    /// Boots the engine: attaches the log sink, activates the capture and
-    /// generator plug-ins, discovers inputs, starts the compositor, and
-    /// begins feeding the preview. Idempotent.
+    /// Boots the engine: attaches the log sinks and records the launch,
+    /// activates the capture and generator plug-ins, discovers inputs, starts
+    /// the compositor, and begins feeding the preview. Idempotent.
     func start() async {
         guard !started else { return }
         started = true
 
-        // Print events to the Xcode console (stdout) rather than OSLog, which
-        // does not appear in Xcode's debug console (see ``ConsoleEventSink``).
-        logSinkTask = eventBus.attach(ConsoleEventSink())
+        // The three log sinks, attached before the first event so none is
+        // missed (EVENTS.md, "Sinks"): stdout for the Xcode console, which
+        // OSLog does not reach (``ConsoleEventSink``); OSLog as the system of
+        // record — unconditionally, since unlike the CLI the app never has a
+        // terminal on stderr for the OS to mirror into; and the log file, so
+        // a Tingra.app launched from the Finder records somewhere an operator
+        // can find and share.
+        logSinkTasks = [
+            eventBus.attach(ConsoleEventSink()),
+            eventBus.attach(OSLogSink()),
+            eventBus.attach(FileSink(url: logFile.url)),
+        ]
+        // The first line of every log names the build it came from — the app
+        // and macOS versions and the Mac's model — so a shared log can be
+        // lined up with the report it arrived with (``LaunchDiagnostics``).
+        eventBus.app(LaunchDiagnostics.eventName, domain: .platform, params: LaunchDiagnostics().params)
         // Observe the bus for `stream.*` status changes before anything can
         // stream, so no status event is missed (event-driven, never polled).
         // One consumer, two handlers. Attached here — before the plug-ins
@@ -3396,7 +3423,7 @@ final class EngineModel {
     /// `app.terminating` event (domain `platform`) carrying the cause and
     /// whether a recording or a stream was open, finalizes the recording the
     /// way quitting always has — an unfinalized movie is an unplayable one —
-    /// then shuts the bus down and **awaits the log sink's drain**, because
+    /// then shuts the bus down and **awaits every log sink's drain**, because
     /// delivery is asynchronous and an event still buffered when the process
     /// exits was never logged. Nothing else is torn down: the stream, the
     /// inputs, and the compositor go with the process, as they did before.
@@ -3414,8 +3441,10 @@ final class EngineModel {
         )
         await finishRecording()
         eventBus.shutdown()
-        await logSinkTask?.value
-        logSinkTask = nil
+        for task in logSinkTasks {
+            await task.value
+        }
+        logSinkTasks = []
     }
 
     /// Stops the compositor, the program and preview drains, and every active

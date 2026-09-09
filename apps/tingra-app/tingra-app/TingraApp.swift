@@ -95,6 +95,7 @@ struct TingraApp: App {
             StatusBarCommands(model: model, statusBar: statusBar)
             SettingsCommands(model: model)
             QuitCommands(model: model)
+            LogFileCommands(model: model)
         }
 
         // Multiview is a **separate window**, not a panel: the main window
@@ -186,7 +187,7 @@ final class TingraAppDelegate: NSObject, NSApplicationDelegate {
     /// the cause read from the quit Apple event when there is one
     /// (``TerminationReason``). The reply is always `.terminateLater`, because
     /// bus delivery is asynchronous: replying now would let the process exit
-    /// with the shutdown event still buffered in the log sink's stream, and
+    /// with the shutdown event still buffered in a log sink's stream, and
     /// an event that never reaches a sink was never recorded.
     ///
     /// What it cannot cover: a `SIGTERM`, a Force Quit, or a crash never

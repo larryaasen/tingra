@@ -97,7 +97,7 @@ struct DataSettingsView: View {
                 } label: {
                     Text("Start Over", comment: "Data settings: label of the remove-all row")
                     Text(
-                        "Removes everything listed above except recordings, then quits Tingra so its next launch is a first run.",
+                        "Removes everything listed above except recordings and the log file, then quits Tingra so its next launch is a first run.",
                         comment: "Data settings: description under the remove-all row"
                     )
                 }
@@ -171,6 +171,14 @@ struct DataSettingsView: View {
                         "Confirmation alert message closing line: the recordings are kept; the placeholders are how many there are and the folder"
                 ))
         }
+        if let logFile = model.appData.items.first(where: { $0.kind == .logFile }) {
+            lines.append(
+                String(
+                    localized: "The log file is kept: \(AppDataRow.amount(of: logFile)) in \(logFile.location).",
+                    comment:
+                        "Confirmation alert message closing line: the log file is kept; the placeholders are how much there is and the folder"
+                ))
+        }
         return lines.joined(separator: "\n")
     }
 }
@@ -235,6 +243,8 @@ struct AppDataRow: View {
             LocalizedStringResource("Preferences", comment: "Data settings: the preferences' name")
         case .logSession:
             LocalizedStringResource("Log Session Counter", comment: "Data settings: the log session counter's name")
+        case .logFile:
+            LocalizedStringResource("Log File", comment: "Data settings: the log file's name")
         case .recordings:
             LocalizedStringResource("Recordings", comment: "Data settings: the recordings' name")
         }
@@ -256,7 +266,7 @@ struct AppDataRow: View {
                 String(localized: "\(item.count) keys", comment: "Data settings: a count of stream keys")
             case .preferences:
                 String(localized: "\(item.count) entries", comment: "Data settings: a count of preference entries")
-            case .project, .destinations, .logSession, .recordings:
+            case .project, .destinations, .logSession, .logFile, .recordings:
                 String(localized: "\(item.count) files", comment: "Data settings: a count of files")
             }
         guard let byteCount = item.byteCount else { return count }

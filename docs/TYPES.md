@@ -190,12 +190,25 @@ internal surface a reader needs to navigate the target instead.
 - `LogLineFormatter` — the one shared human log line format (`LEVEL MM-DD-YYYY
   HH:MM:SS.mmm TZ [SSSS] @ domain name key=value`), reused by every text sink
   so each front end logs identically — the CLI's console (human mode) and file
-  sinks and the app's console sink (see EVENTS.md, "The human log line format").
+  sinks and the app's console and file sinks (see EVENTS.md, "The human log
+  line format").
 - `LogSession` — the four-digit log session id stamped into every log line:
   incremented once per cold start and persisted in Application Support, a
   reliable cold-start anchor (distinct from the engine session in GLOSSARY.md).
   The counter file's location is public (`counterFileURL`), so the app lists
   and removes the same file this increments rather than a copy of the path.
+- `FileSink` — the file sink: the shared human log lines appended to a file,
+  every group, no filter; the file and its parent folder are created on the
+  first event. `tingra-cli` attaches one for `--log-file`; the app attaches one
+  always, over `LogFile.defaultURL`. Moved here from `tingra-cli` 2026-09-08,
+  the second front end being the trigger (see EVENTS.md, "File sink").
+- `LogFile` — the locator over the app's one log file
+  (`~/Library/Logs/Tingra/Tingra.log`, `defaultURL`): its folder, whether it
+  exists, its size, a dated snapshot copy for sharing (`Tingra Log
+  2026-09-08.txt`), and an in-place truncate that keeps a running sink writing.
+  Emits nothing — the `log.cleared` event is the app's to send.
+- `LogFileError` — what `LogFile` refuses: `empty(URL)`, a snapshot asked of a
+  log that does not exist or holds nothing.
 - `OutputRegistry` — the actor where output plug-ins register their providers —
   streaming (resolved by destination URL scheme) and recording (resolved by
   file extension) — in one registry; the host's concrete `OutputRegistering`.
@@ -946,6 +959,12 @@ surface is:
   Move Left / Move Right across the bank, Move Up / Move Down in the sidebar.
 - `ShotRenameDialog` — the shot rename alert as a modifier, `PresetRenameDialog`
   one level down.
+- `LaunchDiagnostics` — what the first line of every app log says about the
+  build it came from: the params of the `app.launched` event `EngineModel`
+  emits before anything else — `appVersion`, `appBuild`, `systemVersion`,
+  `systemBuild` (`sysctl kern.osversion`), and `hardwareModel` (`sysctl
+  hw.model`, `Mac15,3`); a missing reading drops its key. Injectable readings,
+  so the assembly is tested without booting an engine.
 - `TerminationReason` — why the app is quitting, as far as AppKit can say: the
   app's own `terminate(_:)` (the Quit item, ⌘Q), or a quit Apple event from the
   Dock, a script, or the login window on logout, restart, and shutdown, read
@@ -1101,8 +1120,8 @@ surface is:
   beside the ⌘W every window has, since nothing here is committed for Escape to
   cancel.
 - `SettingsPane` — the closed list of panes — General, Permissions, Shortcuts,
-  Data, About — each deriving its own name and symbol, so the sidebar's label
-  and the window's title cannot drift.
+  Data, Logging, About — each deriving its own name and symbol, so the
+  sidebar's label and the window's title cannot drift.
 - `SettingsCommands` — the app-menu Settings… item that opens it, replacing the
   one the `Settings` scene would have contributed.
 - `GeneralSettingsView` — the General pane: the app's Appearance, a Show
@@ -1158,15 +1177,38 @@ surface is:
   and a throwaway defaults suite. The kinds are a closed list — the project
   document (with its `.unreadable` sibling), the destinations document, the
   stream keys in the Keychain, the preferences domain, the log session
-  counter, and the recordings — and every place the app persists has an entry
-  or the pane cannot list it. Recordings are inventoried and never removed:
-  the operator's shows, not the app's state. Removal is per kind and never
+  counter, the log file, and the recordings — and every place the app persists
+  has an entry or the pane cannot list it. Recordings and the log file are
+  inventoried and never removed: the operator's shows, not the app's state,
+  and the record of what the app did — the removal included — that a
+  first-run check wants to read. Removal is per kind and never
   stops early, so one refusal leaves the others gone and named; the
   Application Support directory goes only if it is empty afterwards (the
   daemon's socket lives there). `EngineModel.removeAllData()` builds the store
   over the engine's own project, destination, and secret stores and turns
   autosave off before the files go, so the quit's flush cannot write the show
   back.
+- `LoggingSettingsView` / `LogSnapshot` — the Logging pane (2026-09-08): where
+  the log file is, with Reveal in Finder as the row's control; its size (“Not
+  created yet”, “Empty”, or the bytes on disk); Share Log File, a `ShareLink`
+  over `LogSnapshot`, a `Transferable` whose file representation copies the log
+  to a dated text file **when the share happens**; and Clear Log File behind a
+  confirmation that repeats the size. Both actions are disabled while the log
+  is empty. Every control reports its `tap` first — the share row's through a
+  simultaneous gesture, the one control in the app that must, since a
+  `ShareLink` has no action closure.
+- `LogFileModel` — the `@Observable @MainActor` model behind that pane and the
+  Help menu's share item, owned by `EngineModel` over the same `LogFile` the
+  file sink appends to: the size as of the last refresh (read when the pane
+  appears and after each action, never polled), `snapshot()` (nil and a
+  `log.snapshot` error when there is nothing to copy), and `clear()`
+  (`log.cleared` with `previousBytes`, or a `log.clear` error whose reason the
+  pane shows). The host's `LogFile` emits nothing; the app is what knows a
+  clear was the operator's.
+- `LogFileCommands` — the Help menu's Share Log File… item, beneath the
+  system's Tingra Help: the same dated snapshot, handed to
+  `NSSharingServicePicker` over the key window (a `ShareLink` cannot sit in a
+  menu), after its own `tap` (`logShare.menuItem`).
 - `AboutSettingsView` — the About pane: the app's icon, name, and version.
 - `AppearanceMode` — System, Light, or Dark — three cases rather than a boolean,
   because "follow the system" is a state and not the absence of a choice.

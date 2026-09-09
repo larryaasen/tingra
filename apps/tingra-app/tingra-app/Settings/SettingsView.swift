@@ -12,7 +12,7 @@ import TingraEventBus
 
 /// One pane of the settings window.
 ///
-/// A closed list rather than five hand-written tabs, so the sidebar's label
+/// A closed list rather than six hand-written tabs, so the sidebar's label
 /// and the title bar's heading are drawn from **one** name per pane and cannot
 /// drift apart — the rule ``SidebarSection`` follows for the main window's
 /// sidebar. A pane added without an entry here does not compile.
@@ -29,6 +29,9 @@ enum SettingsPane: String, CaseIterable, Hashable, Sendable {
     /// What the app has saved on this Mac, and the way to remove all of it.
     case data
 
+    /// The log file: where it is, how big it is, and sharing or clearing it.
+    case logging
+
     /// The app's version.
     case about
 
@@ -40,6 +43,7 @@ enum SettingsPane: String, CaseIterable, Hashable, Sendable {
         case .permissions: Text("Permissions", comment: "Settings window pane: the system permissions' status")
         case .shortcuts: Text("Shortcuts", comment: "Settings window pane: the keyboard shortcuts listing")
         case .data: Text("Data", comment: "Settings window pane: what the app has saved on this Mac")
+        case .logging: Text("Logging", comment: "Settings window pane: the log file and what to do with it")
         case .about: Text("About", comment: "Settings window pane: the app's version")
         }
     }
@@ -51,14 +55,15 @@ enum SettingsPane: String, CaseIterable, Hashable, Sendable {
         case .permissions: "lock.shield"
         case .shortcuts: "keyboard"
         case .data: "internaldrive"
+        case .logging: "doc.text.magnifyingglass"
         case .about: "info.circle"
         }
     }
 }
 
 /// The settings window, reached from the app menu with ⌘, the way macOS
-/// reserves — five panes for now: General, Permissions, Shortcuts, Data, and
-/// About.
+/// reserves — six panes for now: General, Permissions, Shortcuts, Data,
+/// Logging, and About.
 ///
 /// It is a `Window` scene with its own Settings… command (``TingraApp``)
 /// rather than SwiftUI's `Settings` scene, for a reason that is only visible
@@ -235,6 +240,7 @@ struct SettingsView: View {
         case .permissions: PermissionsSettingsView(model: model)
         case .shortcuts: ShortcutsSettingsView()
         case .data: DataSettingsView(model: model)
+        case .logging: LoggingSettingsView(model: model)
         case .about: AboutSettingsView()
         }
     }

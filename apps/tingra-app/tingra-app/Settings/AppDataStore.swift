@@ -45,6 +45,12 @@ enum AppDataKind: String, CaseIterable, Identifiable, Sendable {
     /// (`LogSession`).
     case logSession
 
+    /// The log file the host's file sink appends every event to
+    /// (`LogFile`), listed so the pane is complete and **kept** by Remove
+    /// All Data — the record of what the app did, the removal and the quit
+    /// included, is what a first-run check wants to read.
+    case logFile
+
     /// The recordings in the recordings folder — the operator's work, listed
     /// so the pane is complete, and **kept** by Remove All Data.
     case recordings
@@ -54,11 +60,20 @@ enum AppDataKind: String, CaseIterable, Identifiable, Sendable {
 
     /// Whether Remove All Data removes this kind.
     ///
-    /// Everything but the recordings: a recording is the show the operator
-    /// made, not the app's state about it, and "the state before the app was
-    /// ever used" is a state with no settings and no project — it says
-    /// nothing about deleting the operator's movies.
-    var isRemovable: Bool { self != .recordings }
+    /// Everything but the recordings and the log file. A recording is the
+    /// show the operator made, not the app's state about it, and "the state
+    /// before the app was ever used" is a state with no settings and no
+    /// project — it says nothing about deleting the operator's movies. The
+    /// log is the record of what the app did, the removal and the quit that
+    /// follows included, which is exactly what a developer checking a first
+    /// run by hand wants to read — and the file sink would recreate it on the
+    /// very next event regardless (EVENTS.md, "File sink").
+    var isRemovable: Bool {
+        switch self {
+        case .recordings, .logFile: false
+        case .project, .destinations, .streamKeys, .preferences, .logSession: true
+        }
+    }
 }
 
 /// What ``AppDataStore`` found of one kind: how much, and where.
@@ -137,6 +152,9 @@ struct AppDataStore {
     /// The log session counter file.
     let logSessionFileURL: URL
 
+    /// The log file.
+    let logFileURL: URL
+
     /// The preferences, read through the same `UserDefaults` the app's
     /// preference types write.
     let defaults: UserDefaults
@@ -158,6 +176,7 @@ struct AppDataStore {
     ///   - projectStore: The project document's store.
     ///   - destinationsFileURL: The destinations document.
     ///   - logSessionFileURL: The log session counter file.
+    ///   - logFileURL: The log file.
     ///   - defaults: The preferences.
     ///   - defaultsDomain: The domain those preferences persist under.
     ///   - secureStorage: The secret store holding the stream keys.
@@ -166,6 +185,7 @@ struct AppDataStore {
         projectStore: ProjectStore,
         destinationsFileURL: URL,
         logSessionFileURL: URL,
+        logFileURL: URL,
         defaults: UserDefaults,
         defaultsDomain: String,
         secureStorage: any SecureStorage,
@@ -174,6 +194,7 @@ struct AppDataStore {
         self.projectStore = projectStore
         self.destinationsFileURL = destinationsFileURL
         self.logSessionFileURL = logSessionFileURL
+        self.logFileURL = logFileURL
         self.defaults = defaults
         self.defaultsDomain = defaultsDomain
         self.secureStorage = secureStorage
@@ -225,6 +246,8 @@ struct AppDataStore {
                 )
             case .logSession:
                 return fileItem(kind, files: [logSessionFileURL], folder: logSessionFileURL.deletingLastPathComponent())
+            case .logFile:
+                return fileItem(kind, files: [logFileURL], folder: logFileURL.deletingLastPathComponent())
             case .recordings:
                 let folder = recordingFolder()
                 return fileItem(kind, files: Self.recordings(in: folder), folder: folder)
@@ -252,8 +275,8 @@ struct AppDataStore {
 
     /// Removes one kind.
     ///
-    /// - Parameter kind: The kind to remove; ``AppDataKind/recordings`` is
-    ///   never removed and is a no-op here.
+    /// - Parameter kind: The kind to remove; ``AppDataKind/recordings`` and
+    ///   ``AppDataKind/logFile`` are never removed and are no-ops here.
     /// - Throws: The file-system or secure-store error that stopped it.
     private func remove(_ kind: AppDataKind) throws {
         switch kind {
@@ -268,7 +291,7 @@ struct AppDataStore {
             defaults.removePersistentDomain(forName: defaultsDomain)
         case .logSession:
             try Self.removeIfPresent(logSessionFileURL)
-        case .recordings:
+        case .recordings, .logFile:
             break
         }
     }

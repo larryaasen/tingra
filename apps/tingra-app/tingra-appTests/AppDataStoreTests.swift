@@ -95,6 +95,7 @@ struct AppDataFixture {
             projectStore: projectStore,
             destinationsFileURL: supportDirectory.appending(path: "destinations.json"),
             logSessionFileURL: supportDirectory.appending(path: "log-session-id"),
+            logFileURL: root.appending(path: "Logs/Tingra/Tingra.log"),
             defaults: defaults,
             defaultsDomain: domain,
             secureStorage: secureStorage,
@@ -277,10 +278,30 @@ struct AppDataStoreTests {
             #expect(fixture.exists(url), Comment(rawValue: url.lastPathComponent))
         }
         #expect(!AppDataKind.recordings.isRemovable)
+        #expect(!AppDataKind.logFile.isRemovable)
         #expect(
             AppDataKind.allCases.filter(\.isRemovable) == [
                 .project, .destinations, .streamKeys, .preferences, .logSession,
             ])
+    }
+
+    @Test("the log file is counted from its file, located by its folder, and kept by remove all")
+    func logFileCountedAndKept() throws {
+        let fixture = try AppDataFixture()
+        defer { fixture.tearDown() }
+        try fixture.write(fixture.store.logFileURL, byteCount: 40)
+
+        let item = try #require(fixture.store.inventory().first { $0.kind == .logFile })
+        #expect(item.count == 1)
+        #expect(item.byteCount == 40)
+        #expect(item.location.hasSuffix("/Logs/Tingra"))
+        #expect(
+            item.folderURL?.standardizedFileURL
+                == fixture.store.logFileURL.deletingLastPathComponent().standardizedFileURL)
+
+        #expect(fixture.store.removeAll().isEmpty)
+        #expect(fixture.exists(fixture.store.logFileURL))
+        #expect(fixture.store.inventory().first { $0.kind == .logFile }?.byteCount == 40)
     }
 
     @Test("remove all clears every removable kind, removes the emptied support directory, and reports nothing")

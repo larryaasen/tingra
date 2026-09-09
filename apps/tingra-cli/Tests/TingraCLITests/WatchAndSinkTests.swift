@@ -92,27 +92,3 @@ struct ConsoleSinkFilterTests {
         #expect(lines.first?.contains("device.connected") == true)
     }
 }
-
-@Suite("FileSink")
-struct FileSinkTests {
-    @Test("events append to the log file in the exact console human line format")
-    func appendsHumanLines() async throws {
-        let path = FileManager.default.temporaryDirectory
-            .appending(path: "tingra-filesink-\(UUID().uuidString).log").path()
-        defer { try? FileManager.default.removeItem(atPath: path) }
-        let formatter = LogLineFormatter(sessionID: 7)
-        let sink = FileSink(path: path, formatter: formatter)
-        let event = try #require(await deviceEvent(name: "device.connected", kind: "camera"))
-
-        await sink.receive(event)
-        await sink.receive(event)
-
-        let contents = try String(contentsOfFile: path, encoding: .utf8)
-        let lines = contents.split(separator: "\n")
-        #expect(lines.count == 2)
-        #expect(lines.allSatisfy { $0.contains("device.connected") })
-        // One format for both sinks: the file line is the formatter's line,
-        // byte for byte.
-        #expect(lines.first == Substring(formatter.line(for: event)))
-    }
-}

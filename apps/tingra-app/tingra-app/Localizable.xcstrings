@@ -824,6 +824,57 @@
         }
       }
     },
+    "Clear Log File" : {
+      "comment" : "Logging settings: label of the clear row, and the confirmation's button",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Protokolldatei leeren"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vaciar archivo de registro"
+          }
+        }
+      }
+    },
+    "Clear the log file?" : {
+      "comment" : "Confirmation alert title before emptying the log file",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Protokolldatei leeren?"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "¿Vaciar el archivo de registro?"
+          }
+        }
+      }
+    },
+    "Clear…" : {
+      "comment" : "Logging settings: button that opens the clear confirmation",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Leeren …"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vaciar…"
+          }
+        }
+      }
+    },
     "Connecting…" : {
       "comment" : "Stream status: connecting to the destination",
       "localizations" : {
@@ -1246,6 +1297,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Efectos"
+          }
+        }
+      }
+    },
+    "Empties the log so the next one you share covers only the problem you are reporting." : {
+      "comment" : "Logging settings: description under the clear row",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Leert das Protokoll, damit das nächste, das Sie teilen, nur das gemeldete Problem umfasst."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vacía el registro para que el próximo que comparta cubra solo el problema que está informando."
+          }
+        }
+      }
+    },
+    "Empty" : {
+      "comment" : "Logging settings: the size shown for an empty log file",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Leer"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vacío"
           }
         }
       }
@@ -1727,6 +1812,40 @@
         }
       }
     },
+    "Location" : {
+      "comment" : "Logging settings: label of the row naming where the log file is",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ort"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ubicación"
+          }
+        }
+      }
+    },
+    "Log File" : {
+      "comment" : "Data settings: the log file's name\nLogging settings: heading over the log file's location and size",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Protokolldatei"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Archivo de registro"
+          }
+        }
+      }
+    },
     "Log Session Counter" : {
       "comment" : "Data settings: the log session counter's name",
       "localizations" : {
@@ -1740,6 +1859,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Contador de sesión del registro"
+          }
+        }
+      }
+    },
+    "Logging" : {
+      "comment" : "Settings window pane: the log file and what to do with it",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Protokollierung"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Registro"
           }
         }
       }
@@ -2542,6 +2678,23 @@
         }
       }
     },
+    "Not created yet" : {
+      "comment" : "Logging settings: the size shown before the log file exists",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noch nicht erstellt"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aún no creado"
+          }
+        }
+      }
+    },
     "Not recording" : {
       "comment" : "Status bar reading: nothing is being recorded",
       "localizations" : {
@@ -3155,8 +3308,26 @@
         }
       }
     },
+    "Removes everything listed above except recordings and the log file, then quits Tingra so its next launch is a first run." : {
+      "comment" : "Data settings: description under the remove-all row",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Entfernt alles oben Aufgeführte außer den Aufnahmen und der Protokolldatei und beendet dann Tingra, damit der nächste Start ein erster Start ist."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Elimina todo lo anterior salvo las grabaciones y el archivo de registro y luego sale de Tingra, para que el próximo inicio sea el primero."
+          }
+        }
+      }
+    },
     "Removes everything listed above except recordings, then quits Tingra so its next launch is a first run." : {
       "comment" : "Data settings: description under the remove-all row",
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -3291,6 +3462,23 @@
         }
       }
     },
+    "Reveal in Finder" : {
+      "comment" : "Logging settings: button that shows the log file in the Finder",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Im Finder anzeigen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostrar en el Finder"
+          }
+        }
+      }
+    },
     "Right" : {
       "comment" : "Wipe edge picker option: reveal from the right edge of the frame",
       "localizations" : {
@@ -3394,6 +3582,23 @@
         }
       }
     },
+    "Sends a copy of the log as a text file named for today." : {
+      "comment" : "Logging settings: description under the share row",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sendet eine Kopie des Protokolls als Textdatei, benannt nach dem heutigen Datum."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Envía una copia del registro como archivo de texto con la fecha de hoy."
+          }
+        }
+      }
+    },
     "Settings" : {
       "comment" : "Title of the settings window",
       "localizations" : {
@@ -3441,6 +3646,57 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Shader"
+          }
+        }
+      }
+    },
+    "Share Log File" : {
+      "comment" : "Logging settings: label of the share row",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Protokolldatei teilen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Compartir archivo de registro"
+          }
+        }
+      }
+    },
+    "Share Log File…" : {
+      "comment" : "Help menu item that shares a copy of the log file",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Protokolldatei teilen …"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Compartir archivo de registro…"
+          }
+        }
+      }
+    },
+    "Share…" : {
+      "comment" : "Logging settings: button that opens the share picker for the log file",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Teilen …"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Compartir…"
           }
         }
       }
@@ -3547,6 +3803,23 @@
         }
       }
     },
+    "Show the log file in the Finder" : {
+      "comment" : "Tooltip on the Logging settings Reveal in Finder button",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Protokolldatei im Finder anzeigen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostrar el archivo de registro en el Finder"
+          }
+        }
+      }
+    },
     "Shows or hides the bar reporting recording and streaming across the bottom of the window." : {
       "comment" : "Shortcuts settings: what the status bar shortcut does",
       "localizations" : {
@@ -3560,6 +3833,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Muestra u oculta la barra en la parte inferior de la ventana que informa de la grabación y la transmisión."
+          }
+        }
+      }
+    },
+    "Size" : {
+      "comment" : "Logging settings: label of the row showing the log file's size",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Größe"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tamaño"
           }
         }
       }
@@ -3964,6 +4254,23 @@
         }
       }
     },
+    "The log file is kept: %@ in %@." : {
+      "comment" : "Confirmation alert message closing line: the log file is kept; the placeholders are how much there is and the folder",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Protokolldatei bleibt erhalten: %1$@ in %2$@."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El archivo de registro se conserva: %1$@ en %2$@."
+          }
+        }
+      }
+    },
     "The number that marks a new launch in the log." : {
       "comment" : "Data settings: what the log session counter is",
       "extractionState" : "stale",
@@ -4034,6 +4341,23 @@
         }
       }
     },
+    "This empties the %@ Tingra has recorded so far. New activity is still logged, so the next log you share covers only the problem you are reporting. This cannot be undone." : {
+      "comment" : "Confirmation alert message before emptying the log file; the placeholder is its size",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dadurch werden die bisher aufgezeichneten %@ gelöscht. Neue Aktivitäten werden weiter protokolliert, sodass das nächste geteilte Protokoll nur das gemeldete Problem umfasst. Dies kann nicht rückgängig gemacht werden."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esto vacía los %@ que Tingra ha registrado hasta ahora. La nueva actividad sigue registrándose, así que el próximo registro que comparta cubrirá solo el problema que está informando. Esto no se puede deshacer."
+          }
+        }
+      }
+    },
     "This removes what Tingra has saved on this Mac, then quits. It cannot be undone." : {
       "comment" : "Confirmation alert message before removing all data: the opening line",
       "localizations" : {
@@ -4064,6 +4388,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Tingra ha dejado de guardar para que nada se vuelva a escribir. Sal de Tingra y elimina lo que queda a mano."
+          }
+        }
+      }
+    },
+    "Tingra Log" : {
+      "comment" : "Logging settings: the shared log file's title in the share picker",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tingra-Protokoll"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Registro de Tingra"
+          }
+        }
+      }
+    },
+    "Tingra records what it does — every event on its event bus — to this file, in the format the command line's --log-file option writes. Console.app carries the same events in the system log." : {
+      "comment" : "Logging settings: footer explaining what the log file is",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tingra zeichnet in dieser Datei auf, was es tut – jedes Ereignis auf seinem Ereignisbus – im Format, das die Option --log-file der Befehlszeile schreibt. Die Konsole führt dieselben Ereignisse im Systemprotokoll."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tingra registra en este archivo lo que hace, cada evento de su bus de eventos, en el formato que escribe la opción --log-file de la línea de comandos. Consola muestra los mismos eventos en el registro del sistema."
           }
         }
       }

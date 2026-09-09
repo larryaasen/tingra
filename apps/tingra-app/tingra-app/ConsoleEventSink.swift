@@ -14,12 +14,16 @@ import TingraHost
 /// the event log is visible in Xcode's console when the app runs under the
 /// debugger.
 ///
-/// The engine's always-on ``OSLogSink`` routes events into the unified logging
-/// system (Console.app, `log stream`), which does **not** surface in Xcode's
-/// debug console — so while developing `apps/tingra-app` we attach this sink
-/// instead, sending one line per event to stdout where the app is actually
+/// The host's `OSLogSink` routes events into the unified logging system
+/// (Console.app, `log stream`), which does **not** surface in Xcode's debug
+/// console — so while developing `apps/tingra-app` this sink is attached
+/// beside it, sending one line per event to stdout where the app is actually
 /// run. It is a dev convenience, not a replacement for the OSLog
-/// system-of-record the shipping product relies on (EVENTS.md, "Sinks").
+/// system-of-record the shipping product relies on, nor for the host's
+/// `FileSink` writing the log file an operator shares — ``EngineModel/start()``
+/// attaches all three (EVENTS.md, "Sinks"). Until 2026-09-08 it was the only
+/// sink the app attached, so a Tingra.app launched from the Finder recorded
+/// nothing anywhere.
 ///
 /// It renders lines with the shared ``LogLineFormatter`` (the same host format
 /// the CLI's console and file sinks use) and filters to `app`/`error`/`event`/

@@ -1668,6 +1668,49 @@ or two in the doc that owns them — none need a rewrite.
   by another app" sentence `configurationRejected` appended to every message —
   each step now names its own cause.
 
+- [x] **The log file and the Logging settings pane — decided 2026-09-07, built
+  2026-09-08.** Prompted by reading Auto Care Plus's logging feature (one
+  append-only file, Share Log File and Clear Log File in Settings, a Help
+  menu mirror, an `app.coldstart` line) and by what the read of Tingra turned
+  up: the app attached only its stdout `ConsoleEventSink`, so a Tingra.app
+  launched from the Finder recorded nothing anywhere — `OSLogSink` was the
+  CLI's alone, the file sink lived in the CLI behind `--log-file`, and the
+  only `app` event the app emitted was `app.terminating`. Eight decisions,
+  all approved by Larry the same day and recorded in EVENTS.md ("Sinks") and
+  ARCHITECTURE.md ("The log file and the Logging settings pane"): `FileSink`
+  and a `LogFile` locator move into `TingraHost`; the file is
+  `~/Library/Logs/Tingra/Tingra.log`; always on, every group, append-only,
+  cleared by hand; the app also attaches `OSLogSink` unconditionally; a
+  `Logging` settings pane with Share Log File…, Reveal in Finder, and Clear
+  Log File…; the file joins `AppDataKind` and is kept by Remove All Data;
+  `app.launched` opens every log with version, build, macOS version, and
+  hardware model; a Help › Share Log File… item. Build order: host first
+  (sink move, `LogFile`, tests — **built 2026-09-08**: `FileSink` is public
+  in `TingraHost` with an `init(url:)` beside the CLI's `init(path:)` and
+  creates a missing parent folder on the first line; `LogFile` carries the
+  default URL, size, dated snapshot, and in-place clear; its tests moved
+  from the CLI and grew to 15; TingraHost 165 green, `tingra-cli` 84 green,
+  unchanged at its three `FileSink(path:)` call sites), then `EngineModel` (three sinks,
+  `app.launched`, drains — **built 2026-09-08**: `start()` attaches
+  `ConsoleEventSink`, `OSLogSink`, and `FileSink(url: logFile.url)` over a
+  new `EngineModel.logFile` locator, emits `app.launched` from the new
+  `LaunchDiagnostics` on the next line, and `shutDown` awaits all three
+  drains; `LaunchDiagnosticsTests` cover the params), then the app (`LogFileModel`, pane, `AppDataKind`,
+  Help command, taps, `de`/`es` — **built 2026-09-08**: `LogFileModel`,
+  `LoggingSettingsView` + `LogSnapshot`, `SettingsPane.logging`,
+  `AppDataKind.logFile` kept by Remove All Data, `LogFileCommands` for Help ›
+  Share Log File…, twenty-one catalog strings; app 359 tests in 39 suites
+  green), then TYPES.md in the same change as the types (done each slice).
+  The full record is in ARCHITECTURE.md. Verified by hand by Larry the same
+  day: share works, clear works (one-line file, `log.cleared
+  previousBytes=28014`); the size after a real session feeds the item below.
+  - [ ] **Rotation, only if measured.** No rollover ships with the pane. Run
+    one real production session on the built app, read the log's size from
+    the pane, and hand Larry the number; a size-based rollover is proposed
+    only if it says so — instrument before guessing. First data point,
+    2026-09-08: 28 KB after about forty minutes of test runs and settings
+    clicks, no streaming or recording — not yet the session that decides.
+
 - [x] **Live device lists in the app — decided 2026-07-28, go-ahead given
   with display hot-plug included, and built the same day.** The app never refreshes its device lists after boot: `cameras`,
   `displays`, `videoInputs`, and `audioInputs` are computed once in the boot
@@ -2790,6 +2833,23 @@ or two in the doc that owns them — none need a rewrite.
   Info.plist (Camera/Microphone usage descriptions, Screen Recording) is deferred
   packaging, tracked alongside the CLI's distribution recipe (CLI.md,
   "Distribution") — the same "packaging is a later gate" posture the CLI takes.
+
+- [x] **Where the app logs, and how the operator gets at it.** Decided
+  2026-09-07 (recorded in EVENTS.md, "Sinks", and ARCHITECTURE.md, "The log
+  file and the Logging settings pane"): one always-on file at
+  `~/Library/Logs/Tingra/Tingra.log` through the host's `FileSink`, every
+  group, append-only, no rotation until a real session's size argues for one;
+  `OSLogSink` attached by the app unconditionally; a `Logging` settings pane
+  (share a dated snapshot, reveal, clear with confirmation) plus a Help menu
+  mirror; the file listed in the Data pane and kept by Remove All Data;
+  `app.launched` as every log's first line. The alternatives set aside: a
+  logging on/off switch (a log that was off when the defect happened is
+  useless), Documents or Application Support for the file (an iOS sandbox
+  habit, and the folder that holds the show, respectively), rows inside the
+  Data pane instead of a pane of their own (the Data pane is an inventory and
+  one button; share, reveal, and clear are a feature), and removing the log
+  with Remove All Data (the removal and quit are what a first-run check wants
+  on record).
 
 ## CI follow-ups
 

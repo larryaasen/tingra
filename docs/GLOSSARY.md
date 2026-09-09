@@ -108,6 +108,8 @@ A project is the saved file for an entire show. A project contains presets. A pr
 
 **Log session** — the four-digit identifier every human log line carries in square brackets (`[0042]`), incrementing exactly once per cold start, so it anchors which process wrote which lines in an interleaved log file (see EVENTS.md, "The human log line format"). Not to be confused with the engine **session** above — a log session is purely a logging anchor.
 
+**Log file** — the one text file the app's file sink appends every event to, in the human log line format, at `~/Library/Logs/Tingra/Tingra.log`: always on, every group, append-only, cleared by hand from the Logging settings pane and shared from there as a dated snapshot (see EVENTS.md, "Sinks"). Kept by Remove All Data. The CLI's `--log-file` writes the same lines to a file of the caller's choosing.
+
 **Error identifier** — the stable, machine-readable code every `error` event carries in its `identifier` param (`inputNotFound`, `authorizationDenied`, …), alongside a human `message` whose wording may change. Exit codes and MCP tool errors key off identifiers, never message text. The registry lives in CLI.md ("Error identifiers"); identifiers are append-only and never renamed.
 
 ## Extensibility
