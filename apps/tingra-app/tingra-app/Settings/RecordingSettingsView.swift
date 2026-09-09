@@ -1,5 +1,5 @@
 //
-//  RecordingPanel.swift
+//  RecordingSettingsView.swift
 //  tingra-app
 //
 //  Created by Larry Aasen on 2026-08-06.
@@ -13,17 +13,24 @@ import TingraPlugInKit
 import TingraRecordingPlugIns
 import UniformTypeIdentifiers
 
-/// The recording panel: where the program is written, how much room is left,
-/// and the rolling status (ARCHITECTURE.md, "Recording in the app"). The
-/// Record control itself is in the window's toolbar (``RecordButton``), where
-/// it stays on screen while this panel scrolls.
+/// The Recording settings pane: where the program is written, the container
+/// it is muxed into, how much room the volume still holds, and the rolling
+/// status (ARCHITECTURE.md, "Recording in the app"). The Record control
+/// itself is in the main window's toolbar (``RecordButton``).
 ///
-/// Its own panel beside the streaming one rather than a checkbox inside it,
+/// It was the recording panel at the foot of the main window's column until
+/// 2026-09-08, when it moved here with the streaming panel: the folder and
+/// the format are set up before a show, not reached for during one, and the
+/// column they left is the one the operator works the show from. A grouped
+/// `Form` on the Logging pane's shape, with the control on the trailing edge
+/// of each labeled row.
+///
+/// Its own pane beside the Streaming one rather than a section inside it,
 /// because the two are independent sessions: stopping the stream leaves a
 /// recording rolling, and stopping a recording leaves the stream on air. The
 /// interface has to say so.
-struct RecordingPanel: View {
-    /// The engine model the control drives.
+struct RecordingSettingsView: View {
+    /// The engine model the controls drive.
     let model: EngineModel
 
     /// Whether the folder chooser is open.
@@ -38,16 +45,55 @@ struct RecordingPanel: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Recording", comment: "Section heading over the recording folder and status")
-                .font(.headline)
+        Form {
+            Section {
+                LabeledContent {
+                    Button {
+                        model.eventBus.tap("recordingFolder.button", domain: .output)
+                        isChoosingFolder = true
+                    } label: {
+                        Text("Choose Folder…", comment: "Button that picks the folder recordings are written to")
+                    }
+                    .disabled(model.isRecording)
+                } label: {
+                    Text(
+                        "Folder",
+                        comment: "Recording settings: label of the row naming the folder recordings are written to")
+                    Text(AppDataStore.abbreviatedPath(of: model.recordingFolder))
+                        .font(.caption.monospaced())
+                        .textSelection(.enabled)
+                }
 
-            HStack(spacing: 12) {
-                folderControls
-                Spacer()
-                statusLabel
+                Picker(selection: containerSelection) {
+                    ForEach(RecordingFile.Container.allCases, id: \.self) { container in
+                        Text(verbatim: ".\(container.rawValue)").tag(container)
+                    }
+                } label: {
+                    Text("Format", comment: "Recording container format picker label")
+                }
+                .pickerStyle(.menu)
+                .disabled(model.isRecording)
+
+                capacityRow
+            } header: {
+                Text("Recording File", comment: "Recording settings: heading over the folder, format, and room rows")
+            } footer: {
+                Text(
+                    "Recordings are written to this folder, each named for the moment it starts. Record (⌘R) is in the main window's toolbar.",
+                    comment: "Recording settings: footer explaining where recordings go and where the Record button is"
+                )
+            }
+
+            Section {
+                LabeledContent {
+                    statusLabel
+                } label: {
+                    Text(
+                        "Status", comment: "Streaming and Recording settings: label of the row showing the live status")
+                }
             }
         }
+        .formStyle(.grouped)
         .fileImporter(isPresented: $isChoosingFolder, allowedContentTypes: [.folder]) { result in
             // The operator chooses a location; the app never types a path for
             // them (HIG). A cancelled or failed choice leaves the folder as it
@@ -57,50 +103,25 @@ struct RecordingPanel: View {
         }
     }
 
-    /// The folder, the container picker, and how much room is left.
-    private var folderControls: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 8) {
-                Button {
-                    model.eventBus.tap("recordingFolder.button", domain: .output)
-                    isChoosingFolder = true
-                } label: {
-                    Text("Choose Folder…", comment: "Button that picks the folder recordings are written to")
-                }
-                .disabled(model.isRecording)
-
-                Text(verbatim: model.recordingFolder.lastPathComponent)
-                    .foregroundStyle(.secondary)
-                    .help(model.recordingFolder.path(percentEncoded: false))
-
-                Picker(selection: containerSelection) {
-                    ForEach(RecordingFile.Container.allCases, id: \.self) { container in
-                        Text(verbatim: ".\(container.rawValue)").tag(container)
-                    }
-                } label: {
-                    Text("Format", comment: "Recording container format picker label")
-                }
-                .labelsHidden()
-                .pickerStyle(.menu)
-                .fixedSize()
-                .disabled(model.isRecording)
-            }
-
-            capacityLabel
-        }
-    }
-
     /// How much recording the chosen volume still holds, in the unit the
     /// operator decides in — the same reading the pre-flight check refuses on,
-    /// so the number shown and the number enforced cannot disagree.
-    @ViewBuilder private var capacityLabel: some View {
+    /// so the number shown and the number enforced cannot disagree. Absent
+    /// while the volume cannot be measured.
+    @ViewBuilder private var capacityRow: some View {
         if let capacity = model.recordingCapacity,
             let seconds = capacity.recordableSeconds(at: model.recordingConfiguration)
         {
-            let room = Duration.seconds(seconds).formatted(.units(allowed: [.hours, .minutes], width: .abbreviated))
-            Text("\(room) of room left", comment: "How much recording time the chosen volume still holds")
-                .font(.callout)
-                .foregroundStyle(capacity.hasRoom(for: model.recordingConfiguration) ? Color.secondary : Color.red)
+            LabeledContent {
+                Text(
+                    verbatim: Duration.seconds(seconds)
+                        .formatted(.units(allowed: [.hours, .minutes], width: .abbreviated))
+                )
+                .foregroundStyle(capacity.hasRoom(for: model.recordingConfiguration) ? Color.primary : Color.red)
+            } label: {
+                Text(
+                    "Room Left",
+                    comment: "Recording settings: label of the row showing how much recording time the volume holds")
+            }
         }
     }
 
@@ -123,9 +144,9 @@ struct RecordingPanel: View {
     /// The live recording status, rendered from ``EngineModel/RecordingStatus``.
     ///
     /// The rolling state carries the conventional red record dot **with** its
-    /// label: red already means on-air here (the tally border, the program
-    /// badge), and the word is what keeps two different reds from reading as
-    /// one thing.
+    /// label: red already means on-air in the main window (the tally border,
+    /// the program badge), and the word is what keeps two different reds from
+    /// reading as one thing.
     @ViewBuilder private var statusLabel: some View {
         switch model.recordingStatus {
         case .idle:

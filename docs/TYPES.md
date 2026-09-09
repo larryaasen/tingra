@@ -768,9 +768,12 @@ surface is:
   is derived from the window's width — two 16:9 monitors have no use for
   surplus vertical room, and a plain stack resolved a shortfall by collapsing
   the monitors and pushing the pickers off the bottom edge. The control section
-  holds the `TransitionPanel`, the layer editor, the camera/display pickers, the
-  mixer, and a streaming panel — the destination list and live status;
-  Start/Stop and Record are toolbar items. Shots are staged from the bank, the
+  holds the `TransitionPanel`, the layer editor, the camera/display pickers,
+  and the mixer; Start/Stop and Record are toolbar items, and the streaming
+  and recording panels that closed the column became the Streaming and
+  Recording settings panes on 2026-09-08 — destinations and the recording
+  folder are set up before a show, and the column is for working one. Shots
+  are staged from the bank, the
   sidebar's shot rows, and by number from the Shots menu; presets are made and
   managed in the sidebar. (The optional Program and Preview rows of shot
   buttons, and their General settings checkbox, lived here for one day and
@@ -791,12 +794,18 @@ surface is:
   latched, and keeps ⇧⌘B and the `fadeToBlack.button` tap. The panel's
   "viewers see and hear nothing" hint went with it — the program monitor's
   badge already says so.
-- `DestinationListView` — the streaming panel's destination list: one row per
-  destination the program fans out to, each with an enable toggle, a name, a
-  URL, a secure stream-key field, its own live state — its bitrate and frame
-  rate while delivering, or Reconnecting/Refused/Lost when it alone is in
-  trouble — and a remove button that also clears its stored key; rows lock while
-  streaming, since v1 adds and removes destinations between runs.
+- `DestinationListView` — the Streaming settings pane's destination list: one
+  form **section** per destination the program fans out to, headed by its name,
+  with an enable switch, a name, a URL, a secure stream-key field, its own live
+  state while streaming — its bitrate and frame rate while delivering, or
+  Reconnecting/Refused/Lost when it alone is in trouble — and Remove
+  Destination, which also clears its stored key; then an Add Destination
+  section. Sections rather than the one-line rows the main window's streaming
+  panel drew until 2026-09-08, since a settings form is a third of that column's
+  width. Fields lock while streaming, since v1 adds and removes destinations
+  between runs. The key is filed in the Keychain **as it is typed**
+  (`EngineModel.setStreamKey`) and prefilled from there: Start Streaming sits in
+  another window now and reads the keys back at the click.
 - `DestinationEdit` — the pure, unit-tested destination state behind those rows,
   merged from the two places a destination lives: the name and URL from the
   operator's `StoredDestination`, the enabled flag from this project's
@@ -866,20 +875,23 @@ surface is:
   install, because monitoring through speakers beside a live microphone is a
   feedback howl, and it caches the selected device's name so the picker can
   label a selection the device list cannot currently resolve.
-- `RecordingPanel` — the recording panel: the folder the program is written to,
-  a container picker, how much room the volume still holds, and the rolling
-  status with its elapsed time and file name — its own panel beside the
-  streaming one because recording is its own session, so stopping the stream
-  leaves a recording rolling and vice versa.
+- `RecordingSettingsView` — the Recording settings pane (the main window's
+  recording panel until 2026-09-08): a grouped form with the folder the program
+  is written to and its Choose Folder… button, a container picker, how much
+  room the volume still holds, and a status row with the rolling state, its
+  elapsed time, and the file name — its own pane beside the Streaming one
+  because recording is its own session, so stopping the stream leaves a
+  recording rolling and vice versa.
 - `RecordButton` — the Record / Stop Recording control, in the main window's
   toolbar since 2026-09-06 rather than at the foot of the recording panel: a
   primary action, always on screen where the panel scrolls away, with ⌘R bound
   to it and the word beside the symbol so a red glyph cannot read as streaming.
 - `StreamButton` — the Start Streaming / Stop Streaming control beside it in
-  the toolbar, since the same day: it takes the stream keys typed into the
-  panel's rows as a value collected at the click, so the keys stay view-local
-  in `ContentView`, with ⌘G bound to it and the same disabled rule — nothing
-  to stream to, nothing to start.
+  the toolbar, since the same day, with ⌘G bound to it and the same disabled
+  rule — nothing to stream to, nothing to start. It took the stream keys typed
+  into the streaming panel's rows as a value collected at the click until the
+  rows moved to the settings window (2026-09-08); `EngineModel.startStreaming()`
+  now reads each key back from the Keychain, where the Streaming pane filed it.
 - `RecordingPreferences` — where the recordings folder and container persist:
   machine-local `UserDefaults` for the same reasons as `MonitorPreferences`,
   defaulting to `~/Movies`, which needs no TCC prompt where Desktop and
@@ -1107,7 +1119,7 @@ surface is:
   hang a shortcut on — and the View-menu item binds this case, so the pane and
   the menu bar still cannot disagree.
 - `SettingsView` — the settings window, ⌘, — a `NavigationSplitView` whose
-  source list holds five panes, the shape System Settings and Xcode 26 settled
+  source list holds eight panes, the shape System Settings and Xcode 26 settled
   on. A `Window` scene with its own Settings… command rather than SwiftUI's
   `Settings` scene, because that scene starts its content below the title bar
   and leaves the source list floating as a card instead of running the full
@@ -1119,15 +1131,24 @@ surface is:
   edge beside the split view rather than centered; and Escape closes the window
   beside the ⌘W every window has, since nothing here is committed for Escape to
   cancel.
-- `SettingsPane` — the closed list of panes — General, Permissions, Shortcuts,
-  Data, Logging, About — each deriving its own name and symbol, so the
-  sidebar's label and the window's title cannot drift.
+- `SettingsPane` — the closed list of panes — General, Streaming, Recording,
+  Permissions, Shortcuts, Data, Logging, About — each deriving its own name and
+  symbol, so the sidebar's label and the window's title cannot drift.
 - `SettingsCommands` — the app-menu Settings… item that opens it, replacing the
   one the `Settings` scene would have contributed.
 - `GeneralSettingsView` — the General pane: the app's Appearance, a Show
   Status Bar checkbox showing or hiding the bar across the bottom of both
   windows, and a Show Program and Preview Rows checkbox showing or hiding the
   main window's switcher rows.
+- `StreamingSettingsView` — the Streaming pane (2026-09-08; the main window's
+  streaming panel until then): `DestinationListView`'s sections, then a status
+  row rendering `EngineModel.StreamStatus` — Idle, Connecting…, ● Live with the
+  bitrate and frame rate, Reconnecting… with the attempt count, Stopped, or
+  Error with the message as a tooltip — under a footer that says where Start
+  Streaming is and that keys live in the Keychain. The status stays with the
+  destinations rather than returning to the main window: the status bar there
+  already answers "am I on air", and what this pane adds is the per-destination
+  reading beside the destination it belongs to.
 - `AppearancePicker` / `AppearanceSwatch` / `AppearanceMiniDesktop` — the
   three-thumbnail appearance control and the miniature desktop each thumbnail
   draws — the System swatch composites the other two rather than being a third

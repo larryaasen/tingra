@@ -17,11 +17,13 @@ import TingraEventBus
 /// It followed Record out of its panel on 2026-09-06, for the same reason: it
 /// is the other action an operator reaches for under pressure, and the foot
 /// of a scrolling column is the one place it can be out of sight. The
-/// destination rows and the session status stay in the streaming panel; what
-/// the button needs from them — the stream keys typed into the rows — arrives
-/// as a value, collected by ``ContentView`` at the click, so the keys stay
-/// view-local and never enter the model, the document, or an event
-/// (ARCHITECTURE.md, "Streaming the program").
+/// destination rows and the session status followed on 2026-09-08 — into the
+/// Streaming settings pane (``StreamingSettingsView``), another window
+/// entirely — which is why the button takes nothing but the model: the stream
+/// keys it once received as a value collected from the rows at the click are
+/// read back from the Keychain by ``EngineModel/startStreaming()`` instead,
+/// filed there as they are typed. The keys still never enter the model, the
+/// document, or an event (ARCHITECTURE.md, "Streaming the program").
 ///
 /// ⌘G (``ProductionShortcut/goLive``) binds here — Ecamm Live's own Go Live
 /// assignment — bound to the control rather than to a menu item so it carries
@@ -35,11 +37,6 @@ struct StreamButton: View {
     /// The engine model the control drives.
     let model: EngineModel
 
-    /// Each destination's stream key, by destination id, as typed into the
-    /// panel's rows — handed to ``EngineModel/startStreaming(keys:)`` and
-    /// nowhere else.
-    let keys: [ProjectDestinationID: String]
-
     var body: some View {
         Button {
             if model.isStreaming {
@@ -51,8 +48,7 @@ struct StreamButton: View {
                     domain: .output,
                     params: ["destinations": .int(model.destinations.count(where: \.isStreamable))]
                 )
-                let keys = keys
-                Task { await model.startStreaming(keys: keys) }
+                Task { await model.startStreaming() }
             }
         } label: {
             if model.isStreaming {

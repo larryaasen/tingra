@@ -12,13 +12,20 @@ import TingraEventBus
 
 /// One pane of the settings window.
 ///
-/// A closed list rather than six hand-written tabs, so the sidebar's label
+/// A closed list rather than eight hand-written tabs, so the sidebar's label
 /// and the title bar's heading are drawn from **one** name per pane and cannot
 /// drift apart — the rule ``SidebarSection`` follows for the main window's
 /// sidebar. A pane added without an entry here does not compile.
 enum SettingsPane: String, CaseIterable, Hashable, Sendable {
     /// The app's appearance.
     case general
+
+    /// The destinations the program streams to, and the stream's status.
+    case streaming
+
+    /// Where recordings are written, in what format, and the recording's
+    /// status.
+    case recording
 
     /// Where the system permissions stand.
     case permissions
@@ -40,6 +47,12 @@ enum SettingsPane: String, CaseIterable, Hashable, Sendable {
     var name: Text {
         switch self {
         case .general: Text("General", comment: "Settings window pane: general app settings")
+        case .streaming:
+            Text(
+                "Streaming",
+                comment: "Settings window pane: the destinations the program streams to and the stream's status")
+        case .recording:
+            Text("Recording", comment: "Settings window pane: where recordings are written and the recording's status")
         case .permissions: Text("Permissions", comment: "Settings window pane: the system permissions' status")
         case .shortcuts: Text("Shortcuts", comment: "Settings window pane: the keyboard shortcuts listing")
         case .data: Text("Data", comment: "Settings window pane: what the app has saved on this Mac")
@@ -52,6 +65,8 @@ enum SettingsPane: String, CaseIterable, Hashable, Sendable {
     var systemImage: String {
         switch self {
         case .general: "gearshape"
+        case .streaming: "antenna.radiowaves.left.and.right"
+        case .recording: "record.circle"
         case .permissions: "lock.shield"
         case .shortcuts: "keyboard"
         case .data: "internaldrive"
@@ -62,8 +77,8 @@ enum SettingsPane: String, CaseIterable, Hashable, Sendable {
 }
 
 /// The settings window, reached from the app menu with ⌘, the way macOS
-/// reserves — six panes for now: General, Permissions, Shortcuts, Data,
-/// Logging, and About.
+/// reserves — eight panes for now: General, Streaming, Recording,
+/// Permissions, Shortcuts, Data, Logging, and About.
 ///
 /// It is a `Window` scene with its own Settings… command (``TingraApp``)
 /// rather than SwiftUI's `Settings` scene, for a reason that is only visible
@@ -87,8 +102,10 @@ enum SettingsPane: String, CaseIterable, Hashable, Sendable {
 ///
 /// It takes the ``EngineModel`` for one reason only: the event bus, so a
 /// setting the operator changes is reported as a `tap` like every other
-/// control in the app (EVENTS.md, "The `tap` convention"). No pane reads or
-/// writes the show.
+/// control in the app (EVENTS.md, "The `tap` convention") — and, since
+/// 2026-09-08, for the destinations and the recording folder the Streaming
+/// and Recording panes edit, which live on the model like every other show
+/// setting.
 struct SettingsView: View {
     /// The engine model — here for its event bus, not for the show.
     let model: EngineModel
@@ -237,6 +254,8 @@ struct SettingsView: View {
         switch pane {
         case .general:
             GeneralSettingsView(model: model, appearance: appearance, statusBar: statusBar)
+        case .streaming: StreamingSettingsView(model: model)
+        case .recording: RecordingSettingsView(model: model)
         case .permissions: PermissionsSettingsView(model: model)
         case .shortcuts: ShortcutsSettingsView()
         case .data: DataSettingsView(model: model)

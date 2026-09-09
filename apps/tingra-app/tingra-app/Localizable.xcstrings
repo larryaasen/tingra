@@ -65,6 +65,7 @@
     },
     "%@ of room left" : {
       "comment" : "How much recording time the chosen volume still holds",
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1454,6 +1455,23 @@
         }
       }
     },
+    "Folder" : {
+      "comment" : "Recording settings: label of the row naming the folder recordings are written to",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ordner"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Carpeta"
+          }
+        }
+      }
+    },
     "Forget this permission, so macOS asks again the next time an input needs it" : {
       "comment" : "Tooltip on a permission's Reset button",
       "localizations" : {
@@ -2430,7 +2448,7 @@
       }
     },
     "No destinations yet. Add one to stream." : {
-      "comment" : "Empty state under the streaming panel's destination list",
+      "comment" : "Empty state under the Streaming settings pane's destination list\nEmpty state under the streaming panel's destination list",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -3088,7 +3106,7 @@
       }
     },
     "Recording" : {
-      "comment" : "Section heading over the recording folder and status\nStatus bar reading: the program is being written to a file",
+      "comment" : "Settings window pane: where recordings are written and the recording's status\nStatus bar reading: the program is being written to a file",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -3117,6 +3135,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Error de grabación"
+          }
+        }
+      }
+    },
+    "Recording File" : {
+      "comment" : "Recording settings: heading over the folder, format, and room rows",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufnahmedatei"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Archivo de grabación"
           }
         }
       }
@@ -3151,6 +3186,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Las grabaciones se conservan: %1$@ en %2$@."
+          }
+        }
+      }
+    },
+    "Recordings are written to this folder, each named for the moment it starts. Record (⌘R) is in the main window's toolbar." : {
+      "comment" : "Recording settings: footer explaining where recordings go and where the Record button is",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufnahmen werden in diesem Ordner gespeichert, jede nach dem Moment ihres Starts benannt. „Aufnehmen“ (⌘R) befindet sich in der Symbolleiste des Hauptfensters."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las grabaciones se guardan en esta carpeta, cada una con el nombre del momento en que empieza. Grabar (⌘R) está en la barra de herramientas de la ventana principal."
           }
         }
       }
@@ -3492,6 +3544,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Derecha"
+          }
+        }
+      }
+    },
+    "Room Left" : {
+      "comment" : "Recording settings: label of the row showing how much recording time the volume holds",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Freier Platz"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Espacio disponible"
           }
         }
       }
@@ -3993,6 +4062,23 @@
         }
       }
     },
+    "Status" : {
+      "comment" : "Streaming and Recording settings: label of the row showing the live status",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Status"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Estado"
+          }
+        }
+      }
+    },
     "Stop Recording" : {
       "comment" : "Button that stops the local recording",
       "localizations" : {
@@ -4079,7 +4165,7 @@
       }
     },
     "Stream to this destination" : {
-      "comment" : "Accessibility label for a destination's enable toggle",
+      "comment" : "Label of a destination's enable switch",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -4096,7 +4182,7 @@
       }
     },
     "Streaming" : {
-      "comment" : "Section heading over the destination list and stream status",
+      "comment" : "Settings window pane: the destinations the program streams to and the stream's status",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -4289,6 +4375,23 @@
         }
       }
     },
+    "The program streams to every enabled destination at once. Start Streaming (⌘G) is in the main window's toolbar; stream keys are kept in the Keychain, never in the project file." : {
+      "comment" : "Streaming settings: footer under the status row",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Programm streamt gleichzeitig zu jedem aktivierten Ziel. „Streaming starten“ (⌘G) befindet sich in der Symbolleiste des Hauptfensters; Streamschlüssel werden im Schlüsselbund gespeichert, nie in der Projektdatei."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El programa se transmite a todos los destinos activados a la vez. Iniciar transmisión (⌘G) está en la barra de herramientas de la ventana principal; las claves de transmisión se guardan en el llavero, nunca en el archivo del proyecto."
+          }
+        }
+      }
+    },
     "The recording stopped and could not continue." : {
       "comment" : "Recording error shown when the file sink failed and the recording ended",
       "localizations" : {
@@ -4456,6 +4559,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Transición"
+          }
+        }
+      }
+    },
+    "Untitled Destination" : {
+      "comment" : "Streaming settings: heading over a destination whose name is blank",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unbenanntes Ziel"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Destino sin título"
           }
         }
       }

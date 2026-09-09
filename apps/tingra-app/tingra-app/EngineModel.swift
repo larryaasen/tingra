@@ -2718,8 +2718,9 @@ final class EngineModel {
 
     /// The stream key stored for a destination, or nil when none is stored.
     ///
-    /// Read from secure storage so the streaming panel can prefill its key
-    /// field on launch without the key ever passing through the project
+    /// Read from secure storage so the Streaming settings pane can prefill
+    /// its key fields, and so ``startStreaming()`` can carry each key to its
+    /// destination, without the key ever passing through the project
     /// document. A read failure is reported and treated as "no stored key" —
     /// never a crash.
     ///
@@ -2788,7 +2789,26 @@ final class EngineModel {
         }
     }
 
-    /// Adds an empty destination to the panel and autosaves.
+    /// Stores the stream key the operator typed for a destination, or clears
+    /// the stored key when the text is empty — the Streaming settings pane's
+    /// write path, called as the key field changes.
+    ///
+    /// The Keychain is the only place a key lives once the destination rows
+    /// moved out of the main window (2026-09-08): the toolbar's Start
+    /// Streaming reads each key back from here at the click rather than
+    /// collecting field text across windows, so the key never becomes model
+    /// state, project content, or an event param. Best effort, like every
+    /// secure-storage write: a Keychain error is reported on the bus and the
+    /// field keeps its text.
+    ///
+    /// - Parameters:
+    ///   - streamKey: The key as typed, or empty to clear the stored key.
+    ///   - id: The destination whose key this is.
+    func setStreamKey(_ streamKey: String, for id: ProjectDestinationID) {
+        persistStreamKey(streamKey, for: id)
+    }
+
+    /// Adds an empty destination to the list and autosaves.
     ///
     /// The new row reaches neither the store nor the project file until its
     /// URL is usable (``DestinationEdit/storedDestination``), so an abandoned
@@ -2901,7 +2921,7 @@ final class EngineModel {
     }
 
     /// Puts the program on air: resolves every enabled destination to its
-    /// streaming provider, stores each key in secure storage, and drives one
+    /// streaming provider, reads each key from secure storage, and drives one
     /// ``StreamSession`` fanning the compositor's program frames and the
     /// mixer's program audio out to all of them — reusing the CLI's proven
     /// reconnect/stability/stats machinery (ARCHITECTURE.md, "Streaming the
@@ -2912,16 +2932,15 @@ final class EngineModel {
     /// connection is reported and skipped while the others go live; only a
     /// clean sweep of refusals fails the run.
     ///
-    /// Each stream key is used to build its ``Destination`` and to seed
-    /// secure storage; none ever becomes an event param, a log line, or part
-    /// of the project document. An empty key streams keyless (some servers
-    /// embed the key in the URL path) and clears that destination's stored
-    /// key.
-    ///
-    /// - Parameter keys: The stream key the operator entered for each
-    ///   destination, by destination id. A destination with no entry streams
-    ///   keyless.
-    func startStreaming(keys: [ProjectDestinationID: String]) async {
+    /// Each stream key is read from secure storage, where the Streaming
+    /// settings pane filed it as it was typed (``setStreamKey(_:for:)``), and
+    /// used only to build its ``Destination``; none ever becomes an event
+    /// param, a log line, or part of the project document. A destination with
+    /// no stored key streams keyless (some servers embed the key in the URL
+    /// path). Until 2026-09-08 the keys arrived as a value collected from the
+    /// main window's rows at the click; the rows now live in the settings
+    /// window, and a click in one window cannot read fields in another.
+    func startStreaming() async {
         guard streamSession == nil else { return }
         let streamable = destinations.filter(\.isStreamable)
         guard !streamable.isEmpty else {
@@ -2958,12 +2977,9 @@ final class EngineModel {
                 )
                 return
             }
-            // The key goes only into secure storage (or is cleared when
-            // blank), filed under the destination id — a best-effort write: a
-            // Keychain error is reported but does not block the stream, which
-            // still holds the key in memory for this session.
-            let key = keys[destination.id] ?? ""
-            persistStreamKey(key, for: destination.id)
+            // The key comes from secure storage, filed under the destination
+            // id; a read error is reported there and reads as no key.
+            let key = storedStreamKey(for: destination.id) ?? ""
             legs.append(
                 StreamSession.DestinationLeg(
                     id: destination.id.rawValue,

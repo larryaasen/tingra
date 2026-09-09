@@ -13,9 +13,12 @@ import Testing
 
 @Suite("SettingsPane")
 struct SettingsPaneTests {
-    @Test("the six panes are listed in the sidebar's order, General first and About last")
+    @Test("the eight panes are listed in the sidebar's order, General first and About last")
     func panesInOrder() {
-        #expect(SettingsPane.allCases == [.general, .permissions, .shortcuts, .data, .logging, .about])
+        #expect(
+            SettingsPane.allCases == [
+                .general, .streaming, .recording, .permissions, .shortcuts, .data, .logging, .about,
+            ])
     }
 
     @Test("every pane has its own sidebar symbol")
@@ -23,6 +26,12 @@ struct SettingsPaneTests {
         let symbols = SettingsPane.allCases.map(\.systemImage)
         #expect(Set(symbols).count == symbols.count)
         #expect(symbols.allSatisfy { !$0.isEmpty })
+    }
+
+    @Test("the Streaming and Recording panes wear the toolbar buttons' own symbols")
+    func outputSymbols() {
+        #expect(SettingsPane.streaming.systemImage == "antenna.radiowaves.left.and.right")
+        #expect(SettingsPane.recording.systemImage == "record.circle")
     }
 
     @Test("the Logging pane's symbol is a document under a magnifier")

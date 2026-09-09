@@ -16,7 +16,7 @@ import TingraPlugInKit
 /// — the preview and program monitors side by side across the full width,
 /// the **shot bank** beneath them under a **Shots** heading — over a
 /// **control section** carrying the transition panel, the layer-tree editor,
-/// the input pickers, the mixer, and the streaming panel.
+/// the input pickers, and the mixer.
 ///
 /// That is the broadcast switcher's own arrangement (ARCHITECTURE.md, "The
 /// main window's two sections"): everything the operator *watches* is above
@@ -47,8 +47,12 @@ import TingraPlugInKit
 /// one camera and one display; the
 /// editor (``LayerTreeEditorView``) edits the staged shot's layer tree — the
 /// program shot's when nothing is staged — live; the mixer panel (``MixerView``) mixes the audio inputs into the
-/// program mix the streaming panel puts on air. This is the step-7 shape —
-/// the remaining production surfaces grow from here.
+/// program mix Start Streaming puts on air. The streaming and recording
+/// panels that closed the column until 2026-09-08 are settings panes now
+/// (``StreamingSettingsView``, ``RecordingSettingsView``): destinations and
+/// the recording folder are set up before a show, and this column is for
+/// working one. This is the step-7 shape — the remaining production surfaces
+/// grow from here.
 ///
 /// Every user action here reports its own `tap` event right where it's
 /// executed — a picker's `onChange`, a button's action closure — rather than
@@ -66,15 +70,6 @@ struct ContentView: View {
     /// The rename dialog's working text, prefilled with the shot's current
     /// name when the dialog opens.
     @State private var renameText = ""
-
-    /// Each destination's stream-key field text, by destination id. View-local
-    /// and never handed to the model as observable state: the keys flow
-    /// straight into ``EngineModel/startStreaming(keys:)`` (which stores them
-    /// in secure storage) and are prefilled from there — they never touch the
-    /// project document or the event bus (ARCHITECTURE.md, "Streaming the
-    /// program"). Held here rather than per row because Start collects every
-    /// row's key at once.
-    @State private var streamKeys: [ProjectDestinationID: String] = [:]
 
     /// The padding around the window's column of surfaces. Read by
     /// ``StatusBarView`` too, so the bar's readings line up with the panel
@@ -121,10 +116,10 @@ struct ContentView: View {
     /// the whole column scrollable.
     ///
     /// **Why it scrolls, and why the top section is measured rather than
-    /// flexible.** The column stacks seven surfaces — the monitors and the
-    /// bank, the transition panel, the layer editor, the device pickers, the
-    /// mixer, and the streaming and recording panels — and a plain `VStack`
-    /// resolves a shortfall by
+    /// flexible.** The column stacks five surfaces — the monitors and the
+    /// bank, the transition panel, the layer editor, the device pickers, and
+    /// the mixer (the streaming and recording panels closed it until
+    /// 2026-09-08) — and a plain `VStack` resolves a shortfall by
     /// compressing whatever yields first. That is always the monitors, because
     /// they are the only surface with no intrinsic height to defend. At
     /// ordinary window sizes they collapsed to a sliver *and* pushed the camera
@@ -154,10 +149,6 @@ struct ContentView: View {
                     controls
 
                     MixerView(model: model)
-
-                    streamingPanel
-
-                    RecordingPanel(model: model)
                 }
                 .padding(Self.columnPadding)
             }
@@ -178,13 +169,13 @@ struct ContentView: View {
         // primary actions, and the toolbar is where those live: always on
         // screen, never scrolled away with the panels that configure them.
         // Fade to Black leads — the production control, a master stage over
-        // the program — then the two outputs. Attached here rather than in
-        // the scene so Start Streaming can collect the stream keys typed into
-        // the panel's rows (``streamKeys``).
+        // the program — then the two outputs, whose destinations and folder
+        // are set up in the settings window. Attached here, on the window's
+        // content, so they ride the main window alone.
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
                 FadeToBlackButton(model: model)
-                StreamButton(model: model, keys: streamKeys)
+                StreamButton(model: model)
                 RecordButton(model: model)
             }
         }
@@ -410,67 +401,5 @@ struct ContentView: View {
             }
         }
         .pickerStyle(.menu)
-    }
-
-    /// The streaming panel: the destination list and the session status. Puts
-    /// the program the operator already has on air (ARCHITECTURE.md,
-    /// "Streaming the program") — video from the compositor, audio from the
-    /// mixer panel's program mix — fanned out to every enabled destination as
-    /// one session with one leg each. The destination rows lock while
-    /// streaming. The Start/Stop control itself is in the window's toolbar
-    /// (``StreamButton``), where it stays on screen while this panel scrolls.
-    ///
-    /// Each stream key is a `SecureField` bound to view-local state in its own
-    /// row, collected only at Start — the keys are stored in the Keychain,
-    /// never in the project document, an event, or a log.
-    private var streamingPanel: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Streaming", comment: "Section heading over the destination list and stream status")
-                .font(.headline)
-
-            DestinationListView(model: model, keys: $streamKeys)
-
-            HStack(spacing: 12) {
-                Spacer()
-
-                streamStatusLabel
-            }
-        }
-    }
-
-    /// The live stream status, rendered from ``EngineModel/StreamStatus`` — the
-    /// event-driven state the session reports on the bus.
-    @ViewBuilder private var streamStatusLabel: some View {
-        switch model.streamStatus {
-        case .idle:
-            Text("Idle", comment: "Stream status: not streaming")
-                .foregroundStyle(.secondary)
-        case .starting:
-            Text("Connecting…", comment: "Stream status: connecting to the destination")
-                .foregroundStyle(.orange)
-        case .live:
-            HStack(spacing: 6) {
-                Text("● Live", comment: "Stream status: the program is on air")
-                    .foregroundStyle(.red)
-                    .fontWeight(.semibold)
-                if let stats = model.streamStats {
-                    Text(verbatim: "\(stats.bitrateKbps) kbps · \(stats.fps) fps")
-                        .foregroundStyle(.secondary)
-                        .font(.callout)
-                        .monospacedDigit()
-                }
-            }
-        case .reconnecting(let attempt, let maxAttempts):
-            (Text("Reconnecting…", comment: "Stream status: a reconnect attempt is in flight")
-                + Text(verbatim: " \(attempt)/\(maxAttempts)"))
-                .foregroundStyle(.orange)
-        case .stopped:
-            Text("Stopped", comment: "Stream status: the stream ended cleanly")
-                .foregroundStyle(.secondary)
-        case .error(let message):
-            Text("Error", comment: "Stream status: the stream ended on a failure")
-                .foregroundStyle(.red)
-                .help(message)
-        }
     }
 }
