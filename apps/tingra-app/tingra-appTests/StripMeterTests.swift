@@ -8,6 +8,7 @@
 //
 
 import Foundation
+import SwiftUI
 import Testing
 import TingraAudio
 
@@ -64,5 +65,69 @@ struct StripMeterTests {
         let smoothed = ballistics.smoothed(.floor, at: start.addingTimeInterval(4))
         #expect(smoothed.rms == 0)
         #expect(smoothed.peak == 0)
+    }
+}
+
+/// The meter capsule's geometry on either axis: the bar fills from the floor
+/// end toward full scale — rightward lying down, upward standing — the peak
+/// marker sits at the peak and stays inside the capsule at full scale, and
+/// the zone gradient runs floor to full scale along the same axis.
+@Suite("MeterCapsule geometry")
+@MainActor
+struct MeterCapsuleGeometryTests {
+    /// A lying capsule's size.
+    private let horizontal = CGSize(width: 72, height: 6)
+
+    /// A standing capsule's size.
+    private let vertical = CGSize(width: 5, height: 110)
+
+    @Test("a horizontal bar fills from the leading edge rightward")
+    func horizontalBarFillsRightward() {
+        let rect = MeterCapsule.barRect(fraction: 0.5, in: horizontal, axis: .horizontal)
+        #expect(rect == CGRect(x: 0, y: 0, width: 36, height: 6))
+    }
+
+    @Test("a vertical bar fills from the bottom upward")
+    func verticalBarFillsUpward() {
+        let rect = MeterCapsule.barRect(fraction: 0.5, in: vertical, axis: .vertical)
+        #expect(rect == CGRect(x: 0, y: 55, width: 5, height: 55))
+    }
+
+    @Test("a full-scale vertical bar covers the whole capsule")
+    func fullScaleVerticalBarCoversTheCapsule() {
+        let rect = MeterCapsule.barRect(fraction: 1, in: vertical, axis: .vertical)
+        #expect(rect == CGRect(x: 0, y: 0, width: 5, height: 110))
+    }
+
+    @Test("a horizontal peak marker is a one-point line at the peak")
+    func horizontalPeakMarker() {
+        let rect = MeterCapsule.peakRect(fraction: 0.5, in: horizontal, axis: .horizontal)
+        #expect(rect == CGRect(x: 35.5, y: 0, width: 1, height: 6))
+    }
+
+    @Test("a vertical peak marker is a one-point line at the peak, measured from the bottom")
+    func verticalPeakMarker() {
+        let rect = MeterCapsule.peakRect(fraction: 0.5, in: vertical, axis: .vertical)
+        #expect(rect == CGRect(x: 0, y: 54.5, width: 5, height: 1))
+    }
+
+    @Test("a full-scale peak marker stays inside the capsule on either axis")
+    func fullScalePeakStaysInside() {
+        let lying = MeterCapsule.peakRect(fraction: 1, in: horizontal, axis: .horizontal)
+        #expect(lying.maxX <= horizontal.width)
+        #expect(lying.minX >= 0)
+        let standing = MeterCapsule.peakRect(fraction: 1, in: vertical, axis: .vertical)
+        #expect(standing.minY >= 0)
+        #expect(standing.maxY <= vertical.height)
+    }
+
+    @Test("the zone gradient runs floor to full scale along the fill axis")
+    func zoneLineFollowsTheFillAxis() {
+        let lying = MeterCapsule.zoneLine(in: horizontal, axis: .horizontal)
+        #expect(lying.start == .zero)
+        #expect(lying.end == CGPoint(x: 72, y: 0))
+        let standing = MeterCapsule.zoneLine(in: vertical, axis: .vertical)
+        #expect(standing.start == CGPoint(x: 0, y: 110))
+        #expect(standing.end == .zero)
     }
 }

@@ -35,98 +35,116 @@ struct MixerView: View {
     /// session state, like any other popover presentation.
     @State private var chainStripID: InputID?
 
-    /// The panel body: the heading, then a strip per audio input (or a
-    /// placeholder when none is discovered).
+    /// The panel body: the heading, then the strips — one row per audio
+    /// input, or a placeholder when none is discovered — with the master
+    /// column standing at the panel's trailing edge.
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Mixer", comment: "Section heading over the audio channel strips")
                 .font(.headline)
 
-            if model.mixerStrips.isEmpty {
-                Text("No audio inputs found", comment: "Mixer placeholder when no audio input is discovered")
-                    .foregroundStyle(.secondary)
-            } else {
-                ForEach(model.mixerStrips) { strip in
-                    stripRow(strip)
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 8) {
+                    if model.mixerStrips.isEmpty {
+                        Text("No audio inputs found", comment: "Mixer placeholder when no audio input is discovered")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(model.mixerStrips) { strip in
+                            stripRow(strip)
+                        }
+                    }
                 }
-            }
+                .frame(maxWidth: .infinity, alignment: .leading)
 
-            Divider()
-            masterRow
+                Divider()
+
+                masterColumn
+            }
+            // The divider between the strips and the master takes whatever
+            // height it is offered, and inside the window's scroll view
+            // that offer is unbounded — so the row sizes to its content.
+            .fixedSize(horizontal: false, vertical: true)
         }
     }
 
-    /// The master strip: the console's master section, after the input
-    /// strips (GLOSSARY.md, "Master"). It carries the **post-fader** stereo
-    /// master meter and the monitor controls — the device the operator
-    /// listens through and their own listening level.
+    /// The master column: the console's master section, standing at the
+    /// mixer panel's trailing edge (GLOSSARY.md, "Master"). Top to bottom:
+    /// the label, the monitor device the operator listens through, then the
+    /// **post-fader** stereo master meter beside the monitor level fader —
+    /// both vertical, over one travel — with the level's readout under them.
     ///
     /// **There is deliberately no master fader**: the engine has no master
     /// gain, and the monitor level is not one — it scales only what the
     /// operator hears, never the program mix, the stream, or the recording
     /// (ARCHITECTURE.md, "The monitor path").
-    private var masterRow: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "waveform")
-                .foregroundStyle(.secondary)
+    private var masterColumn: some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 4) {
+                Image(systemName: "waveform")
+                    .foregroundStyle(.secondary)
 
-            Text("Master", comment: "Label of the mixer's master strip")
-                .frame(width: 180, alignment: .leading)
+                Text("Master", comment: "Label of the mixer's master strip")
+            }
 
-            MasterMeter(relay: model.meterRelay)
+            HStack(spacing: 4) {
+                Image(systemName: model.isMonitoring ? "headphones" : "headphones.slash")
+                    .foregroundStyle(model.isMonitoring ? .primary : .secondary)
 
-            Divider().frame(height: 16)
+                Picker(selection: monitorDeviceBinding) {
+                    Text("No monitoring", comment: "Monitor device picker entry for monitoring nothing")
+                        .tag(String?.none)
+                    // A selection with no matching tag is undefined behaviour in
+                    // SwiftUI, and this picker has two ways to reach one: the
+                    // device list fills asynchronously while the selection is
+                    // restored synchronously at launch, and a chosen device can
+                    // be unplugged while the app deliberately keeps it selected.
+                    // So the absent device gets its own entry rather than the
+                    // selection being silently dropped — the dormant channel
+                    // strip, one control over.
+                    if let uid = dormantMonitorDeviceUID {
+                        Text(
+                            "\(model.monitorDeviceName ?? uid) (Not connected)",
+                            comment: "Picker entry for a selected device that is not currently connected"
+                        )
+                        .tag(String?.some(uid))
+                    }
+                    ForEach(model.monitorDevices) { device in
+                        Text(device.name).tag(String?.some(device.uid))
+                    }
+                } label: {
+                    Text("Monitor", comment: "Label of the master strip's monitor device picker")
+                }
+                .labelsHidden()
+                .frame(width: 150)
+                .help(Text("Monitor", comment: "Label of the master strip's monitor device picker"))
+                .accessibilityLabel(
+                    Text("Monitor", comment: "Label of the master strip's monitor device picker"))
+            }
 
-            Image(systemName: model.isMonitoring ? "headphones" : "headphones.slash")
-                .foregroundStyle(model.isMonitoring ? .primary : .secondary)
+            HStack(spacing: 12) {
+                MasterMeter(relay: model.meterRelay)
 
-            Picker(selection: monitorDeviceBinding) {
-                Text("No monitoring", comment: "Monitor device picker entry for monitoring nothing")
-                    .tag(String?.none)
-                // A selection with no matching tag is undefined behaviour in
-                // SwiftUI, and this picker has two ways to reach one: the
-                // device list fills asynchronously while the selection is
-                // restored synchronously at launch, and a chosen device can
-                // be unplugged while the app deliberately keeps it selected.
-                // So the absent device gets its own entry rather than the
-                // selection being silently dropped — the dormant channel
-                // strip, one control over.
-                if let uid = dormantMonitorDeviceUID {
-                    Text(
-                        "\(model.monitorDeviceName ?? uid) (Not connected)",
-                        comment: "Picker entry for a selected device that is not currently connected"
+                VerticalSlider(
+                    value: monitorLevelBinding,
+                    in: 0...1,
+                    label: String(
+                        localized: "Monitor level",
+                        comment: "Accessibility label of the master strip's monitor level slider")
+                ) { editing in
+                    guard !editing else { return }
+                    model.eventBus.tap(
+                        "monitorLevel.slider",
+                        domain: .audio,
+                        params: ["value": .double(model.monitorLevel)]
                     )
-                    .tag(String?.some(uid))
                 }
-                ForEach(model.monitorDevices) { device in
-                    Text(device.name).tag(String?.some(device.uid))
-                }
-            } label: {
-                Text("Monitor", comment: "Label of the master strip's monitor device picker")
+                .frame(height: MasterMeter.length)
+                .disabled(model.monitorDeviceUID == nil)
             }
-            .labelsHidden()
-            .frame(width: 180)
-            .help(Text("Monitor", comment: "Label of the master strip's monitor device picker"))
-            .accessibilityLabel(
-                Text("Monitor", comment: "Label of the master strip's monitor device picker"))
-
-            Slider(value: monitorLevelBinding, in: 0...1) { editing in
-                guard !editing else { return }
-                model.eventBus.tap(
-                    "monitorLevel.slider",
-                    domain: .audio,
-                    params: ["value": .double(model.monitorLevel)]
-                )
-            }
-            .frame(width: 110)
-            .disabled(model.monitorDeviceUID == nil)
-            .accessibilityLabel(
-                Text("Monitor level", comment: "Accessibility label of the master strip's monitor level slider"))
 
             Text(model.monitorLevel.formatted(.percent.precision(.fractionLength(0))))
                 .foregroundStyle(.secondary)
                 .monospacedDigit()
-                .frame(width: 44, alignment: .trailing)
         }
         .controlSize(.small)
     }

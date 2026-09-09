@@ -821,11 +821,12 @@ surface is:
   slider, a pan slider that recenters on double-click, and an Effects button
   badged with the chain's length; a strip whose device is absent stays on the
   panel, marked not connected, its settings kept for the device's return —
-  closing with the **master strip**, the console's master section: the
-  post-fader stereo master meter beside the monitor device picker and the
-  operator's own monitor level. There is deliberately no master fader — the
-  engine has no master gain, and the monitor level scales only what the operator
-  hears.
+  with the **master column** standing at the panel's trailing edge, the
+  console's master section (2026-09-08; a row under the strips before that):
+  the monitor device picker over the post-fader stereo master meter beside the
+  operator's own monitor level fader, both vertical over one travel. There is
+  deliberately no master fader — the engine has no master gain, and the monitor
+  level scales only what the operator hears.
 - `EffectChainView` — one strip's audio effect chain, in a popover: slots in
   signal order with Move Up / Move Down / Remove, an Add Effect menu over every
   registered audio effect, and a slider per parameter the effect declares —
@@ -842,13 +843,22 @@ surface is:
   pre-fader signal.
 - `MasterMeter` — the master's meter: two capsules showing the program mix
   post-fader, one per program channel — stereo because the master is where the
-  operator judges the stereo image.
+  operator judges the stereo image; standing, left beside right, over the same
+  travel as the monitor fader next to it.
 - `MeterCapsule` — the one capsule both meters draw, so the scale, the zone
   boundaries, and the ballistics can never drift between two meters read side by
   side — an RMS bar over broadcast green/yellow/red zones with a decayed peak
   marker, drawn at display cadence in a `TimelineView` sampling the shared
   `MeterRelay` the model's meter drain fills, so readings never churn SwiftUI
-  observation.
+  observation. Fills along one axis — rightward lying in a strip row, upward
+  standing in the master column — through unit-tested geometry helpers.
+- `VerticalSlider` — a vertical slider: an `NSSlider` standing on end behind
+  `NSViewRepresentable`, mirroring `Slider(value:in:onEditingChanged:)` — the
+  binding updates through the drag and the editing callback brackets it, so the
+  drag-end `tap` convention holds — with control size and enablement mirrored
+  from the SwiftUI environment. SwiftUI's `Slider` lays out horizontally only.
+  Its unit-tested `Coordinator` turns AppKit's continuous action stream into
+  that shape.
 - `MeterBallistics` — the unit-tested draw-time ballistics: instant attack,
   20 dB/s decay on a −60…0 dBFS scale.
 - `SessionPreferences` / `SessionPosition` — where the operator's position

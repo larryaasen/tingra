@@ -53,7 +53,7 @@ struct StripMeter: View {
 
     /// The meter body: one capsule over the strip's pre-fader reading.
     var body: some View {
-        MeterCapsule(height: 6) { relay.latest[id] ?? .floor }
+        MeterCapsule(thickness: 6) { relay.latest[id] ?? .floor }
             .frame(width: 72)
             .help(Text("Meter", comment: "Help tag and accessibility label of a channel strip's meter"))
             .accessibilityLabel(
@@ -70,17 +70,26 @@ struct StripMeter: View {
 /// side dead is exactly what this meter exists to reveal (ARCHITECTURE.md,
 /// "The monitor path"). Display only, like the strip meter — no `tap`s,
 /// nothing to click.
+///
+/// The capsules stand **vertically**, left beside right, filling bottom to
+/// top: the master is a column at the mixer panel's trailing edge, its meter
+/// beside the monitor fader the way a console's master meter stands beside
+/// its fader, both over one ``length``.
 struct MasterMeter: View {
     /// The relay the meter samples.
     let relay: MeterRelay
 
-    /// The master meter body: the left channel above the right.
+    /// The meter's travel in points — shared with the monitor fader beside
+    /// it, so the two read against one scale.
+    static let length: CGFloat = 110
+
+    /// The master meter body: the left channel beside the right, standing.
     var body: some View {
-        VStack(spacing: 3) {
-            MeterCapsule(height: 5) { relay.master.left }
-            MeterCapsule(height: 5) { relay.master.right }
+        HStack(spacing: 3) {
+            MeterCapsule(thickness: 5, axis: .vertical) { relay.master.left }
+            MeterCapsule(thickness: 5, axis: .vertical) { relay.master.right }
         }
-        .frame(width: 72)
+        .frame(height: Self.length)
         .help(Text("Master meter", comment: "Help tag and accessibility label of the master's meter"))
         .accessibilityLabel(
             Text("Master meter", comment: "Help tag and accessibility label of the master's meter"))
@@ -96,9 +105,18 @@ struct MasterMeter: View {
 /// capsule calls **inside** its `TimelineView`, so readings never pass
 /// through SwiftUI observation — the `MTKView` preview's rule applied to
 /// audio display (ARCHITECTURE.md, "Per-strip meters").
+///
+/// The capsule fills along one ``axis``: left to right lying in a strip row,
+/// bottom to top standing in the master column — the same scale and zones
+/// either way, only the direction differs.
 struct MeterCapsule: View {
-    /// The capsule's height in points.
-    let height: CGFloat
+    /// The capsule's thickness in points — its height lying horizontally,
+    /// its width standing vertically.
+    let thickness: CGFloat
+
+    /// The axis the capsule fills along: `.horizontal` fills from the
+    /// leading edge, `.vertical` from the bottom.
+    var axis: Axis = .horizontal
 
     /// The latest reading, sampled once per drawn frame.
     let reading: @MainActor () -> MeterReading
@@ -125,29 +143,67 @@ struct MeterCapsule: View {
             let smoothed = ballistics.smoothed(reading(), at: timeline.date)
             Canvas { context, size in
                 let track = Path(
-                    roundedRect: CGRect(origin: .zero, size: size), cornerRadius: size.height / 2)
+                    roundedRect: CGRect(origin: .zero, size: size), cornerRadius: min(size.width, size.height) / 2)
                 context.fill(track, with: .style(.quaternary))
                 context.clip(to: track)
                 if smoothed.rms > 0 {
+                    let zoneLine = Self.zoneLine(in: size, axis: axis)
                     context.fill(
-                        Path(CGRect(x: 0, y: 0, width: size.width * smoothed.rms, height: size.height)),
-                        with: .linearGradient(
-                            Self.zones,
-                            startPoint: .zero,
-                            endPoint: CGPoint(x: size.width, y: 0)
-                        )
+                        Path(Self.barRect(fraction: smoothed.rms, in: size, axis: axis)),
+                        with: .linearGradient(Self.zones, startPoint: zoneLine.start, endPoint: zoneLine.end)
                     )
                 }
                 if smoothed.peak > 0 {
-                    let x = min(size.width * smoothed.peak, size.width - 1)
                     context.fill(
-                        Path(CGRect(x: x - 0.5, y: 0, width: 1, height: size.height)),
+                        Path(Self.peakRect(fraction: smoothed.peak, in: size, axis: axis)),
                         with: .style(.primary)
                     )
                 }
             }
         }
-        .frame(height: height)
+        .frame(
+            width: axis == .vertical ? thickness : nil,
+            height: axis == .horizontal ? thickness : nil
+        )
+    }
+
+    /// The RMS bar for a fill `fraction` (`0`…`1`) of a capsule of `size`:
+    /// from the leading edge rightward lying down, from the bottom upward
+    /// standing — a meter fills toward full scale, which is up, never down.
+    static func barRect(fraction: Double, in size: CGSize, axis: Axis) -> CGRect {
+        switch axis {
+        case .horizontal:
+            return CGRect(x: 0, y: 0, width: size.width * fraction, height: size.height)
+        case .vertical:
+            let height = size.height * fraction
+            return CGRect(x: 0, y: size.height - height, width: size.width, height: height)
+        }
+    }
+
+    /// The peak marker for a peak `fraction`: a one-point line across the
+    /// capsule at the peak's position, held one point inside the full-scale
+    /// end so a full-scale peak stays visible rather than clipping away.
+    static func peakRect(fraction: Double, in size: CGSize, axis: Axis) -> CGRect {
+        switch axis {
+        case .horizontal:
+            let x = min(size.width * fraction, size.width - 1)
+            return CGRect(x: x - 0.5, y: 0, width: 1, height: size.height)
+        case .vertical:
+            let y = max(size.height * (1 - fraction), 1)
+            return CGRect(x: 0, y: y - 0.5, width: size.width, height: 1)
+        }
+    }
+
+    /// The zone gradient's line for a capsule of `size`: from the floor end
+    /// to the full-scale end along the fill axis, so the red zone sits at the
+    /// right lying down and at the top standing.
+    static func zoneLine(in size: CGSize, axis: Axis) -> (start: CGPoint, end: CGPoint) {
+        switch axis {
+        case .horizontal:
+            return (.zero, CGPoint(x: size.width, y: 0))
+        case .vertical:
+            return (CGPoint(x: 0, y: size.height), .zero)
+        }
     }
 }
 
