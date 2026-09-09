@@ -38,6 +38,9 @@ struct MonitorPreferences {
     /// The monitor level key.
     private static let levelKey = "monitor.level"
 
+    /// The monitor mute key.
+    private static let mutedKey = "monitor.isMuted"
+
     /// The level a fresh install monitors at once a device is chosen.
     static let defaultLevel: Double = 0.8
 
@@ -83,5 +86,15 @@ struct MonitorPreferences {
             return min(1, max(0, defaults.double(forKey: Self.levelKey)))
         }
         nonmutating set { defaults.set(min(1, max(0, newValue)), forKey: Self.levelKey) }
+    }
+
+    /// Whether the monitor is muted — the control room cut: the device and
+    /// the level stay as they are and playback is silenced. Off on a fresh
+    /// install. Persisted like a strip's mute, because relaunching into a
+    /// silent monitor with the mute lit is honest and relaunching at full
+    /// volume when the operator had cut it is not.
+    var isMuted: Bool {
+        get { defaults.bool(forKey: Self.mutedKey) }
+        nonmutating set { defaults.set(newValue, forKey: Self.mutedKey) }
     }
 }

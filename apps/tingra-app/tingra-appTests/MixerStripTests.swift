@@ -157,6 +157,44 @@ struct MixerStripTests {
         #expect(strips.map(\.id.rawValue) == ["mic-2", "mic-1", "mic-3"])
     }
 
+    @Test("an authored channel naming a private aggregate device is dropped rather than kept as a dormant strip")
+    @MainActor
+    func mergingDropsPrivateAggregateChannels() {
+        // What a launch that started the monitor authored before the capture
+        // plug-in declined these: the process's own aggregate, muted, named
+        // after its pid, its device gone with that launch.
+        let channels = [
+            AudioChannel(input: InputID(rawValue: "mic-1"), name: "Mic", level: 0.8),
+            AudioChannel(
+                input: InputID(rawValue: "CADefaultDeviceAggregate-52523-0"),
+                name: "CADefaultDeviceAggregate-52523-0", isMuted: true),
+            AudioChannel(input: InputID(rawValue: "mic-2"), name: "Second Mic"),
+        ]
+
+        let strips = MixerStrip.strips(channels: channels, discovered: [Self.choice("mic-1")])
+
+        #expect(strips.map(\.id.rawValue) == ["mic-1", "mic-2"])
+        #expect(strips[0].level == 0.8)
+        // The absent second microphone stays a dormant strip, authored as it
+        // was; only the aggregate is gone.
+        #expect(strips[1].audioChannel == channels[2])
+    }
+
+    @Test("dropping every authored channel leaves an authored-empty merge, not the seed policy")
+    @MainActor
+    func droppingAllChannelsIsNotSeeding() {
+        let channels = [
+            AudioChannel(input: InputID(rawValue: "CADefaultDeviceAggregate-1-0"), isMuted: true),
+            AudioChannel(input: InputID(rawValue: "CADefaultDeviceAggregate-2-0"), isMuted: true),
+        ]
+
+        let strips = MixerStrip.strips(channels: channels, discovered: [Self.choice("mic-1"), Self.choice("mic-2")])
+
+        // The document authored audio, so nothing is unmuted on its behalf.
+        #expect(strips.map(\.id.rawValue) == ["mic-1", "mic-2"])
+        #expect(strips.allSatisfy { $0.isMuted })
+    }
+
     @Test("merging an authored-empty channel list yields every discovered device muted")
     @MainActor
     func mergingAuthoredEmptyMutesDiscovery() {

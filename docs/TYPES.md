@@ -321,6 +321,14 @@ internal surface a reader needs to navigate the target instead.
 - `SystemDefaultInputs` — the system default camera and microphone as input
   identifiers, for resolving the `stream` defaults without importing AVFoundation
   elsewhere.
+- `PrivateAggregateDevice` — macOS's private aggregate audio devices
+  (`CADefaultDeviceAggregate-<pid>-0`, built inside any process running an
+  `AVAudioEngine`, Tingra's monitor included) and the two rules that keep them
+  out of the input registry and out of a document: the composition's `private`
+  flag for a live device, applied at discovery and on connect/disconnect with
+  an `input.ignored` trace, and the UID prefix for a dead one, which the app's
+  strip merge drops authored channels by (2026-09-09). A user's Audio MIDI
+  Setup aggregate has neither and stays a microphone.
 
 ## `packages/TingraGeneratorPlugIns`
 
@@ -822,11 +830,14 @@ surface is:
   badged with the chain's length; a strip whose device is absent stays on the
   panel, marked not connected, its settings kept for the device's return —
   with the **master column** standing at the panel's trailing edge, the
-  console's master section (2026-09-08; a row under the strips before that):
-  the monitor device picker over the post-fader stereo master meter beside the
-  operator's own monitor level fader, both vertical over one travel. There is
-  deliberately no master fader — the engine has no master gain, and the monitor
-  level scales only what the operator hears.
+  console's master section (2026-09-08; a row under the strips before that),
+  as two headed groups divided from each other: **Master**, the post-fader
+  stereo master meter, and **Monitor**, the device picker over the operator's
+  own monitor level fader, its readout, and the monitor mute (2026-09-09; the
+  control room cut, keeping device and level while silencing playback, the same
+  control as a strip's mute) — meter and fader both vertical over one travel. There is deliberately no master fader — the engine has no master
+  gain of the operator's, and the monitor level scales only what the operator
+  hears (TODO.md, "Does the recorded mix need a master fader?").
 - `EffectChainView` — one strip's audio effect chain, in a popover: slots in
   signal order with Move Up / Move Down / Remove, an Add Effect menu over every
   registered audio effect, and a slider per parameter the effect declares —
@@ -839,6 +850,11 @@ surface is:
   which would put a test tone on air — the rest muted, every strip centered,
   when nothing is authored; strip edits sync back into the active preset and
   autosave debounced like shot edits.
+- `MuteLabel` — the label every mute toggle shares, a strip's and the
+  monitor's: the speaker symbol, slashed while muted, sized to the union of
+  both symbols (each laid out hidden under the visible one) because they
+  differ in glyph width and height and a bordered button sizes to its label —
+  so a mute button never changes size as it flips (2026-09-09).
 - `StripMeter` — one strip's meter: a compact capsule showing the strip's
   pre-fader signal.
 - `MasterMeter` — the master's meter: two capsules showing the program mix
@@ -878,7 +894,7 @@ surface is:
   own, so a deleted staged shot does not cost the program shot its place.
   Before this every cold start put the first preset's first shot on program
   and its second on preview, whatever had been staged at quit.
-- `MonitorPreferences` — where the monitor device and level persist:
+- `MonitorPreferences` — where the monitor device, level, and mute persist:
   machine-local `UserDefaults`, not the project document — which headphones are
   plugged into this Mac is not part of the show — and not session state, since
   headphones do not change between launches; monitoring starts off on a fresh

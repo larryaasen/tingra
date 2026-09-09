@@ -57,11 +57,20 @@ public struct AVFoundationCapturePlugIn: PlugIn {
     /// never errors, never polling (`stream` sessions and
     /// `devices --watch` both consume them).
     ///
+    /// macOS's private aggregate devices are declined here, with an
+    /// `input.ignored` trace, rather than in the enumerator: AVFoundation
+    /// reports them as microphones, and the test that tells them apart is
+    /// the plug-in's rule, not the framework's (``PrivateAggregateDevice``).
+    ///
     /// Throws if the registry rejects an input (a duplicate identifier);
     /// the host's loader reports that as an `error` event and the engine
     /// keeps running.
     public func activate(in context: PlugInContext) async throws {
         for device in enumerateDevices() {
+            guard !PrivateAggregateDevice.isPrivate(uid: device.uniqueID) else {
+                PrivateAggregateDevice.reportIgnored(device, on: context.eventBus)
+                continue
+            }
             try await context.inputs.register(Self.makeInput(for: device, eventBus: context.eventBus))
             context.eventBus.trace(
                 "input.discovered",

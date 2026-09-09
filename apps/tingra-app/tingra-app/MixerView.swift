@@ -67,28 +67,38 @@ struct MixerView: View {
         }
     }
 
-    /// The master column: the console's master section, standing at the
-    /// mixer panel's trailing edge (GLOSSARY.md, "Master"). Top to bottom:
-    /// the label, the monitor device the operator listens through, then the
-    /// **post-fader** stereo master meter beside the monitor level fader —
-    /// both vertical, over one travel — with the level's readout under them.
+    /// The master section, standing at the mixer panel's trailing edge as
+    /// two headed groups side by side (GLOSSARY.md, "Master"). **Master** is
+    /// the **post-fader** stereo master meter — the program mix as the
+    /// stream and the recording receive it. **Monitor** is the operator's
+    /// own listening path: the device they listen through, its level as a
+    /// vertical fader, the level's readout, and the monitor mute — the
+    /// control room cut, keeping device and level while silencing playback,
+    /// the same control as a strip's mute. The groups are divided and
+    /// headed separately so a fader standing near the master meter never
+    /// reads as a master fader (TODO.md, "Does the recorded mix need a
+    /// master fader?").
     ///
     /// **There is deliberately no master fader**: the engine has no master
-    /// gain, and the monitor level is not one — it scales only what the
-    /// operator hears, never the program mix, the stream, or the recording
-    /// (ARCHITECTURE.md, "The monitor path").
+    /// gain of the operator's, and the monitor level is not one — it scales
+    /// only what the operator hears, never the program mix, the stream, or
+    /// the recording (ARCHITECTURE.md, "The monitor path").
     private var masterColumn: some View {
-        VStack(spacing: 8) {
-            HStack(spacing: 4) {
-                Image(systemName: "waveform")
-                    .foregroundStyle(.secondary)
+        HStack(alignment: .top, spacing: 12) {
+            VStack(spacing: 8) {
+                groupHeading(symbol: "waveform", Text("Master", comment: "Label of the mixer's master strip"))
 
-                Text("Master", comment: "Label of the mixer's master strip")
+                MasterMeter(relay: model.meterRelay)
             }
 
-            HStack(spacing: 4) {
-                Image(systemName: model.isMonitoring ? "headphones" : "headphones.slash")
-                    .foregroundStyle(model.isMonitoring ? .primary : .secondary)
+            Divider()
+
+            VStack(spacing: 8) {
+                groupHeading(
+                    symbol: model.isMonitoring && !model.isMonitorMuted ? "headphones" : "headphones.slash",
+                    lit: model.isMonitoring && !model.isMonitorMuted,
+                    Text("Monitor", comment: "Label of the master strip's monitor device picker")
+                )
 
                 Picker(selection: monitorDeviceBinding) {
                     Text("No monitoring", comment: "Monitor device picker entry for monitoring nothing")
@@ -119,10 +129,6 @@ struct MixerView: View {
                 .help(Text("Monitor", comment: "Label of the master strip's monitor device picker"))
                 .accessibilityLabel(
                     Text("Monitor", comment: "Label of the master strip's monitor device picker"))
-            }
-
-            HStack(spacing: 12) {
-                MasterMeter(relay: model.meterRelay)
 
                 VerticalSlider(
                     value: monitorLevelBinding,
@@ -140,13 +146,37 @@ struct MixerView: View {
                 }
                 .frame(height: MasterMeter.length)
                 .disabled(model.monitorDeviceUID == nil)
-            }
 
-            Text(model.monitorLevel.formatted(.percent.precision(.fractionLength(0))))
-                .foregroundStyle(.secondary)
-                .monospacedDigit()
+                Text(model.monitorLevel.formatted(.percent.precision(.fractionLength(0))))
+                    .foregroundStyle(model.isMonitorMuted ? .tertiary : .secondary)
+                    .monospacedDigit()
+
+                Toggle(isOn: monitorMuteBinding) {
+                    MuteLabel(isMuted: model.isMonitorMuted)
+                }
+                .toggleStyle(.button)
+                .disabled(model.monitorDeviceUID == nil)
+                .help(Text("Mute", comment: "Help tag on a channel strip's mute toggle"))
+                .accessibilityLabel(Text("Mute", comment: "Help tag on a channel strip's mute toggle"))
+            }
         }
+        // The divider between the two groups sizes to the row, as the one
+        // between the strips and the master section does.
+        .fixedSize(horizontal: false, vertical: true)
         .controlSize(.small)
+    }
+
+    /// A heading over one of the master section's groups: a symbol beside
+    /// the group's name, weighted so Master and Monitor read as two things.
+    /// `lit` draws the symbol in the primary color — the headphones while
+    /// the monitor is playing — and otherwise secondary, like an unlit lamp.
+    private func groupHeading(symbol: String, lit: Bool = false, _ title: Text) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: symbol)
+                .foregroundStyle(lit ? .primary : .secondary)
+
+            title.fontWeight(.semibold)
+        }
     }
 
     /// The selected monitor device's UID when the device list does not
@@ -172,6 +202,22 @@ struct MixerView: View {
         }
     }
 
+    /// A binding to the monitor mute — the control room cut — reporting the
+    /// toggle's `tap` before the model silences or restores playback. The
+    /// same control as a strip's mute, one group over, so it reads the same.
+    private var monitorMuteBinding: Binding<Bool> {
+        Binding {
+            model.isMonitorMuted
+        } set: { newValue in
+            model.eventBus.tap(
+                "monitorMute.toggle",
+                domain: .audio,
+                params: ["muted": .bool(newValue)]
+            )
+            Task { await model.setMonitorMuted(newValue) }
+        }
+    }
+
     /// A binding to the monitor level, applied as it drags. Gesture-rate, so
     /// the slider's drag-end `tap` carries the observability.
     private var monitorLevelBinding: Binding<Double> {
@@ -187,7 +233,7 @@ struct MixerView: View {
     private func stripRow(_ strip: MixerStrip) -> some View {
         HStack(spacing: 8) {
             Toggle(isOn: muteBinding(for: strip.id)) {
-                Image(systemName: strip.isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                MuteLabel(isMuted: strip.isMuted)
             }
             .toggleStyle(.button)
             .help(Text("Mute", comment: "Help tag on a channel strip's mute toggle"))
@@ -347,6 +393,33 @@ struct MixerView: View {
             model.mixerStrips.first { $0.id == id }?.pan ?? 0
         } set: { newValue in
             model.setStripPan(newValue, forStrip: id)
+        }
+    }
+}
+
+/// The label of a mute toggle — a strip's or the monitor's: the speaker
+/// symbol, slashed while muted. Sized to the **union of both symbols**,
+/// because they differ in glyph width and height and a bordered button
+/// sizes to its label — so without this every mute button on the panel
+/// jumped a few points as it flipped. Both symbols are laid out, hidden,
+/// under the visible one, which keeps the size right at any control size
+/// or symbol scale without a hard-coded frame.
+struct MuteLabel: View {
+    /// Whether the control is muted.
+    let isMuted: Bool
+
+    /// The symbol shown while muted.
+    private static let mutedSymbol = "speaker.slash.fill"
+
+    /// The symbol shown while live.
+    private static let liveSymbol = "speaker.wave.2.fill"
+
+    /// The current symbol over both symbols' footprints.
+    var body: some View {
+        ZStack {
+            Image(systemName: Self.mutedSymbol).hidden()
+            Image(systemName: Self.liveSymbol).hidden()
+            Image(systemName: isMuted ? Self.mutedSymbol : Self.liveSymbol)
         }
     }
 }

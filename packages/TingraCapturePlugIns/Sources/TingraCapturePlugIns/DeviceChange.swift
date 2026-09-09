@@ -53,9 +53,16 @@ struct DeviceEventReporter: Sendable {
     /// For each change until the stream finishes: updates the registry
     /// first (register on connect, unregister on disconnect), then emits
     /// the event — so a listener reacting to the event always sees the
-    /// registry already reflecting it.
+    /// registry already reflecting it. A change carrying one of macOS's
+    /// private aggregate devices is declined with an `input.ignored` trace
+    /// instead: the monitor's own plumbing announces itself as a microphone
+    /// the moment monitoring starts (``PrivateAggregateDevice``).
     func run(on eventBus: EventBus, inputs: any InputRegistering) async {
         for await change in changes {
+            guard !PrivateAggregateDevice.isPrivate(uid: change.device.uniqueID) else {
+                PrivateAggregateDevice.reportIgnored(change.device, change: change.kind, on: eventBus)
+                continue
+            }
             switch change.kind {
             case .connected:
                 do {

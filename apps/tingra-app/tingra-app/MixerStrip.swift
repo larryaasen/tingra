@@ -7,6 +7,7 @@
 //  SPDX-License-Identifier: MIT
 //
 
+import TingraCapturePlugIns
 import TingraComposition
 import TingraPlugInKit
 
@@ -80,6 +81,9 @@ struct MixerStrip: Identifiable, Equatable {
     /// inputs into the session's strips (ARCHITECTURE.md, "Per-strip
     /// routing"):
     ///
+    /// - An authored channel naming a private aggregate device
+    ///   (`PrivateAggregateDevice.matches(uid:)`) is dropped before any of
+    ///   this, so a document that authored one is cleaned on its next sync.
     /// - Passed `nil` — no authored audio configuration — it falls back to
     ///   the ``seed(from:)`` policy over discovery alone.
     /// - Authored channels come first, in document order (the panel order
@@ -99,7 +103,14 @@ struct MixerStrip: Identifiable, Equatable {
     ///   - inputs: The discovered audio inputs, in listing order.
     /// - Returns: The merged strips, in panel order.
     static func strips(channels: [AudioChannel]?, discovered inputs: [EngineModel.InputChoice]) -> [MixerStrip] {
-        guard let channels else { return seed(from: inputs) }
+        guard let authoredChannels = channels else { return seed(from: inputs) }
+        // A channel naming one of macOS's private aggregate devices is not a
+        // dormant strip waiting for its device: the device was the monitor's
+        // own plumbing, dead with the launch that authored it, and no
+        // discovery offers it again. Dropping it here is what cleans a
+        // document that authored one before the capture plug-in declined
+        // them — on the next sync, with no migration.
+        let channels = authoredChannels.filter { !PrivateAggregateDevice.matches(uid: $0.input.rawValue) }
         let authored = channels.map { channel in
             let discoveredName = inputs.first { $0.id == channel.input }?.name
             let cachedName = channel.name.isEmpty ? channel.input.rawValue : channel.name

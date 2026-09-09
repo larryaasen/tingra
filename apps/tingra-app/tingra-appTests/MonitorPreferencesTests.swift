@@ -61,6 +61,37 @@ struct MonitorPreferencesTests {
         #expect(MonitorPreferences(defaults: defaults).deviceUID == nil)
     }
 
+    @Test("the monitor mute starts off on a fresh install")
+    func muteStartsOff() throws {
+        let (preferences, defaults, name) = try makePreferences()
+        defer { defaults.removePersistentDomain(forName: name) }
+
+        #expect(!preferences.isMuted)
+    }
+
+    @Test("the monitor mute persists in both directions, leaving the level alone")
+    func muteRoundTrips() throws {
+        let (preferences, defaults, name) = try makePreferences()
+        defer { defaults.removePersistentDomain(forName: name) }
+
+        preferences.level = 0.6
+        preferences.isMuted = true
+        #expect(MonitorPreferences(defaults: defaults).isMuted)
+        #expect(abs(MonitorPreferences(defaults: defaults).level - 0.6) < 0.0001)
+
+        preferences.isMuted = false
+        #expect(!MonitorPreferences(defaults: defaults).isMuted)
+    }
+
+    @Test("the playback gain is the level when unmuted and silence when muted")
+    @MainActor
+    func playbackLevelCombinesLevelAndMute() {
+        #expect(EngineModel.playbackLevel(level: 0.8, isMuted: false) == 0.8)
+        #expect(EngineModel.playbackLevel(level: 0.8, isMuted: true) == 0)
+        #expect(EngineModel.playbackLevel(level: 0, isMuted: false) == 0)
+        #expect(EngineModel.playbackLevel(level: 1, isMuted: true) == 0)
+    }
+
     @Test("a stored level round-trips, including an explicit silence")
     func levelRoundTrips() throws {
         let (preferences, defaults, name) = try makePreferences()

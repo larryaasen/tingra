@@ -2851,6 +2851,38 @@ or two in the doc that owns them — none need a rewrite.
   with Remove All Data (the removal and quit are what a first-run check wants
   on record).
 
+- [x] **Does the recorded mix need a master fader? — No, decided 2026-09-09.**
+  Raised when the master section stood up as a column at the mixer panel's
+  trailing edge (ARCHITECTURE.md, "The monitor path") and its vertical monitor
+  fader, standing near the master meter, read as though it might scale what a
+  recording receives. It does not: the app's one program-audio drain tees each
+  mixed block into the stream, the recording, and the monitor, and the monitor
+  level is the playback node's volume *downstream* of that tee — the stream and
+  the recording get the block the mixer produced, byte-identical at every
+  monitor level and with no monitor at all (TingraAudio's tests assert exactly
+  this). Whether the operator should have a fader on the program mix is
+  therefore an *exposure* question, not engine work: FTB's audio stage already
+  put a master gain into `AudioMixer.mixBlock`, behind a latch. The answer is
+  no, for four reasons. (1) **The strips already set the recorded mix** —
+  every level, pan, mute, and effect chain shapes exactly what is recorded and
+  streamed — and with the one to three strips a Tingra show has, a master fader
+  is a second place to fix a level and a second place for it to disagree with
+  the first. (2) **On a one-bus switcher it is a footgun**: nudged down one
+  evening, it silently lowers every recording and every stream after that,
+  with nothing on screen saying why. Consoles have master faders because they
+  have dozens of inputs and several buses; Tingra v1 has one bus. (3) **What a
+  recording needs is headroom, not a fader**: the post-fader master meter is
+  the tool that answers "is the recording clipping"; a hot show is fixed on the
+  strip that is hot, and riding a master fader during a show is the mistake,
+  not the feature. (4) **The live-streaming tools agree**: OBS, Ecamm, and
+  mimoLive expose per-source faders and a monitoring level and put no master
+  fader on the program mix. **What re-opens it:** a second bus (separate stream
+  and recording mixes, or an aux) or a master effect chain with a limiter —
+  then a master fader arrives beside a master insert, which is what a console's
+  master section is for. Until then the honest master section is meter plus
+  monitor, and the column heads the two as separate groups, **Master** and
+  **Monitor**, divided, so the monitor fader cannot be mistaken for one.
+
 ## CI follow-ups
 
 Jobs promised in CLAUDE.md "Toolchain & CI" that were deliberately left out of

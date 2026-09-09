@@ -249,6 +249,12 @@ final class EngineModel {
     /// cannot change what viewers hear.
     private(set) var monitorLevel: Double = MonitorPreferences.defaultLevel
 
+    /// Whether the monitor is muted — the control room cut. The device stays
+    /// selected and ``monitorLevel`` stays where it was; only what the
+    /// monitor plays goes silent, so the program mix, the stream, and the
+    /// recording are as untouched by it as by the level.
+    private(set) var isMonitorMuted = false
+
     /// Whether the monitor is currently playing. A selected device that is
     /// not connected leaves this false while keeping the selection, so the
     /// master strip can show the difference between "not monitoring" and
@@ -902,6 +908,7 @@ final class EngineModel {
         self.monitorDeviceUID = monitorPreferences.deviceUID
         self.monitorDeviceName = monitorPreferences.deviceName
         self.monitorLevel = monitorPreferences.level
+        self.isMonitorMuted = monitorPreferences.isMuted
         self.recordingFolder = recordingPreferences.folder
         self.recordingContainer = recordingPreferences.container
     }
@@ -1480,7 +1487,7 @@ final class EngineModel {
                 await self?.monitorDevicesChanged(devices)
             }
         }
-        await monitor.setLevel(monitorLevel)
+        await monitor.setLevel(Self.playbackLevel(level: monitorLevel, isMuted: isMonitorMuted))
         if let monitorDeviceUID {
             await openMonitor(deviceUID: monitorDeviceUID)
         }
@@ -1594,7 +1601,34 @@ final class EngineModel {
     func setMonitorLevel(_ level: Double) async {
         monitorLevel = level
         monitorPreferences.level = level
-        await monitor.setLevel(level)
+        await monitor.setLevel(Self.playbackLevel(level: level, isMuted: isMonitorMuted))
+    }
+
+    /// Mutes or unmutes the monitor — the control room cut. The device and
+    /// the level are kept; the monitor's playback gain goes to silence and
+    /// back, instantly and with no device restart, so a cut during a break
+    /// comes back to the same setup with one click. Discrete like a strip's
+    /// mute and, like it, carried by the toggle's own `tap`; it changes
+    /// nothing the program, the stream, or the recording receive.
+    ///
+    /// - Parameter isMuted: Whether the monitor is muted.
+    func setMonitorMuted(_ isMuted: Bool) async {
+        isMonitorMuted = isMuted
+        monitorPreferences.isMuted = isMuted
+        await monitor.setLevel(Self.playbackLevel(level: monitorLevel, isMuted: isMuted))
+    }
+
+    /// The gain the monitor actually plays at: the operator's level, or
+    /// silence while the monitor is muted. The one place the two combine,
+    /// so a level set while muted stays silent and an unmute restores
+    /// exactly the level shown.
+    ///
+    /// - Parameters:
+    ///   - level: The operator's monitor level, `0`...`1`.
+    ///   - isMuted: Whether the monitor is muted.
+    /// - Returns: The playback gain.
+    nonisolated static func playbackLevel(level: Double, isMuted: Bool) -> Double {
+        isMuted ? 0 : level
     }
 
     /// Applies the current strips to the audio engine: starts newly unmuted

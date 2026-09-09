@@ -60,6 +60,11 @@ private let fixtureDevices = [
     CaptureDevice(uniqueID: "BuiltInMicrophoneDevice", name: "MacBook Pro Microphone", kind: .microphone),
 ]
 
+/// One of macOS's private aggregate devices as AVFoundation reports it: a
+/// microphone named after the process that created it.
+private let privateAggregate = CaptureDevice(
+    uniqueID: "CADefaultDeviceAggregate-52523-0", name: "CADefaultDeviceAggregate-52523-0", kind: .microphone)
+
 /// An already-finished change stream for tests not exercising device events.
 private let noChanges: @Sendable () -> AsyncStream<DeviceChange> = {
     AsyncStream { $0.finish() }
@@ -167,6 +172,31 @@ struct AVFoundationCapturePlugInTests {
         #expect(discoveries.first?.params?["kind"] == .string("camera"))
     }
 
+    @Test("activation declines a private aggregate device with an input.ignored trace, registering the rest")
+    func activationDeclinesPrivateAggregates() async throws {
+        let eventBus = EventBus()
+        let events = eventBus.events()
+        let registrar = MockInputRegistrar()
+        let plugIn = AVFoundationCapturePlugIn(
+            enumerateDevices: { fixtureDevices + [privateAggregate] }, deviceChanges: noChanges)
+
+        try await plugIn.activate(in: makeContext(registrar: registrar, eventBus: eventBus))
+        eventBus.shutdown()
+
+        let registered = await registrar.registered
+        #expect(registered.map(\.id.rawValue) == fixtureDevices.map(\.uniqueID))
+        var received: [EventBusEvent] = []
+        for await event in events {
+            received.append(event)
+        }
+        let ignored = received.filter { $0.name == "input.ignored" }
+        #expect(ignored.count == 1)
+        #expect(ignored.first?.group == .trace)
+        #expect(ignored.first?.params?["id"] == .string(privateAggregate.uniqueID))
+        #expect(ignored.first?.params?["reason"] == .string("privateAggregate"))
+        #expect(received.filter { $0.name == "input.discovered" }.count == 2)
+    }
+
     @Test("activation begins reporting scripted device changes as bus events")
     func activationReportsDeviceChanges() async throws {
         let eventBus = EventBus()
@@ -266,6 +296,30 @@ struct DeviceEventReporterTests {
             .run(on: EventBus(), inputs: registrar)
         #expect(await registrar.registered.isEmpty)
         #expect(await registrar.unregistered == [InputID(rawValue: device.uniqueID)])
+    }
+
+    @Test("a private aggregate connecting or disconnecting is declined: no registration, no device event, a trace each")
+    func privateAggregateChangesAreDeclined() async {
+        let eventBus = EventBus()
+        let events = eventBus.events()
+        let registrar = MockInputRegistrar()
+
+        await makeReporter([
+            DeviceChange(kind: .connected, device: privateAggregate),
+            DeviceChange(kind: .disconnected, device: privateAggregate),
+        ])
+        .run(on: eventBus, inputs: registrar)
+        eventBus.shutdown()
+
+        #expect(await registrar.registered.isEmpty)
+        #expect(await registrar.unregistered.isEmpty)
+        var received: [EventBusEvent] = []
+        for await event in events {
+            received.append(event)
+        }
+        #expect(received.map(\.name) == ["input.ignored", "input.ignored"])
+        #expect(received.allSatisfy { $0.group == .trace })
+        #expect(received.map { $0.params?["change"] } == [.string("connected"), .string("disconnected")])
     }
 
     @Test("a connection for an already-registered device still reports the event, with a trace, not an error")
