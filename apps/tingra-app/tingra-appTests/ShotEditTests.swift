@@ -47,6 +47,17 @@ struct ShotEditTests {
         #expect(ShotEdit.newShot().id != ShotEdit.newShot().id)
     }
 
+    @Test("a shot showing one input at a given frame carries that frame, and is found again only by the same frame")
+    func shotShowingInputAtFrame() {
+        let input = InputID(rawValue: "media-1")
+        let fitted = CGRect(x: 0.2, y: 0, width: 0.6, height: 1)
+        let shot = ShotEdit.shot(showing: input, named: "Poster", frame: fitted)
+        #expect(shot.layers.map(\.frame) == [fitted])
+        #expect(shot.layers.map(\.input) == [input])
+        #expect(ShotEdit.shot(in: [shot], showingOnly: input, frame: fitted)?.id == shot.id)
+        #expect(ShotEdit.shot(in: [shot], showingOnly: input) == nil)
+    }
+
     @Test("a shot showing one input carries a single full-frame layer bound to it, under the given name")
     func shotShowingInputHasOneFullFrameLayer() {
         let input = InputID(rawValue: "camera-1")

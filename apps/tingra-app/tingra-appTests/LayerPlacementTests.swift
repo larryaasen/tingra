@@ -20,6 +20,33 @@ struct LayerPlacementTests {
             && abs(a.width - b.width) < 1e-9 && abs(a.height - b.height) < 1e-9
     }
 
+    @Test("fitting a picture wider than the program letterboxes it, centered, at full width")
+    func fittingWiderPicture() {
+        let frame = LayerPlacement.fitting(inputAspect: 4, in: 16.0 / 9.0)
+        #expect(frame.origin.x == 0)
+        #expect(frame.width == 1)
+        #expect(abs(frame.height - (16.0 / 9.0) / 4) < 0.0001)
+        #expect(abs(frame.midY - 0.5) < 0.0001)
+    }
+
+    @Test("fitting a picture narrower than the program pillarboxes it, centered, at full height")
+    func fittingNarrowerPicture() {
+        let frame = LayerPlacement.fitting(inputAspect: 1, in: 16.0 / 9.0)
+        #expect(frame.origin.y == 0)
+        #expect(frame.height == 1)
+        #expect(abs(frame.width - 9.0 / 16.0) < 0.0001)
+        #expect(abs(frame.midX - 0.5) < 0.0001)
+    }
+
+    @Test("fitting a picture of the program's own shape, or a degenerate one, is the full frame")
+    func fittingSameShapeOrDegenerate() {
+        #expect(LayerPlacement.fitting(inputAspect: 16.0 / 9.0, in: 16.0 / 9.0) == LayerPlacement.fullFrame)
+        #expect(LayerPlacement.fitting(inputAspect: 0, in: 16.0 / 9.0) == LayerPlacement.fullFrame)
+        #expect(LayerPlacement.fitting(inputAspect: 1, in: 0) == LayerPlacement.fullFrame)
+        #expect(LayerPlacement.fitting(inputAspect: .infinity, in: 1) == LayerPlacement.fullFrame)
+        #expect(LayerPlacement.fullFrame == CGRect(x: 0, y: 0, width: 1, height: 1))
+    }
+
     @Test("Inset then Bottom Right reproduces the built-in picture-in-picture camera")
     func insetBottomRightIsThePiP() {
         let anywhere = CGRect(x: 0.1, y: 0.2, width: 0.6, height: 0.6)

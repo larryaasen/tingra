@@ -40,8 +40,10 @@ internal surface a reader needs to navigate the target instead.
   stream for the media the input does not produce).
 - `InputID` — the stable identifier for an input, as surfaced by input
   discovery.
-- `InputKind` — the kind of input (camera, microphone, display, generator) —
-  its *provenance* — driving discovery grouping and selector resolution.
+- `InputKind` — the kind of input (camera, microphone, display, generator,
+  media) — its *provenance* — driving discovery grouping and selector
+  resolution; `media` is a file the operator added, created by a
+  `MediaInputProvider` rather than discovered.
 - `InputMedia` — the media an input produces (`.video`, `.audio`, both, or
   neither): the *media* axis beside `InputKind`'s provenance axis, and what
   decides whether an input is offered as a layer, a channel strip, or a
@@ -148,9 +150,21 @@ internal surface a reader needs to navigate the target instead.
   activation hook for registering capabilities.
 - `PlugInID` — the stable reverse-DNS identifier for a plug-in; doubles as its
   event domain.
+- `MediaProviderID` — a stable identifier for a media input provider.
+- `MediaInputProvider` — a plug-in's factory for media inputs: the uniform
+  types it opens and `makeInput(for:id:)` creating the `Input` that plays a
+  file; registered through `MediaRegistering` and resolved by the host's
+  `MediaRegistry` by content type, the streaming-provider shape.
+- `MediaRegistering` — the registration seam where media plug-ins attach their
+  providers (register and unregister); resolution stays on the host's side.
+- `MediaRegisteringError` — the error the unavailable registry throws: the
+  host built its context without a media registry.
+- `UnavailableMediaRegistry` — the default `PlugInContext.media`: a registry
+  that accepts no providers and throws rather than discarding one, so a
+  media plug-in loaded into a host without media reports itself.
 - `PlugInContext` — the host infrastructure handed to a plug-in at activation:
-  the event bus, the clock, and the input, output, effect, and tool
-  registration seams.
+  the event bus, the clock, and the input, output, effect, tool, and media
+  registration seams (the media seam defaulted, a pre-1.0 addition).
 
 ## `packages/TingraHost`
 
@@ -223,6 +237,13 @@ internal surface a reader needs to navigate the target instead.
   file extension) — in one registry; the host's concrete `OutputRegistering`.
 - `OutputRegistryError` — errors thrown by the output registry (a scheme, or a
   recording file extension, already served by another provider).
+- `MediaRegistry` — the actor where media plug-ins register their
+  `MediaInputProvider`s and the app resolves a file the operator added to
+  the first provider whose content types it conforms to, by the file
+  system's reported type or its extension; makes the input through that
+  provider; the host's concrete `MediaRegistering`.
+- `MediaRegistryError` — errors thrown by the media registry (a duplicate
+  provider identifier, a file no provider opens, a URL that is not a file).
 - `EffectRegistry` — the actor where effect plug-ins register their audio and
   video effect providers and the engine resolves a persisted chain entry's
   `EffectID` from; one registry, separate tables per media kind, registration
@@ -405,10 +426,17 @@ internal surface a reader needs to navigate the target instead.
   all. Program only — preview is never faded, so the operator keeps working
   behind it — and picture only: `AudioMixer.setMasterFade(_:duration:)` is the
   other half.
+- `MediaID` — a stable identifier for a media item in a project — and, by
+  the same string, the `InputID` of the input that plays it.
+- `ProjectMedia` — one file the operator added to a project as media: its
+  `MediaID`, absolute path (no bookmark; the app is not sandboxed), and cached
+  display name; the document's record from which the app asks the media
+  registry for the input on each launch.
 - `Project` — the saved document for a whole show: a versioned, plain `Codable`
   value type holding the presets, the stream `destination` (key excluded — it
-  lives in secure storage), each shot's optional default transition, and the
-  optional `programFormat` (absent meaning 1080p30). The
+  lives in secure storage), each shot's optional default transition, the
+  optional `programFormat` (absent meaning 1080p30), and the optional `media`
+  list. The
   format is version 1 until the first release ships (pre-release it grows
   within v1, optional fields decoding forgivingly); decoding a document newer
   than the build understands throws rather than silently loading it.
@@ -666,6 +694,30 @@ internal surface a reader needs to navigate the target instead.
 - `RecordingCapacityProbe` — how a recording service measures a volume,
   injected so the check is testable without a disk.
 
+## `packages/TingraMediaPlugIns`
+
+- `MediaPlugIn` — contributes the image, movie, and text providers through the
+  media registration seam; registration is all or nothing, rolling back on a
+  refusal.
+- `MediaInputError` — errors a media input throws from `start()`: a file that
+  cannot be read, an image ImageIO will not decode, text that is not UTF-8, a
+  movie without a video track or that AVFoundation refuses, and the two
+  buffer failures.
+- `ImageMediaProvider` — the provider for every image type ImageIO reads.
+- `ImageInput` — a still image as an input: decoded once at start into one
+  BT.709-tagged BGRA buffer (long side capped at 3840, orientation applied,
+  alpha kept), delivered once per consumer and held.
+- `MovieMediaProvider` — the provider for every movie type AVFoundation reads.
+- `MovieInput` — a video file as an input: `AVAssetReader` paced by the master
+  clock at the file's rate, presentation times remapped from the start tick,
+  looping continuously; the audio track arrives as `CapturedAudio` on the
+  same timeline, so the file gets a channel strip.
+- `TextMediaProvider` — the provider for plain text and Markdown.
+- `TextInput` — a text or Markdown document as an input: rendered once onto a
+  transparent 1920×1080 canvas in white system type (Markdown headings,
+  emphasis, code, and list items mapped onto a fixed ramp), delivered once
+  per consumer and held.
+
 ## `packages/TingraMCP`
 
 - `Daemon` — the engine daemon (`tingra-cli serve`): accepts connections on a
@@ -749,10 +801,11 @@ surface is:
   control driving both engine surfaces, which lives here because
   `TingraComposition` and `TingraAudio` depend on each other in neither
   direction.
-- `SidebarView` — the main window's leading sidebar: the project's presets, the
-  active one's shots, the video generators, the audio generators, every camera,
-  display, audio input device, and audio output device this Mac can see, and the
-  destinations the program streams to, in nine sections. The Cameras and
+- `LeadingSidebar` — the main window's leading sidebar (GLOSSARY.md, "Sidebar"; `SidebarView` until 2026-09-10): the project's presets, the
+  active one's shots, the video generators, the project's media files, the
+  audio generators, every camera, display, audio input device, and audio
+  output device this Mac can see, and the destinations the program streams
+  to, in ten sections. The Cameras and
   Displays headings carry the role's casting picker at their trailing end
   (2026-09-09) — which device plays the camera or display role across the
   preset — under the `camera.picker` / `display.picker` taps. It is a standard
@@ -801,7 +854,7 @@ surface is:
   keeps a generator out of a device list and gives the audio generators a
   section of their own; and the name sort that stops the output section
   reshuffling when Core Audio reorders itself.
-- `SidebarSection` — the closed list of the sidebar's nine sections, each
+- `SidebarSection` — the closed list of the sidebar's ten sections, each
   deriving its own persistence key and its own disclosure `tap` name, so a
   section added without an entry does not compile.
 - `SidebarPreferences` — which sections are open: machine-local `UserDefaults`
@@ -1149,13 +1202,40 @@ surface is:
   bar or context menu), for its tap name's suffix.
 - `LayerUndoAction` — what a layer-tree edit did, naming the Edit menu's Undo
   and Redo items ("Undo Move Layer") and the `layerEdit.undo` tap's `action`.
-- `LayerInspectorColumn` — the main window's trailing inspector column
+- `TrailingSidebar` — the main window's trailing sidebar (2026-09-10;
+  GLOSSARY.md, "Sidebar"; ARCHITECTURE.md, "Media inputs and the Library's
+  Media tab"): a generic container whose panes today are the layer
+  inspector above the Library, split by `LibrarySplitter`, a draggable
+  hairline that resizes the Library within `LibraryPreferences`' clamp and
+  persists the height when a drag ends. 280–440 points wide.
+- `LayerInspectorColumn` — the trailing sidebar's upper pane
   (2026-09-09; ARCHITECTURE.md, "The inspector column and the sidebar's casting
   pickers"): a title naming the shot being edited ("Shot: Main Display",
   beside the tally lamp) over a caption naming the selected layer with its
   kind symbol, then
-  `LayerInspectorView`, 280–440 points wide, or the empty state saying
+  `LayerInspectorView`, or the empty state saying
   where to select a layer. Shown by default, not persisted.
+- `LibraryView` — the Library pane (GLOSSARY.md), the trailing sidebar's
+  lower pane: the project's media files under a **Library** heading with
+  the Add Media… button (a file importer over the types the media providers
+  open), the panel a drop target for files, each row's context menu offering
+  Quick Look, Reveal in Finder, and Remove from Project — which drops the
+  reference and never deletes the file. The Media tab alone until Snapshots
+  adds the tab strip.
+- `LibraryList` — the one file list every Library tab draws: a Quick Look
+  thumbnail, the name, and a detail line per row, each row draggable as its
+  input (`DraggedInput`) and dimmed with a warning when its file is missing.
+- `LibraryThumbnails` — the rows' thumbnails, generated by Quick Look once
+  per file and kept for the panel's lifetime; display data only.
+- `LibraryItem` — one Library row as a value: the media item's id (also its
+  `InputID`), name, file, kind (image, movie, text, other — each with its
+  symbol, resolved from the content type), modification date, size, a
+  movie's duration, and whether its input is registered; with the pure
+  detail-line rule (date, then duration or size) and the rows-from-media
+  builder the tests exercise.
+- `LibraryPreferences` — the Library's height: machine-local `UserDefaults`
+  on the `SidebarPreferences` pattern, with the pure clamp keeping the
+  Library at or above its minimum and the inspector above its own.
 - `InspectorCommands` — the View menu's Show/Hide Inspector item, ⌥⌘I, beside
   the sidebar's; `InspectorButton` is the same toggle as the toolbar's
   trailing-most item, each under its own tap.
@@ -1171,7 +1251,9 @@ surface is:
   undo step, and one `tap` per committed field or click.
 - `LayerInspectorUnit` — the pure, unit-tested pixels/percent conversion the
   fields read and write, whole pixels rounded so a value round-trips.
-- `LayerPlacement` — the pure, unit-tested placement presets: nine anchors
+- `LayerPlacement` — the pure, unit-tested placement presets — plus `fullFrame`
+  and `fitting(inputAspect:in:)`, the letterboxed or pillarboxed frame a new
+  media layer takes so a picture is shown whole, never stretched: nine anchors
   that move a layer (edge anchors keeping `ProgramLayout.insetMargin` while
   the layer spans less than half the program, flush otherwise) and three
   sizes that resize it, so Inset then Bottom Right is the built-in

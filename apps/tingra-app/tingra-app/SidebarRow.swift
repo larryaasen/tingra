@@ -12,7 +12,7 @@ import TingraAudio
 import TingraComposition
 import TingraPlugInKit
 
-/// One row of the main window's sidebar (``SidebarView``): the name to draw,
+/// One row of the main window's sidebar (``LeadingSidebar``): the name to draw,
 /// the identity to draw it by, and — for the rows that stage — what that row's
 /// lamp reads.
 ///

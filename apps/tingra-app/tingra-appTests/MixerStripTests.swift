@@ -56,6 +56,19 @@ struct MixerStripTests {
         #expect(strips.map(\.isMuted) == [true, false])
     }
 
+    @Test("seeding never unmutes a media file's sound, even when it sorts first")
+    @MainActor
+    func seedingSkipsMediaSortingFirst() {
+        // A movie's audio strip is authored content the operator added, not
+        // what they asked to hear by launching the app; the microphone is.
+        let strips = MixerStrip.seed(from: [
+            Self.choice("Ad.mov", kind: .media),
+            Self.choice("MacBook Pro Microphone"),
+        ])
+
+        #expect(strips.map(\.isMuted) == [true, false])
+    }
+
     @Test("seeding with only generators leaves every strip muted")
     @MainActor
     func seedingWithOnlyGeneratorsMutesEverything() {

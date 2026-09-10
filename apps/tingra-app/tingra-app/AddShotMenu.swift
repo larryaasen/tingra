@@ -22,7 +22,7 @@ import TingraPlugInKit
 /// or from the menu bar.
 enum AddShotMenuSurface: Sendable, CaseIterable {
     /// The Add Shot submenu of the sidebar's Shots section header context
-    /// menu (``SidebarView``).
+    /// menu (``LeadingSidebar``).
     case sidebar
 
     /// The plus button beside the **Shots** heading over the shot bank

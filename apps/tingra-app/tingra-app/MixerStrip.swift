@@ -71,7 +71,10 @@ struct MixerStrip: Identifiable, Equatable {
     /// - Parameter inputs: The discovered audio inputs, in listing order.
     /// - Returns: One strip per input.
     static func seed(from inputs: [EngineModel.InputChoice]) -> [MixerStrip] {
-        let liveID = inputs.first { $0.kind != .generator }?.id
+        // A device, never a generator or a media file: the seed is what is
+        // live out of the box, and neither a test tone nor a movie's sound
+        // is what an operator asked for by launching the app.
+        let liveID = inputs.first { $0.kind != .generator && $0.kind != .media }?.id
         return inputs.map { input in
             MixerStrip(id: input.id, name: input.name, level: 1, pan: 0, isMuted: input.id != liveID)
         }

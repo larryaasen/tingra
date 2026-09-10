@@ -188,7 +188,7 @@ struct SettingsView: View {
                 }
                 .tag(pane)
             }
-            // The source-list style, the same one ``SidebarView`` uses. It is
+            // The source-list style, the same one ``LeadingSidebar`` uses. It is
             // what makes the column run the **full height of the window** —
             // up behind the close/minimize/zoom buttons, the way Xcode's
             // settings sidebar does — rather than sitting in the content area

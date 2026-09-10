@@ -22,13 +22,9 @@ struct LayerInspectorColumn: View {
     /// The engine model whose selected layer the column inspects.
     @Bindable var model: EngineModel
 
-    /// The column's width bounds: wide enough for two fields beside a label,
-    /// never so wide it starves the monitors.
-    private static let minimumWidth: CGFloat = 280
-    private static let idealWidth: CGFloat = 320
-    private static let maximumWidth: CGFloat = 440
-
-    /// The column: the inspector over the selection, or the empty state.
+    /// The trailing sidebar's upper pane: the inspector over the selection,
+    /// or the empty state. The sidebar's width bounds live on
+    /// ``TrailingSidebar``, which holds this above the Library.
     var body: some View {
         Group {
             if let selection = model.selectedLayer, let edited = model.editedShot {
@@ -55,7 +51,6 @@ struct LayerInspectorColumn: View {
                 }
             }
         }
-        .inspectorColumnWidth(min: Self.minimumWidth, ideal: Self.idealWidth, max: Self.maximumWidth)
     }
 
     /// The lamp's diameter in the title, sized to the text it sits with.

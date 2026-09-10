@@ -24,9 +24,9 @@ A project is the saved file for an entire show. A project contains presets. A pr
 
 **Shot bank** — the row of shot tiles under the main window's monitors: one thumbnail tile per shot of the active preset, in switcher order, tally-bordered, clicked to stage. It is the switcher's row of shot buttons with a picture on each, and the place an input becomes a shot — by drag from the sidebar, by the Add Shot menu behind the plus button beside the Shots heading (the same items the Shots menu and the sidebar's Shots section header offer), or as the dashed transient tile a sidebar click stages.
 
-**Inspector** — the trailing column of the main window holding the selected layer's controls: its input, its position and size in program pixels or percent, placement presets, opacity, and its effect chain. Shown or hidden with ⌥⌘I or the toolbar's trailing button; empty until a layer is selected in the layer list or on the preview monitor.
+**Inspector** — the pane in the main window's trailing sidebar holding the selected layer's controls: its input, its position and size in program pixels or percent, placement presets, opacity, and its effect chain. Shown or hidden with ⌥⌘I or the toolbar's trailing button; empty until a layer is selected in the layer list or on the preview monitor.
 
-**Library** — the panel at the bottom of the inspector column, under the layer inspector and behind a draggable splitter, listing the files a show produces and uses in three tabs: media, snapshots, and recordings. One list shape for all three — thumbnail, date, size or duration, Quick Look, Reveal in Finder, delete (planned at roadmap step 10).
+**Library** — the pane at the bottom of the trailing sidebar, under the inspector and behind a draggable splitter, listing the files a show produces and uses in three tabs: media, snapshots, and recordings. One list shape for all three — thumbnail, date, size or duration, Quick Look, Reveal in Finder, delete (planned at roadmap step 10).
 
 **Preset** — a long term, persisted collection of settings you switch between during a live session and keep across sessions: its shots, layer arrangements, audio configuration, and connected inputs. Switching presets is seamless and does not interrupt what is already playing out.
 
@@ -57,6 +57,8 @@ A project is the saved file for an entire show. A project contains presets. A pr
 **Monitor** — an operator-facing view or output of a bus: the on-screen program and preview monitors, and the **audio monitor** — the program mix played to an output device the operator chooses, at a monitor level, so they hear what viewers hear. Nothing a monitor shows or plays reaches viewers, and no monitor control changes what does: the monitor level is the operator's own listening volume, never a stage of the program.
 
 **Snapshot** — a still image of whatever frame a monitor is showing — program, preview, a multiview tile, or a layer monitor — saved as an ordinary image file and listed in the Library's Snapshots tab. Being a still, a snapshot can go straight onto a layer as media (planned at roadmap step 10).
+
+**Sidebar** — one of the main window's side containers, named for where it sits: the **leading sidebar** on the left (presets, shots, inputs, media, destinations) and the **trailing sidebar** on the right (the inspector over the Library). A sidebar is a generic container; the **panes** inside it are whatever the window puts there, and a pane may move from one sidebar to another — or to a bottom sidebar, should one arrive — without changing what it is (Larry, 2026-09-10).
 
 **Status bar** — the strip across the bottom of the main window and the multiview window saying whether the program is being **recorded** and whether it is being **streamed**, with the recording's elapsed time and the stream's delivery rate. It reports and never acts: every control that starts or stops either one lives in its own panel. Shown by default; the View menu (⌘/) and General settings both hide it.
 

@@ -27,7 +27,7 @@ import TingraPlugInKit
 /// reads cannot differ between surfaces.
 ///
 /// Presets are not here at all: the sidebar's Presets section switches among
-/// — and manages — the project's presets (``SidebarView``), and a second row
+/// — and manages — the project's presets (``LeadingSidebar``), and a second row
 /// of them across the content only repeated what that list already says
 /// (removed 2026-09-06; ARCHITECTURE.md, "Multiple presets in the UI").
 /// Shots are the bank's (``ShotBankView``): one tile per shot of the active
@@ -165,11 +165,12 @@ struct ContentView: View {
                 .padding(Self.columnPadding)
             }
         }
-        // The selected layer's controls, in a trailing column beside the
+        // The selected layer's controls, in the trailing sidebar beside the
         // monitors whose handles they describe — outside the scroll, and
-        // inside the status bar's inset so the bar runs under both.
+        // inside the status bar's inset so the bar runs under both — with
+        // the Library beneath them behind a draggable splitter.
         .inspector(isPresented: $isInspectorPresented) {
-            LayerInspectorColumn(model: model)
+            TrailingSidebar(model: model)
         }
         .shotRenameDialog(model: model, surface: .switcher, shot: $shotBeingRenamed, text: $renameText)
         .sheet(isPresented: $isCustomSizePresented) {
@@ -189,7 +190,7 @@ struct ContentView: View {
         // Only the *effect* of a casting change lives here — it must run
         // however the value changed, including when the model assigns the
         // default at boot. The `tap` rides the pickers' own bindings instead
-        // (``SidebarView``'s camera and display headings), because only the
+        // (``LeadingSidebar``'s camera and display headings), because only the
         // control can say the operator acted.
         .onChange(of: model.selectedCameraID) { _, _ in
             Task { await model.reconfigure() }

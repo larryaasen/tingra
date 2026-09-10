@@ -7,9 +7,11 @@
 //  SPDX-License-Identifier: MIT
 //
 
+import AVFoundation
 import CoreGraphics
 import CoreVideo
 import Foundation
+import ImageIO
 import Observation
 import Synchronization
 import TingraAudio
@@ -19,9 +21,11 @@ import TingraEffectPlugIns
 import TingraEventBus
 import TingraGeneratorPlugIns
 import TingraHost
+import TingraMediaPlugIns
 import TingraOutputPlugIns
 import TingraPlugInKit
 import TingraRecordingPlugIns
+import UniformTypeIdentifiers
 
 /// The app's engine model: the one `@Observable` that boots the host,
 /// activates the first-party plug-ins, and drives the compositor for the
@@ -539,8 +543,209 @@ final class EngineModel {
         case .display: "display"
         case .generator: "rectangle.checkered"
         case .microphone: "mic"
+        // A media input's symbol says what kind of file it is, resolved
+        // from the item's content type (ARCHITECTURE.md, "Media inputs and
+        // the Library's Media tab").
+        case .media:
+            LibraryItem.kind(of: mediaItem(forInput: id).flatMap { MediaRegistry.contentType(of: $0.url) }).symbol
         case nil: "exclamationmark.triangle"
         }
+    }
+
+    // MARK: Media
+
+    /// The files the project holds as media, in the order added — the
+    /// document's list, from which each launch asks the media registry for
+    /// the inputs (ARCHITECTURE.md, "Media inputs and the Library's Media
+    /// tab"). An item whose file is missing stays listed and dormant.
+    private(set) var media: [ProjectMedia] = []
+
+    /// Movie durations by item, loaded as each movie registers, so the
+    /// Library shows a movie's length where it shows a still's size.
+    private(set) var mediaDurations: [MediaID: TimeInterval] = [:]
+
+    /// Each media item's picture size in pixels, read from the file as it
+    /// registers — an image's pixel size with its orientation applied, a
+    /// movie's track size with its transform applied, the text canvas —
+    /// so a layer can be fitted to the picture before the input has
+    /// delivered a frame (``newLayerFrame(forInput:)``).
+    private(set) var mediaSizes: [MediaID: CGSize] = [:]
+
+    /// The content types the registered media providers open — what the
+    /// Library's importer and drop target accept. Snapshotted after the
+    /// plug-ins activate.
+    private(set) var mediaContentTypes: [UTType] = []
+
+    /// The media registry the media plug-in registers its providers into and
+    /// the model resolves each added file through.
+    @ObservationIgnored private let mediaRegistry = MediaRegistry()
+
+    /// The media item whose input has the given identifier, if any — the
+    /// item's id *is* the input's.
+    ///
+    /// - Parameter id: An input identifier.
+    /// - Returns: The item, or nil for an input that is not media.
+    func mediaItem(forInput id: InputID) -> ProjectMedia? {
+        media.first { $0.id.inputID == id }
+    }
+
+    /// The frame a new layer bound to the given input takes: the whole
+    /// program, as always — except a media input whose picture size the
+    /// app read when the file was added, which is **fitted**: letterboxed or
+    /// pillarboxed to show the picture whole, never stretched (found on the
+    /// Library's first use, 2026-09-10; ARCHITECTURE.md, "Media inputs and
+    /// the Library's Media tab"). A camera keeps the full frame: its shape
+    /// is unknown until it delivers, and Match Input is the way back.
+    ///
+    /// - Parameter id: The input the layer binds to.
+    /// - Returns: The layer's normalized frame.
+    func newLayerFrame(forInput id: InputID) -> CGRect {
+        guard let item = mediaItem(forInput: id), let size = mediaSizes[item.id], size.height > 0 else {
+            return LayerPlacement.fullFrame
+        }
+        return LayerPlacement.fitting(inputAspect: size.width / size.height, in: programAspectRatio)
+    }
+
+    /// Adds files to the project as media: each becomes an item and, when a
+    /// registered provider opens it, an input the sidebar lists and a layer
+    /// can bind to. A file no provider opens, or that cannot be read, is
+    /// reported and skipped. The document autosaves when anything was added.
+    ///
+    /// - Parameter urls: The files to add.
+    func addMedia(urls: [URL]) async {
+        var added = false
+        for url in urls {
+            let item = ProjectMedia(url: url)
+            guard await registerMedia(item) else { continue }
+            media.append(item)
+            added = true
+            eventBus.event(
+                "media.added",
+                domain: .capture,
+                params: [
+                    "id": .string(item.id.rawValue),
+                    "name": .string(item.name),
+                    "type": .string(MediaRegistry.contentType(of: url)?.identifier ?? ""),
+                ]
+            )
+        }
+        guard added else { return }
+        await readDeviceLists()
+        await refreshMixerStrips()
+        scheduleAutosave()
+    }
+
+    /// Removes a media item from the project and its input from the
+    /// registry; the reconfigure pass stops it if it was playing. **Never
+    /// edits shots**: a layer bound to the item stays bound and dormant, the
+    /// removed-device semantic, and the file itself is untouched.
+    ///
+    /// - Parameter id: The item to remove.
+    func removeMedia(_ id: MediaID) async {
+        guard let index = media.firstIndex(where: { $0.id == id }) else { return }
+        let item = media.remove(at: index)
+        mediaDurations[id] = nil
+        await registry.unregister(id.inputID)
+        eventBus.event(
+            "media.removed",
+            domain: .capture,
+            params: ["id": .string(item.id.rawValue), "name": .string(item.name)]
+        )
+        await readDeviceLists()
+        await refreshMixerStrips()
+        await reconfigure()
+        scheduleAutosave()
+    }
+
+    /// Registers the inputs for the loaded project's media list, at boot.
+    /// An item that cannot register stays in the list, dormant.
+    private func registerProjectMedia() async {
+        for item in media {
+            _ = await registerMedia(item)
+        }
+    }
+
+    /// Makes and registers the input for one media item, and loads a
+    /// movie's duration for the Library.
+    ///
+    /// - Parameter item: The item to register.
+    /// - Returns: Whether the input registered. A missing file is reported
+    ///   as `media.unavailable` (an ordinary event: the file moved, the
+    ///   disconnected-device case); a file no provider opens, or one the
+    ///   registry refuses, as a `media.add` error.
+    private func registerMedia(_ item: ProjectMedia) async -> Bool {
+        let url = item.url
+        guard FileManager.default.isReadableFile(atPath: item.path) else {
+            eventBus.event(
+                "media.unavailable",
+                domain: .capture,
+                params: ["id": .string(item.id.rawValue), "name": .string(item.name)]
+            )
+            return false
+        }
+        do {
+            let input = try await mediaRegistry.makeInput(for: url, id: item.id.inputID)
+            try await registry.register(input)
+        } catch {
+            eventBus.error(
+                "media.add",
+                domain: .capture,
+                params: [
+                    "id": .string(item.id.rawValue),
+                    "name": .string(item.name),
+                    "error": .string(String(describing: error)),
+                ]
+            )
+            return false
+        }
+        let type = MediaRegistry.contentType(of: url)
+        if type?.conforms(to: .movie) == true,
+            let duration = try? await AVURLAsset(url: url).load(.duration), duration.isNumeric
+        {
+            mediaDurations[item.id] = duration.seconds
+        }
+        if let size = await Self.pictureSize(of: url, type: type) {
+            mediaSizes[item.id] = size
+        }
+        return true
+    }
+
+    /// A media file's picture size in pixels, read without decoding it: an
+    /// image's properties with the EXIF orientation applied, a movie's video
+    /// track size with its preferred transform applied, or the text canvas
+    /// for a document. Nil when the file says nothing usable.
+    ///
+    /// - Parameters:
+    ///   - url: The file.
+    ///   - type: Its content type, or nil when unknown.
+    /// - Returns: The picture size, or nil.
+    nonisolated static func pictureSize(of url: URL, type: UTType?) async -> CGSize? {
+        guard let type else { return nil }
+        if type.conforms(to: .movie) {
+            guard let track = try? await AVURLAsset(url: url).loadTracks(withMediaType: .video).first,
+                let (natural, transform) = try? await track.load(.naturalSize, .preferredTransform)
+            else { return nil }
+            let transformed = natural.applying(transform)
+            let size = CGSize(width: abs(transformed.width), height: abs(transformed.height))
+            return size.width > 0 && size.height > 0 ? size : nil
+        }
+        if type.conforms(to: .image) {
+            guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+                let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+                let width = properties[kCGImagePropertyPixelWidth] as? Double,
+                let height = properties[kCGImagePropertyPixelHeight] as? Double,
+                width > 0, height > 0
+            else { return nil }
+            // Orientations 5 through 8 are rotated a quarter turn, so the
+            // picture the operator sees has the file's width and height
+            // swapped (the image input applies the same transform).
+            let orientation = properties[kCGImagePropertyOrientation] as? UInt32 ?? 1
+            return orientation >= 5 ? CGSize(width: height, height: width) : CGSize(width: width, height: height)
+        }
+        if type.conforms(to: .plainText) {
+            return CGSize(width: TextInput.canvasSize.width, height: TextInput.canvasSize.height)
+        }
+        return nil
     }
 
     // MARK: Layer editing session state
@@ -587,8 +792,12 @@ final class EngineModel {
     /// - Parameter id: The input to read.
     /// - Returns: The aspect ratio, or nil.
     func inputAspectRatio(for id: InputID) -> CGFloat? {
-        guard let extent = inputExtent(for: id) else { return nil }
-        return extent.width / extent.height
+        if let extent = inputExtent(for: id) {
+            return extent.width / extent.height
+        }
+        // A media file's shape is known from the file before it plays.
+        guard let item = mediaItem(forInput: id), let size = mediaSizes[item.id], size.height > 0 else { return nil }
+        return size.width / size.height
     }
 
     /// A layer's picture aspect ratio, width over height in pixels: the
@@ -1205,15 +1414,17 @@ final class EngineModel {
             inputs: registry,
             outputs: outputs,
             effects: effects,
-            tools: UnusedToolRegistering()
+            tools: UnusedToolRegistering(),
+            media: mediaRegistry
         )
         await PlugInLoader().activate(
             [
                 AVFoundationCapturePlugIn(), ScreenCaptureKitCapturePlugIn(), GeneratorPlugIn(),
-                HaishinKitOutputPlugIn(), EffectPlugIn(), RecordingPlugIn(),
+                HaishinKitOutputPlugIn(), EffectPlugIn(), RecordingPlugIn(), MediaPlugIn(),
             ],
             in: context
         )
+        mediaContentTypes = await mediaRegistry.acceptedContentTypes
         // The recordings folder's free space is read once the engine is up and
         // again whenever the folder, the container, or a finished recording
         // can have changed the answer — never on a timer.
@@ -1231,6 +1442,13 @@ final class EngineModel {
 
         await readDeviceLists()
         loadProject()
+        // The project's media registers after the document is read and
+        // before the lists are used: each item becomes an input the
+        // sidebar, the layer editor, and the strips then see.
+        if !media.isEmpty {
+            await registerProjectMedia()
+            await readDeviceLists()
+        }
         await loadDestinations()
         // The strips merge the loaded preset's authored audio channels with
         // discovery — the seed policy (first audio input unmuted) is the
@@ -2460,11 +2678,12 @@ final class EngineModel {
     /// - Parameter input: The input to stage.
     func stagePreview(showing input: InputID) async {
         guard hasSessionPreset else { return }
-        if let existing = ShotEdit.shot(in: shots, showingOnly: input) {
+        let frame = newLayerFrame(forInput: input)
+        if let existing = ShotEdit.shot(in: shots, showingOnly: input, frame: frame) {
             setPreview(existing.id)
             return
         }
-        let shot = ShotEdit.shot(showing: input, named: inputName(for: input))
+        let shot = ShotEdit.shot(showing: input, named: inputName(for: input), frame: frame)
         shots.append(shot)
         compositor.addShot(shot)
         // Staging the new shot is also what discards the transient shot it
@@ -2492,7 +2711,8 @@ final class EngineModel {
     ///     a transient one, which stays last as the bank's dashed tile.
     func addShot(showing input: InputID, at index: Int? = nil) async {
         guard hasSessionPreset else { return }
-        let shot = ShotEdit.shot(showing: input, named: inputName(for: input), origin: .authored)
+        let shot = ShotEdit.shot(
+            showing: input, named: inputName(for: input), origin: .authored, frame: newLayerFrame(forInput: input))
         let end = shots.firstIndex { $0.origin == .automatic } ?? shots.count
         let position = min(max(index ?? end, 0), shots.count)
         shots.insert(shot, at: position)
@@ -2851,7 +3071,8 @@ final class EngineModel {
     ///
     /// - Parameter input: The input the new layer binds to.
     func addLayer(boundTo input: InputID) async {
-        applyShotEdit(.addLayer) { LayerTreeEdit.addingLayer(boundTo: input, to: $0) }
+        let frame = newLayerFrame(forInput: input)
+        applyShotEdit(.addLayer) { LayerTreeEdit.addingLayer(boundTo: input, to: $0, frame: frame) }
         await reconfigure()
     }
 
@@ -3936,6 +4157,9 @@ final class EngineModel {
                 // no-op when the format is the one it was built with.
                 format = project.programFormat ?? ProgramFormat()
                 compositor.setFormat(format)
+                // The media list is the document's; its inputs register once
+                // the load returns (``registerProjectMedia()``).
+                media = project.media ?? []
             }
         } catch {
             eventBus.error(
@@ -4146,7 +4370,8 @@ final class EngineModel {
         let project = Project(
             presets: presets,
             destinations: DestinationEdit.references(from: destinations),
-            programFormat: format == ProgramFormat() ? nil : format
+            programFormat: format == ProgramFormat() ? nil : format,
+            media: media.isEmpty ? nil : media
         )
         do {
             try store.save(project)

@@ -585,6 +585,40 @@
         }
       }
     },
+    "Add images, movies, or text files to the project" : {
+      "comment" : "Tooltip on the Library's Add Media button",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bilder, Filme oder Textdateien zum Projekt hinzufügen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Añadir imágenes, películas o archivos de texto al proyecto"
+          }
+        }
+      }
+    },
+    "Add images, movies, or text files, or drop them here." : {
+      "comment" : "Library empty state description",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Füge Bilder, Filme oder Textdateien hinzu oder lege sie hier ab."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Añade imágenes, películas o archivos de texto, o suéltalos aquí."
+          }
+        }
+      }
+    },
     "Add Layer" : {
       "comment" : "Menu adding a layer bound to an input",
       "localizations" : {
@@ -598,6 +632,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Añadir capa"
+          }
+        }
+      }
+    },
+    "Add Media…" : {
+      "comment" : "Library button adding files to the project as media",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Medien hinzufügen…"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Añadir medios…"
           }
         }
       }
@@ -1540,6 +1591,23 @@
         }
       }
     },
+    "Drag to resize the Library" : {
+      "comment" : "Accessibility label of the splitter above the Library panel",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ziehen, um die Größe der Bibliothek zu ändern"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Arrastra para cambiar el tamaño de la Biblioteca"
+          }
+        }
+      }
+    },
     "Duplicate" : {
       "comment" : "Context menu: duplicate this shot or preset",
       "localizations" : {
@@ -2323,6 +2391,23 @@
         }
       }
     },
+    "Library" : {
+      "comment" : "Heading of the Library panel listing the show's files",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bibliothek"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Biblioteca"
+          }
+        }
+      }
+    },
     "Light" : {
       "comment" : "Appearance option: always draw the app light",
       "localizations" : {
@@ -2563,6 +2648,23 @@
         }
       }
     },
+    "Media" : {
+      "comment" : "Sidebar section heading over the project's media files",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Medien"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Medios"
+          }
+        }
+      }
+    },
     "Meter" : {
       "comment" : "Help tag and accessibility label of a channel strip's meter",
       "localizations" : {
@@ -2610,6 +2712,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Micrófonos como entradas."
+          }
+        }
+      }
+    },
+    "Missing file" : {
+      "comment" : "Tooltip on a Library row whose file is not at its path",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Datei fehlt"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Archivo no encontrado"
           }
         }
       }
@@ -3158,6 +3277,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Sin capas"
+          }
+        }
+      }
+    },
+    "No Media" : {
+      "comment" : "Library empty state title",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Medien"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sin medios"
+          }
+        }
+      }
+    },
+    "No media added — add files in the Library" : {
+      "comment" : "Sidebar placeholder when the project holds no media files",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Medien hinzugefügt – Dateien in der Bibliothek hinzufügen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No hay medios añadidos: añade archivos en la Biblioteca"
           }
         }
       }
@@ -3751,6 +3904,23 @@
         }
       }
     },
+    "Quick Look" : {
+      "comment" : "Library row context menu item opening the file in Quick Look",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Übersicht"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vista rápida"
+          }
+        }
+      }
+    },
     "Quit Tingra" : {
       "comment" : "App menu item that quits the app",
       "localizations" : {
@@ -4023,6 +4193,23 @@
         }
       }
     },
+    "Remove from Project" : {
+      "comment" : "Library row context menu item removing the file from the project",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aus dem Projekt entfernen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quitar del proyecto"
+          }
+        }
+      }
+    },
     "Remove Layer" : {
       "comment" : "Button removing the selected layer",
       "localizations" : {
@@ -4280,7 +4467,7 @@
       }
     },
     "Reveal in Finder" : {
-      "comment" : "Logging settings: button that shows the log file in the Finder",
+      "comment" : "Logging settings: button that shows the log file in the Finder\nMenu item that reveals the file in Finder",
       "localizations" : {
         "de" : {
           "stringUnit" : {

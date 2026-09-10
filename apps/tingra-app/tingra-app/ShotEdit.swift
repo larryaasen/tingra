@@ -7,6 +7,7 @@
 //  SPDX-License-Identifier: MIT
 //
 
+import CoreGraphics
 import Foundation
 import TingraComposition
 import TingraPlugInKit
@@ -56,9 +57,14 @@ enum ShotEdit {
     ///   - name: The shot's user-facing name — the input's own name, so the
     ///     tile reads as the thing the operator chose.
     ///   - origin: Who made the shot (default: the app, transient).
+    ///   - frame: The layer's normalized frame (default: the whole program;
+    ///     a media file passes the frame fitting its picture).
     /// - Returns: The new shot.
-    static func shot(showing input: InputID, named name: String, origin: ShotOrigin = .automatic) -> Shot {
-        LayerTreeEdit.addingLayer(boundTo: input, to: Shot(name: name, origin: origin))
+    static func shot(
+        showing input: InputID, named name: String, origin: ShotOrigin = .automatic,
+        frame: CGRect = LayerPlacement.fullFrame
+    ) -> Shot {
+        LayerTreeEdit.addingLayer(boundTo: input, to: Shot(name: name, origin: origin), frame: frame)
     }
 
     /// The shot as the operator's own: an automatic shot becomes authored,
@@ -119,9 +125,11 @@ enum ShotEdit {
     /// - Parameters:
     ///   - shots: The shots to search, in switcher order.
     ///   - input: The input the shot must show alone.
+    ///   - frame: The frame the input's own shot would give its layer
+    ///     (default: the whole program).
     /// - Returns: The first matching shot, or nil when none does.
-    static func shot(in shots: [Shot], showingOnly input: InputID) -> Shot? {
-        let layers = shot(showing: input, named: "").layers
+    static func shot(in shots: [Shot], showingOnly input: InputID, frame: CGRect = LayerPlacement.fullFrame) -> Shot? {
+        let layers = shot(showing: input, named: "", frame: frame).layers
         return shots.first { $0.layers == layers }
     }
 

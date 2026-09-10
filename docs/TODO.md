@@ -1218,15 +1218,25 @@ or two in the doc that owns them — none need a rewrite.
     from pixel rate, anchored at 1080p30 = 4500k, used by the app's streaming
     and recording configurations; CLI and MCP unchanged. 8K reachable through
     Custom but not advertised; HEVC deferred to a Streaming pane choice.
-  - [ ] **Media inputs (`packages/TingraMediaPlugIns`) and the Library's Media
-    tab.** Still images (ImageIO), video files (AVFoundation, audio as a
-    channel strip), text and Markdown (Core Text), each an `Input` plug-in
-    under a new `InputKind.media`; a project-scoped media list; a sidebar
-    Media section with the camera rows' staging and drag affordances;
-    playback mode per layer. The **Library** panel arrives here: the bottom
-    of the trailing column, under the layer inspector, behind a draggable
-    splitter whose position persists — one file-list component shared by all
-    three tabs.
+  - [x] **Media inputs (`packages/TingraMediaPlugIns`) and the Library's Media
+    tab** *(decided, approved, and built 2026-09-10; record in
+    ARCHITECTURE.md, "Media inputs and the Library's Media tab")*. A
+    `MediaInputProvider` seam in `TingraPlugInKit` (a provider per content
+    type, resolved by a host `MediaRegistry` the way `OutputRegistry`
+    resolves a scheme) under a new `InputKind.media`; `Project.media` as one
+    optional key of `ProjectMedia` items (id, absolute path, cached name — no
+    bookmarks, the app is not sandboxed), the item's id doubling as the
+    `InputID`; the app adds and removes, the existing reconfigure pass starts
+    and stops. Three providers: still images (ImageIO, one held frame), video
+    files (`AVAssetReader`, clock-paced, looping, the audio track as a
+    channel strip muted at unity), and text/Markdown (a transparent
+    1920×1080 canvas). The **Library** panel arrives here: the bottom of the
+    trailing column, under the layer inspector, behind a SwiftUI splitter
+    whose height persists; one `LibraryList` component; the Media tab alone
+    until Snapshots adds the tab strip. A sidebar Media section with the
+    camera rows' staging and drag affordances. Deferred to the next slice:
+    per-layer playback (once/loop/hold, restart on take); file watching;
+    typography controls.
   - [ ] **Snapshots.** A still written to a Snapshots folder from any monitor
     (program, preview, a multiview tile, the layer monitor) off the
     compositor's existing accessors; the Library's Snapshots tab; a snapshot

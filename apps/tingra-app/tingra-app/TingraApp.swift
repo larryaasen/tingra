@@ -67,12 +67,12 @@ struct TingraApp: App {
     /// window it can open, and the settings window (``SettingsView``).
     ///
     /// The main window is a two-column `NavigationSplitView`: the shot and
-    /// device sidebar on the leading edge (``SidebarView``) beside the
+    /// device sidebar on the leading edge (``LeadingSidebar``) beside the
     /// production surfaces (``ContentView``). A standard split view rather
     /// than a hand-built column, because the standard sidebar is what carries
     /// the system's own material — Liquid Glass on macOS 26 — its collapse and
     /// resize behavior, and its toolbar toggle, none of which an app should
-    /// reimplement (see ``SidebarView``). The detail column keeps the minimum
+    /// reimplement (see ``LeadingSidebar``). The detail column keeps the minimum
     /// size the production surfaces need, so the sidebar's own minimum widens
     /// the window rather than squeezing them.
     ///
@@ -80,13 +80,13 @@ struct TingraApp: App {
     /// whole split view, which is where every macOS window that has both puts
     /// it: a sidebar's material runs the full height of the window, so a bar
     /// drawn across the bottom of it would cut the one surface the system draws
-    /// for us (see ``SidebarView``). A bottom safe-area inset rather than a
+    /// for us (see ``LeadingSidebar``). A bottom safe-area inset rather than a
     /// row in the stack, so it stays put while the production surfaces scroll
     /// (``StatusBarView``).
     var body: some Scene {
         WindowGroup {
             NavigationSplitView(columnVisibility: $sidebarVisibility) {
-                SidebarView(model: model)
+                LeadingSidebar(model: model)
             } detail: {
                 ContentView(
                     model: model,

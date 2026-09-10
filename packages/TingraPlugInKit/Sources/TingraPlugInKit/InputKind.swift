@@ -33,4 +33,15 @@ public enum InputKind: String, Sendable, Codable, CaseIterable {
     /// stable identifiers (`--video-generator bars`, `--audio-generator
     /// tone`) and do not appear in the `devices` listing.
     case generator
+
+    /// Media: an input whose content comes from a file the operator added
+    /// to the project — a still image, a video file, a text or Markdown
+    /// document (see GLOSSARY.md). Added rather than discovered, so media
+    /// inputs are created by a ``MediaInputProvider`` for a given file and
+    /// registered by the host on the project's behalf, never at plug-in
+    /// activation. The last kind added before the plug-in API tags 1.0.0:
+    /// a new case breaks exhaustive switches in third-party code, so any
+    /// later kind is a major (ARCHITECTURE.md, "Media inputs and the
+    /// Library's Media tab").
+    case media
 }

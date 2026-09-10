@@ -82,6 +82,9 @@ extension CaptureInputError: CustomStringConvertible {
             // A generator has no device and is never denied; named for
             // exhaustiveness only.
             case .generator: permission = "Capture"
+            // A media file needs no TCC grant either; named for
+            // exhaustiveness only.
+            case .media: permission = "Capture"
             }
             return """
                 \(permission) access for the input '\(id.rawValue)' was denied. Grant it in \

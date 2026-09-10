@@ -281,6 +281,17 @@ streaming. AVFoundation is imported only inside this package (behind the
 
 **Types:** [`TingraRecordingPlugIns` in TYPES.md](docs/TYPES.md#packagestingrarecordingplugins)
 
+### `packages/TingraMediaPlugIns`
+
+The first party media plug-in: file-backed content as inputs — still images
+(ImageIO), video files (AVFoundation, the file's audio arriving as a channel
+strip), and text or Markdown documents (Core Text) — each a `MediaInputProvider`
+registered through the media seam, so a file the operator adds to a project
+becomes an `Input` like any camera. Every further content type is one more
+provider, first- or third-party; the package imports no third-party code.
+
+**Types:** [`TingraMediaPlugIns` in TYPES.md](docs/TYPES.md#packagestingramediaplugins)
+
 ### `packages/TingraMCP`
 
 The MCP/Control service (see [MCP.md](docs/MCP.md)): the hand-rolled MCP

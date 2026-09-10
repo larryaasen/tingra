@@ -17,6 +17,7 @@
 		46DA99283005000000B79666 /* TingraOutputPlugIns in Frameworks */ = {isa = PBXBuildFile; productRef = 46DA99183005000000B79666 /* TingraOutputPlugIns */; };
 		46DA99293005000000B79666 /* TingraPlugInKit in Frameworks */ = {isa = PBXBuildFile; productRef = 46DA99193005000000B79666 /* TingraPlugInKit */; };
 		46DA992A3005000000B79666 /* TingraRecordingPlugIns in Frameworks */ = {isa = PBXBuildFile; productRef = 46DA991A3005000000B79666 /* TingraRecordingPlugIns */; };
+		46DA992B3005000000B79666 /* TingraMediaPlugIns in Frameworks */ = {isa = PBXBuildFile; productRef = 46DA991B3005000000B79666 /* TingraMediaPlugIns */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -64,6 +65,7 @@
 				46DA99283005000000B79666 /* TingraOutputPlugIns in Frameworks */,
 				46DA99293005000000B79666 /* TingraPlugInKit in Frameworks */,
 				46DA992A3005000000B79666 /* TingraRecordingPlugIns in Frameworks */,
+				46DA992B3005000000B79666 /* TingraMediaPlugIns in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -127,6 +129,7 @@
 				46DA99183005000000B79666 /* TingraOutputPlugIns */,
 				46DA99193005000000B79666 /* TingraPlugInKit */,
 				46DA991A3005000000B79666 /* TingraRecordingPlugIns */,
+				46DA991B3005000000B79666 /* TingraMediaPlugIns */,
 			);
 			productName = "tingra-app";
 			productReference = 46DA986230048EE400B79666 /* Tingra.app */;
@@ -196,6 +199,7 @@
 				46DA99083005000000B79666 /* XCLocalSwiftPackageReference "../../packages/TingraOutputPlugIns" */,
 				46DA99093005000000B79666 /* XCLocalSwiftPackageReference "../../packages/TingraPlugInKit" */,
 				46DA990A3005000000B79666 /* XCLocalSwiftPackageReference "../../packages/TingraRecordingPlugIns" */,
+				46DA990B3005000000B79666 /* XCLocalSwiftPackageReference "../../packages/TingraMediaPlugIns" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 46DA986330048EE400B79666 /* Products */;
@@ -556,6 +560,10 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = ../../packages/TingraRecordingPlugIns;
 		};
+		46DA990B3005000000B79666 /* XCLocalSwiftPackageReference "../../packages/TingraMediaPlugIns" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../../packages/TingraMediaPlugIns;
+		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -598,6 +606,10 @@
 		46DA991A3005000000B79666 /* TingraRecordingPlugIns */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = TingraRecordingPlugIns;
+		};
+		46DA991B3005000000B79666 /* TingraMediaPlugIns */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = TingraMediaPlugIns;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

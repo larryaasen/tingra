@@ -50,6 +50,9 @@ packages/                       # Engine libraries
   TingraRecordingPlugIns/       # First-party local recording plug-in: the AVAssetWriter-backed
                                 #   RecordingService (.mov/.mp4), through the same output seam as
                                 #   streaming; imports only AVFoundation, never HaishinKit
+  TingraMediaPlugIns/           # First-party media plug-in: still images (ImageIO), video files
+                                #   (AVFoundation), and text/Markdown (Core Text) as inputs, each a
+                                #   MediaInputProvider behind the media seam; no third-party code
   TingraMCP/                    # The MCP/Control service (see MCP.md): the hand-rolled MCP JSON-RPC
                                 #   layer, the engine daemon, the stdio<->socket proxy, and the
                                 #   first-party control tools (no third-party dependency)
@@ -211,6 +214,10 @@ packages/  TingraOutputPlugIns    →  TingraPlugInKit + TingraEventBus (same se
 packages/  TingraRecordingPlugIns →  TingraPlugInKit + TingraEventBus (same seam-only design;
                                      registers through the `OutputRegistering` seam like streaming;
                                      imports only AVFoundation, no HaishinKit)
+packages/  TingraMediaPlugIns     →  TingraPlugInKit + TingraEventBus (same seam-only design;
+                                     registers providers through the `MediaRegistering` seam,
+                                     the host's `MediaRegistry` makes the inputs per file;
+                                     ImageIO, AVFoundation, and Core Text, nothing third-party)
 packages/  TingraMCP              →  TingraHost + TingraPlugInKit + TingraEventBus (the MCP/Control
                                      service: the daemon owns the engine, so it depends on the host;
                                      the `ToolRegistering` seam itself lives in TingraPlugInKit. No
@@ -221,15 +228,17 @@ apps/      tingra-cli             →  TingraHost + TingraCapturePlugIns + Tingr
 apps/      tingra-app (phase 3)   →  TingraHost + TingraComposition + TingraAudio
                                      + TingraCapturePlugIns + TingraGeneratorPlugIns
                                      + TingraOutputPlugIns + TingraRecordingPlugIns
-                                     + TingraEffectPlugIns + TingraPlugInKit + TingraEventBus
+                                     + TingraEffectPlugIns + TingraMediaPlugIns
+                                     + TingraPlugInKit + TingraEventBus
                                      (scaffolded at step 6; gained TingraOutputPlugIns at the
                                      step-7 streaming iteration, TingraAudio at the mixer
                                      iteration, TingraEffectPlugIns at the audio effect
-                                     chain iteration, and TingraRecordingPlugIns at the
-                                     recording-in-the-app iteration; more feature plug-ins +
-                                     UI packages later. An Xcode project, so these ten arrive
-                                     as local package references on the app target, not a
-                                     Package.swift)
+                                     chain iteration, TingraRecordingPlugIns at the
+                                     recording-in-the-app iteration, and TingraMediaPlugIns
+                                     at the step-10 media iteration; more feature plug-ins +
+                                     UI packages later. An Xcode project, so these eleven
+                                     arrive as local package references on the app target,
+                                     not a Package.swift)
 apps/      ingest-simulator       →  none of the above (wraps MediaMTX; see SIMULATOR.md)
 ```
 

@@ -61,14 +61,34 @@ public struct PlugInContext: Sendable {
     /// "Tool surface").
     public let tools: any ToolRegistering
 
+    /// The media registration seam: where the plug-in registers the
+    /// ``MediaInputProvider``s it contributes during
+    /// ``PlugIn/activate(in:)`` (ARCHITECTURE.md, "Media inputs and the
+    /// Library's Media tab"). Defaults to ``UnavailableMediaRegistry`` —
+    /// a host that accepts no media constructs its context unchanged, and
+    /// a media plug-in loaded into it reports a registration error rather
+    /// than vanishing. A pre-1.0 addition, like ``effects``.
+    public let media: any MediaRegistering
+
     /// Creates the context the host hands a plug-in at activation.
+    ///
+    /// - Parameters:
+    ///   - eventBus: The host's event bus.
+    ///   - clock: The master clock.
+    ///   - inputs: The input registration seam.
+    ///   - outputs: The output registration seam.
+    ///   - effects: The effect registration seam.
+    ///   - tools: The tool registration seam.
+    ///   - media: The media registration seam (default: a registry that
+    ///     accepts no providers).
     public init(
         eventBus: EventBus,
         clock: any EngineClock,
         inputs: any InputRegistering,
         outputs: any OutputRegistering,
         effects: any EffectRegistering,
-        tools: any ToolRegistering
+        tools: any ToolRegistering,
+        media: any MediaRegistering = UnavailableMediaRegistry()
     ) {
         self.eventBus = eventBus
         self.clock = clock
@@ -76,6 +96,7 @@ public struct PlugInContext: Sendable {
         self.outputs = outputs
         self.effects = effects
         self.tools = tools
+        self.media = media
     }
 }
 

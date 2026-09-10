@@ -55,6 +55,7 @@ jobs:
           - packages/TingraEffectPlugIns
           - packages/TingraOutputPlugIns
           - packages/TingraRecordingPlugIns
+          - packages/TingraMediaPlugIns
           - packages/TingraMCP
           - apps/tingra-cli
     steps:

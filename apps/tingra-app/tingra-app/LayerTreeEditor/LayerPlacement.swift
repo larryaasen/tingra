@@ -21,6 +21,32 @@ enum LayerPlacement {
     /// anchored bottom-right lands exactly where that shot puts the camera.
     static let margin: CGFloat = ProgramLayout.insetMargin
 
+    /// The whole program, `Layer`'s own default frame.
+    static let fullFrame = CGRect(x: 0, y: 0, width: 1, height: 1)
+
+    /// The largest frame showing a picture of the given aspect whole and
+    /// centered in the program — letterboxed when the picture is wider than
+    /// the program, pillarboxed when narrower — so a media file whose shape
+    /// the app knows before it plays is never stretched to fill
+    /// (ARCHITECTURE.md, "Media inputs and the Library's Media tab"). A
+    /// degenerate aspect yields the full frame.
+    ///
+    /// - Parameters:
+    ///   - inputAspect: The picture's width over height.
+    ///   - programAspect: The program's width over height.
+    /// - Returns: The normalized, top-left-origin frame.
+    static func fitting(inputAspect: CGFloat, in programAspect: CGFloat) -> CGRect {
+        guard inputAspect > 0, programAspect > 0, inputAspect.isFinite, programAspect.isFinite else {
+            return fullFrame
+        }
+        if inputAspect >= programAspect {
+            let height = programAspect / inputAspect
+            return CGRect(x: 0, y: (1 - height) / 2, width: 1, height: height)
+        }
+        let width = inputAspect / programAspect
+        return CGRect(x: (1 - width) / 2, y: 0, width: width, height: 1)
+    }
+
     /// Where an anchor puts a layer — nine positions, corners and edge
     /// midpoints keeping the margin, the center centered.
     enum Anchor: String, CaseIterable, Sendable {

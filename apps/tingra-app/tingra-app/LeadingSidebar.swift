@@ -1,5 +1,5 @@
 //
-//  SidebarView.swift
+//  LeadingSidebar.swift
 //  tingra-app
 //
 //  Created by Larry Aasen on 2026-08-08.
@@ -104,7 +104,7 @@ import TingraPlugInKit
 /// camera indicator or opens a microphone — a camera starts when a shot
 /// references it, including the transient one a click on its row stages, and
 /// stops again when that shot is discarded.
-struct SidebarView: View {
+struct LeadingSidebar: View {
     /// The engine model. Read for every list; written only through the two
     /// preview calls a row's action makes, and the one delete its shot context
     /// menu confirms.
@@ -199,6 +199,8 @@ struct SidebarView: View {
             displaySection
 
             generatorSection
+
+            mediaSection
 
             section(
                 .audioInputs,
@@ -771,6 +773,39 @@ struct SidebarView: View {
         }
     }
 
+    /// The media section: one row per media file the project holds, staging
+    /// that file full frame on preview when clicked and lit with its tally —
+    /// the generator section over the project's files rather than the
+    /// registry's generators, with each row's symbol saying what kind of
+    /// file it is. **Adding lives in the Library alone** (one place adds,
+    /// one place stages), so the empty state points there.
+    private var mediaSection: some View {
+        stagingSection(
+            .media,
+            header: Text("Media", comment: "Sidebar section heading over the project's media files"),
+            rows: SidebarRow.rows(
+                from: model.videoInputs,
+                ofKind: .media,
+                onProgram: model.programInputIDs,
+                onPreview: model.previewInputIDs
+            ),
+            symbol: "photo",
+            emptyLabel: Text(
+                "No media added — add files in the Library",
+                comment: "Sidebar placeholder when the project holds no media files"
+            ),
+            menu: .input,
+            symbolForRow: { row in model.kindSymbol(forInput: InputID(rawValue: row.id)) }
+        ) { row in
+            model.eventBus.tap(
+                "sidebarMedia.row",
+                domain: .composition,
+                params: ["id": .string(row.id), "name": .string(row.name)]
+            )
+            Task { await model.stagePreview(showing: InputID(rawValue: row.id)) }
+        }
+    }
+
     /// One clickable section: its heading over a clickable, tally-lit row per
     /// subject, or the given caption when the section is empty.
     ///
@@ -791,6 +826,9 @@ struct SidebarView: View {
     ///     default, since every section but the presets stages).
     ///   - menu: The context menu the rows carry (``RowMenu``), or nil (the
     ///     default) for a section whose rows carry none.
+    ///   - symbolForRow: A per-row symbol overriding `symbol`, for a section
+    ///     whose rows are not all one kind of thing (the media files), or nil
+    ///     (the default) to label every row with `symbol`.
     ///   - action: What a click on a row performs, including its `tap`.
     /// - Returns: The section.
     private func stagingSection(
@@ -801,6 +839,7 @@ struct SidebarView: View {
         emptyLabel: Text,
         help: Text = Text("Stage on preview", comment: "Tooltip on an input tile that stages it on preview"),
         menu: RowMenu? = nil,
+        symbolForRow: ((SidebarRow) -> String)? = nil,
         action: @escaping (SidebarRow) -> Void
     ) -> some View {
         Section(isExpanded: expansion(of: id)) {
@@ -810,7 +849,7 @@ struct SidebarView: View {
                     .foregroundStyle(.secondary)
             } else {
                 ForEach(rows) { row in
-                    stagingRow(row, symbol: symbol, help: help, menu: menu, action: action)
+                    stagingRow(row, symbol: symbolForRow?(row) ?? symbol, help: help, menu: menu, action: action)
                 }
             }
         } header: {

@@ -130,9 +130,15 @@ struct MonitorView: NSViewRepresentable {
         return view
     }
 
-    /// Nothing to push on SwiftUI updates — the coordinator pulls the latest
-    /// frame from the source each draw.
-    func updateNSView(_ nsView: MTKView, context: Context) {}
+    /// Hands the coordinator the current source. The coordinator pulls the
+    /// latest frame from it each draw, so nothing else is pushed — but the
+    /// source itself can change under a stable view identity: a layer row
+    /// whose layer was rebound to another input keeps its row, and the
+    /// coordinator made at creation would otherwise keep drawing the old
+    /// input (found on the Library's first use, 2026-09-10).
+    func updateNSView(_ nsView: MTKView, context: Context) {
+        context.coordinator.source = source
+    }
 
     /// Draws the source's latest frame into the `MTKView`'s drawable with
     /// Core Image, GPU-resident. `@MainActor`: `MTKView` calls the delegate
@@ -143,8 +149,12 @@ struct MonitorView: NSViewRepresentable {
         /// context.
         var device: MTLDevice? { renderContext.device }
 
-        /// Where the draw loop samples its frame.
-        private let source: any MonitorFrameSource
+        /// Where the draw loop samples its frame — replaced by
+        /// ``MonitorView/updateNSView(_:context:)`` when the view's source
+        /// changes. A new source that is empty gets the one cleared drawable
+        /// an emptied source gets, so a rebound layer never shows the old
+        /// input's last frame.
+        var source: any MonitorFrameSource
 
         /// The device, queue, and Core Image context shared by every
         /// monitor in the app.

@@ -9,7 +9,7 @@
 
 import Foundation
 
-/// One collapsible section of the main window's sidebar (``SidebarView``).
+/// One collapsible section of the main window's sidebar (``LeadingSidebar``).
 ///
 /// A named case per section rather than a raw string, so the persisted key and
 /// the `tap` event name are both derived from one closed list — a section
@@ -29,6 +29,10 @@ enum SidebarSection: String, CaseIterable {
 
     /// The video generators.
     case generators
+
+    /// The project's media files (ARCHITECTURE.md, "Media inputs and the
+    /// Library's Media tab").
+    case media
 
     /// The discovered audio input devices.
     case audioInputs
@@ -57,6 +61,7 @@ enum SidebarSection: String, CaseIterable {
         case .cameras: "sidebarCameras.disclosure"
         case .displays: "sidebarDisplays.disclosure"
         case .generators: "sidebarGenerators.disclosure"
+        case .media: "sidebarMedia.disclosure"
         case .audioInputs: "sidebarAudioInputs.disclosure"
         case .audioGenerators: "sidebarAudioGenerators.disclosure"
         case .audioOutputs: "sidebarAudioOutputs.disclosure"

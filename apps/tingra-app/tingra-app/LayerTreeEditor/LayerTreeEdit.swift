@@ -41,9 +41,14 @@ enum LayerTreeEdit {
     /// - Parameters:
     ///   - input: The input whose latest frame fills the new layer.
     ///   - shot: The shot to edit.
+    ///   - frame: The new layer's normalized frame (default: the whole
+    ///     program); a media layer passes the frame fitting its picture
+    ///     (``LayerPlacement/fitting(inputAspect:in:)``).
     /// - Returns: The shot with the new layer appended on top.
-    static func addingLayer(boundTo input: InputID, to shot: Shot) -> Shot {
-        replacingLayers(of: shot, with: shot.layers + [Layer(input: input)])
+    static func addingLayer(
+        boundTo input: InputID, to shot: Shot, frame: CGRect = LayerPlacement.fullFrame
+    ) -> Shot {
+        replacingLayers(of: shot, with: shot.layers + [Layer(input: input, frame: frame)])
     }
 
     /// Removes the layer at the given bottom-to-top index.

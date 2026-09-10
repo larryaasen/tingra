@@ -62,6 +62,13 @@ public struct Project: Sendable, Equatable, Codable {
     /// — the pre-release rule, no version bump.
     public let programFormat: ProgramFormat?
 
+    /// The files the operator added to this project as media, in the order
+    /// added, or `nil` when none has been. Each item's id is also the
+    /// ``InputID`` of the input that plays it (ARCHITECTURE.md, "Media
+    /// inputs and the Library's Media tab"). An **optional key within v1**
+    /// — the pre-release rule, no version bump.
+    public let media: [ProjectMedia]?
+
     /// Creates a project.
     ///
     /// - Parameters:
@@ -71,16 +78,19 @@ public struct Project: Sendable, Equatable, Codable {
     ///     none).
     ///   - programFormat: The program's size and frame rate (default: none,
     ///     meaning 1920x1080 at 30).
+    ///   - media: The files added as media (default: none).
     public init(
         version: Int = Project.currentVersion,
         presets: [Preset] = [],
         destinations: [DestinationReference]? = nil,
-        programFormat: ProgramFormat? = nil
+        programFormat: ProgramFormat? = nil,
+        media: [ProjectMedia]? = nil
     ) {
         self.version = version
         self.presets = presets
         self.destinations = destinations
         self.programFormat = programFormat
+        self.media = media
     }
 
     /// The coding keys — stable camelCase names for the project document.
@@ -89,6 +99,7 @@ public struct Project: Sendable, Equatable, Codable {
         case presets
         case destinations
         case programFormat
+        case media
         /// Read-only: the single destination key written before a project
         /// could hold several. Decoded and folded into ``destinations``,
         /// never written again (see ``init(from:)``).
@@ -97,8 +108,8 @@ public struct Project: Sendable, Equatable, Codable {
 
     /// Decodes a project. `version` is required (a document must declare its
     /// format so future versions can migrate it) and must not exceed
-    /// ``currentVersion``; `presets`, `destinations`, `programFormat`, and
-    /// the older single `destination` are optional (a minimal document
+    /// ``currentVersion``; `presets`, `destinations`, `programFormat`,
+    /// `media`, and the older single `destination` are optional (a minimal document
     /// decodes forgivingly with them absent).
     ///
     /// A document written with the single `destination` key folds it in as
@@ -147,12 +158,14 @@ public struct Project: Sendable, Equatable, Codable {
             destinations = nil
         }
         programFormat = try container.decodeIfPresent(ProgramFormat.self, forKey: .programFormat)
+        media = try container.decodeIfPresent([ProjectMedia].self, forKey: .media)
     }
 
     /// Encodes a project, writing `version` and `presets` always and
-    /// `destinations` and `programFormat` only when set, so a project with
-    /// no destination or the default format round-trips to a document
-    /// without those keys (and reads them back as nil). The superseded
+    /// `destinations`, `programFormat`, and `media` only when set, so a
+    /// project with no destination, the default format, or no media
+    /// round-trips to a document without those keys (and reads them back
+    /// as nil). The superseded
     /// single `destination` key is never written.
     public func encode(to encoder: any Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
@@ -160,5 +173,6 @@ public struct Project: Sendable, Equatable, Codable {
         try container.encode(presets, forKey: .presets)
         try container.encodeIfPresent(destinations, forKey: .destinations)
         try container.encodeIfPresent(programFormat, forKey: .programFormat)
+        try container.encodeIfPresent(media, forKey: .media)
     }
 }
