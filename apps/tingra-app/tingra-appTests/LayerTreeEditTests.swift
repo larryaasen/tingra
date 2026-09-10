@@ -131,6 +131,62 @@ struct LayerTreeEditTests {
             #expect(edited.defaultTransition == shot.defaultTransition)
         }
     }
+
+    @Test("moving a layer to an index lands it there, clamped to the stack")
+    func movingLayerToIndex() {
+        let three = LayerTreeEdit.addingLayer(boundTo: extra, to: shot)
+        let toTop = LayerTreeEdit.movingLayer(at: 0, to: 2, in: three)
+        #expect(toTop.layers == [three.layers[1], three.layers[2], three.layers[0]])
+        let toBottom = LayerTreeEdit.movingLayer(at: 2, to: 0, in: three)
+        #expect(toBottom.layers == [three.layers[2], three.layers[0], three.layers[1]])
+        // Past the end clamps to the top; the same index is a no-op.
+        #expect(LayerTreeEdit.movingLayer(at: 0, to: 99, in: three) == toTop)
+        #expect(LayerTreeEdit.movingLayer(at: 1, to: 1, in: three) == three)
+        #expect(LayerTreeEdit.movingLayer(at: 5, to: 0, in: three) == three)
+    }
+
+    @Test("a displayed move reorders the topmost-first list the way onMove means it")
+    func movingLayersFromDisplayed() {
+        let three = LayerTreeEdit.addingLayer(boundTo: extra, to: shot)
+        // Displayed: [extra, camera, display]. Drag the top row below the
+        // last one: displayed becomes [camera, display, extra].
+        let dragged = LayerTreeEdit.movingLayers(fromDisplayed: [0], toDisplayed: 3, in: three)
+        #expect(dragged.layers == [three.layers[2], three.layers[0], three.layers[1]])
+        // Drag the bottom row to the top: displayed [display, extra, camera].
+        let raised = LayerTreeEdit.movingLayers(fromDisplayed: [2], toDisplayed: 0, in: three)
+        #expect(raised.layers == [three.layers[1], three.layers[2], three.layers[0]])
+        // Dropping a row where it already is changes nothing.
+        #expect(LayerTreeEdit.movingLayers(fromDisplayed: [1], toDisplayed: 1, in: three) == three)
+        #expect(LayerTreeEdit.movingLayers(fromDisplayed: [1], toDisplayed: 2, in: three) == three)
+        // An offset outside the list is ignored.
+        #expect(LayerTreeEdit.movingLayers(fromDisplayed: [3], toDisplayed: 0, in: three) == three)
+        #expect(LayerTreeEdit.movingLayers(fromDisplayed: [0], toDisplayed: 4, in: three) == three)
+    }
+
+    @Test("duplicating a layer inserts an identical copy directly above it")
+    func duplicatingLayer() {
+        let duplicated = LayerTreeEdit.duplicatingLayer(at: 0, in: shot)
+        #expect(duplicated.layers.count == 3)
+        #expect(duplicated.layers[0] == shot.layers[0])
+        #expect(duplicated.layers[1] == shot.layers[0])
+        #expect(duplicated.layers[2] == shot.layers[1])
+        #expect(duplicated.id == shot.id)
+        #expect(LayerTreeEdit.duplicatingLayer(at: 2, in: shot) == shot)
+    }
+
+    @Test("rebinding one layer keeps its frame, opacity, and chain, and touches no other")
+    func rebindingLayer() {
+        let rebound = LayerTreeEdit.rebindingLayer(at: 1, to: extra, in: shot)
+        #expect(rebound.layers[1].input == extra)
+        #expect(rebound.layers[1].frame == shot.layers[1].frame)
+        #expect(rebound.layers[1].opacity == shot.layers[1].opacity)
+        #expect(rebound.layers[1].effects == shot.layers[1].effects)
+        #expect(rebound.layers[0] == shot.layers[0])
+        #expect(rebound.id == shot.id)
+        // The input it already has, or an index it does not have, changes nothing.
+        #expect(LayerTreeEdit.rebindingLayer(at: 1, to: camera, in: shot) == shot)
+        #expect(LayerTreeEdit.rebindingLayer(at: 2, to: extra, in: shot) == shot)
+    }
 }
 
 @Suite("LayerTreeEdit effect chains")
@@ -251,14 +307,36 @@ struct LayerTreeEditEffectTests {
         #expect(edited.layers[0].effects?.map(\.effect.rawValue) == ["colorAdjust", "blur"])
     }
 
+    @Test("setting a color parameter stores its payload object beside the slot's numbers")
+    func settingColorParameter() {
+        let chained = Shot(
+            id: ShotID(rawValue: "shot"),
+            layers: [
+                Layer(
+                    input: InputID(rawValue: "camera"),
+                    effects: [
+                        EffectConfiguration(
+                            effect: EffectID(rawValue: "frame"), parameters: ["borderWidth": .double(0.05)])
+                    ]
+                )
+            ]
+        )
+        let red = EffectColor(red: 1, green: 0, blue: 0)
+        let edited = LayerTreeEdit.settingEffectParameter(
+            red.jsonValue, forKey: "borderColor", ofEffectAt: 0, ofLayerAt: 0, in: chained)
+        let parameters = edited.layers[0].effects?[0].parameters
+        #expect(parameters?["borderWidth"]?.doubleValue == 0.05)
+        #expect(parameters?["borderColor"].flatMap(EffectColor.init) == red)
+    }
+
     @Test("setting a parameter on an out-of-range slot or layer leaves the shot unchanged")
     func settingParameterOutOfRangeIsANoOp() {
         let original = shot
         #expect(
-            LayerTreeEdit.settingEffectParameter(1, forKey: "k", ofEffectAt: 0, ofLayerAt: 0, in: original)
+            LayerTreeEdit.settingEffectParameter(1.0, forKey: "k", ofEffectAt: 0, ofLayerAt: 0, in: original)
                 == original)
         #expect(
-            LayerTreeEdit.settingEffectParameter(1, forKey: "k", ofEffectAt: 0, ofLayerAt: 9, in: original)
+            LayerTreeEdit.settingEffectParameter(1.0, forKey: "k", ofEffectAt: 0, ofLayerAt: 9, in: original)
                 == original)
     }
 

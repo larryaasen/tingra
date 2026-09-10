@@ -514,6 +514,205 @@ final class EngineModel {
         videoInputs
     }
 
+    /// Whether a layer's input is currently discovered — a layer bound to a
+    /// device that went away stays bound and dormant, and the editor's list
+    /// draws it dimmed (ARCHITECTURE.md, "Direct manipulation, drag-to-reorder,
+    /// and undo in the layer-tree editor").
+    ///
+    /// - Parameter id: The layer's input.
+    /// - Returns: Whether that input can contribute frames now.
+    func isInputAvailable(_ id: InputID) -> Bool {
+        layerInputChoices.contains { $0.id == id }
+    }
+
+    /// The sidebar's symbol for an input's kind, so a layer row and the
+    /// inspector's header read like the sidebar row the input came from —
+    /// and a warning for a layer whose input is not discovered.
+    ///
+    /// - Parameter id: The layer's input.
+    /// - Returns: An SF Symbol name.
+    func kindSymbol(forInput id: InputID) -> String {
+        switch layerInputChoices.first(where: { $0.id == id })?.kind {
+        case .camera: "video"
+        case .display: "display"
+        case .generator: "rectangle.checkered"
+        case .microphone: "mic"
+        case nil: "exclamationmark.triangle"
+        }
+    }
+
+    // MARK: Layer editing session state
+
+    /// The selected layer's index in the followed shot's bottom-to-top
+    /// `layers` array, or `nil` for no selection — session state, like what
+    /// is staged, never part of the document. It lives here rather than in
+    /// the editor because three surfaces read and write it: the layer list,
+    /// the handles on the monitor, and the Layer menu. Read it through
+    /// ``selectedLayer``, which validates it: an index the followed shot no
+    /// longer has is no selection, never a crash.
+    var selectedLayerIndex: Int?
+
+    /// The selected layer with its index, or nil when nothing valid is
+    /// selected.
+    var selectedLayer: (index: Int, layer: Layer)? {
+        guard let index = selectedLayerIndex, let layers = editedShot?.shot.layers, layers.indices.contains(index)
+        else { return nil }
+        return (index, layers[index])
+    }
+
+    /// Whether a resize keeps the selected layer's proportion — the
+    /// inspector's lock, which the handles on the monitor honor too, the
+    /// way Keynote's Constrain Proportions governs both the fields and the
+    /// drag (Shift on a handle holds it as well). **On by default**: a
+    /// resize that keeps the picture's proportion is the common one, and a
+    /// stretch is the accident (Larry, 2026-09-09). Session state, so a
+    /// launch starts locked.
+    var holdsLayerAspect = true
+
+    /// Whether the inspector's layer monitor is disclosed. **Closed by
+    /// default** and not drawn while closed (Larry, 2026-09-10): a monitor
+    /// at display rate is a cost the column should pay only when the
+    /// operator is judging an effect, so the disclosure builds the
+    /// `MTKView` on opening and tears it down on closing. Session state,
+    /// like the inspector itself.
+    var isLayerMonitorDisclosed = false
+
+    /// An input's frame aspect ratio, width over height in pixels, read
+    /// from its latest frame — or nil while it has not delivered one. The
+    /// inspector's Match Input uses it to undo an accidental stretch
+    /// (``LayerFrameGesture/matchingAspect(_:inputAspect:programAspect:)``).
+    ///
+    /// - Parameter id: The input to read.
+    /// - Returns: The aspect ratio, or nil.
+    func inputAspectRatio(for id: InputID) -> CGFloat? {
+        guard let extent = inputExtent(for: id) else { return nil }
+        return extent.width / extent.height
+    }
+
+    /// A layer's picture aspect ratio, width over height in pixels: the
+    /// input's latest frame handed through the layer's effect chain, so a
+    /// cropped layer answers with the crop's proportion, not the camera's
+    /// (ARCHITECTURE.md, "The Crop effect"). Nil while the input has not
+    /// delivered a frame, or when the chain leaves no picture. The chain
+    /// is resolved against the same provider snapshot the renderer uses,
+    /// a slot with no provider counting as pass-through — exactly as it
+    /// renders.
+    ///
+    /// - Parameter layer: The layer to measure.
+    /// - Returns: The aspect ratio, or nil.
+    func layerPictureAspectRatio(for layer: Layer) -> CGFloat? {
+        guard let extent = inputExtent(for: layer.input) else { return nil }
+        let effects = (layer.effects ?? []).compactMap(makeVideoEffect(for:))
+        let picture = LayerFrameGesture.pictureExtent(extent, through: effects)
+        guard picture.width > 0, picture.height > 0 else { return nil }
+        return picture.width / picture.height
+    }
+
+    /// One persisted chain slot as a live video effect at its settings, or
+    /// nil when this build has no provider for it (the slot is then
+    /// pass-through, exactly as it renders) — resolved against the same
+    /// provider snapshot the renderer's factory reads, so the inspector's
+    /// Match Input and the layer monitor see the chain the program does.
+    ///
+    /// - Parameter configuration: The chain slot.
+    /// - Returns: The live effect, or nil.
+    func makeVideoEffect(for configuration: EffectConfiguration) -> (any VideoEffect)? {
+        videoEffectProviders.provider(for: configuration.effect)?.makeEffect(parameters: configuration.parameters)
+    }
+
+    /// An input's latest frame as a pixel extent at the origin, or nil
+    /// while it has not delivered one (or the frame has no height).
+    ///
+    /// - Parameter id: The input to read.
+    private func inputExtent(for id: InputID) -> CGRect? {
+        guard let buffer = latestFrame(forInput: id) else { return nil }
+        let height = CVPixelBufferGetHeight(buffer)
+        guard height > 0 else { return nil }
+        return CGRect(x: 0, y: 0, width: CVPixelBufferGetWidth(buffer), height: height)
+    }
+
+    /// The program's aspect ratio, width over height.
+    var programAspectRatio: CGFloat {
+        CGFloat(format.width) / CGFloat(format.height)
+    }
+
+    /// The main window's undo manager, handed over by `ContentView` so
+    /// every layer-tree edit can register the shot it replaced
+    /// (ARCHITECTURE.md, "Direct manipulation, drag-to-reorder, and undo in
+    /// the layer-tree editor"). Weak: the window owns it.
+    weak var undoManager: UndoManager?
+
+    /// The followed shot as it was when the gesture in progress began, or
+    /// nil between gestures. While set, ``applyShotEdit(_:_:)`` registers
+    /// nothing — a slider or handle drag edits at gesture rate, and the
+    /// whole drag is one undo step, registered by ``endLayerGesture(_:)``.
+    private var layerGestureSnapshot: Shot?
+
+    /// Marks the start of a gesture-rate edit (a slider or handle drag),
+    /// snapshotting the followed shot so the drag undoes as one step — the
+    /// one-`tap`-per-gesture rule applied to undo.
+    func beginLayerGesture() {
+        layerGestureSnapshot = editedShot?.shot
+    }
+
+    /// Marks the end of a gesture-rate edit, registering the snapshot taken
+    /// at its start as the one undo step for the whole drag — or nothing,
+    /// when the drag changed nothing.
+    ///
+    /// - Parameter action: What the gesture did, for the Undo item's name.
+    func endLayerGesture(_ action: LayerUndoAction) {
+        defer { layerGestureSnapshot = nil }
+        guard let before = layerGestureSnapshot, let after = shots.first(where: { $0.id == before.id }), after != before
+        else { return }
+        registerLayerUndo(restoring: before, action)
+    }
+
+    /// Registers one undo step that puts a shot back as it was.
+    ///
+    /// - Parameters:
+    ///   - shot: The shot as it was before the edit.
+    ///   - action: What the edit did, for the Undo item's name.
+    private func registerLayerUndo(restoring shot: Shot, _ action: LayerUndoAction) {
+        guard let undoManager else { return }
+        undoManager.registerUndo(withTarget: self) { model in
+            MainActor.assumeIsolated { model.restoreShot(shot, action) }
+        }
+        undoManager.setActionName(action.title)
+    }
+
+    /// Puts a shot back as it was — the undo of a layer-tree edit, and the
+    /// redo of an undo, since a restore registers its own inverse.
+    ///
+    /// Restored **by id**, whether or not the shot is still followed, so an
+    /// undo stays correct after the operator stages something else
+    /// (Keynote's undo does not depend on the selection); a shot no longer
+    /// in the pool — removed, or another preset made active — is left
+    /// alone. The restore takes the edit path: the compositor shows it at
+    /// the next tick, the tally re-reads it, the autosave picks it up, and a
+    /// change to the set of bound inputs reconfigures so they start or stop.
+    ///
+    /// - Parameters:
+    ///   - shot: The shot to put back.
+    ///   - action: What the original edit did, kept for the Redo item.
+    private func restoreShot(_ shot: Shot, _ action: LayerUndoAction) {
+        guard let index = shots.firstIndex(where: { $0.id == shot.id }) else { return }
+        let current = shots[index]
+        guard current != shot else { return }
+        registerLayerUndo(restoring: current, action)
+        eventBus.tap(
+            "layerEdit.undo",
+            domain: .composition,
+            params: ["shot": .string(shot.id.rawValue), "action": .string(action.rawValue)]
+        )
+        shots[index] = shot
+        compositor.updateShot(shot)
+        syncTally()
+        scheduleAutosave()
+        if Set(shot.layers.map(\.input)) != Set(current.layers.map(\.input)) {
+            Task { await reconfigure() }
+        }
+    }
+
     /// The transition kind the next shot switcher tap takes with
     /// (GLOSSARY.md, "Transition") — session state bound from `ContentView`'s
     /// transition picker, never part of the saved document — but remembered
@@ -690,7 +889,13 @@ final class EngineModel {
     @ObservationIgnored private let recordingPreferences = RecordingPreferences()
 
     /// The program geometry and rate.
-    @ObservationIgnored private let format = ProgramFormat(width: 1920, height: 1080, frameRate: 30)
+    @ObservationIgnored let format = ProgramFormat(width: 1920, height: 1080, frameRate: 30)
+
+    /// The program geometry, for the layer inspector's pixel fields
+    /// (``LayerInspectorUnit``).
+    var programFormat: ProgramFormat {
+        format
+    }
 
     /// Whether the project's presets exist yet — loaded from the project file
     /// in ``start()``, or seeded from ``ProgramLayout`` on the first
@@ -1927,13 +2132,26 @@ final class EngineModel {
     ///   - effectIndex: The slot whose parameter changes.
     ///   - id: The strip's input id.
     func setEffectParameter(_ value: Double, forKey key: String, ofEffectAt effectIndex: Int, onStrip id: InputID) {
+        setEffectParameter(.double(value), forKey: key, ofEffectAt: effectIndex, onStrip: id)
+    }
+
+    /// Sets one parameter of one slot in a strip's chain to any payload
+    /// value — a color well's color object as well as a slider's number —
+    /// on the same in-place, gesture-rate path.
+    ///
+    /// - Parameters:
+    ///   - value: The parameter's new payload value.
+    ///   - key: The parameter's persisted key.
+    ///   - effectIndex: The slot whose parameter changes.
+    ///   - id: The strip's input id.
+    func setEffectParameter(_ value: JSONValue, forKey key: String, ofEffectAt effectIndex: Int, onStrip id: InputID) {
         guard
             let index = mixerStrips.firstIndex(where: { $0.id == id }),
             mixerStrips[index].effects.indices.contains(effectIndex)
         else { return }
         let existing = mixerStrips[index].effects[effectIndex]
         var parameters = existing.parameters
-        parameters[key] = .double(value)
+        parameters[key] = value
         mixerStrips[index].effects[effectIndex] = EffectConfiguration(effect: existing.effect, parameters: parameters)
         mixer.setEffectParameters(parameters, forEffectAt: effectIndex, forInput: id)
         scheduleAutosave()
@@ -2597,7 +2815,7 @@ final class EngineModel {
     ///
     /// - Parameter input: The input the new layer binds to.
     func addLayer(boundTo input: InputID) async {
-        applyShotEdit { LayerTreeEdit.addingLayer(boundTo: input, to: $0) }
+        applyShotEdit(.addLayer) { LayerTreeEdit.addingLayer(boundTo: input, to: $0) }
         await reconfigure()
     }
 
@@ -2607,7 +2825,7 @@ final class EngineModel {
     ///
     /// - Parameter index: The layer's index in the shot's `layers` array.
     func removeLayer(at index: Int) async {
-        applyShotEdit { LayerTreeEdit.removingLayer(at: index, from: $0) }
+        applyShotEdit(.removeLayer) { LayerTreeEdit.removingLayer(at: index, from: $0) }
         await reconfigure()
     }
 
@@ -2618,7 +2836,68 @@ final class EngineModel {
     ///   - index: The layer's index in the shot's `layers` array.
     ///   - direction: Which way it moves through the stack.
     func moveLayer(at index: Int, _ direction: LayerTreeEdit.StackDirection) {
-        applyShotEdit { LayerTreeEdit.movingLayer(at: index, direction, in: $0) }
+        applyShotEdit(.reorderLayer) { LayerTreeEdit.movingLayer(at: index, direction, in: $0) }
+    }
+
+    /// Moves the layer at the given bottom-to-top index to another position
+    /// in the edited shot's stack — the Layer menu's four arrange moves.
+    ///
+    /// - Parameters:
+    ///   - index: The layer's index in the shot's `layers` array.
+    ///   - destination: The index it lands at, clamped to the stack.
+    func moveLayer(at index: Int, to destination: Int) {
+        applyShotEdit(.reorderLayer) { LayerTreeEdit.movingLayer(at: index, to: destination, in: $0) }
+    }
+
+    /// Applies a drag-to-reorder from the editor's topmost-first list
+    /// (``LayerTreeEdit/movingLayers(fromDisplayed:toDisplayed:in:)``).
+    ///
+    /// - Parameters:
+    ///   - source: The displayed positions of the rows being dragged.
+    ///   - destination: The displayed position they are dropped at.
+    func moveLayers(fromDisplayed source: IndexSet, toDisplayed destination: Int) {
+        applyShotEdit(.reorderLayer) {
+            LayerTreeEdit.movingLayers(fromDisplayed: source, toDisplayed: destination, in: $0)
+        }
+    }
+
+    /// Rebinds the layer at the given bottom-to-top index to another input —
+    /// the inspector's Input popup — then reconfigures so the new input runs
+    /// and one no shot references anymore stops. One undo step, named
+    /// Change Input; the popup's `tap` carries the observability.
+    ///
+    /// - Parameters:
+    ///   - index: The layer's index in the shot's `layers` array.
+    ///   - input: The input the layer binds to from now on.
+    func rebindLayer(at index: Int, to input: InputID) async {
+        applyShotEdit(.changeInput) { LayerTreeEdit.rebindingLayer(at: index, to: input, in: $0) }
+        await reconfigure()
+    }
+
+    /// Duplicates the layer at the given bottom-to-top index, the copy
+    /// directly above it. No reconfigure: the copy binds the input the
+    /// original already runs.
+    ///
+    /// - Parameter index: The layer's index in the shot's `layers` array.
+    func duplicateLayer(at index: Int) {
+        applyShotEdit(.duplicateLayer) { LayerTreeEdit.duplicatingLayer(at: index, in: $0) }
+    }
+
+    /// Nudges the layer at the given bottom-to-top index one step — an
+    /// arrow key on the monitor. A discrete edit: each press is its own
+    /// undo step, as in Keynote.
+    ///
+    /// - Parameters:
+    ///   - index: The layer's index in the shot's `layers` array.
+    ///   - direction: The arrow pressed.
+    ///   - step: The distance, ``LayerFrameGesture/nudgeStep`` or
+    ///     ``LayerFrameGesture/largeNudgeStep``.
+    func nudgeLayer(at index: Int, _ direction: LayerFrameGesture.NudgeDirection, by step: CGFloat) {
+        applyShotEdit(.moveLayer) { shot in
+            guard shot.layers.indices.contains(index) else { return shot }
+            let frame = LayerFrameGesture.nudging(shot.layers[index].frame, direction, by: step)
+            return LayerTreeEdit.settingFrame(frame, ofLayerAt: index, in: shot)
+        }
     }
 
     /// Sets the frame of the edited shot's layer at the given bottom-to-top
@@ -2629,8 +2908,10 @@ final class EngineModel {
     /// - Parameters:
     ///   - frame: The new normalized destination rect.
     ///   - index: The layer's index in the shot's `layers` array.
-    func setLayerFrame(_ frame: CGRect, at index: Int) {
-        applyShotEdit { LayerTreeEdit.settingFrame(frame, ofLayerAt: index, in: $0) }
+    ///   - action: What the edit did, for the Undo item's name — a resize
+    ///     by default; a position field or a placement anchor says move.
+    func setLayerFrame(_ frame: CGRect, at index: Int, as action: LayerUndoAction = .resizeLayer) {
+        applyShotEdit(action) { LayerTreeEdit.settingFrame(frame, ofLayerAt: index, in: $0) }
     }
 
     /// Sets the opacity of the edited shot's layer at the given bottom-to-top
@@ -2640,7 +2921,7 @@ final class EngineModel {
     ///   - opacity: The new opacity, `0`...`1`.
     ///   - index: The layer's index in the shot's `layers` array.
     func setLayerOpacity(_ opacity: Double, at index: Int) {
-        applyShotEdit { LayerTreeEdit.settingOpacity(opacity, ofLayerAt: index, in: $0) }
+        applyShotEdit(.changeOpacity) { LayerTreeEdit.settingOpacity(opacity, ofLayerAt: index, in: $0) }
     }
 
     /// Appends a video effect to the edited shot's layer at the given
@@ -2652,7 +2933,7 @@ final class EngineModel {
     ///   - effect: The effect to append.
     ///   - index: The layer's index in the shot's `layers` array.
     func addLayerEffect(_ effect: EffectID, toLayerAt index: Int) {
-        applyShotEdit { LayerTreeEdit.addingEffect(effect, toLayerAt: index, in: $0) }
+        applyShotEdit(.addEffect) { LayerTreeEdit.addingEffect(effect, toLayerAt: index, in: $0) }
     }
 
     /// Removes one slot from the edited shot's layer's effect chain.
@@ -2661,7 +2942,7 @@ final class EngineModel {
     ///   - effectIndex: The chain slot to remove.
     ///   - index: The layer's index in the shot's `layers` array.
     func removeLayerEffect(at effectIndex: Int, fromLayerAt index: Int) {
-        applyShotEdit { LayerTreeEdit.removingEffect(at: effectIndex, fromLayerAt: index, in: $0) }
+        applyShotEdit(.removeEffect) { LayerTreeEdit.removingEffect(at: effectIndex, fromLayerAt: index, in: $0) }
     }
 
     /// Moves one slot of the edited shot's layer's effect chain — order is
@@ -2672,7 +2953,7 @@ final class EngineModel {
     ///   - destination: The destination position in the chain.
     ///   - index: The layer's index in the shot's `layers` array.
     func moveLayerEffect(at effectIndex: Int, to destination: Int, ofLayerAt index: Int) {
-        applyShotEdit {
+        applyShotEdit(.moveEffect) {
             LayerTreeEdit.movingEffect(at: effectIndex, to: destination, ofLayerAt: index, in: $0)
         }
     }
@@ -2688,7 +2969,22 @@ final class EngineModel {
     ///   - effectIndex: The chain slot whose parameter changes.
     ///   - index: The layer's index in the shot's `layers` array.
     func setLayerEffectParameter(_ value: Double, forKey key: String, ofEffectAt effectIndex: Int, atLayer index: Int) {
-        applyShotEdit {
+        setLayerEffectParameter(.double(value), forKey: key, ofEffectAt: effectIndex, atLayer: index)
+    }
+
+    /// Sets one parameter of one slot in the edited shot's layer's effect
+    /// chain to any payload value — a color well's color object as well as
+    /// a slider's number — under the same gesture-rate rules.
+    ///
+    /// - Parameters:
+    ///   - value: The parameter's new payload value.
+    ///   - key: The parameter's persisted key.
+    ///   - effectIndex: The chain slot whose parameter changes.
+    ///   - index: The layer's index in the shot's `layers` array.
+    func setLayerEffectParameter(
+        _ value: JSONValue, forKey key: String, ofEffectAt effectIndex: Int, atLayer index: Int
+    ) {
+        applyShotEdit(.adjustEffect) {
             LayerTreeEdit.settingEffectParameter(
                 value, forKey: key, ofEffectAt: effectIndex, ofLayerAt: index, in: $0)
         }
@@ -2734,11 +3030,22 @@ final class EngineModel {
     /// operator is composing in it, which is authorship (ARCHITECTURE.md,
     /// "The shot bank" — the picker's rebind, the one layer edit that is not,
     /// takes ``rebindLayers(from:to:)`` and never reaches a transient shot).
-    private func applyShotEdit(_ edit: (Shot) -> Shot) {
+    ///
+    /// Every real edit registers the shot it replaced as one undo step —
+    /// unless a gesture is in progress, in which case the gesture's end
+    /// registers the whole drag (``endLayerGesture(_:)``).
+    ///
+    /// - Parameters:
+    ///   - action: What the edit does, for the Undo item's name.
+    ///   - edit: The pure operation over the followed shot.
+    private func applyShotEdit(_ action: LayerUndoAction, _ edit: (Shot) -> Shot) {
         guard let followed = editedShot, let index = shots.firstIndex(where: { $0.id == followed.shot.id })
         else { return }
         var edited = edit(shots[index])
         guard edited != shots[index] else { return }
+        if layerGestureSnapshot == nil {
+            registerLayerUndo(restoring: shots[index], action)
+        }
         edited = ShotEdit.claiming(edited)
         shots[index] = edited
         compositor.updateShot(edited)

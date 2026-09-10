@@ -40,6 +40,12 @@ enum ProgramLayout {
     /// top-left-origin coordinates (bottom-right corner, with a small margin).
     static let cameraInsetFrame = CGRect(x: 0.68, y: 0.68, width: 0.28, height: 0.28)
 
+    /// The gap the inset keeps from the program's edges — what the layer
+    /// inspector's placement anchors keep too (``LayerPlacement``), so an
+    /// inset layer anchored bottom-right lands exactly where the built-in
+    /// picture-in-picture shot puts the camera.
+    static let insetMargin: CGFloat = 1 - cameraInsetFrame.maxX
+
     /// The stable id of the display-only shot.
     static let displayShotID = ShotID(rawValue: "display")
 

@@ -510,12 +510,120 @@ struct SidebarView: View {
         }
     }
 
+    /// A Cameras or Displays heading with the role's **casting picker** at
+    /// its trailing end: which discovered device plays that role across the
+    /// preset (ARCHITECTURE.md, "A selection change rebinds, never
+    /// rebuilds"). It moved here from under the main window's layer list
+    /// (2026-09-09, "The inspector column and the sidebar's casting
+    /// pickers"): the section for that kind of device is where an operator
+    /// looks for "which camera". The items are what the main window's picker
+    /// had — None, the discovered devices, and a dormant selection by its
+    /// last-known name — under the same tap.
+    ///
+    /// - Parameters:
+    ///   - title: The section's heading.
+    ///   - picker: The picker's accessibility label.
+    ///   - selection: The role's selection, reporting its tap on change.
+    ///   - selected: The role's current device, for the dormant entry.
+    ///   - choices: The discovered devices of the role's kind.
+    /// - Returns: The heading.
+    private func castingHeader(
+        _ title: Text,
+        picker: Text,
+        selection: Binding<InputID?>,
+        selected: InputID?,
+        choices: [EngineModel.InputChoice]
+    ) -> some View {
+        HStack {
+            title
+            Spacer()
+            Picker(selection: selection) {
+                Text("None", comment: "Picker option for no input selected").tag(InputID?.none)
+                if let dormant = dormantSelection(selected, among: choices) {
+                    Text(
+                        "\(model.inputName(for: dormant)) (Not connected)",
+                        comment: "Picker entry for a selected device that is not currently connected"
+                    )
+                    .tag(InputID?.some(dormant))
+                }
+                ForEach(choices) { choice in
+                    Text(choice.name).tag(InputID?.some(choice.id))
+                }
+            } label: {
+                picker
+            }
+            .labelsHidden()
+            .pickerStyle(.menu)
+            .controlSize(.small)
+            .fixedSize()
+            .help(picker)
+        }
+    }
+
+    /// The camera picker's selection, reporting the choice as a `tap` on the
+    /// way to the model (see EVENTS.md, "Where a picker's tap is reported").
+    private var cameraSelection: Binding<InputID?> {
+        // Snapshotted rather than captured, so the tap names the list the
+        // picker was showing when the operator chose from it.
+        let cameras = model.cameras
+        return Binding {
+            model.selectedCameraID
+        } set: { newValue in
+            model.eventBus.tap(
+                "camera.picker",
+                domain: .capture,
+                params: [
+                    "id": .string(newValue?.rawValue ?? "none"),
+                    "name": .string(cameras.first { $0.id == newValue }?.name ?? "None"),
+                ]
+            )
+            model.selectedCameraID = newValue
+        }
+    }
+
+    /// The display picker's selection (see ``cameraSelection``).
+    private var displaySelection: Binding<InputID?> {
+        let displays = model.displays
+        return Binding {
+            model.selectedDisplayID
+        } set: { newValue in
+            model.eventBus.tap(
+                "display.picker",
+                domain: .capture,
+                params: [
+                    "id": .string(newValue?.rawValue ?? "none"),
+                    "name": .string(displays.first { $0.id == newValue }?.name ?? "None"),
+                ]
+            )
+            model.selectedDisplayID = newValue
+        }
+    }
+
+    /// A role's selected device when discovery no longer lists it — the
+    /// picker keeps naming it rather than showing nothing — or nil while the
+    /// selection is empty or present.
+    ///
+    /// - Parameters:
+    ///   - selection: The role's current device.
+    ///   - choices: The discovered devices of the role's kind.
+    /// - Returns: The dormant device, or nil.
+    private func dormantSelection(_ selection: InputID?, among choices: [EngineModel.InputChoice]) -> InputID? {
+        guard let selection else { return nil }
+        return choices.contains { $0.id == selection } ? nil : selection
+    }
+
     /// The camera section: one row per discovered camera, staging that camera
     /// full frame on preview when clicked and lit with its tally.
     private var cameraSection: some View {
         stagingSection(
             .cameras,
-            header: Text("Cameras", comment: "Device rail section heading over the camera device list"),
+            header: castingHeader(
+                Text("Cameras", comment: "Device rail section heading over the camera device list"),
+                picker: Text("Camera", comment: "Camera input picker label"),
+                selection: cameraSelection,
+                selected: model.selectedCameraID,
+                choices: model.cameras
+            ),
             rows: SidebarRow.rows(
                 from: model.cameras,
                 ofKind: .camera,
@@ -554,7 +662,13 @@ struct SidebarView: View {
     private var displaySection: some View {
         stagingSection(
             .displays,
-            header: Text("Displays", comment: "Sidebar section heading over the display list"),
+            header: castingHeader(
+                Text("Displays", comment: "Sidebar section heading over the display list"),
+                picker: Text("Display", comment: "Display input picker label"),
+                selection: displaySelection,
+                selected: model.selectedDisplayID,
+                choices: model.displays
+            ),
             rows: SidebarRow.rows(
                 from: model.displays,
                 ofKind: .display,

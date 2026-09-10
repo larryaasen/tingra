@@ -29,6 +29,23 @@ protocol MonitorFrameSource {
     /// and for preview whenever no shot is staged — the relay empties when
     /// preview is cleared, and the monitor clears with it.
     var latest: CVPixelBuffer? { get }
+
+    /// The image to draw for a frame: the frame itself, by default — the
+    /// layer monitor alone hands it through the layer's effect chain
+    /// (ARCHITECTURE.md, "The effect chain says its order, and the layer
+    /// gets a monitor"). Lazy, `CIImage` to `CIImage`, so the draw stays
+    /// one GPU-resident pass.
+    ///
+    /// - Parameter pixelBuffer: The frame ``latest`` returned.
+    /// - Returns: The image the monitor fits and draws.
+    func image(for pixelBuffer: CVPixelBuffer) -> CIImage
+}
+
+extension MonitorFrameSource {
+    /// The frame as it is.
+    func image(for pixelBuffer: CVPixelBuffer) -> CIImage {
+        CIImage(cvPixelBuffer: pixelBuffer)
+    }
 }
 
 /// The Metal device, command queue, and Core Image context every monitor
@@ -170,7 +187,7 @@ struct MonitorView: NSViewRepresentable {
                 let commandBuffer = commandQueue.makeCommandBuffer()
             else { return }
 
-            let image = CIImage(cvPixelBuffer: pixelBuffer)
+            let image = self.source.image(for: pixelBuffer)
             let source = image.extent
             let target = view.drawableSize
             guard source.width > 0, source.height > 0, target.width > 0, target.height > 0 else { return }
@@ -185,13 +202,22 @@ struct MonitorView: NSViewRepresentable {
                         y: (target.height - scaledHeight) / 2
                     )
                 )
+            let bounds = CGRect(origin: .zero, size: target)
+            // Over opaque black covering the whole drawable: Core Image
+            // writes only where the image has pixels, and a drawable is
+            // reused from the swap chain, so a picture smaller than the
+            // drawable (a cropped layer, a portrait input) or one with
+            // transparent pixels (a Frame's rounded corners) would
+            // otherwise leave the previous draws showing through as
+            // ghosts. Every pixel is now defined on every draw.
             let fitted = image.transformed(by: transform)
+                .composited(over: CIImage(color: CIColor(red: 0, green: 0, blue: 0)).cropped(to: bounds))
 
             renderContext.ciContext.render(
                 fitted,
                 to: drawable.texture,
                 commandBuffer: commandBuffer,
-                bounds: CGRect(origin: .zero, size: target),
+                bounds: bounds,
                 colorSpace: renderContext.colorSpace
             )
             commandBuffer.present(drawable)
@@ -228,7 +254,7 @@ struct MonitorView: NSViewRepresentable {
 /// Shared by the main window's program and preview monitors, every multiview
 /// tile, and the shot bank's tiles, so the surfaces cannot drift in how a
 /// monitor reads — the lesson `MeterCapsule` learned on the audio side.
-struct MonitorTile: View {
+struct MonitorTile<Overlay: View>: View {
     /// Where the monitor reads its frames.
     let source: any MonitorFrameSource
 
@@ -256,16 +282,57 @@ struct MonitorTile: View {
     /// would be indistinguishable from a dead compositor.
     var statusBadge: Text?
 
-    /// The monitor: video, tally border, then badge.
+    /// The corner radius of the picture and its tally border: 8 for the
+    /// monitors, the multiview, and the bank; the layer list's row
+    /// thumbnails pass a smaller one, since 8 on a 20-point tile is a pill.
+    var cornerRadius: CGFloat = 8
+
+    /// Interactive content drawn over the video — the layer handles the
+    /// main window's monitors carry (``LayerHandlesOverlay``). It sits on
+    /// the fitted 16:9 rect, *inside* the tile's flexible frame, so its
+    /// bounds are the program's and a normalized layer frame maps onto it
+    /// by one scale. Every other tile passes nothing.
+    @ViewBuilder let overlay: () -> Overlay
+
+    /// Creates a tile with content over the video.
+    ///
+    /// - Parameters:
+    ///   - source: Where the monitor reads its frames.
+    ///   - label: The badge worn on the picture, or nil for none.
+    ///   - badgeTint: The badge's tint.
+    ///   - borderTint: The tally border's tint, or nil for no border.
+    ///   - statusBadge: A state badge opposite the label, or nil.
+    ///   - cornerRadius: The picture's corner radius (default 8).
+    ///   - overlay: The content drawn over the fitted video rect.
+    init(
+        source: any MonitorFrameSource,
+        label: Text?,
+        badgeTint: Color,
+        borderTint: Color? = nil,
+        statusBadge: Text? = nil,
+        cornerRadius: CGFloat = 8,
+        @ViewBuilder overlay: @escaping () -> Overlay
+    ) {
+        self.source = source
+        self.label = label
+        self.badgeTint = badgeTint
+        self.borderTint = borderTint
+        self.statusBadge = statusBadge
+        self.cornerRadius = cornerRadius
+        self.overlay = overlay
+    }
+
+    /// The monitor: video, its overlay, tally border, then badge.
     var body: some View {
         MonitorView(source: source)
             .aspectRatio(16.0 / 9.0, contentMode: .fit)
+            .overlay { overlay() }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(.black)
-            .clipShape(.rect(cornerRadius: 8))
+            .clipShape(.rect(cornerRadius: cornerRadius))
             .overlay {
                 if let borderTint {
-                    RoundedRectangle(cornerRadius: 8).strokeBorder(borderTint, lineWidth: 3)
+                    RoundedRectangle(cornerRadius: cornerRadius).strokeBorder(borderTint, lineWidth: 3)
                 }
             }
             .overlay(alignment: .topLeading) {
@@ -288,5 +355,33 @@ struct MonitorTile: View {
                         .padding(8)
                 }
             }
+    }
+}
+
+extension MonitorTile where Overlay == EmptyView {
+    /// Creates a tile with nothing over the video — every tile but the main
+    /// window's two monitors.
+    ///
+    /// - Parameters:
+    ///   - source: Where the monitor reads its frames.
+    ///   - label: The badge worn on the picture, or nil for none.
+    ///   - badgeTint: The badge's tint.
+    ///   - borderTint: The tally border's tint, or nil for no border.
+    ///   - statusBadge: A state badge opposite the label, or nil.
+    ///   - cornerRadius: The picture's corner radius (default 8).
+    init(
+        source: any MonitorFrameSource,
+        label: Text?,
+        badgeTint: Color,
+        borderTint: Color? = nil,
+        statusBadge: Text? = nil,
+        cornerRadius: CGFloat = 8
+    ) {
+        self.init(
+            source: source, label: label, badgeTint: badgeTint, borderTint: borderTint, statusBadge: statusBadge,
+            cornerRadius: cornerRadius
+        ) {
+            EmptyView()
+        }
     }
 }

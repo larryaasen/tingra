@@ -62,6 +62,15 @@ struct ContentView: View {
     /// The engine model, bindable so the pickers drive its selection.
     @Bindable var model: EngineModel
 
+    /// Whether the trailing inspector column is shown — the window's state,
+    /// owned by the app scene like the sidebar's visibility
+    /// (``InspectorCommands``).
+    @Binding var isInspectorPresented: Bool
+
+    /// The window's undo manager, handed to the model on appearance
+    /// (``EngineModel/undoManager``).
+    @Environment(\.undoManager) private var undoManager
+
     /// The shot the bank's rename dialog is editing, or `nil` while it is
     /// closed. View-local, like the layer editor's selection: which shot is
     /// being renamed is transient session state.
@@ -146,19 +155,34 @@ struct ContentView: View {
 
                     LayerTreeEditorView(model: model)
 
-                    controls
-
                     MixerView(model: model)
                 }
                 .padding(Self.columnPadding)
             }
         }
+        // The selected layer's controls, in a trailing column beside the
+        // monitors whose handles they describe — outside the scroll, and
+        // inside the status bar's inset so the bar runs under both.
+        .inspector(isPresented: $isInspectorPresented) {
+            LayerInspectorColumn(model: model)
+        }
         .shotRenameDialog(model: model, surface: .switcher, shot: $shotBeingRenamed, text: $renameText)
-        // Only the *effect* of a selection change lives here — it must run
+        // The window's undo manager is what the Edit menu's Undo drives,
+        // and the model is what registers layer edits against it.
+        .onAppear {
+            model.undoManager = undoManager
+        }
+        // The layer editor follows the buses: a different shot has a
+        // different layer tree, so the old selection is meaningless. Here
+        // rather than in the editor so the rule runs while it is hidden.
+        .onChange(of: model.editedShot?.shot.id) { _, _ in
+            model.selectedLayerIndex = nil
+        }
+        // Only the *effect* of a casting change lives here — it must run
         // however the value changed, including when the model assigns the
         // default at boot. The `tap` rides the pickers' own bindings instead
-        // (``cameraSelection``), because only the control can say the
-        // operator acted.
+        // (``SidebarView``'s camera and display headings), because only the
+        // control can say the operator acted.
         .onChange(of: model.selectedCameraID) { _, _ in
             Task { await model.reconfigure() }
         }
@@ -170,13 +194,23 @@ struct ContentView: View {
         // screen, never scrolled away with the panels that configure them.
         // Fade to Black leads — the production control, a master stage over
         // the program — then the two outputs, whose destinations and folder
-        // are set up in the settings window. Attached here, on the window's
-        // content, so they ride the main window alone.
+        // are set up in the settings window. That window's gear comes last,
+        // in an item of its own, since it changes nothing on air
+        // (``SettingsButton``). Attached here, on the window's content, so
+        // they ride the main window alone.
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
                 FadeToBlackButton(model: model)
                 StreamButton(model: model)
                 RecordButton(model: model)
+            }
+            ToolbarItem(placement: .primaryAction) {
+                SettingsButton(model: model)
+            }
+            // The inspector toggle is the trailing-most item, where Xcode
+            // and Keynote put theirs (``InspectorButton``).
+            ToolbarItem(placement: .primaryAction) {
+                InspectorButton(model: model, isPresented: $isInspectorPresented)
             }
         }
     }
@@ -214,13 +248,24 @@ struct ContentView: View {
             HStack(spacing: Self.sectionSpacing) {
                 // Preview left of program, the switcher convention: the
                 // operator reads left to right, staging then taking.
-                MonitorTile(source: model.previewRelay, label: previewLabel, badgeTint: .green)
+                // The layer handles ride the monitor showing the edited
+                // shot: preview while it is staged, program only in the
+                // fallback where nothing is (``EditedShot``).
+                MonitorTile(source: model.previewRelay, label: previewLabel, badgeTint: .green) {
+                    if let edited = model.editedShot, model.previewShotID == edited.shot.id {
+                        LayerHandlesOverlay(model: model, edited: edited)
+                    }
+                }
                 MonitorTile(
                     source: model.programRelay,
                     label: programLabel,
                     badgeTint: .red,
                     statusBadge: model.isFadedToBlack ? fadedToBlackLabel : nil
-                )
+                ) {
+                    if let edited = model.editedShot, model.previewShotID != edited.shot.id {
+                        LayerHandlesOverlay(model: model, edited: edited)
+                    }
+                }
             }
             .frame(height: Self.monitorsHeight(forWindowWidth: windowWidth))
 
@@ -318,88 +363,4 @@ struct ContentView: View {
         Text("Faded to Black", comment: "Badge on the program monitor while the program is faded to black")
     }
 
-    /// The camera picker's selection, reporting the picker's `tap` when the
-    /// operator changes it — never when the model assigns the default during
-    /// boot (see ``Binding/reportingTap(to:_:domain:params:)``).
-    private var cameraSelection: Binding<InputID?> {
-        // Snapshotted rather than captured, so the tap names the list the
-        // picker was showing when the operator chose from it.
-        let cameras = model.cameras
-        return $model.selectedCameraID.reportingTap(to: model.eventBus, "camera.picker", domain: .capture) {
-            newValue in
-            [
-                "id": .string(newValue?.rawValue ?? "none"),
-                "name": .string(cameras.first { $0.id == newValue }?.name ?? "None"),
-            ]
-        }
-    }
-
-    /// The display picker's selection (see ``cameraSelection``).
-    private var displaySelection: Binding<InputID?> {
-        let displays = model.displays
-        return $model.selectedDisplayID.reportingTap(to: model.eventBus, "display.picker", domain: .capture) {
-            newValue in
-            [
-                "id": .string(newValue?.rawValue ?? "none"),
-                "name": .string(displays.first { $0.id == newValue }?.name ?? "None"),
-            ]
-        }
-    }
-
-    /// The selected input's id when the given choices no longer contain it —
-    /// what a picker needs its own entry for.
-    ///
-    /// A device that is unplugged **stays cast** in its role, dormant, so it
-    /// resumes when it returns — the same rule as a layer bound to an
-    /// undiscovered input and a channel strip whose device is absent. A
-    /// SwiftUI selection matching no tag is undefined behaviour, though, so
-    /// keeping the selection means the picker has to be able to draw it
-    /// (ARCHITECTURE.md, "Live device lists in the app").
-    ///
-    /// - Parameters:
-    ///   - selection: The picker's current selection.
-    ///   - choices: The inputs the picker is listing.
-    /// - Returns: The unresolvable selection, or nil when it resolves.
-    private func dormantSelection(_ selection: InputID?, among choices: [EngineModel.InputChoice]) -> InputID? {
-        guard let selection else { return nil }
-        return choices.contains { $0.id == selection } ? nil : selection
-    }
-
-    /// The camera and display pickers.
-    private var controls: some View {
-        HStack(spacing: 20) {
-            Picker(selection: cameraSelection) {
-                Text("None", comment: "Picker option for no input selected").tag(InputID?.none)
-                if let dormant = dormantSelection(model.selectedCameraID, among: model.cameras) {
-                    Text(
-                        "\(model.inputName(for: dormant)) (Not connected)",
-                        comment: "Picker entry for a selected device that is not currently connected"
-                    )
-                    .tag(InputID?.some(dormant))
-                }
-                ForEach(model.cameras) { camera in
-                    Text(camera.name).tag(InputID?.some(camera.id))
-                }
-            } label: {
-                Text("Camera", comment: "Camera input picker label")
-            }
-
-            Picker(selection: displaySelection) {
-                Text("None", comment: "Picker option for no input selected").tag(InputID?.none)
-                if let dormant = dormantSelection(model.selectedDisplayID, among: model.displays) {
-                    Text(
-                        "\(model.inputName(for: dormant)) (Not connected)",
-                        comment: "Picker entry for a selected device that is not currently connected"
-                    )
-                    .tag(InputID?.some(dormant))
-                }
-                ForEach(model.displays) { display in
-                    Text(display.name).tag(InputID?.some(display.id))
-                }
-            } label: {
-                Text("Display", comment: "Display input picker label")
-            }
-        }
-        .pickerStyle(.menu)
-    }
 }

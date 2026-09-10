@@ -8,6 +8,7 @@
 //
 
 import CoreGraphics
+import Foundation
 import TingraComposition
 import TingraPlugInKit
 
@@ -197,8 +198,8 @@ enum LayerTreeEdit {
         return replacingLayers(of: shot, with: layers)
     }
 
-    /// Sets one parameter of one slot in a layer's chain, keeping the
-    /// slot's other parameters — the gesture-rate edit a chain slider
+    /// Sets one numeric parameter of one slot in a layer's chain, keeping
+    /// the slot's other parameters — the gesture-rate edit a chain slider
     /// makes.
     ///
     /// - Parameters:
@@ -216,11 +217,33 @@ enum LayerTreeEdit {
         ofLayerAt index: Int,
         in shot: Shot
     ) -> Shot {
+        settingEffectParameter(.double(value), forKey: key, ofEffectAt: effectIndex, ofLayerAt: index, in: shot)
+    }
+
+    /// Sets one parameter of one slot in a layer's chain to any payload
+    /// value — a number from a slider or a color object from a color well
+    /// — keeping the slot's other parameters.
+    ///
+    /// - Parameters:
+    ///   - value: The parameter's new payload value.
+    ///   - key: The parameter's persisted key.
+    ///   - effectIndex: The chain slot whose parameter changes.
+    ///   - index: The layer's index in the shot's `layers` array.
+    ///   - shot: The shot to edit.
+    /// - Returns: The shot with that parameter set, or unchanged if either
+    ///   index is out of range.
+    static func settingEffectParameter(
+        _ value: JSONValue,
+        forKey key: String,
+        ofEffectAt effectIndex: Int,
+        ofLayerAt index: Int,
+        in shot: Shot
+    ) -> Shot {
         guard shot.layers.indices.contains(index) else { return shot }
         var chain = shot.layers[index].effects ?? []
         guard chain.indices.contains(effectIndex) else { return shot }
         var parameters = chain[effectIndex].parameters
-        parameters[key] = .double(value)
+        parameters[key] = value
         chain[effectIndex] = EffectConfiguration(effect: chain[effectIndex].effect, parameters: parameters)
         var layers = shot.layers
         layers[index] = replacingChain(of: layers[index], with: chain)
@@ -229,6 +252,94 @@ enum LayerTreeEdit {
 
     /// Rebuilds a layer with an edited effect chain, preserving its input,
     /// frame, and opacity.
+    /// Moves the layer at the given bottom-to-top index to another position
+    /// in the stack — the Layer menu's Bring to Front / Send to Back, and any
+    /// other jump longer than one step (``movingLayer(at:_:in:)`` is the
+    /// one-step form the chevrons used).
+    ///
+    /// - Parameters:
+    ///   - index: The layer's index in the shot's `layers` array.
+    ///   - destination: The index it lands at, clamped to the stack.
+    ///   - shot: The shot to edit.
+    /// - Returns: The shot with the layer moved, or unchanged if the index is
+    ///   out of range or the destination is where it already is.
+    static func movingLayer(at index: Int, to destination: Int, in shot: Shot) -> Shot {
+        guard shot.layers.indices.contains(index) else { return shot }
+        let to = min(max(destination, 0), shot.layers.count - 1)
+        guard to != index else { return shot }
+        var layers = shot.layers
+        let layer = layers.remove(at: index)
+        layers.insert(layer, at: to)
+        return replacingLayers(of: shot, with: layers)
+    }
+
+    /// Applies a drag-to-reorder from the editor's list, which shows the
+    /// stack **topmost first**: the offsets are the list's displayed
+    /// positions, in the shape `onMove` hands over (`fromOffsets` /
+    /// `toOffset`), and the move is made on the reversed array so the
+    /// list's own semantics hold exactly — then reversed back into the
+    /// bottom-to-top order the shot stores.
+    ///
+    /// - Parameters:
+    ///   - source: The displayed positions of the rows being dragged.
+    ///   - destination: The displayed position they are dropped at
+    ///     (`0...count`, the gap before that row).
+    ///   - shot: The shot to edit.
+    /// - Returns: The shot with the rows moved, or unchanged if any offset is
+    ///   out of range.
+    static func movingLayers(fromDisplayed source: IndexSet, toDisplayed destination: Int, in shot: Shot) -> Shot {
+        var displayed = Array(shot.layers.reversed())
+        guard source.allSatisfy(displayed.indices.contains), (0...displayed.count).contains(destination) else {
+            return shot
+        }
+        // `onMove`'s semantics by hand, so this file stays framework-free:
+        // the dragged rows land before the row that was at `destination`.
+        let moving = source.map { displayed[$0] }
+        let removedBefore = source.count { $0 < destination }
+        for offset in source.reversed() {
+            displayed.remove(at: offset)
+        }
+        displayed.insert(contentsOf: moving, at: destination - removedBefore)
+        return replacingLayers(of: shot, with: displayed.reversed())
+    }
+
+    /// Rebinds the layer at the given bottom-to-top index to another input,
+    /// keeping its frame, opacity, and effect chain — the inspector's Input
+    /// popup (ARCHITECTURE.md, "The layer inspector"). Unlike
+    /// ``rebindingLayers(boundTo:to:in:)``, which recasts every layer of a
+    /// device across the preset, this touches one layer of one shot.
+    ///
+    /// - Parameters:
+    ///   - index: The layer's index in the shot's `layers` array.
+    ///   - input: The input the layer binds to from now on.
+    ///   - shot: The shot to edit.
+    /// - Returns: The shot with the layer rebound, or unchanged if the index
+    ///   is out of range or the input is the one it already has.
+    static func rebindingLayer(at index: Int, to input: InputID, in shot: Shot) -> Shot {
+        guard shot.layers.indices.contains(index), shot.layers[index].input != input else { return shot }
+        var layers = shot.layers
+        let layer = layers[index]
+        layers[index] = Layer(input: input, frame: layer.frame, opacity: layer.opacity, effects: layer.effects)
+        return replacingLayers(of: shot, with: layers)
+    }
+
+    /// Duplicates the layer at the given bottom-to-top index, placing the
+    /// copy **directly above** it — the same input, frame, opacity, and
+    /// effect chain, which is what Keynote's Duplicate does with an object:
+    /// the copy is where the original is, ready to be dragged aside.
+    ///
+    /// - Parameters:
+    ///   - index: The layer's index in the shot's `layers` array.
+    ///   - shot: The shot to edit.
+    /// - Returns: The shot with the copy inserted, or unchanged if the index
+    ///   is out of range.
+    static func duplicatingLayer(at index: Int, in shot: Shot) -> Shot {
+        guard shot.layers.indices.contains(index) else { return shot }
+        var layers = shot.layers
+        layers.insert(layers[index], at: index + 1)
+        return replacingLayers(of: shot, with: layers)
+    }
+
     private static func replacingChain(of layer: Layer, with chain: [EffectConfiguration]) -> Layer {
         Layer(input: layer.input, frame: layer.frame, opacity: layer.opacity, effects: chain)
     }

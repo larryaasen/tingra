@@ -551,6 +551,23 @@
         }
       }
     },
+    "Adjust Effect" : {
+      "comment" : "Undo action name: an effect parameter changed",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Effekt anpassen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ajustar efecto"
+          }
+        }
+      }
+    },
     "Appearance" : {
       "comment" : "General settings: label of the light/dark appearance control",
       "localizations" : {
@@ -706,6 +723,74 @@
         }
       }
     },
+    "Bottom Left" : {
+      "comment" : "Layer placement anchor",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unten links"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abajo a la izquierda"
+          }
+        }
+      }
+    },
+    "Bottom Right" : {
+      "comment" : "Layer placement anchor",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unten rechts"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abajo a la derecha"
+          }
+        }
+      }
+    },
+    "Bring Forward" : {
+      "comment" : "Layer menu item moving the selected layer one step up the stack",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schrittweise nach vorne"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Adelantar"
+          }
+        }
+      }
+    },
+    "Bring to Front" : {
+      "comment" : "Layer menu item moving the selected layer to the top of the stack",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ganz nach vorne"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Traer al frente"
+          }
+        }
+      }
+    },
     "Camera" : {
       "comment" : "Camera input picker label\nPermissions settings: the camera permission's name\nShot: camera full-frame",
       "localizations" : {
@@ -770,6 +855,57 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Cancelar"
+          }
+        }
+      }
+    },
+    "Center" : {
+      "comment" : "Layer placement anchor",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mitte"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Centro"
+          }
+        }
+      }
+    },
+    "Change Input" : {
+      "comment" : "Undo action name: a layer was rebound to another input",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eingang ändern"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cambiar entrada"
+          }
+        }
+      }
+    },
+    "Change Opacity" : {
+      "comment" : "Undo action name: a layer's opacity changed",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deckkraft ändern"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cambiar opacidad"
           }
         }
       }
@@ -995,6 +1131,23 @@
         }
       }
     },
+    "Delete Layer" : {
+      "comment" : "Layer menu item removing the selected layer",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ebene löschen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eliminar capa"
+          }
+        }
+      }
+    },
     "Delete this destination?" : {
       "comment" : "Confirmation alert title before deleting a destination from the sidebar",
       "localizations" : {
@@ -1200,6 +1353,23 @@
         }
       }
     },
+    "Drag an input here or use Add Layer." : {
+      "comment" : "Layer editor empty state description: how to add a layer",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ziehe einen Eingang hierher oder verwende „Ebene hinzufügen“."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Arrastra una entrada aquí o usa Añadir capa."
+          }
+        }
+      }
+    },
     "Duplicate" : {
       "comment" : "Context menu: duplicate this shot or preset",
       "localizations" : {
@@ -1213,6 +1383,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Duplicar"
+          }
+        }
+      }
+    },
+    "Duplicate Layer" : {
+      "comment" : "Layer menu item duplicating the selected layer",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ebene duplizieren"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Duplicar capa"
           }
         }
       }
@@ -1506,6 +1693,23 @@
         }
       }
     },
+    "Full Frame" : {
+      "comment" : "Layer placement size: the whole program",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vollbild"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cuadro completo"
+          }
+        }
+      }
+    },
     "General" : {
       "comment" : "Settings window pane: general app settings",
       "localizations" : {
@@ -1575,6 +1779,23 @@
         }
       }
     },
+    "Half" : {
+      "comment" : "Layer placement size: half the program each way",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hälfte"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mitad"
+          }
+        }
+      }
+    },
     "Height" : {
       "comment" : "Layer frame slider label",
       "localizations" : {
@@ -1588,6 +1809,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Alto"
+          }
+        }
+      }
+    },
+    "Hide Inspector" : {
+      "comment" : "View menu item and toolbar tooltip that hides the inspector column",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inspektor ausblenden"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ocultar inspector"
           }
         }
       }
@@ -1656,6 +1894,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Incluir este destino al transmitir"
+          }
+        }
+      }
+    },
+    "Input" : {
+      "comment" : "Layer inspector row: the input the layer is bound to",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eingang"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Entrada"
+          }
+        }
+      }
+    },
+    "Inset" : {
+      "comment" : "Layer placement size: the picture-in-picture inset",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einsatz"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Recuadro"
           }
         }
       }
@@ -1741,6 +2013,57 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "I"
+          }
+        }
+      }
+    },
+    "Layer" : {
+      "comment" : "Title of the Layer menu, arranging the selected layer",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ebene"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Capa"
+          }
+        }
+      }
+    },
+    "Layer handles" : {
+      "comment" : "Accessibility label of the selected layer's handles on the monitor",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ebenengriffe"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tiradores de capa"
+          }
+        }
+      }
+    },
+    "Layer: %@" : {
+      "comment" : "Inspector column caption naming the selected layer; the placeholder is its input's name",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ebene: %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Capa: %@"
           }
         }
       }
@@ -1843,6 +2166,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ubicación"
+          }
+        }
+      }
+    },
+    "Lock Aspect Ratio" : {
+      "comment" : "Layer inspector toggle keeping the layer's proportion",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seitenverhältnis sperren"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bloquear proporción"
           }
         }
       }
@@ -2002,6 +2342,23 @@
         }
       }
     },
+    "Match Input" : {
+      "comment" : "Layer inspector button restoring the input's own aspect ratio",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "An Eingang anpassen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ajustar a la entrada"
+          }
+        }
+      }
+    },
     "Meter" : {
       "comment" : "Help tag and accessibility label of a channel strip's meter",
       "localizations" : {
@@ -2117,6 +2474,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Bajar"
+          }
+        }
+      }
+    },
+    "Move Effect" : {
+      "comment" : "Undo action name: an effect moved through a layer's chain",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Effekt bewegen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mover efecto"
+          }
+        }
+      }
+    },
+    "Move Layer" : {
+      "comment" : "Undo action name: a layer was moved on the monitor or nudged",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ebene bewegen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mover capa"
           }
         }
       }
@@ -2533,6 +2924,40 @@
         }
       }
     },
+    "No Layer Selected" : {
+      "comment" : "Inspector column empty state title",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Ebene ausgewählt"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ninguna capa seleccionada"
+          }
+        }
+      }
+    },
+    "No Layers" : {
+      "comment" : "Layer editor empty state title: the edited shot has no layers",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Ebenen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sin capas"
+          }
+        }
+      }
+    },
     "No monitoring" : {
       "comment" : "Monitor device picker entry for monitoring nothing",
       "localizations" : {
@@ -2680,7 +3105,7 @@
       }
     },
     "Not connected" : {
-      "comment" : "Help tag on a channel strip whose device is absent",
+      "comment" : "Help tag on a channel strip whose device is absent\nTooltip on a layer whose input is not currently discovered",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -2850,6 +3275,23 @@
         }
       }
     },
+    "Open Settings" : {
+      "comment" : "Tooltip on the Settings toolbar button",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einstellungen öffnen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abrir Ajustes"
+          }
+        }
+      }
+    },
     "Open System Settings…" : {
       "comment" : "Permissions settings: button that opens the permission's switch in System Settings",
       "localizations" : {
@@ -2901,6 +3343,23 @@
         }
       }
     },
+    "Percent" : {
+      "comment" : "Layer inspector unit: percent of the program",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prozent"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Porcentaje"
+          }
+        }
+      }
+    },
     "Permissions" : {
       "comment" : "Settings window pane: the system permissions' status",
       "localizations" : {
@@ -2931,6 +3390,57 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Imagen en imagen"
+          }
+        }
+      }
+    },
+    "Pixels" : {
+      "comment" : "Layer inspector unit: program pixels",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pixel"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Píxeles"
+          }
+        }
+      }
+    },
+    "Placement" : {
+      "comment" : "Layer inspector row: the anchor grid and size presets",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Platzierung"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ubicación"
+          }
+        }
+      }
+    },
+    "Position" : {
+      "comment" : "Layer inspector row: the layer's position",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Position"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Posición"
           }
         }
       }
@@ -3463,6 +3973,23 @@
         }
       }
     },
+    "Reorder Layer" : {
+      "comment" : "Undo action name: a layer moved through the stack",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ebene neu anordnen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reordenar capa"
+          }
+        }
+      }
+    },
     "Request…" : {
       "comment" : "Permissions settings: button that shows the system permission prompt",
       "localizations" : {
@@ -3481,7 +4008,7 @@
       }
     },
     "Reset" : {
-      "comment" : "Permissions settings: button that forgets the system's decision for a permission",
+      "comment" : "Permissions settings: button that forgets the system's decision for a permission\nPermissions settings: button that forgets the system's decision for a service",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -3493,6 +4020,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Restablecer"
+          }
+        }
+      }
+    },
+    "Resize Layer" : {
+      "comment" : "Undo action name: a layer's size changed",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ebenengröße ändern"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Redimensionar capa"
+          }
+        }
+      }
+    },
+    "Restore the input's own aspect ratio, keeping the width" : {
+      "comment" : "Tooltip on the layer inspector's Match Input button",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Seitenverhältnis des Eingangs wiederherstellen, die Breite bleibt"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Restaurar la proporción de la entrada, manteniendo el ancho"
           }
         }
       }
@@ -3634,8 +4195,26 @@
         }
       }
     },
+    "Select a layer in the list or on the preview monitor." : {
+      "comment" : "Inspector column empty state description",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wähle eine Ebene in der Liste oder auf dem Vorschau-Monitor."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Selecciona una capa en la lista o en el monitor de previo."
+          }
+        }
+      }
+    },
     "Select a layer to edit its frame and opacity." : {
-      "comment" : "Layer editor empty-selection hint",
+      "comment" : "Layer editor hint with no selection",
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -3647,6 +4226,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Selecciona una capa para editar su marco y opacidad."
+          }
+        }
+      }
+    },
+    "Send Backward" : {
+      "comment" : "Layer menu item moving the selected layer one step down the stack",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schrittweise nach hinten"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enviar atrás"
+          }
+        }
+      }
+    },
+    "Send to Back" : {
+      "comment" : "Layer menu item moving the selected layer to the bottom of the stack",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ganz nach hinten"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enviar al fondo"
           }
         }
       }
@@ -3669,7 +4282,7 @@
       }
     },
     "Settings" : {
-      "comment" : "Title of the settings window",
+      "comment" : "Title of the settings window, and the toolbar button that opens it",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -3787,6 +4400,23 @@
         }
       }
     },
+    "Shot: %@" : {
+      "comment" : "Inspector column title naming the shot being edited",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einstellung: %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Toma: %@"
+          }
+        }
+      }
+    },
     "Shots" : {
       "comment" : "Heading over the shot bank beneath the monitors\nSidebar section heading over the active preset's shots\nTitle of the Shots menu, listing the active preset's shots",
       "localizations" : {
@@ -3817,6 +4447,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Tomas y dispositivos"
+          }
+        }
+      }
+    },
+    "Show Inspector" : {
+      "comment" : "View menu item and toolbar tooltip that shows the inspector column",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inspektor einblenden"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostrar inspector"
           }
         }
       }
@@ -4546,6 +5193,40 @@
         }
       }
     },
+    "Top Left" : {
+      "comment" : "Layer placement anchor",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Oben links"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Arriba a la izquierda"
+          }
+        }
+      }
+    },
+    "Top Right" : {
+      "comment" : "Layer placement anchor",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Oben rechts"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Arriba a la derecha"
+          }
+        }
+      }
+    },
     "Transition" : {
       "comment" : "Label of the picker choosing the transition kind for the next shot take\nSection heading over the Cut, Take, and transition controls",
       "localizations" : {
@@ -4559,6 +5240,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Transición"
+          }
+        }
+      }
+    },
+    "Unit" : {
+      "comment" : "Layer inspector: the pixels/percent unit toggle's accessibility label",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einheit"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unidad"
           }
         }
       }
@@ -4798,6 +5496,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Y"
+          }
+        }
+      }
+    },
+    "Applied in order, top to bottom" : {
+      "comment" : "Caption under an effect chain's heading: the effects run in the listed order",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Angewendet in Reihenfolge, von oben nach unten"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aplicados en orden, de arriba abajo"
+          }
+        }
+      }
+    },
+    "Layer Monitor" : {
+      "comment" : "Disclosure heading of the inspector's monitor showing the layer after its effects",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ebenenmonitor"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Monitor de capa"
           }
         }
       }

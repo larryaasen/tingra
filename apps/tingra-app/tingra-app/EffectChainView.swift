@@ -38,8 +38,7 @@ struct EffectChainView: View {
     /// Add Effect menu.
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Effects", comment: "Heading of a channel strip's audio effect chain popover")
-                .font(.headline)
+            EffectChainHeading(prominent: true)
 
             if chain.isEmpty {
                 Text("No effects", comment: "Placeholder in an empty audio effect chain")
@@ -61,6 +60,7 @@ struct EffectChainView: View {
     private func slotRow(_ configuration: EffectConfiguration, at index: Int) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 4) {
+                EffectSlotOrdinal(index: index)
                 Text(model.effectName(for: configuration.effect))
                     .lineLimit(1)
                 Spacer()
@@ -100,15 +100,51 @@ struct EffectChainView: View {
                     .foregroundStyle(.secondary)
             } else {
                 ForEach(parameters, id: \.key) { parameter in
-                    parameterSlider(parameter, at: index, in: configuration)
+                    switch parameter.kind {
+                    case .number:
+                        parameterSlider(parameter, at: index, in: configuration)
+                    case .color:
+                        parameterColorWell(parameter, at: index, in: configuration)
+                    }
                 }
             }
         }
         .padding(.vertical, 2)
     }
 
+    /// One declared color parameter's well — no built-in audio effect
+    /// declares one, but the descriptor's kind is handled exhaustively so a
+    /// third-party effect that does gets its control. The well coalesces a
+    /// color panel's continuous changes into one gesture and one `tap`.
+    private func parameterColorWell(
+        _ parameter: EffectParameter,
+        at index: Int,
+        in configuration: EffectConfiguration
+    ) -> some View {
+        let value =
+            configuration.parameters[parameter.key].flatMap(EffectColor.init) ?? parameter.defaultColor ?? .white
+        return EffectColorWell(parameter: parameter, value: value) {
+        } onChange: { color in
+            model.setEffectParameter(color.jsonValue, forKey: parameter.key, ofEffectAt: index, onStrip: stripID)
+        } onEnd: {
+            model.eventBus.tap(
+                "effectParameter.colorWell",
+                domain: .audio,
+                params: [
+                    "id": .string(stripID.rawValue),
+                    "effect": .string(configuration.effect.rawValue),
+                    "index": .int(index),
+                    "key": .string(parameter.key),
+                ]
+            )
+        }
+    }
+
     /// One declared parameter's slider, drawn generically from its
-    /// descriptor: the effect's own name for it, its range, and its unit.
+    /// descriptor — the effect's own name for it, its range, and its unit —
+    /// paired with the shared ``EffectParameterField``, so the value can be
+    /// read and typed (ARCHITECTURE.md, "Effect parameters show and take
+    /// their value").
     private func parameterSlider(
         _ parameter: EffectParameter,
         at index: Int,
@@ -144,11 +180,20 @@ struct EffectChainView: View {
             }
             .controlSize(.small)
 
-            Text(formatted(value, unit: parameter.unit))
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .monospacedDigit()
-                .frame(width: 60, alignment: .trailing)
+            EffectParameterField(parameter: parameter, value: value) { typed in
+                model.eventBus.tap(
+                    "effectParameter.field",
+                    domain: .audio,
+                    params: [
+                        "id": .string(stripID.rawValue),
+                        "effect": .string(configuration.effect.rawValue),
+                        "index": .int(index),
+                        "key": .string(parameter.key),
+                        "value": .double(typed),
+                    ]
+                )
+                model.setEffectParameter(typed, forKey: parameter.key, ofEffectAt: index, onStrip: stripID)
+            }
         }
     }
 
@@ -188,11 +233,4 @@ struct EffectChainView: View {
         )
     }
 
-    /// A parameter value with its unit, for the slider's value label — a
-    /// whole number for a unit-carrying parameter (decibels and hertz read
-    /// as integers on a console), one fraction digit otherwise.
-    private func formatted(_ value: Double, unit: String?) -> String {
-        guard let unit else { return value.formatted(.number.precision(.fractionLength(1))) }
-        return "\(value.formatted(.number.precision(.fractionLength(0)))) \(unit)"
-    }
 }

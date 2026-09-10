@@ -67,7 +67,7 @@ public final class CoreImageShotRenderer: ShotRenderer {
     /// so a chain is instantiated once rather than per tick. An entry is
     /// rebuilt when its layer's configurations change (a live chain edit)
     /// and dropped when the shot stops being rendered.
-    private var effectChains: [ChainKey: CachedChain] = [:]
+    private var effectChains: [ChainKey: VideoEffectChain] = [:]
 
     /// Identifies one layer's chain slot in the cache.
     private struct ChainKey: Hashable {
@@ -76,16 +76,6 @@ public final class CoreImageShotRenderer: ShotRenderer {
 
         /// The layer's bottom-to-top index within that shot.
         let layer: Int
-    }
-
-    /// One cached chain: the configurations it was built from (so a live
-    /// edit is detected) and the live instances.
-    private struct CachedChain {
-        /// The configurations these instances were built from.
-        var configurations: [EffectConfiguration]
-
-        /// The live effect instances, in signal order.
-        var effects: [any VideoEffect]
     }
 
     /// Creates the production renderer, Metal-backed where a GPU is present.
@@ -440,19 +430,13 @@ public final class CoreImageShotRenderer: ShotRenderer {
         }
         guard let makeVideoEffect else { return image }
         if effectChains[key]?.configurations != configurations {
-            effectChains[key] = CachedChain(
-                configurations: configurations,
-                effects: configurations.compactMap(makeVideoEffect)
-            )
+            effectChains[key] = VideoEffectChain(configurations: configurations, makeVideoEffect: makeVideoEffect)
         }
-        guard var cached = effectChains[key] else { return image }
-        var output = image
-        for index in cached.effects.indices {
-            output = cached.effects[index].process(output)
-        }
+        guard var chain = effectChains[key] else { return image }
+        let output = chain.apply(to: image)
         // The instances are value types whose `process` may advance their
         // own state, so the mutated chain goes back into the cache.
-        effectChains[key] = cached
+        effectChains[key] = chain
         return output
     }
 
@@ -480,7 +464,8 @@ public final class CoreImageShotRenderer: ShotRenderer {
     /// placement, so an effect sees the input's own image at its own
     /// scale — a blur radius means the same thing wherever the layer sits
     /// in the program. Returns nil when the destination is empty (a
-    /// zero-size layer draws nothing).
+    /// zero-size layer draws nothing) or the chain leaves no picture (an
+    /// empty output extent).
     private func placedImage(
         for frame: CapturedFrame,
         layer: Layer,
@@ -493,7 +478,12 @@ public final class CoreImageShotRenderer: ShotRenderer {
         // An effect may grow the image's extent (a blur bleeds past the
         // edges), so the chain's output is cropped back to the input's own
         // extent before placement — a layer occupies its frame, never more.
+        // An effect may also shrink it (a crop), and then the extent that
+        // remains is what fills the frame: the kept region becomes the
+        // layer's whole picture (ARCHITECTURE.md, "The Crop effect").
         let source = applyingEffects(to: captured, layer: layer, key: chain).cropped(to: sourceExtent)
+        let pictureExtent = source.extent
+        guard pictureExtent.width > 0, pictureExtent.height > 0 else { return nil }
 
         let width = Double(format.width)
         let height = Double(format.height)
@@ -504,7 +494,9 @@ public final class CoreImageShotRenderer: ShotRenderer {
         // Flip the top-left-origin normalized frame into bottom-left pixels.
         let destY = height * (1 - layer.frame.minY - layer.frame.height)
 
-        var transform = CGAffineTransform(scaleX: destWidth / sourceExtent.width, y: destHeight / sourceExtent.height)
+        var transform = CGAffineTransform(translationX: -pictureExtent.minX, y: -pictureExtent.minY)
+        transform = transform.concatenating(
+            CGAffineTransform(scaleX: destWidth / pictureExtent.width, y: destHeight / pictureExtent.height))
         transform = transform.concatenating(CGAffineTransform(translationX: destX, y: destY))
         var placed = source.transformed(by: transform)
 

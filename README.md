@@ -1,7 +1,7 @@
 # Tingra — Native Live Streaming for macOS
 
-Tingra is a free, open-source live streaming and production application
-built exclusively for macOS. It bets on being Mac-first and Swift-native end
+Tingra: An open-source live streaming and production app
+built exclusively for macOS. It is designed to be Mac-first and Swift-native end
 to end — a real SwiftUI/AppKit app built directly on Apple's media stack, not
 a cross-platform tool ported to the Mac.
 

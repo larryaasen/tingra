@@ -42,6 +42,11 @@ struct TingraApp: App {
     /// it is "let the system decide", which the item cannot print.
     @State private var sidebarVisibility: NavigationSplitViewVisibility = .all
 
+    /// Whether the main window's trailing inspector column is shown — shown
+    /// by default and not persisted, the sidebar's own rule: the column is
+    /// part of the window's shape, not a preference (``InspectorCommands``).
+    @State private var isInspectorPresented = true
+
     /// The delegate that holds quitting open until a recording in flight is
     /// finalized (see ``TingraAppDelegate``).
     @NSApplicationDelegateAdaptor(TingraAppDelegate.self) private var appDelegate
@@ -77,7 +82,7 @@ struct TingraApp: App {
             NavigationSplitView(columnVisibility: $sidebarVisibility) {
                 SidebarView(model: model)
             } detail: {
-                ContentView(model: model)
+                ContentView(model: model, isInspectorPresented: $isInspectorPresented)
                     .frame(minWidth: 640, minHeight: 480)
                     .safeAreaInset(edge: .bottom, spacing: 0) {
                         StatusBarView(model: model, statusBar: statusBar)
@@ -90,7 +95,9 @@ struct TingraApp: App {
         }
         .commands {
             SidebarVisibilityCommands(model: model, visibility: $sidebarVisibility)
+            InspectorCommands(model: model, isPresented: $isInspectorPresented)
             ShotCommands(model: model)
+            LayerCommands(model: model)
             MultiviewCommands(model: model)
             StatusBarCommands(model: model, statusBar: statusBar)
             SettingsCommands(model: model)
@@ -133,7 +140,10 @@ struct TingraApp: App {
         // one; `commandsRemoved()` drops the scene's own commands so the app
         // menu's is the only Settings item, as in every other Mac app.
         Window(
-            String(localized: "Settings", comment: "Title of the settings window"),
+            String(
+                localized: "Settings",
+                comment: "Title of the settings window, and the toolbar button that opens it"
+            ),
             id: Self.settingsWindowID
         ) {
             SettingsView(model: model, appearance: appearance, statusBar: statusBar)

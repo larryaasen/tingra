@@ -105,7 +105,12 @@ internal surface a reader needs to navigate the target instead.
   provider for survives the round trip untouched.
 - `EffectParameter` — one adjustable parameter an effect declares (key, name,
   range, default, unit, linear/logarithmic scale), so a host draws a control
-  for a third-party effect without knowing it exists.
+  for a third-party effect without knowing it exists. Its `Kind` is `.number`
+  (a slider) or, since 2026-09-09, `.color` (a color well, with a
+  `defaultColor`) — added additively, every numeric conformer unchanged.
+- `EffectColor` — the value of a color parameter: sRGB red, green, blue, and
+  alpha in 0…1, clamped on creation, carried in a persisted payload as the
+  plain object `{red, green, blue, alpha}` (`jsonValue` / `init(_:)`).
 - `AudioEffect` — one audio processing step in a channel strip's chain,
   processing the mixer's native currency (deinterleaved float32 blocks at the
   mix rate) in place at the mix tick.
@@ -114,7 +119,9 @@ internal surface a reader needs to navigate the target instead.
   `AudioEffect` instance per chain slot.
 - `VideoEffect` — one video processing step in a layer's chain, processing the
   renderer's native currency (`CIImage → CIImage`) so a whole chain fuses into
-  one render pass.
+  one render pass; `outputExtent(for:)` (2026-09-09, defaulted to the input
+  extent) declares the extent `process` will leave, so a host can measure a
+  layer's picture after its chain without rendering it.
 - `VideoEffectProvider` — the video counterpart of `AudioEffectProvider`.
 - `EffectRegistering` — the registration seam where effect plug-ins attach —
   one seam, two media protocols; the host's `EffectRegistry` conforms.
@@ -487,10 +494,18 @@ internal surface a reader needs to navigate the target instead.
   once at first use from compiled-in source, and the fade stage composites
   opaque black over the finished program frame at the ramp's alpha — the same
   alpha math a dissolve uses, so both share one ramp character. A layer's effect chain is applied
-  to its own image before placement (and cropped back to its extent), composing
+  to its own image before placement (cropped back to its extent, and the extent
+  that remains — a crop's kept region — is what fills the layer's frame), composing
   lazily so the whole chain fuses into the one render pass; instances are cached
   per layer and rebuilt only when the layer's configurations change.
 
+- `VideoEffectChain` — one layer's live effect chain (2026-09-10;
+  ARCHITECTURE.md, "The effect chain says its order, and the layer gets a
+  monitor"): the instances built from its persisted configurations, in signal
+  order, and `apply(to:)`, which runs them and crops to the input's extent —
+  shared by the renderer (one per shot and layer, replacing its private cache)
+  and the app's layer monitor, so a picture is processed the same wherever it
+  is drawn.
 ## `packages/TingraAudio`
 
 - `AudioMixer` — the clock-paced mixer: a mix tick sums every unmuted strip's
@@ -572,8 +587,8 @@ internal surface a reader needs to navigate the target instead.
 
 ## `packages/TingraEffectPlugIns`
 
-- `EffectPlugIn` — contributes the built-in audio effects through the effect
-  registration seam.
+- `EffectPlugIn` — contributes the built-in audio and video effects through
+  the effect registration seam.
 - `GainEffectProvider` / `GainEffect` — a clean decibel trim on a channel
   strip (`gainDecibels`, −24…24 dB, unity by default); the seam's reference
   conformance.
@@ -590,6 +605,21 @@ internal surface a reader needs to navigate the target instead.
 - `BlurEffectProvider` / `BlurEffect` — a layer's Gaussian blur over
   `CIGaussianBlur` (`radiusPixels`, 0…100 px in the layer's own image
   scale, no blur by default).
+- `FrameEffectProvider` / `FrameEffect` — a layer's rounded corners and
+  inside border (2026-09-09; ARCHITECTURE.md, "The Frame effect"):
+  `cornerRadius` (0…0.5) and `borderWidth` (0…0.1) as fractions of the
+  image's shorter side (unit `%`, so the app shows them as percent), both
+  `0` by default so a fresh Frame draws nothing,
+  and `borderColor` (an `EffectColor`, opaque white) — a rounded-rectangle
+  mask and a source-out ring over built-in Core Image generators, cropped
+  to the source extent.
+- `CropEffectProvider` / `CropEffect` — a layer showing only part of its
+  input's picture, a portrait strip out of a landscape camera (2026-09-09;
+  ARCHITECTURE.md, "The Crop effect"): four insets `left`, `top`, `right`,
+  `bottom`, each a fraction (0…0.9) of the width or height cut from that
+  edge (unit `%`, shown as percent), all `0` by default; top is the picture's top; the kept rectangle is
+  rounded out to whole pixels and is also the declared output extent, and
+  insets that meet pass the image through untouched.
 
 ## `packages/TingraOutputPlugIns`
 
@@ -713,7 +743,10 @@ surface is:
 - `SidebarView` — the main window's leading sidebar: the project's presets, the
   active one's shots, the video generators, the audio generators, every camera,
   display, audio input device, and audio output device this Mac can see, and the
-  destinations the program streams to, in nine sections. It is a standard
+  destinations the program streams to, in nine sections. The Cameras and
+  Displays headings carry the role's casting picker at their trailing end
+  (2026-09-09) — which device plays the camera or display role across the
+  preset — under the `camera.picker` / `display.picker` taps. It is a standard
   `NavigationSplitView` sidebar, which is what makes it Liquid Glass on macOS 26
   — nothing applies a glass material by hand, and the deployment floor has none
   to apply. The order is the signal path: presets hold shots, a shot is what
@@ -776,8 +809,11 @@ surface is:
   is derived from the window's width — two 16:9 monitors have no use for
   surplus vertical room, and a plain stack resolved a shortfall by collapsing
   the monitors and pushing the pickers off the bottom edge. The control section
-  holds the `TransitionPanel`, the layer editor, the camera/display pickers,
-  and the mixer; Start/Stop and Record are toolbar items, and the streaming
+  holds the `TransitionPanel`, the layer editor, and the mixer (the
+  camera/display casting pickers moved to the sidebar's Cameras and Displays
+  headings on 2026-09-09, and the selected layer's controls to a trailing
+  inspector column, `LayerInspectorColumn`, toggled by ⌥⌘I and the toolbar's
+  trailing button); Start/Stop and Record are toolbar items, and the streaming
   and recording panels that closed the column became the Streaming and
   Recording settings panes on 2026-09-08 — destinations and the recording
   folder are set up before a show, and the column is for working one. Shots
@@ -802,6 +838,12 @@ surface is:
   latched, and keeps ⇧⌘B and the `fadeToBlack.button` tap. The panel's
   "viewers see and hear nothing" hint went with it — the program monitor's
   badge already says so.
+- `SettingsButton` — the gear at the trailing end of the main window's toolbar
+  (2026-09-09), in an item of its own after the three on-air controls, opening
+  the same settings window as the app menu's Settings… (⌘,). It is the one-click
+  route to the Streaming and Recording panes that took the outputs' setup out
+  of the main window the day before; the shortcut stays on the menu item, and
+  the `settings.button` tap tells its clicks from the menu's `settings.menuItem`.
 - `DestinationListView` — the Streaming settings pane's destination list: one
   form **section** per destination the program fans out to, headed by its name,
   with an enable switch, a name, a URL, a secure stream-key field, its own live
@@ -840,9 +882,33 @@ surface is:
   hears (TODO.md, "Does the recorded mix need a master fader?").
 - `EffectChainView` — one strip's audio effect chain, in a popover: slots in
   signal order with Move Up / Move Down / Remove, an Add Effect menu over every
-  registered audio effect, and a slider per parameter the effect declares —
-  drawn generically from its `EffectParameter` descriptors, so a third-party
-  effect gets parameter UI without the app knowing it exists.
+  registered audio effect, and a slider paired with an `EffectParameterField`
+  (or, for a color parameter, an `EffectColorWell`) per parameter the effect
+  declares — drawn generically from its `EffectParameter` descriptors, so a
+  third-party effect gets parameter UI without the app knowing it exists.
+- `CommittingNumberField` — the numeric field every inspector and chain-editor
+  number goes through (2026-09-10): commits once, on Return or focus loss,
+  never per keystroke; keeps its own text while focused, parses in the
+  user's locale (`parse`/`formatted`, tested), shows what the holder kept
+  after a clamp, and refreshes when the value changes from outside.
+- `EffectChainHeading` / `EffectSlotOrdinal` — what both chain editors share
+  to say that order matters (2026-09-10): the "Effects" heading (a headline in
+  the audio popover, a caption in the inspector) over "Applied in order, top
+  to bottom", and the "1." / "2." ordinal before each slot's name.
+- `EffectParameterField` — the editable value field both chain editors draw
+  beside a number parameter's slider (2026-09-10; ARCHITECTURE.md, "Effect
+  parameters show and take their value"): the value in the parameter's unit,
+  typed values clamped to its range and committed once on Return or focus
+  loss. `EffectParameterFormat` holds the pure conversions: a `%` unit means
+  a stored fraction shown and typed as percent; other units show as stored
+  with no fraction digits, a unitless value with one.
+- `EffectColorWell` — the control both chain editors draw for a color
+  parameter (2026-09-09): an AppKit `NSColorWell` in its minimal style (a
+  swatch popover at the well, "Show Colors…" inside it for the panel),
+  wrapped by `ColorWellRepresentable`, that coalesces the well's continuous
+  changes into one gesture — begin on the first change, apply live, end (one
+  undo step, one `tap`) after half a second of quiet — with the `NSColor` ⇄
+  `EffectColor` conversions beside it.
 - `MixerStrip` — the pure, unit-tested strip state: the merge of the active
   preset's authored `AudioChannel`s with live discovery — authored channels
   first in document order, new devices appended muted — falling back to the
@@ -1019,8 +1085,13 @@ surface is:
   is reported".
 - `LayerTreeEditorView` — the layer-tree editor: add a layer bound to any
   discovered camera, display, or video generator — from the Add Layer menu or
-  by dropping a sidebar input row on the layer list — remove, reorder, and
-  adjust a layer's frame and opacity with live sliders. It follows the shot staged on preview, falling back
+  by dropping a sidebar input row on the layer list — remove, drag rows to
+  reorder, and adjust a layer's frame and opacity with live sliders, or on the
+  monitor itself (`LayerHandlesOverlay`, 2026-09-09). Each row carries the
+  sidebar's kind symbol and the Layer menu's items as its context menu, a layer
+  whose input is not discovered draws dimmed with a warning, a bare shot shows
+  an empty state in place of the list, and the Delete key removes the
+  selection, which is the model's (`EngineModel.selectedLayerIndex`). It follows the shot staged on preview, falling back
   to the shot on program when nothing is staged (`EditedShot`), and heads itself
   with that shot's name beside the shared tally lamp — red, with a note that
   edits are live, while the shot is on program; every edit reaches the compositor
@@ -1030,7 +1101,71 @@ surface is:
   the pool) and the tally its header shows, red winning when the same shot is on
   both buses.
 - `LayerTreeEdit` — the pure, unit-tested edit operations over a `Shot`,
-  including the rebind a picker change applies.
+  including the rebind a picker change applies across a shot, the one-layer
+  rebind the inspector's Input popup makes, a move to any index, the
+  displayed-order move a drag-to-reorder makes, and a duplicate that lands
+  directly above its source.
+- `LayerHandlesOverlay` — direct manipulation of the selected layer on the
+  monitor showing the edited shot (2026-09-09; ARCHITECTURE.md, "Direct
+  manipulation, drag-to-reorder, and undo in the layer-tree editor"): a
+  selection rectangle and eight handles in the tally's tint, drawn inside
+  `MonitorTile` on the fitted video rect; drag to move, a handle to resize
+  (Shift holds the aspect, Option resizes about the center), click to select
+  the topmost layer under the pointer, arrow keys to nudge by 1% (Shift 10%),
+  Delete to remove, with Keynote's yellow smart guides while a drag snaps.
+  One undo step and one `tap` per drag.
+- `LayerHandle` — the eight handles, each knowing which edges it moves and
+  where it sits on the frame.
+- `LayerFrameGesture` — the pure, unit-tested geometry behind the overlay and
+  the inspector's fields: move, resize with the aspect and center rules and a
+  2% minimum size, a typed width or height under the lock, Match Input's
+  return to the input's own proportion (measured after the layer's effect
+  chain by `pictureExtent(_:through:)`), nudge, and topmost-first hit
+  testing, all over normalized frames.
+- `LayerSnap` — the pure, unit-tested smart guides: a moving edge or center
+  within a threshold of the program's edges, center, or thirds snaps onto it,
+  and the guide is reported for the overlay to draw.
+- `LayerCommands` — the menu bar's **Layer** menu, `LayerMenuItems` over the
+  selected layer.
+- `LayerMenuItems` — the six items drawn once for the Layer menu and a layer
+  row's context menu: Bring to Front ⇧⌘], Bring Forward ⌘], Send Backward ⌘[,
+  Send to Back ⇧⌘[, Duplicate Layer ⌘D, Delete Layer — acting on one layer
+  and reporting the surface they were chosen from.
+- `LayerArrangeCommand` — the closed, unit-tested table of those commands:
+  key, modifiers, title, availability at the ends of the stack, destination
+  index, and tap name per `LayerMenuSurface`. Deliberately not in
+  `ProductionShortcut`: editing keys, not production ones.
+- `LayerMenuSurface` — which surface a layer menu item was chosen from (menu
+  bar or context menu), for its tap name's suffix.
+- `LayerUndoAction` — what a layer-tree edit did, naming the Edit menu's Undo
+  and Redo items ("Undo Move Layer") and the `layerEdit.undo` tap's `action`.
+- `LayerInspectorColumn` — the main window's trailing inspector column
+  (2026-09-09; ARCHITECTURE.md, "The inspector column and the sidebar's casting
+  pickers"): a title naming the shot being edited ("Shot: Main Display",
+  beside the tally lamp) over a caption naming the selected layer with its
+  kind symbol, then
+  `LayerInspectorView`, 280–440 points wide, or the empty state saying
+  where to select a layer. Shown by default, not persisted.
+- `InspectorCommands` — the View menu's Show/Hide Inspector item, ⌥⌘I, beside
+  the sidebar's; `InspectorButton` is the same toggle as the toolbar's
+  trailing-most item, each under its own tap.
+- `LayerInspectorView` — the selected layer's inspector (2026-09-09;
+  ARCHITECTURE.md, "The layer inspector"), Final Cut Pro's Video Inspector
+  shape, laid out for the column: an Input popup that rebinds the layer in place, Position and Size as
+  number fields with steppers in program pixels or percent, an aspect lock and
+  Reset, a 3×3 anchor grid beside Full Frame / Half / Inset, opacity as a
+  slider paired with a percent field, then the effect chain, then the layer
+  monitor (a `MonitorTile` over `LayerMonitorSource`, badged "Layer", behind
+  a "Layer Monitor" disclosure closed by default and built only while open,
+  `EngineModel.isLayerMonitorDisclosed`). One edit, one
+  undo step, and one `tap` per committed field or click.
+- `LayerInspectorUnit` — the pure, unit-tested pixels/percent conversion the
+  fields read and write, whole pixels rounded so a value round-trips.
+- `LayerPlacement` — the pure, unit-tested placement presets: nine anchors
+  that move a layer (edge anchors keeping `ProgramLayout.insetMargin` while
+  the layer spans less than half the program, flush otherwise) and three
+  sizes that resize it, so Inset then Bottom Right is the built-in
+  picture-in-picture camera exactly.
 - `ShotEdit` — the pure, unit-tested shot-management operations: a new empty
   shot, a shot showing one input full frame (transient — `automatic` — when
   the app makes it to stage a clicked input, authored when the operator asked
@@ -1056,13 +1191,27 @@ surface is:
   input tile in multiview; it was `ProgramPreviewView` while program was the
   only bus. A source that empties after showing frames (preview cleared) gets
   one cleared drawable, so the monitor never holds a stale frame.
-- `MonitorFrameSource` — the seam a monitor reads through, so those three cases
-  share one draw path: a bus's `ProgramFrameRelay`, or an `InputFrameSource`.
+- `MonitorFrameSource` — the seam a monitor reads through, so those cases
+  share one draw path: a bus's `ProgramFrameRelay`, an `InputFrameSource`, or
+  the inspector's `LayerMonitorSource`. `image(for:)` (2026-09-10, defaulted
+  to the frame itself) is the `CIImage` the monitor draws for a frame, which
+  is how the layer monitor hands a frame through the layer's chain on the
+  one draw path.
+- `LayerMonitorSource` — the inspector's layer monitor's source (2026-09-10;
+  ARCHITECTURE.md, "The effect chain says its order, and the layer gets a
+  monitor"): the selected layer's input, drawn through the layer's effect
+  chain via `VideoEffectChain` and scaled to the layer frame's proportion in
+  program pixels (the picture as the layer places it, opacity aside), the
+  chain's own instances kept in a private cache and rebuilt when the
+  configurations change; reads the selection on every draw.
 - `MonitorTile` — the framed monitor — video letterboxed on black, an optional
   tally border, an optional name badge, and an optional status badge, which is
   what tells a program monitor faded to black apart from a dead one — shared by
   the main window's two monitors, every multiview tile, and the shot bank's
-  tiles, which pass no badge and are captioned beneath instead.
+  tiles, which pass no badge and are captioned beneath instead. The main
+  window's two monitors also hand it content drawn over the fitted video rect
+  — the layer handles (2026-09-09); every other tile passes nothing. The
+  layer list's row thumbnails pass a smaller corner radius.
 - `MonitorRenderContext` — the one Metal device, command queue, and `CIContext`
   every monitor draws through, rather than one per view.
 - `InputGridView` — the multiview window's input grid: one tile per *running*

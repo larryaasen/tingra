@@ -31,76 +31,45 @@ import TingraPlugInKit
 /// list is the array reversed and every operation addresses the layer by its
 /// bottom-to-top array index. Add binds a new layer to any discovered camera,
 /// display, or video generator — as does dropping a sidebar input row on the
-/// list (``DraggedInput``; ARCHITECTURE.md, "The shot bank"); move up/down
-/// steps the selected layer through the stack; the
-/// sliders adjust its normalized top-left-origin frame and its opacity —
-/// every edit is on program at the next tick, no separate "apply" step
-/// (CLOCK.md, the live canvas).
+/// list (``DraggedInput``; ARCHITECTURE.md, "The shot bank"); rows drag to
+/// reorder, and the row's context menu and the Layer menu carry Keynote's
+/// arrange commands (``LayerMenuItems``); the Delete key removes the
+/// selection; the trailing inspector column (``LayerInspectorColumn``)
+/// rebinds the selected layer, places it by pixel fields or preset, and sets
+/// its opacity — every edit is on program at the next tick, no separate
+/// "apply" step (CLOCK.md, the live canvas). The selection is the model's
+/// (``EngineModel/selectedLayerIndex``), shared with the handles on the
+/// monitor (``LayerHandlesOverlay``) and the Layer menu (ARCHITECTURE.md,
+/// "Direct manipulation, drag-to-reorder, and undo in the layer-tree
+/// editor").
 ///
-/// Every button reports its own `tap` event right where it executes, and the
-/// sliders report one `tap` when a drag ends with the final value — never
-/// per-drag-step traffic (EVENTS.md, "The `tap` convention").
+/// Every button reports its own `tap` event right where it executes
+/// (EVENTS.md, "The `tap` convention").
 struct LayerTreeEditorView: View {
     /// The engine model whose followed shot (``EngineModel/editedShot``) is
     /// edited.
     @Bindable var model: EngineModel
 
-    /// The selected layer's index in the shot's bottom-to-top `layers`
-    /// array, or `nil` for no selection. View-local: like what is staged,
-    /// which layer is being inspected is transient session state.
-    @State private var selectedLayerIndex: Int?
-
     /// The lamp's diameter in the header — a dot beside the shot's name,
     /// sized to the caption text it sits with.
     private static let lampDiameter: CGFloat = 8
 
-    /// One adjustable component of a layer's normalized frame.
-    private enum FrameComponent: CaseIterable {
-        case x, y, width, height
+    /// One list row's height, which sizes the list to its rows: tall enough
+    /// for the thumbnail.
+    private static let rowHeight: CGFloat = 30
 
-        /// Reads this component from a frame.
-        func value(of frame: CGRect) -> Double {
-            switch self {
-            case .x: frame.origin.x
-            case .y: frame.origin.y
-            case .width: frame.size.width
-            case .height: frame.size.height
-            }
-        }
+    /// The row thumbnail's width; 16:9, so its height follows.
+    private static let thumbnailWidth: CGFloat = 40
 
-        /// Returns the frame with this component replaced.
-        func replacing(in frame: CGRect, with value: Double) -> CGRect {
-            var frame = frame
-            switch self {
-            case .x: frame.origin.x = value
-            case .y: frame.origin.y = value
-            case .width: frame.size.width = value
-            case .height: frame.size.height = value
-            }
-            return frame
-        }
+    /// The widest the list and its header row grow: a thumbnail, a name,
+    /// and a percentage need no more, and rows stretched across the whole
+    /// window read as a table with nothing in it (Larry, 2026-09-09).
+    private static let maximumWidth: CGFloat = 480
 
-        /// The slider's user-facing label.
-        var label: Text {
-            switch self {
-            case .x: Text("X", comment: "Layer frame slider label: horizontal position")
-            case .y: Text("Y", comment: "Layer frame slider label: vertical position")
-            case .width: Text("Width", comment: "Layer frame slider label")
-            case .height: Text("Height", comment: "Layer frame slider label")
-            }
-        }
-
-        /// The slider's `tap` event name, distinct per control so each
-        /// slider's use is independently traceable in the log.
-        var tapName: String {
-            switch self {
-            case .x: "layerFrameX.slider"
-            case .y: "layerFrameY.slider"
-            case .width: "layerFrameWidth.slider"
-            case .height: "layerFrameHeight.slider"
-            }
-        }
-    }
+    /// How many rows the list is sized for: never fewer than two (so an
+    /// empty or one-layer shot still has room to drop on) and never more
+    /// than six, past which it scrolls.
+    private static let listRows = 2...6
 
     /// The editor body: hidden while no shot is followed (an empty pool, or a
     /// held program snapshot with nothing staged — there is no layer tree to
@@ -112,19 +81,9 @@ struct LayerTreeEditorView: View {
                 shotHeader(for: edited)
                 header(for: shot)
                 layerList(for: shot)
-                if let index = selectedLayerIndex, shot.layers.indices.contains(index) {
-                    inspector(for: shot.layers[index], at: index)
-                } else {
-                    Text("Select a layer to edit its frame and opacity.", comment: "Layer editor empty-selection hint")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
             }
-            .onChange(of: model.editedShot?.shot.id) {
-                // The editor follows the buses: a different shot has a
-                // different layer tree, so the old selection is meaningless.
-                selectedLayerIndex = nil
-            }
+            .frame(maxWidth: Self.maximumWidth, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -168,7 +127,10 @@ struct LayerTreeEditorView: View {
         }
     }
 
-    /// The header row: the "Layers" title with the add/remove/move controls.
+    /// The header row: the "Layers" title with the add and remove controls.
+    /// The Move Up / Move Down chevrons that stood here went with
+    /// drag-to-reorder and the Layer menu; Remove stays as the one-click
+    /// affordance beside Add.
     private func header(for shot: Shot) -> some View {
         HStack(spacing: 8) {
             Text("Layers", comment: "Layer editor section title")
@@ -198,40 +160,7 @@ struct LayerTreeEditorView: View {
             .fixedSize()
 
             Button {
-                guard let index = selectedLayerIndex else { return }
-                model.eventBus.tap("layerMoveUp.button", domain: .composition, params: ["index": .int(index)])
-                model.moveLayer(at: index, .up)
-                selectedLayerIndex = index + 1
-            } label: {
-                Label {
-                    Text("Move Up", comment: "Button moving the selected layer toward the top of the stack")
-                } icon: {
-                    Image(systemName: "chevron.up")
-                }
-                .labelStyle(.iconOnly)
-            }
-            .disabled(selectedLayerIndex.map { $0 >= shot.layers.count - 1 } ?? true)
-
-            Button {
-                guard let index = selectedLayerIndex else { return }
-                model.eventBus.tap("layerMoveDown.button", domain: .composition, params: ["index": .int(index)])
-                model.moveLayer(at: index, .down)
-                selectedLayerIndex = index - 1
-            } label: {
-                Label {
-                    Text("Move Down", comment: "Button moving the selected layer toward the bottom of the stack")
-                } icon: {
-                    Image(systemName: "chevron.down")
-                }
-                .labelStyle(.iconOnly)
-            }
-            .disabled(selectedLayerIndex.map { $0 <= 0 } ?? true)
-
-            Button {
-                guard let index = selectedLayerIndex else { return }
-                model.eventBus.tap("layerRemove.button", domain: .composition, params: ["index": .int(index)])
-                selectedLayerIndex = nil
-                Task { await model.removeLayer(at: index) }
+                removeSelectedLayer(reporting: "layerRemove.button")
             } label: {
                 Label {
                     Text("Remove Layer", comment: "Button removing the selected layer")
@@ -240,36 +169,43 @@ struct LayerTreeEditorView: View {
                 }
                 .labelStyle(.iconOnly)
             }
-            .disabled(selectedLayerIndex == nil)
+            .disabled(model.selectedLayer == nil)
         }
     }
 
-    /// The layer list, topmost layer first, selecting the layer the
-    /// inspector edits — and a drop target: an input dragged from the sidebar
-    /// becomes a new layer on top, the drag-from-grid the multiview record
-    /// deferred, landing where a layer is actually made.
+    /// The layer list, topmost first, sized to its rows; an empty shot shows
+    /// what to do instead of an empty box. A single selection, held by the
+    /// model; rows drag to reorder and carry the Layer menu's items as their
+    /// context menu; Delete removes the selection.
+    ///
+    /// Also the **drop target** for a sidebar input row: a dropped camera,
+    /// display, or video generator becomes a new layer on top, the
+    /// drag-from-grid the multiview record deferred, landing where a layer
+    /// is actually made.
     private func layerList(for shot: Shot) -> some View {
-        List(selection: $selectedLayerIndex) {
-            ForEach(Array(shot.layers.indices.reversed()), id: \.self) { index in
-                HStack {
-                    Text(model.inputName(for: shot.layers[index].input))
-                    Spacer()
-                    Text(shot.layers[index].opacity.formatted(.percent.precision(.fractionLength(0))))
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
+        Group {
+            if shot.layers.isEmpty {
+                emptyState
+            } else {
+                List(selection: selectionBinding) {
+                    ForEach(Array(shot.layers.indices.reversed()), id: \.self) { index in
+                        layerRow(shot.layers[index], at: index)
+                            .tag(index)
+                            .contextMenu {
+                                LayerMenuItems(model: model, surface: .contextMenu, index: index)
+                            }
+                    }
+                    .onMove { source, destination in
+                        reorder(from: source, to: destination, count: shot.layers.count)
+                    }
                 }
-                .tag(index)
+                .listStyle(.bordered)
+                .onDeleteCommand {
+                    removeSelectedLayer(reporting: "layerDelete.key")
+                }
             }
         }
-        .listStyle(.bordered)
-        .frame(height: 110)
-        .onChange(of: selectedLayerIndex) { _, newValue in
-            model.eventBus.tap(
-                "layerSelect.list",
-                domain: .composition,
-                params: ["index": .int(newValue ?? -1)]
-            )
-        }
+        .frame(height: Self.listHeight(forLayerCount: shot.layers.count))
         .dropDestination(for: DraggedInput.self) { items, _ in
             // Only a discovered video input can be a layer; a payload naming
             // anything else is a device that went away mid-drag.
@@ -286,78 +222,101 @@ struct LayerTreeEditorView: View {
         }
     }
 
-    /// The selected layer's inspector: frame and opacity sliders, applied
-    /// live while dragging.
-    private func inspector(for layer: Layer, at index: Int) -> some View {
-        Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 4) {
-            GridRow {
-                ForEach(FrameComponent.allCases, id: \.self) { component in
-                    componentSlider(component, for: layer, at: index)
-                }
+    /// The empty shot's list: what a layer is made from and how, in the
+    /// system's unavailable-content shape, framed like the list it stands
+    /// in for so the drop target reads as one.
+    private var emptyState: some View {
+        ContentUnavailableView {
+            Label {
+                Text("No Layers", comment: "Layer editor empty state title: the edited shot has no layers")
+            } icon: {
+                Image(systemName: "square.stack.3d.up.slash")
             }
-            GridRow {
-                HStack(spacing: 4) {
-                    Text("Opacity", comment: "Layer opacity slider label")
-                        .font(.caption)
-                    Slider(value: opacityBinding(at: index), in: 0...1) { editing in
-                        guard !editing else { return }
-                        model.eventBus.tap(
-                            "layerOpacity.slider",
-                            domain: .composition,
-                            params: ["index": .int(index), "value": .double(currentLayer(at: index)?.opacity ?? 0)]
-                        )
-                    }
-                }
-                .gridCellColumns(FrameComponent.allCases.count)
-            }
-            GridRow {
-                LayerEffectChainView(model: model, layerIndex: index, effects: layer.effects ?? [])
-                    .gridCellColumns(FrameComponent.allCases.count)
-            }
+        } description: {
+            Text(
+                "Drag an input here or use Add Layer.",
+                comment: "Layer editor empty state description: how to add a layer"
+            )
         }
-        .controlSize(.small)
-    }
-
-    /// One frame-component slider (X, Y, Width, or Height), applied live.
-    private func componentSlider(_ component: FrameComponent, for layer: Layer, at index: Int) -> some View {
-        HStack(spacing: 4) {
-            component.label
-                .font(.caption)
-            Slider(value: frameBinding(component, at: index), in: 0...1) { editing in
-                guard !editing else { return }
-                let value = (currentLayer(at: index)?.frame).map(component.value(of:)) ?? 0
-                model.eventBus.tap(
-                    component.tapName,
-                    domain: .composition,
-                    params: ["index": .int(index), "value": .double(value)]
-                )
-            }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .overlay {
+            RoundedRectangle(cornerRadius: 4)
+                .strokeBorder(.separator)
         }
     }
 
-    /// The followed shot's layer at the given bottom-to-top index, freshly
-    /// read from the model so slider bindings always see the latest edit.
-    private func currentLayer(at index: Int) -> Layer? {
-        guard let layers = model.editedShot?.shot.layers, layers.indices.contains(index) else { return nil }
-        return layers[index]
+    /// One row: a live thumbnail of the input (``InputFrameSource``, the
+    /// shot bank's source, so a row shows what it is), the input's kind symbol, its name, and its opacity — dimmed
+    /// with a warning symbol when the input is not discovered, Final Cut's
+    /// missing-media reading, so a dormant layer never looks like a live one.
+    private func layerRow(_ layer: Layer, at index: Int) -> some View {
+        let available = model.isInputAvailable(layer.input)
+        return HStack(spacing: 6) {
+            MonitorTile(
+                source: InputFrameSource(model: model, id: layer.input), label: nil, badgeTint: .clear,
+                cornerRadius: 3
+            )
+            .frame(width: Self.thumbnailWidth, height: Self.thumbnailWidth * 9 / 16)
+            Image(systemName: available ? model.kindSymbol(forInput: layer.input) : "exclamationmark.triangle")
+                .foregroundStyle(.secondary)
+                .frame(width: 16)
+            Text(model.inputName(for: layer.input))
+            Spacer()
+            Text(layer.opacity.formatted(.percent.precision(.fractionLength(0))))
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+        }
+        .foregroundStyle(available ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
+        .help(
+            available
+                ? Text(verbatim: "")
+                : Text("Not connected", comment: "Tooltip on a layer whose input is not currently discovered")
+        )
+        .accessibilityHint(
+            available
+                ? Text(verbatim: "")
+                : Text("Not connected", comment: "Tooltip on a layer whose input is not currently discovered")
+        )
     }
 
-    /// A live binding to one component of the layer's normalized frame.
-    private func frameBinding(_ component: FrameComponent, at index: Int) -> Binding<Double> {
-        Binding {
-            (currentLayer(at: index)?.frame).map(component.value(of:)) ?? 0
-        } set: { newValue in
-            guard let frame = currentLayer(at: index)?.frame else { return }
-            model.setLayerFrame(component.replacing(in: frame, with: newValue), at: index)
+    /// The list's selection, reporting a `tap` when the list changes it —
+    /// the monitor and the menu report their own, so the model's stored
+    /// selection is not watched for changes.
+    private var selectionBinding: Binding<Int?> {
+        $model.selectedLayerIndex.reportingTap(to: model.eventBus, "layerSelect.list", domain: .composition) {
+            ["index": .int($0 ?? -1)]
         }
     }
 
-    /// A live binding to the layer's opacity.
-    private func opacityBinding(at index: Int) -> Binding<Double> {
-        Binding {
-            currentLayer(at: index)?.opacity ?? 0
-        } set: { newValue in
-            model.setLayerOpacity(newValue, at: index)
+    /// The list's height for a shot: its rows, within ``listRows``.
+    private static func listHeight(forLayerCount count: Int) -> CGFloat {
+        CGFloat(min(max(count, listRows.lowerBound), listRows.upperBound)) * rowHeight + 12
+    }
+
+    /// Applies a drag-to-reorder and keeps the selection on the layer that
+    /// moved, so the row the operator dragged stays the one the inspector
+    /// shows.
+    private func reorder(from source: IndexSet, to destination: Int, count: Int) {
+        guard let moved = source.first else { return }
+        model.eventBus.tap(
+            "layerList.reorder",
+            domain: .composition,
+            params: ["from": .int(count - 1 - moved), "to": .int(destination)]
+        )
+        let wasSelected = model.selectedLayerIndex == count - 1 - moved
+        model.moveLayers(fromDisplayed: source, toDisplayed: destination)
+        if wasSelected {
+            let landed = destination > moved ? destination - 1 : destination
+            model.selectedLayerIndex = count - 1 - landed
         }
+    }
+
+    /// Removes the selected layer, reporting the tap of whichever control
+    /// asked — the Remove button or the Delete key.
+    private func removeSelectedLayer(reporting tapName: String) {
+        guard let selection = model.selectedLayer else { return }
+        model.eventBus.tap(tapName, domain: .composition, params: ["index": .int(selection.index)])
+        model.selectedLayerIndex = nil
+        Task { await model.removeLayer(at: selection.index) }
     }
 }

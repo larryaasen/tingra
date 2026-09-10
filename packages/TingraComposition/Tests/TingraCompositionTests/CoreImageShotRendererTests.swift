@@ -669,6 +669,67 @@ struct CoreImageShotRendererTests {
         #expect(pixel.red < 60)
     }
 
+    @Test("an effect that shrinks the extent fills the layer's frame with what it keeps")
+    func shrunkExtentFillsTheFrame() throws {
+        // An effect that keeps only the left half of the picture, painted
+        // green: a crop. The kept region must become the layer's whole
+        // picture — every program pixel green — rather than sit in the
+        // left half of the frame with the background showing beside it.
+        let renderer = CoreImageShotRenderer(
+            context: CIContext(options: [.useSoftwareRenderer: true]),
+            makeVideoEffect: { _ in KeepingEffect(color: CIColor(red: 0, green: 1, blue: 0), keptFraction: 0.5) }
+        )
+        let format = ProgramFormat(width: 4, height: 4, frameRate: 30)
+        let camera = InputID(rawValue: "camera")
+        let shot = Shot(
+            layers: [Layer(input: camera, effects: [EffectConfiguration(effect: EffectID(rawValue: "crop"))])],
+            background: .black
+        )
+
+        let program = try #require(
+            renderer.render(
+                shot: shot,
+                frames: [camera: solidFrame(red: 255, green: 0, blue: 0)],
+                format: format,
+                time: .zero
+            )
+        )
+
+        for x in 0..<4 {
+            let pixel = readPixel(program.pixelBuffer, x: x, y: 2)
+            #expect(pixel.green > 200, "column \(x)")
+            #expect(pixel.red < 60, "column \(x)")
+        }
+    }
+
+    @Test("an effect that leaves an empty extent draws nothing")
+    func emptyExtentDrawsNothing() throws {
+        let renderer = CoreImageShotRenderer(
+            context: CIContext(options: [.useSoftwareRenderer: true]),
+            makeVideoEffect: { _ in KeepingEffect(color: CIColor(red: 0, green: 1, blue: 0), keptFraction: 0) }
+        )
+        let format = ProgramFormat(width: 4, height: 4, frameRate: 30)
+        let camera = InputID(rawValue: "camera")
+        let shot = Shot(
+            layers: [Layer(input: camera, effects: [EffectConfiguration(effect: EffectID(rawValue: "crop"))])],
+            background: .black
+        )
+
+        let program = try #require(
+            renderer.render(
+                shot: shot,
+                frames: [camera: solidFrame(red: 255, green: 0, blue: 0)],
+                format: format,
+                time: .zero
+            )
+        )
+
+        // Only the background remains.
+        let pixel = readPixel(program.pixelBuffer, x: 2, y: 2)
+        #expect(pixel.green < 5)
+        #expect(pixel.red < 5)
+    }
+
     @Test("effects apply in signal order — the chain is its array")
     func layerChainAppliesInSignalOrder() throws {
         // Green then blue: the last effect in the array wins, proving the
@@ -910,6 +971,28 @@ struct CoreImageShotRendererTests {
         #expect(faded.presentationTime == time)
         let primaries = CVBufferCopyAttachment(faded.pixelBuffer, kCVImageBufferColorPrimariesKey, nil)
         #expect(primaries as? String == kCVImageBufferColorPrimaries_ITU_R_709_2 as String)
+    }
+}
+
+/// A test video effect standing in for a crop: a flat color over only the
+/// leftmost fraction of the input's extent, so the renderer's handling of
+/// an output extent smaller than the input's is what the pixels show.
+private struct KeepingEffect: VideoEffect {
+    /// The color every kept pixel becomes.
+    let color: CIColor
+
+    /// The fraction of the input's width kept, from the left edge (`0`
+    /// keeps nothing).
+    let keptFraction: CGFloat
+
+    /// Ignores every payload.
+    func setParameters(_ parameters: [String: JSONValue]) {}
+
+    /// Returns the flat color over the kept fraction of the extent.
+    func process(_ image: CIImage) -> CIImage {
+        var kept = image.extent
+        kept.size.width *= keptFraction
+        return CIImage(color: color).cropped(to: kept)
     }
 }
 

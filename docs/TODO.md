@@ -386,6 +386,53 @@ or two in the doc that owns them — none need a rewrite.
       `VideoEffectFactory` (fused into the one render pass), the
       first-party color adjustment and blur, and the layer-tree editor's
       chain UI. **With this the sub-list is empty and step 7 is done.**
+    - [x] **Layer editor UX, phase 1** *(built 2026-09-09 — ARCHITECTURE.md,
+      "Direct manipulation, drag-to-reorder, and undo in the layer-tree
+      editor")* — handles on the monitor with smart guides, drag-to-reorder
+      with a Layer menu carrying Keynote's arrange keys, and one undo step
+      per gesture. Two phases remain, in order:
+      - [x] **Phase 2, the inspector** *(built 2026-09-09 — ARCHITECTURE.md,
+        "The layer inspector")* — pixel Position/Size fields with a percent
+        toggle, an aspect lock and Reset, a 3×3 anchor grid beside Full
+        Frame / Half / Inset (`LayerPlacement`, sized by `ProgramLayout`),
+        opacity slider plus field, a per-layer Input popup
+        (`LayerTreeEdit.rebindingLayer`, amending the picker record's
+        "remove and add" note), and live per-row thumbnails through the
+        `InputFrameSource` the bank already used.
+      - [x] **Phase 3, the layout** *(built 2026-09-09 — ARCHITECTURE.md,
+        "The inspector column and the sidebar's casting pickers")* — the
+        trailing `.inspector` column (⌥⌘I, and the toolbar's trailing
+        button) for the per-layer controls beside the monitors, and the
+        Camera/Display casting pickers out of the layer editor into the
+        sidebar's Cameras and Displays headings.
+    - [x] **The Frame effect** *(built 2026-09-09 — ARCHITECTURE.md, "The
+      Frame effect")* — rounded corners and an inside border on a layer as
+      the third first-party video effect (`frame`: `cornerRadius` and
+      `borderWidth` as fractions of the shorter side, `borderColor`), with
+      the seam's first color parameter kind (`EffectParameter.Kind.color`,
+      `EffectColor`, added additively) and the chain editors' shared
+      `EffectColorWell` coalescing a color panel's drag into one gesture.
+    - [x] **The Crop effect** *(built 2026-09-09 — ARCHITECTURE.md, "The
+      Crop effect")* — a portrait layer from a landscape camera as the
+      fourth first-party video effect (`crop`: `left`/`top`/`right`/`bottom`
+      insets as fractions of the picture), with the renderer placing the
+      extent a chain leaves into the layer's frame, the seam's additive
+      `VideoEffect.outputExtent(for:)`, and Match Input measuring the
+      picture after the chain.
+    - [x] **Effect parameters show and take their value** *(built
+      2026-09-10 — ARCHITECTURE.md, "Effect parameters show and take their
+      value")* — every number parameter's slider in both chain editors
+      paired with the shared editable `EffectParameterField` in the
+      parameter's unit, the Frame's sizes and the Crop's insets declaring
+      `%` so a stored fraction reads and types as percent.
+    - [x] **The chain says its order, and the layer gets a monitor** *(built
+      2026-09-10 — ARCHITECTURE.md, "The effect chain says its order, and
+      the layer gets a monitor")* — both chain editors headed "Applied in
+      order, top to bottom" with numbered slots, and the inspector ending in
+      a layer monitor (`LayerMonitorSource` over `TingraComposition`'s new
+      shared `VideoEffectChain`, `MonitorFrameSource.image(for:)`) showing
+      the selected layer's input after its chain, behind a disclosure
+      closed by default and not drawn while closed.
     - [x] **Monitoring is ruled out of step 7** *(decided 2026-07-19)* —
       the monitoring slice the docs point at from three places (the app's
       "no audio preview yet" drain note, the mixer record's "a future

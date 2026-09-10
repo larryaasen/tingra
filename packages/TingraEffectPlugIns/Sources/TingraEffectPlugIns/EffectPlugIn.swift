@@ -12,7 +12,8 @@ import TingraPlugInKit
 /// The first-party effect plug-in: registers the built-in effects through
 /// the effect seam (ARCHITECTURE.md, "The effect seam"; GLOSSARY.md,
 /// "Effect") — the audio staples (gain and the high-/low-pass filters) and
-/// the video staples (color adjustment and blur).
+/// the video staples (color adjustment, blur, the frame's rounded corners
+/// and border, and a crop).
 ///
 /// Like every first-party plug-in it registers through the same
 /// `EffectRegistering` seam a third-party effect bundle will use.
@@ -33,5 +34,7 @@ public struct EffectPlugIn: PlugIn {
         try await context.effects.register(LowPassEffectProvider())
         try await context.effects.register(ColorAdjustEffectProvider())
         try await context.effects.register(BlurEffectProvider())
+        try await context.effects.register(FrameEffectProvider())
+        try await context.effects.register(CropEffectProvider())
     }
 }

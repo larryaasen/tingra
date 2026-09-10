@@ -7,6 +7,7 @@
 //  SPDX-License-Identifier: MIT
 //
 
+import CoreImage
 import Foundation
 import Testing
 
@@ -97,6 +98,65 @@ struct EffectSeamTests {
         #expect(cutoff != linear)
     }
 
+    @Test("a numeric parameter is the number kind and a color parameter the color kind")
+    func parameterKinds() {
+        let number = EffectParameter(key: "radiusPixels", name: "Radius", range: 0...100, defaultValue: 0)
+        #expect(number.kind == .number)
+        #expect(number.defaultColor == nil)
+
+        let color = EffectParameter(key: "borderColor", name: "Color", defaultColor: .white)
+        #expect(color.kind == .color)
+        #expect(color.defaultColor == .white)
+        #expect(color.key == "borderColor")
+        #expect(color.name == "Color")
+        #expect(color.unit == nil)
+        #expect(color != number)
+        #expect(color == EffectParameter(key: "borderColor", name: "Color", defaultColor: .white))
+        #expect(color != EffectParameter(key: "borderColor", name: "Color", defaultColor: .black))
+    }
+
+    @Test("an effect color round-trips through its payload object and JSON")
+    func colorRoundTrip() throws {
+        let color = EffectColor(red: 0.25, green: 0.5, blue: 0.75, alpha: 0.5)
+        #expect(EffectColor(color.jsonValue) == color)
+        #expect(
+            color.jsonValue
+                == .object([
+                    "red": .double(0.25), "green": .double(0.5), "blue": .double(0.75), "alpha": .double(0.5),
+                ]))
+
+        let data = try JSONEncoder().encode(color)
+        #expect(try JSONDecoder().decode(EffectColor.self, from: data) == color)
+        let members = try #require(JSONSerialization.jsonObject(with: data) as? [String: Double])
+        #expect(members == ["red": 0.25, "green": 0.5, "blue": 0.75, "alpha": 0.5])
+    }
+
+    @Test("an effect color read from a payload treats a missing alpha as opaque and rejects other shapes")
+    func colorPayloadShapes() {
+        let opaque = EffectColor(.object(["red": .int(1), "green": .double(0), "blue": .double(0)]))
+        #expect(opaque == EffectColor(red: 1, green: 0, blue: 0))
+        #expect(EffectColor(.double(1)) == nil)
+        #expect(EffectColor(.string("#ffffff")) == nil)
+        #expect(EffectColor(.object(["red": .double(1), "green": .double(1)])) == nil)
+    }
+
+    @Test("effect color components are clamped into the unit range on creation")
+    func colorClamps() {
+        let color = EffectColor(red: 2, green: -1, blue: 0.5, alpha: .nan)
+        #expect(color == EffectColor(red: 1, green: 0, blue: 0.5, alpha: 0))
+        #expect(EffectColor.white != EffectColor.black)
+    }
+
+    @Test("a video effect's output extent defaults to its input extent")
+    func outputExtentDefaultsToInput() {
+        // A conformer that declares nothing about extents keeps or grows
+        // the picture, so a host measuring the layer's picture after the
+        // chain sees the input's own extent.
+        let extent = CGRect(x: 3, y: 4, width: 640, height: 360)
+        #expect(PassthroughVideoEffect().outputExtent(for: extent) == extent)
+        #expect(PassthroughVideoEffect().outputExtent(for: .infinite) == .infinite)
+    }
+
     @Test("doubleValue reads a double as-is, widens an integer, and is nil for non-numbers")
     func jsonValueDoubleValue() {
         #expect(JSONValue.double(6.5).doubleValue == 6.5)
@@ -105,4 +165,14 @@ struct EffectSeamTests {
         #expect(JSONValue.bool(true).doubleValue == nil)
         #expect(JSONValue.null.doubleValue == nil)
     }
+}
+
+/// A video effect declaring only the seam's two requirements, so the
+/// protocol's default extent answer is what gets tested.
+private struct PassthroughVideoEffect: VideoEffect {
+    /// Ignores every payload.
+    func setParameters(_ parameters: [String: JSONValue]) {}
+
+    /// Returns the image unchanged.
+    func process(_ image: CIImage) -> CIImage { image }
 }

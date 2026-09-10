@@ -108,10 +108,10 @@ struct ChannelNormalizer {
         // resampler state for the next buffer. The input block is called
         // synchronously within `convert`, but its `@Sendable` annotation
         // wants a data-race-free flag — an atomic exchange provides it.
-        let delivered = Atomic<Bool>(false)
+        let delivered = DeliveryFlag()
         var conversionError: NSError?
         let status = converter.convert(to: output, error: &conversionError) { _, outStatus in
-            guard !delivered.exchange(true, ordering: .relaxed) else {
+            guard !delivered.markDelivered() else {
                 outStatus.pointee = .noDataNow
                 return nil
             }
@@ -130,5 +130,25 @@ struct ChannelNormalizer {
         return (0..<Int(buffer.format.channelCount)).map { channel in
             Array(UnsafeBufferPointer(start: channelData[channel], count: frames))
         }
+    }
+}
+
+/// The "source already delivered" flag the converter's input block reads
+/// and sets: an atomic exchange, boxed in a reference so the `@Sendable`
+/// block captures a reference and never the noncopyable `Atomic` itself
+/// — Swift 6.4 (Xcode 27) diagnoses that capture as a copy of a
+/// noncopyable value ("this is a compiler bug"), and the box is the same
+/// shape the app uses to hand a `Mutex` to a `@Sendable` factory.
+private final class DeliveryFlag: Sendable {
+    /// Whether the source buffer has been handed to the converter.
+    private let delivered = Atomic<Bool>(false)
+
+    /// Creates the flag, not yet delivered.
+    init() {}
+
+    /// Marks the source delivered and returns whether it already was —
+    /// true means the converter is asking again and the input is dry.
+    func markDelivered() -> Bool {
+        delivered.exchange(true, ordering: .relaxed)
     }
 }

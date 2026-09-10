@@ -22,11 +22,13 @@ A project is the saved file for an entire show. A project contains presets. A pr
 
 **Shot bank** — the row of shot tiles under the main window's monitors: one thumbnail tile per shot of the active preset, in switcher order, tally-bordered, clicked to stage. It is the switcher's row of shot buttons with a picture on each, and the place an input becomes a shot — by drag from the sidebar, by the Add Shot menu behind the plus button beside the Shots heading (the same items the Shots menu and the sidebar's Shots section header offer), or as the dashed transient tile a sidebar click stages.
 
+**Inspector** — the trailing column of the main window holding the selected layer's controls: its input, its position and size in program pixels or percent, placement presets, opacity, and its effect chain. Shown or hidden with ⌥⌘I or the toolbar's trailing button; empty until a layer is selected in the layer list or on the preview monitor.
+
 **Preset** — a long term, persisted collection of settings you switch between during a live session and keep across sessions: its shots, layer arrangements, audio configuration, and connected inputs. Switching presets is seamless and does not interrupt what is already playing out.
 
 **Project** — the saved document for a whole show: every preset, destination configuration, and setting needed to reopen the show exactly as it was. Tingra saves a project as a `.tingraproject` file (JSON inside).
 
-**Effect** — a processing step applied to media in the engine. A **video effect** applies to a layer, a shot, or the program: color adjustment, blur, keying, stylization. An **audio effect** applies to a channel strip: gain, filtering, and (later) EQ and compression. **Filter** is the interchangeable term for a single video processing unit; an effect may chain several filters. Effects are plug-ins, so first- and third-party effects register through one seam.
+**Effect** — a processing step applied to media in the engine. A **video effect** applies to a layer, a shot, or the program: color adjustment, blur, a frame (rounded corners and a border), a crop, keying, stylization. An **audio effect** applies to a channel strip: gain, filtering, and (later) EQ and compression. **Filter** is the interchangeable term for a single video processing unit; an effect may chain several filters. Effects are plug-ins, so first- and third-party effects register through one seam.
 
 **Effect chain** — the ordered effects applied to one thing: a channel strip's audio chain, a layer's video chain. Order is signal order — each effect processes what the one before it produced — and the chain persists with the thing that owns it. An audio chain sits post-intake and pre-fader, so it shapes what the strip's meter reads and what its fader rides.
 

@@ -17,10 +17,10 @@ import TingraPlugInKit
 ///
 /// The audio chain editor's shape, one service over: a list in **signal
 /// order** with per-slot Move Up / Move Down and Remove commands, an Add
-/// Effect menu over every registered video effect, and a slider per
-/// parameter the effect declares — drawn generically from its
-/// `EffectParameter` descriptors, so a third-party effect gets parameter UI
-/// without the app knowing it exists.
+/// Effect menu over every registered video effect, and a slider — or, for a
+/// color parameter, a color well — per parameter the effect declares, drawn
+/// generically from its `EffectParameter` descriptors, so a third-party
+/// effect gets parameter UI without the app knowing it exists.
 ///
 /// Parameter edits apply live, tick by tick, like the frame and opacity
 /// sliders; each control reports its own `tap` right where it executes
@@ -38,9 +38,7 @@ struct LayerEffectChainView: View {
     /// The chain's body: the heading and slots, then the Add Effect menu.
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Effects", comment: "Heading of a channel strip's audio effect chain popover")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            EffectChainHeading()
 
             ForEach(Array(effects.enumerated()), id: \.offset) { index, configuration in
                 slotRow(configuration, at: index)
@@ -55,6 +53,7 @@ struct LayerEffectChainView: View {
     private func slotRow(_ configuration: EffectConfiguration, at index: Int) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 4) {
+                EffectSlotOrdinal(index: index)
                 Text(model.videoEffectName(for: configuration.effect))
                     .font(.caption)
                 Spacer()
@@ -94,14 +93,22 @@ struct LayerEffectChainView: View {
                     .foregroundStyle(.secondary)
             } else {
                 ForEach(parameters, id: \.key) { parameter in
-                    parameterSlider(parameter, at: index, in: configuration)
+                    switch parameter.kind {
+                    case .number:
+                        parameterSlider(parameter, at: index, in: configuration)
+                    case .color:
+                        parameterColorWell(parameter, at: index, in: configuration)
+                    }
                 }
             }
         }
     }
 
     /// One declared parameter's slider, drawn generically from its
-    /// descriptor: the effect's own name for it, its range, and its unit.
+    /// descriptor — the effect's own name for it, its range, and its unit —
+    /// paired with the shared ``EffectParameterField``, so the value can be
+    /// read and typed (ARCHITECTURE.md, "Effect parameters show and take
+    /// their value"). A typed value is one undo step and one tap.
     private func parameterSlider(
         _ parameter: EffectParameter,
         at index: Int,
@@ -123,7 +130,12 @@ struct LayerEffectChainView: View {
                 },
                 in: parameter.range
             ) { editing in
-                guard !editing else { return }
+                // One undo step and one tap per drag, like the frame sliders.
+                if editing {
+                    model.beginLayerGesture()
+                    return
+                }
+                model.endLayerGesture(.adjustEffect)
                 model.eventBus.tap(
                     "layerEffectParameter.slider",
                     domain: .composition,
@@ -135,6 +147,53 @@ struct LayerEffectChainView: View {
                     ]
                 )
             }
+
+            EffectParameterField(parameter: parameter, value: value) { typed in
+                model.eventBus.tap(
+                    "layerEffectParameter.field",
+                    domain: .composition,
+                    params: [
+                        "layer": .int(layerIndex),
+                        "effect": .string(configuration.effect.rawValue),
+                        "index": .int(index),
+                        "key": .string(parameter.key),
+                        "value": .double(typed),
+                    ]
+                )
+                model.beginLayerGesture()
+                model.setLayerEffectParameter(typed, forKey: parameter.key, ofEffectAt: index, atLayer: layerIndex)
+                model.endLayerGesture(.adjustEffect)
+            }
+        }
+    }
+
+    /// One declared color parameter's well, drawn generically from its
+    /// descriptor. The well coalesces a color panel's continuous changes
+    /// into one gesture: one undo step and one `tap`, like a slider drag.
+    private func parameterColorWell(
+        _ parameter: EffectParameter,
+        at index: Int,
+        in configuration: EffectConfiguration
+    ) -> some View {
+        let value =
+            configuration.parameters[parameter.key].flatMap(EffectColor.init) ?? parameter.defaultColor ?? .white
+        return EffectColorWell(parameter: parameter, value: value) {
+            model.beginLayerGesture()
+        } onChange: { color in
+            model.setLayerEffectParameter(
+                color.jsonValue, forKey: parameter.key, ofEffectAt: index, atLayer: layerIndex)
+        } onEnd: {
+            model.endLayerGesture(.adjustEffect)
+            model.eventBus.tap(
+                "layerEffectParameter.colorWell",
+                domain: .composition,
+                params: [
+                    "layer": .int(layerIndex),
+                    "effect": .string(configuration.effect.rawValue),
+                    "index": .int(index),
+                    "key": .string(parameter.key),
+                ]
+            )
         }
     }
 

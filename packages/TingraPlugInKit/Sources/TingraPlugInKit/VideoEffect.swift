@@ -51,4 +51,25 @@ public protocol VideoEffect: Sendable {
     /// - Parameter image: The layer's image before this effect.
     /// - Returns: The image after this effect.
     mutating func process(_ image: CIImage) -> CIImage
+
+    /// The extent ``process(_:)`` would return for an image of the given
+    /// extent, at the current parameters — how a host measures a layer's
+    /// picture *after* its chain without rendering it (the inspector's
+    /// Match Input, ARCHITECTURE.md, "The Crop effect"). The default
+    /// returns the input extent, which is right for every effect that
+    /// keeps or grows the picture (the renderer clips growth); an effect
+    /// that shrinks it, such as a crop, answers with the extent it keeps.
+    ///
+    /// - Parameter inputExtent: The extent of the image before this
+    ///   effect.
+    /// - Returns: The extent of the image after this effect.
+    func outputExtent(for inputExtent: CGRect) -> CGRect
+}
+
+extension VideoEffect {
+    /// The input extent: an effect that keeps or grows the picture leaves
+    /// the layer's frame showing all of it.
+    public func outputExtent(for inputExtent: CGRect) -> CGRect {
+        inputExtent
+    }
 }

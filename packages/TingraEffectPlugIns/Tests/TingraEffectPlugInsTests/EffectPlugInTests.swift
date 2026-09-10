@@ -102,8 +102,10 @@ struct EffectPlugInTests {
             video.map(\.id) == [
                 ColorAdjustEffectProvider.effectID,
                 BlurEffectProvider.effectID,
+                FrameEffectProvider.effectID,
+                CropEffectProvider.effectID,
             ])
-        #expect(video.map(\.id.rawValue) == ["colorAdjust", "blur"])
+        #expect(video.map(\.id.rawValue) == ["colorAdjust", "blur", "frame", "crop"])
     }
 
     @Test("every built-in effect declares its parameters for the host's generic controls")
@@ -133,5 +135,26 @@ struct EffectPlugInTests {
         #expect(blur.map(\.key) == ["radiusPixels"])
         #expect(blur.first?.defaultValue == 0)
         #expect(blur.first?.unit == "px")
+
+        let frame = FrameEffectProvider().parameters
+        #expect(frame.map(\.key) == ["cornerRadius", "borderWidth", "borderColor"])
+        #expect(frame.map(\.kind) == [.number, .number, .color])
+        // Both sizes neutral, so a fresh Frame draws nothing; the color is
+        // the border's default, opaque white.
+        #expect(frame.map(\.defaultValue) == [0, 0, 0])
+        #expect(frame.last?.defaultColor == .white)
+        // The sizes are fractions of the picture, declared as `%` so a
+        // host shows a stored 0.33 as 33 %.
+        #expect(frame.map(\.unit) == ["%", "%", nil])
+
+        let crop = CropEffectProvider().parameters
+        #expect(crop.map(\.key) == ["left", "top", "right", "bottom"])
+        #expect(crop.map(\.name) == ["Left", "Top", "Right", "Bottom"])
+        #expect(crop.map(\.kind) == [.number, .number, .number, .number])
+        // Every inset neutral, so a fresh Crop shows the whole picture; no
+        // inset can take a whole edge on its own.
+        #expect(crop.map(\.defaultValue) == [0, 0, 0, 0])
+        #expect(crop.map(\.range) == Array(repeating: 0...0.9, count: 4))
+        #expect(crop.map(\.unit) == Array(repeating: "%", count: 4))
     }
 }
