@@ -340,6 +340,8 @@ final class EngineModel {
             width: format.width,
             height: format.height,
             frameRate: format.frameRate,
+            videoBitsPerSecond: StreamConfiguration.recommendedVideoBitsPerSecond(
+                width: format.width, height: format.height, frameRate: format.frameRate),
             includesVideo: true,
             includesAudio: true
         )
@@ -888,13 +890,47 @@ final class EngineModel {
     /// Where the operator's recording folder and container live.
     @ObservationIgnored private let recordingPreferences = RecordingPreferences()
 
-    /// The program geometry and rate.
-    @ObservationIgnored let format = ProgramFormat(width: 1920, height: 1080, frameRate: 30)
+    /// The program geometry and rate — a **project setting** (ARCHITECTURE.md,
+    /// "The program format as a project setting"): 1080p30 until the project
+    /// loads its own, changed by ``setProgramFormat(_:)``. Observed, so the
+    /// monitors, the bank, and the status bar reshape with it.
+    private(set) var format = ProgramFormat()
 
     /// The program geometry, for the layer inspector's pixel fields
     /// (``LayerInspectorUnit``).
     var programFormat: ProgramFormat {
         format
+    }
+
+    /// Changes the program's size and frame rate — live, at the next tick
+    /// (``Compositor/setFormat(_:)``), and saved with the project.
+    ///
+    /// **Refused while streaming or recording**: the sinks' compression
+    /// sessions are open at a size, so the format is a session-start
+    /// setting there, as it is for the CLI. The Program menu's items are
+    /// disabled then, and this refusal — a `program.format` error event
+    /// carrying the `reason` — is what a macro or a later MCP tool meets, so
+    /// no path can slip a change under a live session. The same format again
+    /// changes nothing and saves nothing.
+    ///
+    /// - Parameter newFormat: The program's new size and frame rate.
+    func setProgramFormat(_ newFormat: ProgramFormat) {
+        if let reason = ProgramFormatChoice.refusal(isStreaming: isStreaming, isRecording: isRecording) {
+            eventBus.error(
+                "program.format",
+                domain: .composition,
+                params: [
+                    "resolution": .string("\(newFormat.width)x\(newFormat.height)"),
+                    "fps": .int(newFormat.frameRate),
+                    "reason": .string(reason),
+                ]
+            )
+            return
+        }
+        guard newFormat != format else { return }
+        format = newFormat
+        compositor.setFormat(newFormat)
+        scheduleAutosave()
     }
 
     /// Whether the project's presets exist yet — loaded from the project file
@@ -3298,10 +3334,15 @@ final class EngineModel {
         // streams silence, the way an empty shot streams the background
         // canvas (ARCHITECTURE.md, "The audio mixer"). Every leg encodes with
         // these settings; per-destination compression is a later iteration.
+        // The bitrate follows the format by one rule — a 4K choice must not
+        // encode at 1080p's 4500k (ARCHITECTURE.md, "The program format as a
+        // project setting").
         let configuration = StreamConfiguration(
             width: format.width,
             height: format.height,
             frameRate: format.frameRate,
+            videoBitsPerSecond: StreamConfiguration.recommendedVideoBitsPerSecond(
+                width: format.width, height: format.height, frameRate: format.frameRate),
             includesVideo: true,
             includesAudio: true
         )
@@ -3889,6 +3930,12 @@ final class EngineModel {
                 // rows (each key stays in secure storage, read lazily when the
                 // panel prefills that row's field).
                 projectDestinationReferences = project.destinations
+                // The program's format is the project's; an absent key is
+                // the 1080p30 default. The compositor may already exist
+                // (a monitor's relay creates it), so it is told too — a
+                // no-op when the format is the one it was built with.
+                format = project.programFormat ?? ProgramFormat()
+                compositor.setFormat(format)
             }
         } catch {
             eventBus.error(
@@ -4093,9 +4140,13 @@ final class EngineModel {
         // The document records only which destinations this show streams to
         // and whether each is enabled; the names and URLs belong to the
         // operator's store, and the keys to secure storage (DESTINATIONS.md).
+        // The default format is written as an absent key, so a project that
+        // never changed it round-trips to the document it had before the
+        // setting existed.
         let project = Project(
             presets: presets,
-            destinations: DestinationEdit.references(from: destinations)
+            destinations: DestinationEdit.references(from: destinations),
+            programFormat: format == ProgramFormat() ? nil : format
         )
         do {
             try store.save(project)

@@ -1196,6 +1196,54 @@ or two in the doc that owns them — none need a rewrite.
     uniqueness, identity preservation, whitespace trimming, and empty-rename
     behavior).
 
+- [ ] **Step 10 — content, snapshots, the Library, the log window, and the
+  bundle loader** *(planned 2026-09-10 from Larry's napkin sketch; the design
+  record is ARCHITECTURE.md, "Step 10")*. Seven iterations in a decided order,
+  each still to be designed and recorded before its code under the
+  decide-then-build rule. Set aside from the sketch: **audio mixer
+  improvements** (Larry scopes those separately) and a bottom panel under the
+  content column (rejected — the Library goes in the trailing column).
+  - [x] **The program format as a project setting** *(decided, approved, and
+    built 2026-09-10; record in ARCHITECTURE.md, "The program format as a
+    project setting")*. `Project.programFormat` as one optional key (absent =
+    1080p30, no version bump), `ProgramFormat` made `Codable`;
+    `Compositor.setFormat(_:)` applied live at a tick boundary (size on the
+    next render through the renderer's pool rebuild, rate by re-arming the
+    tick stream) reporting `program.format`; refused while streaming or
+    recording (controls disabled, model refuses with an `error` event); a
+    new **Program** menu with Size and Frame Rate radio submenus plus a
+    Custom Size… sheet, the format shown read-only in the status bar; the
+    monitor, shot bank, and multiview aspect from `programAspectRatio`
+    instead of 16:9; `StreamConfiguration.recommendedVideoBitsPerSecond(for:)`
+    from pixel rate, anchored at 1080p30 = 4500k, used by the app's streaming
+    and recording configurations; CLI and MCP unchanged. 8K reachable through
+    Custom but not advertised; HEVC deferred to a Streaming pane choice.
+  - [ ] **Media inputs (`packages/TingraMediaPlugIns`) and the Library's Media
+    tab.** Still images (ImageIO), video files (AVFoundation, audio as a
+    channel strip), text and Markdown (Core Text), each an `Input` plug-in
+    under a new `InputKind.media`; a project-scoped media list; a sidebar
+    Media section with the camera rows' staging and drag affordances;
+    playback mode per layer. The **Library** panel arrives here: the bottom
+    of the trailing column, under the layer inspector, behind a draggable
+    splitter whose position persists — one file-list component shared by all
+    three tabs.
+  - [ ] **Snapshots.** A still written to a Snapshots folder from any monitor
+    (program, preview, a multiview tile, the layer monitor) off the
+    compositor's existing accessors; the Library's Snapshots tab; a snapshot
+    goes onto a layer through the media plug-in with no code of its own.
+  - [ ] **The Recordings tab** of the Library, over the recording folder —
+    the sketch's "recorded videos panel".
+  - [ ] **The log viewer window.** A new `EventSink` into an in-memory ring
+    with group/domain filters, search, and pause, opened from the Window
+    menu; a window rather than a panel because a log wants width and outlives
+    a project.
+  - [ ] **The external bundle loader**, tagging `TingraPlugInKit` 1.0.0
+    (ARCHITECTURE.md, "Plug-in API stability and versioning").
+  - [ ] **NDI as an external plug-in bundle**, outside this repo, importing
+    the closed-source SDK: an NDI input and an NDI output. Waits on the
+    loader; NDI's own virtual input is the stopgap the capture plug-in
+    already sees as a camera.
+
 ## Decisions to settle
 
 - [x] **The app's secure storage, and the daemon's — decided and recorded

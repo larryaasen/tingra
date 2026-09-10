@@ -177,7 +177,8 @@ struct LayerInspectorView: View {
                 MonitorTile(
                     source: LayerMonitorSource(model: model),
                     label: Text("Layer", comment: "Title of the Layer menu, arranging the selected layer"),
-                    badgeTint: .gray
+                    badgeTint: .gray,
+                    aspectRatio: model.programAspectRatio
                 )
                 .padding(.top, 4)
             }

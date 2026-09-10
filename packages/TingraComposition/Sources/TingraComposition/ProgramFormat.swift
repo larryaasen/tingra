@@ -15,7 +15,12 @@
 /// frame is resolution-stable regardless of the inputs' native sizes — the
 /// one conversion point ARCHITECTURE.md ("Color and pixel format
 /// conventions") calls for on the composition side.
-public struct ProgramFormat: Sendable, Equatable {
+///
+/// `Codable` because it is a **project setting** (ARCHITECTURE.md, "The
+/// program format as a project setting"): ``Project/programFormat`` persists
+/// the operator's choice under the stable keys `width`, `height`, and
+/// `frameRate`.
+public struct ProgramFormat: Sendable, Equatable, Codable {
     /// The program width in pixels. Kept even — 4:2:0 delivery requires it
     /// (ARCHITECTURE.md).
     public let width: Int
@@ -38,5 +43,18 @@ public struct ProgramFormat: Sendable, Equatable {
         self.width = width
         self.height = height
         self.frameRate = frameRate
+    }
+
+    /// The width over the height — what a monitor or a tile that shows the
+    /// program is shaped to.
+    public var aspectRatio: Double {
+        Double(width) / Double(height)
+    }
+
+    /// The coding keys — stable camelCase names for the project document.
+    private enum CodingKeys: String, CodingKey {
+        case width
+        case height
+        case frameRate
     }
 }

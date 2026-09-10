@@ -9,8 +9,9 @@
 
 import SwiftUI
 
-/// The window's status bar: whether the program is being **recorded** and
-/// whether it is being **streamed**, across the bottom of the window.
+/// The window's status bar: whether the program is being **recorded**,
+/// whether it is being **streamed**, and what **format** it is, across the
+/// bottom of the window.
 ///
 /// **Why a status bar rather than the panels that already say this.** The main
 /// window's recording and streaming panels are at the bottom of a scrolling
@@ -76,6 +77,13 @@ struct StatusBarView: View {
                         .frame(height: 12)
 
                     streamingReading
+
+                    Divider()
+                        .frame(height: 12)
+
+                    // The format last: it never changes on air, so it is the
+                    // reading an operator checks before a show, not during.
+                    formatReading
 
                     Spacer()
                 }
@@ -151,6 +159,15 @@ struct StatusBarView: View {
                 help: message
             )
         }
+    }
+
+    /// The program format reading: size and rate, the way the delivery
+    /// counters read — verbatim, in every language.
+    private var formatReading: some View {
+        reading(
+            StatusBarItem.programFormat,
+            label: Text(verbatim: ProgramFormatChoice.label(for: model.format))
+        )
     }
 
     /// How long the current recording has been rolling.

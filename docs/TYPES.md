@@ -72,7 +72,9 @@ internal surface a reader needs to navigate the target instead.
 - `StreamingStatistics` — a point-in-time snapshot of a service's delivery
   counters, feeding the periodic `stream.stats` events.
 - `StreamConfiguration` — the compression and program settings a stream session
-  runs with (resolution, frame rate, codecs, bitrates, and the
+  runs with (resolution, frame rate, codecs, bitrates — with the static
+  `recommendedVideoBitsPerSecond(width:height:frameRate:)` rule, linear in
+  pixel rate and anchored at 1080p30 = 4500k, that the app encodes at — and the
   `includesVideo`/`includesAudio` track topology the recording sink needs up
   front); contains no secrets. Shared by the streaming and recording sinks.
 - `OutputID` — the stable identifier for a registered output (streaming or
@@ -392,6 +394,10 @@ internal surface a reader needs to navigate the target instead.
   same tick's snapshot, run only while a shot is staged and a consumer is
   attached, and never fed to a sink — nothing on preview reaches viewers.
   Downstream of everything sits one master stage, **fade to black**:
+  `setFormat(_:)` changes the program's size and rate live at a tick boundary —
+  the tick reads the format into each snapshot, so a size change shows on the
+  next render and a rate change re-arms the tick stream — reporting
+  `program.format`; `format` reads it back.
   `setFadeToBlack(_:duration:)` ramps the program's picture to black and
   latches there across shot switches (`isFadedToBlack` reads the latch). It
   applies to whatever the tick rendered, so a fade and a transition can run at
@@ -401,7 +407,8 @@ internal surface a reader needs to navigate the target instead.
   other half.
 - `Project` — the saved document for a whole show: a versioned, plain `Codable`
   value type holding the presets, the stream `destination` (key excluded — it
-  lives in secure storage), and each shot's optional default transition. The
+  lives in secure storage), each shot's optional default transition, and the
+  optional `programFormat` (absent meaning 1080p30). The
   format is version 1 until the first release ships (pre-release it grows
   within v1, optional fields decoding forgivingly); decoding a document newer
   than the build understands throws rather than silently loading it.
@@ -458,7 +465,9 @@ internal surface a reader needs to navigate the target instead.
 - `BackgroundColor` — a straight RGBA background the layers composite over
   (defaults to opaque black).
 - `ProgramFormat` — the program's output geometry and rate (width, height, frame
-  rate) every frame is rendered at.
+  rate) every frame is rendered at; `Codable` under those three keys because it
+  is a project setting (`Project.programFormat`), with `aspectRatio` for the
+  monitors that show it.
 - `Transition` — the move from one shot to the next, passed per call to
   `take(shotID:transition:)`: `cut` (instant, the default), `dissolve(duration:)`
   (crossfade), `wipe(edge:duration:)` (directional reveal), or
@@ -1021,7 +1030,8 @@ surface is:
 - `StatusBarItem` — the pure, unit-tested reading behind it — the lamp state and
   symbol for a stream and for a recording, with idle and stopped reading the
   same, a file still being closed reading pending rather than off, and both
-  faults drawing a warning triangle.
+  faults drawing a warning triangle; plus the informational `programFormat`
+  reading, lamp always off, whose label is `ProgramFormatChoice.label(for:)`.
 - `StatusBarPreferences` — whether the bar is shown: machine-local
   `UserDefaults` on the `AppearancePreferences` pattern, shown on a fresh
   install, the presence of the key checked first so a missing value does not
@@ -1204,7 +1214,9 @@ surface is:
   program pixels (the picture as the layer places it, opacity aside), the
   chain's own instances kept in a private cache and rebuilt when the
   configurations change; reads the selection on every draw.
-- `MonitorTile` — the framed monitor — video letterboxed on black, an optional
+- `MonitorTile` — the framed monitor — video fitted to the program's aspect
+  ratio on black (every caller passes `programAspectRatio`, so a portrait
+  program gets portrait tiles), an optional
   tally border, an optional name badge, and an optional status badge, which is
   what tells a program monitor faded to black apart from a dead one — shared by
   the main window's two monitors, every multiview tile, and the shot bank's
@@ -1273,6 +1285,24 @@ surface is:
   red winning over green, plus the `Tally` tint pair both tile surfaces draw
   from so they cannot read a lamp differently.
 - `MultiviewCommands` — the View-menu command that opens the window, ⌥⌘M.
+- `ProgramCommands` — the Program menu (2026-09-10; ARCHITECTURE.md, "The
+  program format as a project setting"): a Size submenu of the named
+  `ProgramSize`s plus a Custom Size… item, and a Frame Rate submenu of
+  `ProgramFormatChoice.frameRates`, each item a checkmark toggle reading as a
+  radio group; disabled while streaming or recording. Leads the app's own
+  menus because the program is what a shot is composed onto.
+- `ProgramSize` / `ProgramFormatChoice` / `ProgramFormatProblem` — the pure,
+  unit-tested rules behind that menu and its sheet: the named sizes (SD, 480p,
+  720p, 1080p, Vertical, 1440p, 4K — every one even; 8K reachable only by
+  typing), `named(matching:)` for the checkmarks, the offered frame rates, the
+  status bar's verbatim label, `refusal(isStreaming:isRecording:)` for the
+  reason a change is refused on air, and `problem(width:height:frameRate:)` —
+  too small, odd, or a bad rate — with the message the sheet shows.
+- `ProgramFormatSheet` — the Custom Size… sheet: width, height, and frame rate
+  in `CommittingNumberField`s prefilled from the program's format, the first
+  broken rule beneath them, Apply held back until none is. Presented by
+  `ContentView` from window state the app scene owns, since a menu command
+  cannot present a sheet.
 - `ShotCommands` — the Shots menu: an Add Shot submenu of the shared
   `AddShotMenuItems`, then one item per shot in the active preset, in
   switcher order and under the shot's own name, staging it on preview; the

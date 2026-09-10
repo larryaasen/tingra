@@ -14,6 +14,8 @@ A project is the saved file for an entire show. A project contains presets. A pr
 
 **Generator** — an input that synthesizes its content rather than capturing it: test patterns, color bars, solids, counters, placeholder frames.
 
+**Media** — an input whose content comes from a file the operator added to the project rather than from a device or a generator: a still image, a video file, a text or Markdown document. Each media type is its own plug-in, so a new kind of content is one more plug-in, not a change to the engine (planned at roadmap step 10).
+
 **Layer** — one positioned element inside a shot: an input, a title, or an overlay, with its own transform (position, scale, crop) and effects. Layers stack in a defined order.
 
 **Layer tree** — the data structure holding a shot's layers and their ordering, transforms, and effect chains. The compositor renders the layer tree to a single frame.
@@ -23,6 +25,8 @@ A project is the saved file for an entire show. A project contains presets. A pr
 **Shot bank** — the row of shot tiles under the main window's monitors: one thumbnail tile per shot of the active preset, in switcher order, tally-bordered, clicked to stage. It is the switcher's row of shot buttons with a picture on each, and the place an input becomes a shot — by drag from the sidebar, by the Add Shot menu behind the plus button beside the Shots heading (the same items the Shots menu and the sidebar's Shots section header offer), or as the dashed transient tile a sidebar click stages.
 
 **Inspector** — the trailing column of the main window holding the selected layer's controls: its input, its position and size in program pixels or percent, placement presets, opacity, and its effect chain. Shown or hidden with ⌥⌘I or the toolbar's trailing button; empty until a layer is selected in the layer list or on the preview monitor.
+
+**Library** — the panel at the bottom of the inspector column, under the layer inspector and behind a draggable splitter, listing the files a show produces and uses in three tabs: media, snapshots, and recordings. One list shape for all three — thumbnail, date, size or duration, Quick Look, Reveal in Finder, delete (planned at roadmap step 10).
 
 **Preset** — a long term, persisted collection of settings you switch between during a live session and keep across sessions: its shots, layer arrangements, audio configuration, and connected inputs. Switching presets is seamless and does not interrupt what is already playing out.
 
@@ -42,6 +46,8 @@ A project is the saved file for an entire show. A project contains presets. A pr
 
 **Program** — what viewers see and hear: the composited, mixed result that feeds compression, recording, and every destination.
 
+**Program format** — the size and frame rate the program is composited and delivered at, chosen per project from the Program menu (named sizes from SD to 4K, portrait included, or a custom even size; 24 to 60 frames per second). Changes apply live at a tick boundary and are refused while streaming or recording. Layer frames are normalized, so shots survive a format change; a change of aspect stretches what was placed for the old canvas (planned at roadmap step 10).
+
 **Preview** — the staging bus: where the next shot or preset is composed and checked before being taken to program. Nothing on preview is visible to viewers.
 
 **Multiview** — a single view that tiles program, preview, and all inputs at once for monitoring. It is a monitor, not a bus: nothing is fed from it and nothing is taken out of it, and it tiles only the inputs already running — opening it never starts a device.
@@ -49,6 +55,8 @@ A project is the saved file for an entire show. A project contains presets. A pr
 **Tally** — the lamp on an input's tile saying where that input is, wherever tiles and lamps are shown (the multiview window's input tiles, the main window's shot bank, and the sidebar's rows): **red** when it is contributing to what viewers see (including the outgoing half of a transition still on screen), **green** when it is contributing to the shot staged on preview, unlit when it is running but on neither bus. Red wins over green. Borrowed from the tally light on a studio camera, and it answers the same question.
 
 **Monitor** — an operator-facing view or output of a bus: the on-screen program and preview monitors, and the **audio monitor** — the program mix played to an output device the operator chooses, at a monitor level, so they hear what viewers hear. Nothing a monitor shows or plays reaches viewers, and no monitor control changes what does: the monitor level is the operator's own listening volume, never a stage of the program.
+
+**Snapshot** — a still image of whatever frame a monitor is showing — program, preview, a multiview tile, or a layer monitor — saved as an ordinary image file and listed in the Library's Snapshots tab. Being a still, a snapshot can go straight onto a layer as media (planned at roadmap step 10).
 
 **Status bar** — the strip across the bottom of the main window and the multiview window saying whether the program is being **recorded** and whether it is being **streamed**, with the recording's elapsed time and the stream's delivery rate. It reports and never acts: every control that starts or stops either one lives in its own panel. Shown by default; the View menu (⌘/) and General settings both hide it.
 

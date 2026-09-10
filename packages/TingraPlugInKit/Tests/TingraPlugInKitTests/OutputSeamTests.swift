@@ -41,6 +41,31 @@ struct OutputSeamTests {
         #expect(base != different)
     }
 
+    @Test("The recommended bitrate is anchored at 1080p30 = 4500k and scales with pixel rate, rounded to 100 kbps")
+    func recommendedBitrateFollowsPixelRate() {
+        #expect(
+            StreamConfiguration.recommendedVideoBitsPerSecond(width: 1920, height: 1080, frameRate: 30) == 4_500_000)
+        #expect(
+            StreamConfiguration.recommendedVideoBitsPerSecond(width: 1920, height: 1080, frameRate: 60) == 9_000_000)
+        #expect(
+            StreamConfiguration.recommendedVideoBitsPerSecond(width: 3840, height: 2160, frameRate: 30) == 18_000_000)
+        #expect(
+            StreamConfiguration.recommendedVideoBitsPerSecond(width: 2560, height: 1440, frameRate: 30) == 8_000_000)
+        #expect(StreamConfiguration.recommendedVideoBitsPerSecond(width: 1280, height: 720, frameRate: 30) == 2_000_000)
+        #expect(StreamConfiguration.recommendedVideoBitsPerSecond(width: 854, height: 480, frameRate: 30) == 900_000)
+        #expect(StreamConfiguration.recommendedVideoBitsPerSecond(width: 640, height: 480, frameRate: 30) == 700_000)
+        // Portrait is the same pixel rate as landscape.
+        #expect(
+            StreamConfiguration.recommendedVideoBitsPerSecond(width: 1080, height: 1920, frameRate: 30) == 4_500_000)
+    }
+
+    @Test("The recommended bitrate never drops below 100 kbps, even for a degenerate size")
+    func recommendedBitrateFloor() {
+        #expect(StreamConfiguration.recommendedVideoBitsPerSecond(width: 0, height: 0, frameRate: 30) == 100_000)
+        #expect(StreamConfiguration.recommendedVideoBitsPerSecond(width: 16, height: 16, frameRate: 1) == 100_000)
+        #expect(StreamConfiguration.recommendedVideoBitsPerSecond(width: -1920, height: 1080, frameRate: 30) == 100_000)
+    }
+
     // MARK: - OutputID
 
     @Test("Output identifiers round-trip through Codable and compare by raw value")

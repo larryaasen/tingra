@@ -54,6 +54,14 @@ public struct Project: Sendable, Equatable, Codable {
     /// written here.
     public let destinations: [DestinationReference]?
 
+    /// The size and frame rate the program is composited and delivered at,
+    /// or `nil` for the default (1920x1080 at 30 — the same default the
+    /// CLI's `--resolution`/`--fps` carry). Per project because the program
+    /// is one canvas and presets switch shots on it (ARCHITECTURE.md, "The
+    /// program format as a project setting"). An **optional key within v1**
+    /// — the pre-release rule, no version bump.
+    public let programFormat: ProgramFormat?
+
     /// Creates a project.
     ///
     /// - Parameters:
@@ -61,14 +69,18 @@ public struct Project: Sendable, Equatable, Codable {
     ///   - presets: The presets, in switcher order (default: none).
     ///   - destinations: The destinations this project streams to (default:
     ///     none).
+    ///   - programFormat: The program's size and frame rate (default: none,
+    ///     meaning 1920x1080 at 30).
     public init(
         version: Int = Project.currentVersion,
         presets: [Preset] = [],
-        destinations: [DestinationReference]? = nil
+        destinations: [DestinationReference]? = nil,
+        programFormat: ProgramFormat? = nil
     ) {
         self.version = version
         self.presets = presets
         self.destinations = destinations
+        self.programFormat = programFormat
     }
 
     /// The coding keys — stable camelCase names for the project document.
@@ -76,6 +88,7 @@ public struct Project: Sendable, Equatable, Codable {
         case version
         case presets
         case destinations
+        case programFormat
         /// Read-only: the single destination key written before a project
         /// could hold several. Decoded and folded into ``destinations``,
         /// never written again (see ``init(from:)``).
@@ -84,9 +97,9 @@ public struct Project: Sendable, Equatable, Codable {
 
     /// Decodes a project. `version` is required (a document must declare its
     /// format so future versions can migrate it) and must not exceed
-    /// ``currentVersion``; `presets`, `destinations`, and the older single
-    /// `destination` are optional (a minimal document decodes forgivingly
-    /// with them absent).
+    /// ``currentVersion``; `presets`, `destinations`, `programFormat`, and
+    /// the older single `destination` are optional (a minimal document
+    /// decodes forgivingly with them absent).
     ///
     /// A document written with the single `destination` key folds it in as
     /// the only element of ``destinations`` — an **optional key within v1**
@@ -133,16 +146,19 @@ public struct Project: Sendable, Equatable, Codable {
         } else {
             destinations = nil
         }
+        programFormat = try container.decodeIfPresent(ProgramFormat.self, forKey: .programFormat)
     }
 
     /// Encodes a project, writing `version` and `presets` always and
-    /// `destinations` only when set, so a project with no destination
-    /// round-trips to a document without the key (and reads back as nil).
-    /// The superseded single `destination` key is never written.
+    /// `destinations` and `programFormat` only when set, so a project with
+    /// no destination or the default format round-trips to a document
+    /// without those keys (and reads them back as nil). The superseded
+    /// single `destination` key is never written.
     public func encode(to encoder: any Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(version, forKey: .version)
         try container.encode(presets, forKey: .presets)
         try container.encodeIfPresent(destinations, forKey: .destinations)
+        try container.encodeIfPresent(programFormat, forKey: .programFormat)
     }
 }

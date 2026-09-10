@@ -251,6 +251,23 @@
         }
       }
     },
+    "%lld fps" : {
+      "comment" : "Program menu item: a frame rate in frames per second",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld fps"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld fps"
+          }
+        }
+      }
+    },
     "%lld keys" : {
       "comment" : "Data settings: a count of stream keys",
       "localizations" : {
@@ -374,6 +391,91 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "● Grabando"
+          }
+        }
+      }
+    },
+    "4K (3840×2160)" : {
+      "comment" : "Program size menu item: 4K UHD",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "4K (3840×2160)"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "4K (3840×2160)"
+          }
+        }
+      }
+    },
+    "480p (854×480)" : {
+      "comment" : "Program size menu item: 480p, 16:9",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "480p (854×480)"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "480p (854×480)"
+          }
+        }
+      }
+    },
+    "720p (1280×720)" : {
+      "comment" : "Program size menu item: 720p",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "720p (1280×720)"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "720p (1280×720)"
+          }
+        }
+      }
+    },
+    "1080p (1920×1080)" : {
+      "comment" : "Program size menu item: 1080p, the default",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1080p (1920×1080)"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1080p (1920×1080)"
+          }
+        }
+      }
+    },
+    "1440p (2560×1440)" : {
+      "comment" : "Program size menu item: 1440p",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1440p (2560×1440)"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1440p (2560×1440)"
           }
         }
       }
@@ -617,6 +719,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Apariencia, barra de estado, salida del monitor, carpeta y formato de grabación, secciones de la barra lateral, el último preajuste y las tomas en programa y previsualización, y posiciones de las ventanas."
+          }
+        }
+      }
+    },
+    "Applied in order, top to bottom" : {
+      "comment" : "Caption under an effect chain's heading: the effects run in the listed order",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Angewendet in Reihenfolge, von oben nach unten"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aplicados en orden, de arriba abajo"
+          }
+        }
+      }
+    },
+    "Apply" : {
+      "comment" : "Custom program size sheet: applies the typed format",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anwenden"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aplicar"
           }
         }
       }
@@ -1025,6 +1161,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Conectando…"
+          }
+        }
+      }
+    },
+    "Custom Size" : {
+      "comment" : "Title of the sheet for a typed program size and frame rate",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eigene Größe"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tamaño personalizado"
+          }
+        }
+      }
+    },
+    "Custom Size…" : {
+      "comment" : "Program menu item opening the sheet for a typed program size",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eigene Größe…"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tamaño personalizado…"
           }
         }
       }
@@ -1693,6 +1863,23 @@
         }
       }
     },
+    "Frame Rate" : {
+      "comment" : "Program menu: the submenu of frame rates",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bildrate"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Frecuencia de fotogramas"
+          }
+        }
+      }
+    },
     "Full Frame" : {
       "comment" : "Layer placement size: the whole program",
       "localizations" : {
@@ -2047,6 +2234,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Tiradores de capa"
+          }
+        }
+      }
+    },
+    "Layer Monitor" : {
+      "comment" : "Disclosure heading of the inspector's monitor showing the layer after its effects",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ebenenmonitor"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Monitor de capa"
           }
         }
       }
@@ -3497,7 +3701,7 @@
       }
     },
     "Program" : {
-      "comment" : "Name of the program bus — labels its monitor and its switcher row",
+      "comment" : "Name of the program bus — labels its monitor and its switcher row\nTitle of the Program menu: the program's size and frame rate",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -4195,6 +4399,23 @@
         }
       }
     },
+    "SD (640×480)" : {
+      "comment" : "Program size menu item: standard definition, 4:3",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SD (640×480)"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SD (640×480)"
+          }
+        }
+      }
+    },
     "Select a layer in the list or on the preview monitor." : {
       "comment" : "Inspector column empty state description",
       "localizations" : {
@@ -4554,7 +4775,7 @@
       }
     },
     "Size" : {
-      "comment" : "Logging settings: label of the row showing the log file's size",
+      "comment" : "Logging settings: label of the row showing the log file's size\nProgram menu: the submenu of named program sizes",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -4987,6 +5208,23 @@
         }
       }
     },
+    "The frame rate must be between 1 and 240." : {
+      "comment" : "Custom program size sheet: the frame rate is out of range",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Bildrate muss zwischen 1 und 240 liegen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La frecuencia de fotogramas debe estar entre 1 y 240."
+          }
+        }
+      }
+    },
     "The log file is kept: %@ in %@." : {
       "comment" : "Confirmation alert message closing line: the log file is kept; the placeholders are how much there is and the folder",
       "localizations" : {
@@ -5018,6 +5256,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "El número que marca un nuevo inicio en el registro."
+          }
+        }
+      }
+    },
+    "The program size must be at least 16 by 16 pixels." : {
+      "comment" : "Custom program size sheet: a width or height is too small",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Programmgröße muss mindestens 16 × 16 Pixel betragen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El tamaño del programa debe ser de al menos 16 por 16 píxeles."
+          }
+        }
+      }
+    },
+    "The program size must be even — 4:2:0 delivery requires it." : {
+      "comment" : "Custom program size sheet: a width or height is odd",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Programmgröße muss gerade sein – die 4:2:0-Auslieferung erfordert es."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El tamaño del programa debe ser par: la entrega 4:2:0 lo exige."
           }
         }
       }
@@ -5087,6 +5359,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "El programa: preajustes, tomas, capas y canales de audio."
+          }
+        }
+      }
+    },
+    "The size and frame rate the program is composited and delivered at. Changes apply at once; they are unavailable while streaming or recording." : {
+      "comment" : "Caption of the custom program size sheet",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Größe und Bildrate, mit denen das Programm zusammengesetzt und ausgeliefert wird. Änderungen gelten sofort; während des Streamens oder Aufnehmens sind sie nicht verfügbar."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El tamaño y la frecuencia de fotogramas con que se compone y entrega el programa. Los cambios se aplican de inmediato; no están disponibles mientras se transmite o se graba."
           }
         }
       }
@@ -5312,6 +5601,23 @@
         }
       }
     },
+    "Vertical (1080×1920)" : {
+      "comment" : "Program size menu item: portrait 1080p",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hochformat (1080×1920)"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vertical (1080×1920)"
+          }
+        }
+      }
+    },
     "Video Generator" : {
       "comment" : "Add Shot menu submenu listing the video generators",
       "localizations" : {
@@ -5496,40 +5802,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Y"
-          }
-        }
-      }
-    },
-    "Applied in order, top to bottom" : {
-      "comment" : "Caption under an effect chain's heading: the effects run in the listed order",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Angewendet in Reihenfolge, von oben nach unten"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Aplicados en orden, de arriba abajo"
-          }
-        }
-      }
-    },
-    "Layer Monitor" : {
-      "comment" : "Disclosure heading of the inspector's monitor showing the layer after its effects",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ebenenmonitor"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Monitor de capa"
           }
         }
       }

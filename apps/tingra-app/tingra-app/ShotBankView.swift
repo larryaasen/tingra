@@ -115,7 +115,7 @@ struct ShotBankView: View {
             onProgram: model.activeShotID,
             onPreview: model.previewShotID
         )
-        let tileWidth = height * 16 / 9
+        let tileWidth = height * model.programAspectRatio
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: Self.tileSpacing) {
                 if tiles.isEmpty {
@@ -244,6 +244,7 @@ struct ShotBankView: View {
             source: thumbnailSource(for: tile),
             label: nil,
             badgeTint: tile.tally.badgeTint,
+            aspectRatio: model.programAspectRatio,
             // A transient tile draws its own dashed border in the tally's
             // colour, so the solid one stays off.
             borderTint: tile.isTransient ? nil : tile.tally.borderTint

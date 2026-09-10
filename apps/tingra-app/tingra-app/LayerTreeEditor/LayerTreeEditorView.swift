@@ -254,9 +254,9 @@ struct LayerTreeEditorView: View {
         return HStack(spacing: 6) {
             MonitorTile(
                 source: InputFrameSource(model: model, id: layer.input), label: nil, badgeTint: .clear,
-                cornerRadius: 3
+                aspectRatio: model.programAspectRatio, cornerRadius: 3
             )
-            .frame(width: Self.thumbnailWidth, height: Self.thumbnailWidth * 9 / 16)
+            .frame(width: Self.thumbnailWidth, height: Self.thumbnailWidth / model.programAspectRatio)
             Image(systemName: available ? model.kindSymbol(forInput: layer.input) : "exclamationmark.triangle")
                 .foregroundStyle(.secondary)
                 .frame(width: 16)

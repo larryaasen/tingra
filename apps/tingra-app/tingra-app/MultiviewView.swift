@@ -52,13 +52,15 @@ struct MultiviewView: View {
                     source: model.previewRelay,
                     label: Text(
                         "Preview", comment: "Name of the preview bus — labels its monitor and its switcher row"),
-                    badgeTint: .green
+                    badgeTint: .green,
+                    aspectRatio: model.programAspectRatio
                 )
                 MonitorTile(
                     source: model.programRelay,
                     label: Text(
                         "Program", comment: "Name of the program bus — labels its monitor and its switcher row"),
-                    badgeTint: .red
+                    badgeTint: .red,
+                    aspectRatio: model.programAspectRatio
                 )
             }
 

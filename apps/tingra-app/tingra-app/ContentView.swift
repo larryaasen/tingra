@@ -67,6 +67,11 @@ struct ContentView: View {
     /// (``InspectorCommands``).
     @Binding var isInspectorPresented: Bool
 
+    /// Whether the Program menu's Custom Size… sheet is shown — window
+    /// state owned by the app scene (``ProgramCommands``), presented here
+    /// because a menu command cannot present a sheet itself.
+    @Binding var isCustomSizePresented: Bool
+
     /// The window's undo manager, handed to the model on appearance
     /// (``EngineModel/undoManager``).
     @Environment(\.undoManager) private var undoManager
@@ -167,6 +172,9 @@ struct ContentView: View {
             LayerInspectorColumn(model: model)
         }
         .shotRenameDialog(model: model, surface: .switcher, shot: $shotBeingRenamed, text: $renameText)
+        .sheet(isPresented: $isCustomSizePresented) {
+            ProgramFormatSheet(model: model)
+        }
         // The window's undo manager is what the Edit menu's Undo drives,
         // and the model is what registers layer edits against it.
         .onAppear {
@@ -251,7 +259,10 @@ struct ContentView: View {
                 // The layer handles ride the monitor showing the edited
                 // shot: preview while it is staged, program only in the
                 // fallback where nothing is (``EditedShot``).
-                MonitorTile(source: model.previewRelay, label: previewLabel, badgeTint: .green) {
+                MonitorTile(
+                    source: model.previewRelay, label: previewLabel, badgeTint: .green,
+                    aspectRatio: model.programAspectRatio
+                ) {
                     if let edited = model.editedShot, model.previewShotID == edited.shot.id {
                         LayerHandlesOverlay(model: model, edited: edited)
                     }
@@ -260,6 +271,7 @@ struct ContentView: View {
                     source: model.programRelay,
                     label: programLabel,
                     badgeTint: .red,
+                    aspectRatio: model.programAspectRatio,
                     statusBadge: model.isFadedToBlack ? fadedToBlackLabel : nil
                 ) {
                     if let edited = model.editedShot, model.previewShotID != edited.shot.id {

@@ -77,6 +77,32 @@ struct ProjectCodableTests {
         #expect(decoded.presets.isEmpty)
     }
 
+    @Test("a document without a programFormat key decodes with the format nil — the 1080p30 default")
+    func projectOptionalFormatDefaults() throws {
+        let json = Data(#"{"version":1,"presets":[]}"#.utf8)
+        let decoded = try JSONDecoder().decode(Project.self, from: json)
+        #expect(decoded.programFormat == nil)
+    }
+
+    @Test("a project with a program format round-trips through JSON under a programFormat key")
+    func projectFormatRoundTrips() throws {
+        let project = Project(presets: [], programFormat: ProgramFormat(width: 1280, height: 720, frameRate: 60))
+        let data = try JSONEncoder().encode(project)
+        let object = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(Set(object.keys) == ["version", "presets", "programFormat"])
+        let decoded = try JSONDecoder().decode(Project.self, from: data)
+        #expect(decoded == project)
+        #expect(decoded.programFormat == ProgramFormat(width: 1280, height: 720, frameRate: 60))
+    }
+
+    @Test("projects with different program formats are not equal")
+    func projectFormatInequality() {
+        let hd = Project(programFormat: ProgramFormat(width: 1920, height: 1080, frameRate: 30))
+        let uhd = Project(programFormat: ProgramFormat(width: 3840, height: 2160, frameRate: 30))
+        #expect(hd != uhd)
+        #expect(hd != Project())
+    }
+
     @Test("a project defaults to the current version and no presets")
     func projectDefaults() {
         let project = Project()

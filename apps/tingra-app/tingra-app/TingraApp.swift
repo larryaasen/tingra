@@ -42,6 +42,12 @@ struct TingraApp: App {
     /// it is "let the system decide", which the item cannot print.
     @State private var sidebarVisibility: NavigationSplitViewVisibility = .all
 
+    /// Whether the Program menu's Custom Size… sheet is shown
+    /// (``ProgramCommands``, ``ProgramFormatSheet``) — window state, owned
+    /// here like the inspector's visibility because a menu command cannot
+    /// present a sheet itself.
+    @State private var isCustomSizePresented = false
+
     /// Whether the main window's trailing inspector column is shown — shown
     /// by default and not persisted, the sidebar's own rule: the column is
     /// part of the window's shape, not a preference (``InspectorCommands``).
@@ -82,11 +88,15 @@ struct TingraApp: App {
             NavigationSplitView(columnVisibility: $sidebarVisibility) {
                 SidebarView(model: model)
             } detail: {
-                ContentView(model: model, isInspectorPresented: $isInspectorPresented)
-                    .frame(minWidth: 640, minHeight: 480)
-                    .safeAreaInset(edge: .bottom, spacing: 0) {
-                        StatusBarView(model: model, statusBar: statusBar)
-                    }
+                ContentView(
+                    model: model,
+                    isInspectorPresented: $isInspectorPresented,
+                    isCustomSizePresented: $isCustomSizePresented
+                )
+                .frame(minWidth: 640, minHeight: 480)
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    StatusBarView(model: model, statusBar: statusBar)
+                }
             }
             .task {
                 appDelegate.model = model
@@ -96,6 +106,7 @@ struct TingraApp: App {
         .commands {
             SidebarVisibilityCommands(model: model, visibility: $sidebarVisibility)
             InspectorCommands(model: model, isPresented: $isInspectorPresented)
+            ProgramCommands(model: model, isCustomSizePresented: $isCustomSizePresented)
             ShotCommands(model: model)
             LayerCommands(model: model)
             MultiviewCommands(model: model)

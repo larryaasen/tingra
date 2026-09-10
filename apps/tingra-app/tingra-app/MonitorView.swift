@@ -287,11 +287,18 @@ struct MonitorTile<Overlay: View>: View {
     /// thumbnails pass a smaller one, since 8 on a 20-point tile is a pill.
     var cornerRadius: CGFloat = 8
 
+    /// The picture's width over its height — the program's
+    /// (``EngineModel/programAspectRatio``), so every tile is the shape of
+    /// the canvas it monitors whatever the project's format is; a portrait
+    /// program gets portrait tiles (ARCHITECTURE.md, "The program format as
+    /// a project setting").
+    let aspectRatio: Double
+
     /// Interactive content drawn over the video — the layer handles the
     /// main window's monitors carry (``LayerHandlesOverlay``). It sits on
-    /// the fitted 16:9 rect, *inside* the tile's flexible frame, so its
-    /// bounds are the program's and a normalized layer frame maps onto it
-    /// by one scale. Every other tile passes nothing.
+    /// the fitted program-shaped rect, *inside* the tile's flexible frame,
+    /// so its bounds are the program's and a normalized layer frame maps
+    /// onto it by one scale. Every other tile passes nothing.
     @ViewBuilder let overlay: () -> Overlay
 
     /// Creates a tile with content over the video.
@@ -300,6 +307,7 @@ struct MonitorTile<Overlay: View>: View {
     ///   - source: Where the monitor reads its frames.
     ///   - label: The badge worn on the picture, or nil for none.
     ///   - badgeTint: The badge's tint.
+    ///   - aspectRatio: The picture's width over height — the program's.
     ///   - borderTint: The tally border's tint, or nil for no border.
     ///   - statusBadge: A state badge opposite the label, or nil.
     ///   - cornerRadius: The picture's corner radius (default 8).
@@ -308,6 +316,7 @@ struct MonitorTile<Overlay: View>: View {
         source: any MonitorFrameSource,
         label: Text?,
         badgeTint: Color,
+        aspectRatio: Double,
         borderTint: Color? = nil,
         statusBadge: Text? = nil,
         cornerRadius: CGFloat = 8,
@@ -316,6 +325,7 @@ struct MonitorTile<Overlay: View>: View {
         self.source = source
         self.label = label
         self.badgeTint = badgeTint
+        self.aspectRatio = aspectRatio
         self.borderTint = borderTint
         self.statusBadge = statusBadge
         self.cornerRadius = cornerRadius
@@ -325,7 +335,7 @@ struct MonitorTile<Overlay: View>: View {
     /// The monitor: video, its overlay, tally border, then badge.
     var body: some View {
         MonitorView(source: source)
-            .aspectRatio(16.0 / 9.0, contentMode: .fit)
+            .aspectRatio(aspectRatio, contentMode: .fit)
             .overlay { overlay() }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(.black)
@@ -366,6 +376,7 @@ extension MonitorTile where Overlay == EmptyView {
     ///   - source: Where the monitor reads its frames.
     ///   - label: The badge worn on the picture, or nil for none.
     ///   - badgeTint: The badge's tint.
+    ///   - aspectRatio: The picture's width over height — the program's.
     ///   - borderTint: The tally border's tint, or nil for no border.
     ///   - statusBadge: A state badge opposite the label, or nil.
     ///   - cornerRadius: The picture's corner radius (default 8).
@@ -373,13 +384,14 @@ extension MonitorTile where Overlay == EmptyView {
         source: any MonitorFrameSource,
         label: Text?,
         badgeTint: Color,
+        aspectRatio: Double,
         borderTint: Color? = nil,
         statusBadge: Text? = nil,
         cornerRadius: CGFloat = 8
     ) {
         self.init(
-            source: source, label: label, badgeTint: badgeTint, borderTint: borderTint, statusBadge: statusBadge,
-            cornerRadius: cornerRadius
+            source: source, label: label, badgeTint: badgeTint, aspectRatio: aspectRatio, borderTint: borderTint,
+            statusBadge: statusBadge, cornerRadius: cornerRadius
         ) {
             EmptyView()
         }

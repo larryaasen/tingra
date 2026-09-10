@@ -36,6 +36,59 @@ private struct SyntheticClock: EngineClock {
     var now: CMTime { tickTimes.first ?? .zero }
 }
 
+/// A clock the test **drives by hand**: each `tick(every:)` call arms a fresh
+/// stream the test feeds with ``yield(_:)``, and every arm is reported on
+/// ``arms`` with the interval asked for — so a test can act between two
+/// ticks and see the compositor re-arm its stream when the frame rate
+/// changes.
+private final class HandPacedClock: EngineClock, Sendable {
+    /// The armed streams' state: the continuation the next yield feeds, and
+    /// every interval armed so far.
+    private struct State {
+        var current: AsyncStream<CMTime>.Continuation?
+        var armed: [CMTime] = []
+    }
+
+    private let state = Mutex(State())
+
+    /// The arms, as they happen.
+    let arms: AsyncStream<CMTime>
+
+    /// Feeds ``arms``.
+    private let armContinuation: AsyncStream<CMTime>.Continuation
+
+    init() {
+        (arms, armContinuation) = AsyncStream<CMTime>.makeStream()
+    }
+
+    /// The intervals the compositor armed, in order.
+    var armedIntervals: [CMTime] {
+        state.withLock { $0.armed }
+    }
+
+    func tick(every duration: CMTime) -> AsyncStream<CMTime> {
+        let (stream, continuation) = AsyncStream<CMTime>.makeStream()
+        state.withLock { state in
+            state.current = continuation
+            state.armed.append(duration)
+        }
+        armContinuation.yield(duration)
+        return stream
+    }
+
+    /// Fires one tick on the stream armed most recently.
+    func yield(_ time: CMTime) {
+        state.withLock { $0.current }?.yield(time)
+    }
+
+    /// Ends the stream armed most recently — the program is over.
+    func finish() {
+        state.withLock { $0.current }?.finish()
+    }
+
+    var now: CMTime { .zero }
+}
+
 /// Records what the tick handed the renderer, so a test can assert pacing,
 /// stall, and shot-switch behavior with no Metal. `Sendable` and shared into
 /// the mock renderer's factory (the renderer itself is task-confined).
@@ -59,6 +112,11 @@ private final class RenderRecorder: Sendable {
         /// every render call, so a test can tell the stage apart from the
         /// shot work it runs after.
         var fadeAmount: Double?
+
+        /// The program format a plain render was asked for — `nil` for the
+        /// other call kinds, which no test reads it from — so a test can
+        /// see a ``Compositor/setFormat(_:)`` land on the next tick.
+        var format: ProgramFormat?
     }
 
     private let calls = Mutex<[Call]>([])
@@ -118,7 +176,8 @@ private struct MockShotRenderer: ShotRenderer {
                 blendOutgoing: nil,
                 blendProgress: nil,
                 wipeEdge: nil,
-                shader: nil
+                shader: nil,
+                format: format
             )
         )
         return CapturedFrame(pixelBuffer: makePixelBuffer(), presentationTime: time)
@@ -1767,5 +1826,120 @@ struct CompositorTests {
             break
         }
         #expect(state == "black")
+    }
+
+    // MARK: - Program format
+
+    @Test("the format reads back as constructed until it is changed")
+    func formatReadsBack() {
+        let compositor = makeCompositor(recorder: RenderRecorder(), tickTimes: [])
+        #expect(compositor.format == ProgramFormat(width: 2, height: 2, frameRate: 30))
+
+        compositor.setFormat(ProgramFormat(width: 4, height: 2, frameRate: 30))
+
+        #expect(compositor.format == ProgramFormat(width: 4, height: 2, frameRate: 30))
+    }
+
+    @Test("a size change lands on the very next tick's render — a live canvas, no restart")
+    func sizeChangeLandsOnTheNextTick() async {
+        let ticks = [CMTime(value: 0, timescale: 30), CMTime(value: 1, timescale: 30)]
+        let recorder = RenderRecorder()
+        // A clock the test paces by hand, so the change can be made between
+        // two ticks rather than racing a scripted run.
+        let clock = HandPacedClock()
+        let compositor = Compositor(
+            clock: clock,
+            format: ProgramFormat(width: 2, height: 2, frameRate: 30),
+            eventBus: EventBus(),
+            makeRenderer: { MockShotRenderer(recorder: recorder) }
+        )
+        let program = compositor.programFrames()
+        var iterator = program.makeAsyncIterator()
+        var arms = clock.arms.makeAsyncIterator()
+        compositor.start()
+        // The tick task arms its stream asynchronously; a tick fired before
+        // that would land on no stream at all.
+        _ = await arms.next()
+
+        clock.yield(ticks[0])
+        _ = await iterator.next()
+        compositor.setFormat(ProgramFormat(width: 4, height: 2, frameRate: 30))
+        clock.yield(ticks[1])
+        _ = await iterator.next()
+        clock.finish()
+
+        let formats = recorder.recorded.compactMap(\.format)
+        #expect(
+            formats == [
+                ProgramFormat(width: 2, height: 2, frameRate: 30),
+                ProgramFormat(width: 4, height: 2, frameRate: 30),
+            ])
+    }
+
+    @Test("a rate change re-arms the tick stream at the new interval after rendering the current tick")
+    func rateChangeReArmsTheTickStream() async {
+        let clock = HandPacedClock()
+        let recorder = RenderRecorder()
+        let compositor = Compositor(
+            clock: clock,
+            format: ProgramFormat(width: 2, height: 2, frameRate: 30),
+            eventBus: EventBus(),
+            makeRenderer: { MockShotRenderer(recorder: recorder) }
+        )
+        let program = compositor.programFrames()
+        var frames = program.makeAsyncIterator()
+        var arms = clock.arms.makeAsyncIterator()
+        compositor.start()
+        let firstArm = await arms.next()
+
+        // One tick at the old cadence, then the change: the next tick still
+        // renders — at the old cadence — and only then is the stream
+        // re-armed at the new one.
+        clock.yield(CMTime(value: 0, timescale: 30))
+        let first = await frames.next()
+        compositor.setFormat(ProgramFormat(width: 2, height: 2, frameRate: 60))
+        clock.yield(CMTime(value: 1, timescale: 30))
+        let second = await frames.next()
+        let secondArm = await arms.next()
+        clock.yield(CMTime(value: 2, timescale: 60))
+        let third = await frames.next()
+        clock.finish()
+
+        #expect(firstArm == CMTime(value: 1, timescale: 30))
+        #expect(secondArm == CMTime(value: 1, timescale: 60))
+        #expect(
+            [first, second, third].map { $0?.presentationTime } == [
+                CMTime(value: 0, timescale: 30), CMTime(value: 1, timescale: 30), CMTime(value: 2, timescale: 60),
+            ])
+        #expect(clock.armedIntervals == [CMTime(value: 1, timescale: 30), CMTime(value: 1, timescale: 60)])
+    }
+
+    @Test(
+        "a format change reports a control-plane event naming the new resolution and rate; the same format again reports nothing"
+    )
+    func formatChangeReportsAnEvent() async {
+        let bus = EventBus()
+        let events = bus.events()
+        let compositor = Compositor(
+            clock: SyntheticClock(tickTimes: []),
+            format: ProgramFormat(width: 2, height: 2, frameRate: 30),
+            eventBus: bus,
+            makeRenderer: { MockShotRenderer(recorder: RenderRecorder()) }
+        )
+
+        compositor.setFormat(ProgramFormat(width: 2, height: 2, frameRate: 30))
+        compositor.setFormat(ProgramFormat(width: 1280, height: 720, frameRate: 60))
+
+        var resolution: String?
+        var fps: String?
+        for await event in events where event.name == "program.format" {
+            resolution = event.params?["resolution"]?.description
+            fps = event.params?["fps"]?.description
+            #expect(event.group == .event)
+            #expect(event.domain == .composition)
+            break
+        }
+        #expect(resolution == "1280x720")
+        #expect(fps == "60")
     }
 }

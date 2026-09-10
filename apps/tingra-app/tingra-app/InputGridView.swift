@@ -67,6 +67,7 @@ struct InputGridView: View {
                             source: InputFrameSource(model: model, id: tile.id),
                             label: Text(verbatim: tile.name),
                             badgeTint: tile.tally.badgeTint,
+                            aspectRatio: model.programAspectRatio,
                             borderTint: tile.tally.borderTint
                         )
                     }

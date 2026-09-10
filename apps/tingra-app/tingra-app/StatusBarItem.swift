@@ -69,6 +69,12 @@ struct StatusBarItem: Equatable {
         }
     }
 
+    /// The status bar's reading for the **program format** — informational,
+    /// so its lamp is always off: the bar says what size and rate the program
+    /// is, and the Program menu is where that changes (ARCHITECTURE.md, "The
+    /// program format as a project setting").
+    static let programFormat = StatusBarItem(light: .off, systemImage: "aspectratio")
+
     /// The status bar's reading for the recording
     /// (``EngineModel/RecordingStatus``).
     ///

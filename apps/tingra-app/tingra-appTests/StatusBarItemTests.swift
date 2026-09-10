@@ -37,6 +37,12 @@ struct StatusBarItemTests {
         #expect(StatusBarItem.streaming(.error("unreachable host")).light == .fault)
     }
 
+    @Test("the program format reading is informational — its lamp is off")
+    func programFormatReadsOff() {
+        #expect(StatusBarItem.programFormat.light == .off)
+        #expect(!StatusBarItem.programFormat.systemImage.isEmpty)
+    }
+
     @Test("a rolling recording reads on")
     func rollingRecordingReadsOn() {
         #expect(StatusBarItem.recording(.recording).light == .on)
