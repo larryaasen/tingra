@@ -336,6 +336,21 @@ final class EngineModel {
     /// Record, from the same reading the pre-flight check refuses on.
     private(set) var recordingCapacity: RecordingCapacity?
 
+    /// The recording file being written right now, or nil: set by
+    /// `recording.started` and cleared by `recording.stopped`, which the
+    /// session emits only once the file is finalized. The Library's
+    /// Recordings tab marks this file's row as not yet playable, and
+    /// ``trashRecording(at:)`` refuses it (ARCHITECTURE.md, "The Recordings
+    /// tab").
+    private(set) var fileBeingRecorded: URL?
+
+    /// Bumped whenever the recordings folder's contents or the folder itself
+    /// change by Tingra's hand — a take starting, a take finalized, a trash,
+    /// a folder choice — so the Library's Recordings tab re-reads the listing
+    /// on the event rather than watching the folder (the
+    /// ``snapshotRevision`` twin).
+    private(set) var recordingRevision = 0
+
     /// The folder snapshots are saved into, from machine-local preferences
     /// (ARCHITECTURE.md, "Snapshots").
     private(set) var snapshotFolder: URL
@@ -1112,7 +1127,7 @@ final class EngineModel {
     @ObservationIgnored private var recordAudioContinuation: AsyncStream<CapturedAudio>.Continuation?
 
     /// Where the operator's recording folder and container live.
-    @ObservationIgnored private let recordingPreferences = RecordingPreferences()
+    @ObservationIgnored private let recordingPreferences: RecordingPreferences
 
     /// Where the operator's snapshots folder lives.
     @ObservationIgnored private let snapshotPreferences: SnapshotPreferences
@@ -1375,14 +1390,19 @@ final class EngineModel {
     ///   - snapshotPreferences: Where the snapshots folder persists (the
     ///     standard defaults by default; a throwaway suite in tests, so a test
     ///     never writes into the operator's own snapshots folder).
+    ///   - recordingPreferences: Where the recordings folder and container
+    ///     persist (the standard defaults by default; a throwaway suite in
+    ///     tests, for the same reason).
     init(
         monitor: any AudioMonitor = AVAudioEngineMonitor(),
         monitorPreferences: MonitorPreferences = MonitorPreferences(),
         authorization: any AuthorizationChecking = SystemAuthorization(),
-        snapshotPreferences: SnapshotPreferences = SnapshotPreferences()
+        snapshotPreferences: SnapshotPreferences = SnapshotPreferences(),
+        recordingPreferences: RecordingPreferences = RecordingPreferences()
     ) {
         self.monitor = monitor
         self.snapshotPreferences = snapshotPreferences
+        self.recordingPreferences = recordingPreferences
         self.monitorPreferences = monitorPreferences
         self.authorization = authorization
         self.monitorDeviceUID = monitorPreferences.deviceUID
@@ -3838,6 +3858,10 @@ final class EngineModel {
         recordSession = nil
         recordTask = nil
         recordingStartedAt = nil
+        // `recording.stopped` clears this too; clearing it here as well
+        // means a session that ended without emitting it cannot leave the
+        // Library believing a take is still being written.
+        fileBeingRecorded = nil
         refreshRecordingCapacity()
     }
 
@@ -3851,6 +3875,7 @@ final class EngineModel {
         recordingFolder = folder
         recordingPreferences.folder = folder
         refreshRecordingCapacity()
+        recordingRevision += 1
         eventBus.event("recording.folderChanged", domain: .output)
     }
 
@@ -3996,23 +4021,87 @@ final class EngineModel {
     /// - Returns: Nil when the file is in the Trash, or the reason it is not,
     ///   in the operator's words.
     func trashSnapshot(at url: URL) async -> String? {
+        await trashLibraryFile(
+            at: url, errorName: "snapshot.trash", trashedName: "snapshot.trashed", domain: .composition,
+            revision: \.snapshotRevision)
+    }
+
+    /// Moves a recording to the Trash, on the snapshots' terms
+    /// (``trashSnapshot(at:)``) — except the take being written, which is
+    /// refused: trashing a file under its writer would lose the take and
+    /// leave the session writing into the Trash (ARCHITECTURE.md, "The
+    /// Recordings tab"). The Library disables the item for that row; the
+    /// refusal here is for any other caller.
+    ///
+    /// - Parameter url: The recording file.
+    /// - Returns: Nil when the file is in the Trash, or the reason it is not,
+    ///   in the operator's words.
+    func trashRecording(at url: URL) async -> String? {
+        guard !isBeingRecorded(url) else {
+            eventBus.error(
+                "recording.trash",
+                domain: .output,
+                params: ["file": .string(url.lastPathComponent), "reason": .string("recording")]
+            )
+            return String(
+                localized:
+                    "“\(url.lastPathComponent)” is still being recorded. Stop the recording before moving it to the Trash.",
+                comment:
+                    "Reason a recording could not be moved to the Trash: it is the take being recorded; the placeholder is the file's name"
+            )
+        }
+        return await trashLibraryFile(
+            at: url, errorName: "recording.trash", trashedName: "recording.trashed", domain: .output,
+            revision: \.recordingRevision)
+    }
+
+    /// Whether a file is the recording being written — named by the last
+    /// `recording.started`, or the file a session just opened whose event has
+    /// not arrived yet.
+    ///
+    /// - Parameter url: The file.
+    /// - Returns: True when a recording session is writing that file.
+    func isBeingRecorded(_ url: URL) -> Bool {
+        if let fileBeingRecorded, FolderListing.isSameFile(fileBeingRecorded, url) { return true }
+        if recordSession != nil, let recordingURL, FolderListing.isSameFile(recordingURL, url) { return true }
+        return false
+    }
+
+    /// Moves a file one of the Library's file tabs lists to the Trash — the
+    /// one path snapshots and recordings share, so the two tabs cannot differ
+    /// in what trashing does. Recoverable, never a permanent delete; the
+    /// events name the file, never its folder (the media rule). When the
+    /// project uses the file as media, its input is unregistered at once.
+    ///
+    /// - Parameters:
+    ///   - url: The file.
+    ///   - errorName: The error event reported when the move is refused.
+    ///   - trashedName: The event reported when the file is in the Trash.
+    ///   - domain: The domain both events belong to.
+    ///   - revision: The counter the tab re-reads on.
+    /// - Returns: Nil when the file is in the Trash, or the reason it is not,
+    ///   in the operator's words.
+    private func trashLibraryFile(
+        at url: URL, errorName: String, trashedName: String, domain: EventDomain,
+        revision: ReferenceWritableKeyPath<EngineModel, Int>
+    ) async -> String? {
         let item = mediaItem(forFile: url)
         do {
             try FileManager.default.trashItem(at: url, resultingItemURL: nil)
         } catch {
             eventBus.error(
-                "snapshot.trash",
-                domain: .composition,
+                errorName,
+                domain: domain,
                 params: ["file": .string(url.lastPathComponent), "error": .string(String(describing: error))]
             )
             return error.localizedDescription
         }
         eventBus.event(
-            "snapshot.trashed",
-            domain: .composition,
+            trashedName,
+            domain: domain,
             params: ["file": .string(url.lastPathComponent), "usedAsMedia": .bool(item != nil)]
         )
-        snapshotRevision += 1
+        self[keyPath: revision] += 1
         if let item {
             await registry.unregister(item.id.inputID)
             await readDeviceLists()
@@ -4201,10 +4290,14 @@ final class EngineModel {
 
     /// Updates the Record control from the `recording.*` events the session
     /// emits for the file itself — event-driven, never polled, and the same
-    /// events the CLI's `--json` output carries.
+    /// events the CLI's `--json` output carries — and has the Library's
+    /// Recordings tab re-read when a take appears and when it is finalized.
+    ///
+    /// Internal rather than private so tests drive it with a synthetic event
+    /// instead of booting the engine.
     ///
     /// - Parameter event: An event drained from the bus.
-    private func handleRecordingEvent(_ event: EventBusEvent) {
+    func handleRecordingEvent(_ event: EventBusEvent) {
         switch event.name {
         case "recording.started":
             recordingStatus = .recording
@@ -4212,11 +4305,17 @@ final class EngineModel {
             if let path = event.params?["path"].flatMap(Self.stringValue) {
                 recordingURL = URL(filePath: path)
             }
+            fileBeingRecorded = recordingURL
+            recordingRevision += 1
         case "recording.stopped":
             // A recording that failed keeps its error showing; the file was
             // still finalized, which is what this event reports.
             if case .error = recordingStatus {} else { recordingStatus = .idle }
             recordingStartedAt = nil
+            // Emitted after the file is closed, so this is the moment the
+            // take becomes playable and its row an ordinary one.
+            fileBeingRecorded = nil
+            recordingRevision += 1
         case "recording.write":
             let message =
                 event.params?["message"].flatMap(Self.stringValue)

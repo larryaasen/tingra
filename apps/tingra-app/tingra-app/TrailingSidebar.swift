@@ -57,11 +57,19 @@ struct TrailingSidebar: View {
 
     /// The sidebar: the inspector taking what the Library leaves, the
     /// divider, the Library at its clamped height.
+    ///
+    /// Each pane is pinned to the sidebar's own width, leading-aligned. A
+    /// `VStack` is as wide as its widest child and centers the rest, so a
+    /// pane whose content refused to shrink would widen the stack and push
+    /// the other pane sideways — the Library slid right by half the layer
+    /// inspector's overflow when a layer was selected (found 2026-09-12).
+    /// Pinned, a pane can only ever overflow itself.
     var body: some View {
         GeometryReader { proxy in
             let height = LibraryPreferences.clamped(libraryHeight, in: proxy.size.height)
-            VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 0) {
                 LayerInspectorColumn(model: model)
+                    .frame(width: proxy.size.width, alignment: .leading)
                     .frame(maxHeight: .infinity)
                 LibrarySplitter { translation in
                     let start = dragStartHeight ?? height
@@ -75,7 +83,7 @@ struct TrailingSidebar: View {
                         "librarySplitter.drag", domain: .platform, params: ["height": .double(Double(libraryHeight))])
                 }
                 LibraryView(model: model)
-                    .frame(height: height)
+                    .frame(width: proxy.size.width, height: height, alignment: .leading)
             }
         }
         .inspectorColumnWidth(min: Self.minimumWidth, ideal: Self.idealWidth, max: Self.maximumWidth)

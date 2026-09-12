@@ -14,19 +14,9 @@ import Testing
 import TingraAudio
 import TingraEventBus
 import TingraPlugInKit
+import UniformTypeIdentifiers
 
 @testable import TingraApp
-
-/// An audio monitor that plays nothing, so a model under test never opens
-/// an output device.
-private struct SilentMonitor: AudioMonitor {
-    func availableDevices() async -> [AudioMonitorDevice] { [] }
-    func deviceUpdates() async -> AsyncStream<[AudioMonitorDevice]> { AsyncStream { $0.finish() } }
-    func start(device: AudioMonitorDevice, format: MixFormat) async throws {}
-    func stop() async {}
-    func play(_ audio: CapturedAudio) async {}
-    func setLevel(_ level: Double) async {}
-}
 
 /// The model's ``EngineModel/saveSnapshot(_:)`` over synthetic frames in its
 /// relays (ARCHITECTURE.md, "Snapshots"): the engine is never started, and
@@ -66,7 +56,7 @@ struct SnapshotModelTests {
 
         /// The images in the folder.
         var files: [URL] {
-            SnapshotListing.files(in: folder).map(\.url)
+            FolderListing.files(in: folder, conformingTo: .image).map(\.url)
         }
 
         /// Every event the model's bus carried while the body ran.

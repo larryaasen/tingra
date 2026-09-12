@@ -46,6 +46,8 @@ struct LibraryPreferencesTests {
         #expect(preferences.tab() == .media)
         preferences.setTab(.snapshots)
         #expect(preferences.tab() == .snapshots)
+        preferences.setTab(.recordings)
+        #expect(preferences.tab() == .recordings)
         preferences.setTab(.media)
         #expect(preferences.tab() == .media)
     }
@@ -53,8 +55,14 @@ struct LibraryPreferencesTests {
     @Test("A stored tab this build does not know reads as Media")
     func unknownTabIsMedia() throws {
         let defaults = try makeDefaults()
-        defaults.set("recordings", forKey: LibraryPreferences.tabKey)
+        defaults.set("trash", forKey: LibraryPreferences.tabKey)
         #expect(LibraryPreferences(defaults: defaults).tab() == .media)
+    }
+
+    @Test("The tabs are Media, Snapshots, and Recordings, in that order, each persisted under its own name")
+    func tabsInOrder() {
+        #expect(LibraryTab.allCases == [.media, .snapshots, .recordings])
+        #expect(LibraryTab.allCases.map(\.rawValue) == ["media", "snapshots", "recordings"])
     }
 
     @Test("Clamping keeps the Library above its minimum and the inspector above its minimum")

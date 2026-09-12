@@ -1238,8 +1238,8 @@ or two in the doc that owns them — none need a rewrite.
     per-layer playback (once/loop/hold, restart on take); file watching;
     typography controls.
   - [x] **Snapshots** *(decided 2026-09-10, approved and built 2026-09-11,
-    uncommitted; record in ARCHITECTURE.md, "Snapshots", with its "Built as
-    recorded" differences)*. An app
+    committed 2026-09-12; record in ARCHITECTURE.md, "Snapshots", with its
+    "Built as recorded" differences)*. An app
     iteration with the engine untouched. `EngineModel.saveSnapshot(_:)` over a
     `SnapshotSubject` (program, preview, an input, the layer) reads the very
     `MonitorFrameSource` that monitor draws (`latest`, then `image(for:)`),
@@ -1270,8 +1270,35 @@ or two in the doc that owns them — none need a rewrite.
       image content, so an agent can see the program (needs a daemon-side
       program-frame accessor; the writer then moves to
       `TingraComposition`); Copy Snapshot; JPEG/HEIC; interval capture.
-  - [ ] **The Recordings tab** of the Library, over the recording folder —
-    the sketch's "recorded videos panel".
+  - [x] **The Recordings tab** of the Library, over the recording folder —
+    the sketch's "recorded videos panel" *(decided, approved, and built
+    2026-09-12, uncommitted; record in ARCHITECTURE.md, "The Recordings
+    tab", with its "Built as recorded" differences)*.
+    Inherits the Snapshots tab wholesale and differs where a take differs
+    from a still: the default folder becomes **`~/Movies/Tingra
+    Recordings`** because the tab lists the folder (no migration; a take
+    already in `~/Movies` stays there); `SnapshotListing` generalizes into
+    `FolderListing(in:conformingTo:)`, shared by both file tabs and the
+    Data pane's count, so the Data pane's `Tingra ` stem filter goes; the
+    recording in progress is listed as its own row (`LibraryItem.isRecording`,
+    red `record.circle`, "Recording…", Reveal in Finder only, never
+    thumbnailed or measured until `recording.stopped`, which fires after
+    finalize); a `recordingRevision` on the model re-reads on
+    started/stopped/folderChanged/trash; rows say date, time, length
+    (`AVURLAsset.load(.duration)` once per file, `LibraryThumbnails` →
+    `LibraryFacts`), and size; row menu Quick Look, Reveal, Add to Media
+    (the replay route), Move to Trash (confirmed when used as media,
+    refused for the file being written); empty state points at Record
+    (⌘R); no trailing control. Built with 16 new app tests; 508 app tests
+    green in 58 suites.
+    - [ ] Check by hand: three segments at 280 points (the heading yields,
+      the titles never abbreviate); a layer selected with a long input name
+      at 280 points, the inspector inside the column and the Library not
+      sliding right (fixed 2026-09-12 in the sidebar and the inspector, see
+      the record's "Found on the first hand check"); and a take appearing as its own row when
+      Record is pressed and turning playable, with its length, on stop. Not
+      seen by the building session, which had no screen-capture or
+      accessibility grant.
   - [ ] **The log viewer window.** A new `EventSink` into an in-memory ring
     with group/domain filters, search, and pause, opened from the Window
     menu; a window rather than a panel because a log wants width and outlives

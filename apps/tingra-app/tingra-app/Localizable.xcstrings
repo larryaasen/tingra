@@ -21,9 +21,21 @@
     "%@ (%@)" : {
       "comment" : "Shot bank tile caption: the shot's name, then the shortcut that stages it, e.g. Default (⌘1)",
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ (%2$@)"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "new",
+            "value" : "%1$@ (%2$@)"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
             "value" : "%1$@ (%2$@)"
           }
         }
@@ -566,7 +578,21 @@
       }
     },
     "Add a new empty preset to the project" : {
-      "comment" : "Tooltip on the sidebar's Add Preset button"
+      "comment" : "Tooltip on the sidebar's Add Preset button",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eine neue leere Voreinstellung zum Projekt hinzufügen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Añadir un nuevo preajuste vacío al proyecto"
+          }
+        }
+      }
     },
     "Add a shot to the active preset" : {
       "comment" : "Tooltip on the Add Shot menu",
@@ -3504,13 +3530,55 @@
       }
     },
     "No shot on program" : {
-      "comment" : "Caption under the program monitor when the program is background-only"
+      "comment" : "Caption under the program monitor when the program is background-only",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Einstellung auf Programm"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ninguna toma en programa"
+          }
+        }
+      }
     },
     "No shot staged" : {
-      "comment" : "Caption under the preview monitor when nothing is staged"
+      "comment" : "Caption under the preview monitor when nothing is staged",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Einstellung vorbereitet"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ninguna toma preparada"
+          }
+        }
+      }
     },
     "No Shots" : {
-      "comment" : "Placeholder item in the Shots menu when the active preset has none"
+      "comment" : "Placeholder item in the Shots menu when the active preset has none",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Einstellungen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sin tomas"
+          }
+        }
+      }
     },
     "No shots in this preset" : {
       "comment" : "Sidebar placeholder when the active preset has no shots",
@@ -4194,7 +4262,7 @@
       }
     },
     "Recordings" : {
-      "comment" : "Data settings: the recordings' name",
+      "comment" : "Data settings: the recordings' name\nLibrary tab listing the movies in the recordings folder",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -5354,7 +5422,21 @@
       }
     },
     "Stage a shot on preview to take it." : {
-      "comment" : "Hint beside the Take button while nothing is staged on preview"
+      "comment" : "Hint beside the Take button while nothing is staged on preview",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bereite eine Einstellung auf Vorschau vor, um sie zu übernehmen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prepara una toma en previsualización para tomarla."
+          }
+        }
+      }
     },
     "Stage on preview" : {
       "comment" : "Tooltip on an input tile that stages it on preview",
@@ -5680,10 +5762,38 @@
       }
     },
     "Take the staged shot to program instantly" : {
-      "comment" : "Tooltip on the Cut button"
+      "comment" : "Tooltip on the Cut button",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die vorbereitete Einstellung sofort ins Programm übernehmen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Llevar la toma preparada al programa al instante"
+          }
+        }
+      }
     },
     "Take the staged shot to program with the selected transition" : {
-      "comment" : "Tooltip on the Take button"
+      "comment" : "Tooltip on the Take button",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die vorbereitete Einstellung mit dem gewählten Übergang ins Programm übernehmen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Llevar la toma preparada al programa con la transición seleccionada"
+          }
+        }
+      }
     },
     "Take the whole program — picture and sound — off air, or bring it back" : {
       "comment" : "Tooltip on the Fade to Black toolbar button",
@@ -6415,6 +6525,74 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Y"
+          }
+        }
+      }
+    },
+    "No Recordings" : {
+      "comment" : "Library Recordings tab empty state title",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Aufnahmen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sin grabaciones"
+          }
+        }
+      }
+    },
+    "Press Record (⌘R) to record the program." : {
+      "comment" : "Library Recordings tab empty state description",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Drücke „Aufnehmen“ (⌘R), um das Programm aufzunehmen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulsa «Grabar» (⌘R) para grabar el programa."
+          }
+        }
+      }
+    },
+    "Recording…" : {
+      "comment" : "Library Recordings tab: detail line of the take being recorded now",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wird aufgenommen…"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grabando…"
+          }
+        }
+      }
+    },
+    "“%@” is still being recorded. Stop the recording before moving it to the Trash." : {
+      "comment" : "Reason a recording could not be moved to the Trash: it is the take being recorded; the placeholder is the file's name",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "„%@“ wird gerade aufgenommen. Beende die Aufnahme, bevor du die Datei in den Papierkorb legst."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "«%@» todavía se está grabando. Detén la grabación antes de trasladar el archivo a la papelera."
           }
         }
       }

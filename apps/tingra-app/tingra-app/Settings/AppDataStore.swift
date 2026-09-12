@@ -10,6 +10,7 @@
 import Foundation
 import TingraHost
 import TingraPlugInKit
+import UniformTypeIdentifiers
 
 /// One kind of data Tingra writes to this Mac — the closed list the Data
 /// settings pane inventories and Remove All Data clears.
@@ -262,10 +263,12 @@ struct AppDataStore {
                 return fileItem(kind, files: [logFileURL], folder: logFileURL.deletingLastPathComponent())
             case .recordings:
                 let folder = recordingFolder()
-                return fileItem(kind, files: Self.recordings(in: folder), folder: folder)
+                return fileItem(
+                    kind, files: FolderListing.files(in: folder, conformingTo: .movie).map(\.url), folder: folder)
             case .snapshots:
                 let folder = snapshotFolder()
-                return fileItem(kind, files: SnapshotListing.files(in: folder).map(\.url), folder: folder)
+                return fileItem(
+                    kind, files: FolderListing.files(in: folder, conformingTo: .image).map(\.url), folder: folder)
             }
         }
     }
@@ -347,24 +350,6 @@ struct AppDataStore {
             location: Self.abbreviatedPath(of: folder),
             folderURL: folderExists ? folder : nil
         )
-    }
-
-    /// The recordings in a folder: the files ``RecordingFilename`` names —
-    /// the `Tingra` stem in one of the recording containers — and nothing
-    /// else the operator keeps in the same folder.
-    ///
-    /// - Parameter folder: The recordings folder.
-    /// - Returns: The recordings, or none for a folder that does not exist.
-    static func recordings(in folder: URL) -> [URL] {
-        let extensions = Set(RecordingFile.Container.allCases.map(\.rawValue))
-        let contents =
-            (try? FileManager.default.contentsOfDirectory(
-                at: folder, includingPropertiesForKeys: [.fileSizeKey], options: [.skipsHiddenFiles])) ?? []
-        return
-            contents
-            .filter { extensions.contains($0.pathExtension) }
-            .filter { $0.deletingPathExtension().lastPathComponent.hasPrefix("\(RecordingFilename.prefix) ") }
-            .sorted { $0.lastPathComponent < $1.lastPathComponent }
     }
 
     /// A file's size in bytes, or `nil` when there is no such file.

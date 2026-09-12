@@ -33,13 +33,18 @@ struct RecordingPreferences {
     /// The container-format key.
     private static let containerKey = "recording.container"
 
-    /// Where a fresh install records to.
+    /// Where a fresh install records to: `~/Movies/Tingra Recordings`.
     ///
-    /// `~/Movies` deliberately, over Desktop or Documents: those are
+    /// Under `~/Movies` deliberately, over Desktop or Documents: those are
     /// TCC-protected on macOS 15 and would put a permission prompt in front
     /// of the operator's very first recording, where `~/Movies` is not
-    /// protected and is already where macOS puts video.
-    static var defaultFolder: URL { .moviesDirectory }
+    /// protected and is already where macOS puts video. A **subfolder** since
+    /// the Library's Recordings tab lists the folder (ARCHITECTURE.md, "The
+    /// Recordings tab"): `~/Movies` itself would list every movie the
+    /// operator owns. The first recording creates it.
+    static var defaultFolder: URL {
+        .moviesDirectory.appending(path: "Tingra Recordings", directoryHint: .isDirectory)
+    }
 
     /// The container a fresh install records into — QuickTime `.mov`, the
     /// native macOS choice.

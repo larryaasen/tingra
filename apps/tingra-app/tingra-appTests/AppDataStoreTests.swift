@@ -254,29 +254,30 @@ struct AppDataStoreTests {
         #expect(item.location.hasSuffix("\(fixture.domain).plist"))
     }
 
-    @Test("recordings count only Tingra's movies in the folder, and are kept by remove all")
+    @Test("recordings count every movie in the folder, whatever its name, and are kept by remove all")
     func recordingsAreCountedAndKept() throws {
         let fixture = try AppDataFixture()
         defer { fixture.tearDown() }
         let kept = [
             fixture.recordingsFolder.appending(path: "Tingra 2026-09-07 10.00.00.mov"),
             fixture.recordingsFolder.appending(path: "Tingra 2026-09-07 10.00.00 2.mp4"),
+            fixture.recordingsFolder.appending(path: "Holiday.mov"),
         ]
         let ignored = [
-            fixture.recordingsFolder.appending(path: "Holiday.mov"),
             fixture.recordingsFolder.appending(path: "Tingra notes.txt"),
-            fixture.recordingsFolder.appending(path: "Tingrafied.mov"),
+            fixture.recordingsFolder.appending(path: "Tingra Program 2026-09-07 10.00.00.png"),
         ]
         for url in kept { try fixture.write(url, byteCount: 1000) }
         for url in ignored { try fixture.write(url, byteCount: 5) }
 
         let item = try #require(fixture.store.inventory().first { $0.kind == .recordings })
-        #expect(item.count == 2)
-        #expect(item.byteCount == 2000)
+        #expect(item.count == 3)
+        #expect(item.byteCount == 3000)
         #expect(item.location == fixture.recordingsFolder.path(percentEncoded: false).replacing(/\/$/, with: ""))
         #expect(item.folderURL?.standardizedFileURL == fixture.recordingsFolder.standardizedFileURL)
+        // The pane's count and the Library's Recordings tab read one listing.
         #expect(
-            AppDataStore.recordings(in: fixture.recordingsFolder).map(\.lastPathComponent).sorted()
+            LibraryItem.recordings(in: fixture.recordingsFolder, recording: nil).map(\.name).sorted()
                 == kept.map(\.lastPathComponent).sorted())
 
         #expect(fixture.store.removeAll().isEmpty)

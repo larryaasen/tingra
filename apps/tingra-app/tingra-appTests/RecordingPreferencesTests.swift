@@ -23,13 +23,17 @@ struct RecordingPreferencesTests {
         return (RecordingPreferences(defaults: defaults), defaults, name)
     }
 
-    @Test("a fresh install records to the Movies folder, which needs no TCC prompt")
-    func freshInstallUsesMovies() throws {
+    @Test("a fresh install records to a Tingra Recordings folder inside Movies, which needs no TCC prompt")
+    func freshInstallUsesMoviesSubfolder() throws {
         let (preferences, defaults, name) = try makePreferences()
         defer { defaults.removePersistentDomain(forName: name) }
 
-        #expect(preferences.folder == URL.moviesDirectory)
-        #expect(RecordingPreferences.defaultFolder == URL.moviesDirectory)
+        let expected = URL.moviesDirectory.appending(path: "Tingra Recordings", directoryHint: .isDirectory)
+        #expect(preferences.folder == expected)
+        #expect(RecordingPreferences.defaultFolder == expected)
+        #expect(
+            RecordingPreferences.defaultFolder.deletingLastPathComponent().standardizedFileURL
+                == URL.moviesDirectory.standardizedFileURL)
     }
 
     @Test("a fresh install records QuickTime movies")

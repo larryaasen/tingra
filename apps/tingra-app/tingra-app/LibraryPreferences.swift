@@ -11,13 +11,17 @@ import Foundation
 import SwiftUI
 
 /// Which tab the Library panel shows (GLOSSARY.md, "Library"): the
-/// project's media, or the snapshots folder (ARCHITECTURE.md, "Snapshots").
+/// project's media, the snapshots folder (ARCHITECTURE.md, "Snapshots"), or
+/// the recordings folder ("The Recordings tab").
 enum LibraryTab: String, CaseIterable, Identifiable {
     /// The project's media files.
     case media
 
     /// The images in the snapshots folder.
     case snapshots
+
+    /// The movies in the recordings folder.
+    case recordings
 
     /// The tab itself, for `ForEach`.
     var id: Self { self }
@@ -33,6 +37,8 @@ enum LibraryTab: String, CaseIterable, Identifiable {
                 comment:
                     "Snapshots: the still images saved from monitors — the Library tab, the Data settings kind, and the General settings heading"
             )
+        case .recordings:
+            Text("Recordings", comment: "Library tab listing the movies in the recordings folder")
         }
     }
 }
@@ -42,7 +48,7 @@ enum LibraryTab: String, CaseIterable, Identifiable {
 /// the layer inspector and the Library is part of the window's shape the
 /// operator set, so it comes back the way it was left (ARCHITECTURE.md,
 /// "Media inputs and the Library's Media tab"), and so does the tab they
-/// were on ("Snapshots").
+/// were on ("Snapshots", "The Recordings tab").
 struct LibraryPreferences {
     /// The height the Library opens at on a fresh install: enough for the
     /// heading and four or five rows without starving the inspector above.

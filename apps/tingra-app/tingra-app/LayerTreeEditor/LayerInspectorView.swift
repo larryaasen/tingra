@@ -120,6 +120,10 @@ struct LayerInspectorView: View {
                     field(.height)
                 }
             }
+            // Two lines, not one: the unit toggle, the lock, Match Input,
+            // and Reset side by side are wider than the column's narrowest
+            // width in every language, so the buttons truncated or pushed
+            // past the column's edge (found 2026-09-12).
             GridRow {
                 Color.clear
                     .gridCellUnsizedAxes([.horizontal, .vertical])
@@ -127,16 +131,38 @@ struct LayerInspectorView: View {
                     unitPicker
                     Spacer()
                     aspectLock
+                }
+            }
+            GridRow {
+                Color.clear
+                    .gridCellUnsizedAxes([.horizontal, .vertical])
+                HStack(spacing: 6) {
                     matchInputButton
                     resetButton
+                    Spacer(minLength: 0)
                 }
             }
             GridRow {
                 rowLabel(Text("Placement", comment: "Layer inspector row: the anchor grid and size presets"))
                     .gridCellAnchor(.topLeading)
-                HStack(alignment: .top, spacing: 10) {
-                    anchorGrid
-                    sizeButtons
+                // The presets beside the anchor grid where the column has
+                // room, beneath it where it does not: beside, the row is
+                // wider than the narrowest column in every language (the
+                // grid alone is 130 points, measured 2026-09-12), and the
+                // presets' titles differ most between languages.
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .top, spacing: 10) {
+                        anchorGrid
+                        sizeButtons(along: .vertical)
+                    }
+                    VStack(alignment: .leading, spacing: 8) {
+                        anchorGrid
+                        sizeButtons(along: .horizontal)
+                    }
+                    VStack(alignment: .leading, spacing: 8) {
+                        anchorGrid
+                        sizeButtons(along: .vertical)
+                    }
                 }
             }
             GridRow {
@@ -214,6 +240,12 @@ struct LayerInspectorView: View {
     /// The Input popup: every discovered video input, plus the layer's own
     /// input by its last-known name when it is not among them, so a layer
     /// whose device went away still says what it was.
+    ///
+    /// It fills the controls column and truncates a long name rather than
+    /// taking its natural size: a popup's natural width is its longest
+    /// choice's, and a grid column is as wide as its widest cell, so one
+    /// long file name among the inputs widened every row beside it and
+    /// pushed the inspector past the sidebar's edge (found 2026-09-12).
     private var inputPicker: some View {
         Picker(selection: inputBinding) {
             ForEach(model.layerInputChoices) { choice in
@@ -226,7 +258,7 @@ struct LayerInspectorView: View {
             Text("Input", comment: "Layer inspector row: the input the layer is bound to")
         }
         .labelsHidden()
-        .fixedSize()
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     /// The popup's binding: choosing an input rebinds the layer, reporting
@@ -248,24 +280,30 @@ struct LayerInspectorView: View {
         }
     }
 
-    /// One position or size field with its stepper.
+    /// One position or size field with its stepper, and its label beneath —
+    /// the shape of Keynote's Arrange inspector. Beside the field, the
+    /// labels made the Size row wider than the column's narrowest width in
+    /// English, German, and Spanish alike; beneath, both rows fit in all
+    /// three (measured 2026-09-12).
     private func field(_ component: Component) -> some View {
-        HStack(spacing: 4) {
+        VStack(spacing: 2) {
+            HStack(spacing: 4) {
+                CommittingNumberField(
+                    value: fieldBinding(component).wrappedValue,
+                    fractionDigits: unit.fractionDigits,
+                    label: component.label
+                ) { typed in
+                    fieldBinding(component).wrappedValue = typed
+                }
+                .frame(width: Self.fieldWidth)
+                Stepper(value: fieldBinding(component), step: unit.step) {
+                    component.label
+                }
+                .labelsHidden()
+            }
             component.label
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            CommittingNumberField(
-                value: fieldBinding(component).wrappedValue,
-                fractionDigits: unit.fractionDigits,
-                label: component.label
-            ) { typed in
-                fieldBinding(component).wrappedValue = typed
-            }
-            .frame(width: Self.fieldWidth)
-            Stepper(value: fieldBinding(component), step: unit.step) {
-                component.label
-            }
-            .labelsHidden()
         }
     }
 
@@ -410,9 +448,16 @@ struct LayerInspectorView: View {
         .buttonBorderShape(.roundedRectangle)
     }
 
-    /// The three size presets, stacked beside the anchor grid.
-    private var sizeButtons: some View {
-        VStack(alignment: .leading, spacing: 4) {
+    /// The three size presets, stacked beside the anchor grid or laid in a
+    /// line beneath it (``body``'s Placement row chooses).
+    ///
+    /// - Parameter axis: Which way the presets run.
+    private func sizeButtons(along axis: Axis) -> some View {
+        let layout =
+            axis == .vertical
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
+            : AnyLayout(HStackLayout(spacing: 4))
+        return layout {
             ForEach(LayerPlacement.Size.allCases, id: \.self) { size in
                 Button {
                     model.eventBus.tap(
