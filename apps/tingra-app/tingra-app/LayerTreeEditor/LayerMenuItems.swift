@@ -75,7 +75,9 @@ struct LayerMenuItems: View {
 }
 
 /// The **Layer** menu: ``LayerMenuItems`` over the selected layer of the
-/// shot the editor follows. A menu of its own, after Shots, because the
+/// shot the editor follows, then **Save Snapshot of Layer** — the layer
+/// monitor's context-menu command in the menu bar, which works with the
+/// monitor closed (ARCHITECTURE.md, "Snapshots"). A menu of its own, after Shots, because the
 /// arrange keys need a home that is always there — a shortcut on a control
 /// that is scrolled away is a shortcut that does not work (the reasoning
 /// under ``ShotCommands``) — and because the menu bar is where a Mac user
@@ -88,6 +90,18 @@ struct LayerCommands: Commands {
     var body: some Commands {
         CommandMenu(Text("Layer", comment: "Title of the Layer menu, arranging the selected layer")) {
             LayerMenuItems(model: model, surface: .menuBar, index: model.selectedLayer?.index)
+
+            Divider()
+
+            Button {
+                model.eventBus.tap("snapshotLayer.menuItem", domain: .composition)
+                Task { await model.saveSnapshot(.layer) }
+            } label: {
+                Text(
+                    "Save Snapshot of Layer",
+                    comment: "Layer menu item saving the selected layer, after its effects, as an image file")
+            }
+            .disabled(model.selectedLayer == nil)
         }
     }
 }

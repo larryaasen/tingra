@@ -66,6 +66,9 @@ struct AppDataFixture {
     /// The recordings folder stand-in.
     let recordingsFolder: URL
 
+    /// The snapshots folder stand-in.
+    let snapshotsFolder: URL
+
     /// The throwaway defaults suite.
     let defaults: UserDefaults
 
@@ -86,11 +89,13 @@ struct AppDataFixture {
         let root = URL.temporaryDirectory.appending(path: "tingra-appdata-\(UUID().uuidString)")
         supportDirectory = root.appending(path: "Tingra")
         recordingsFolder = root.appending(path: "Movies")
+        snapshotsFolder = root.appending(path: "Pictures/Tingra Snapshots")
         domain = "tingra.tests.\(UUID().uuidString)"
         defaults = try #require(UserDefaults(suiteName: domain))
         secureStorage = InMemorySecureStorage(clearFailure: clearFailure)
         let projectStore = ProjectStore(directory: supportDirectory)
         let folder = recordingsFolder
+        let snapshots = snapshotsFolder
         store = AppDataStore(
             projectStore: projectStore,
             destinationsFileURL: supportDirectory.appending(path: "destinations.json"),
@@ -99,7 +104,8 @@ struct AppDataFixture {
             defaults: defaults,
             defaultsDomain: domain,
             secureStorage: secureStorage,
-            recordingFolder: { folder }
+            recordingFolder: { folder },
+            snapshotFolder: { snapshots }
         )
     }
 
@@ -283,6 +289,43 @@ struct AppDataStoreTests {
             AppDataKind.allCases.filter(\.isRemovable) == [
                 .project, .destinations, .streamKeys, .preferences, .logSession,
             ])
+    }
+
+    @Test("snapshots count the images in their folder, whatever their names, and are kept by remove all")
+    func snapshotsAreCountedAndKept() throws {
+        let fixture = try AppDataFixture()
+        defer { fixture.tearDown() }
+        let images = [
+            fixture.snapshotsFolder.appending(path: "Tingra Program 2026-09-10 14.03.12.png"),
+            fixture.snapshotsFolder.appending(path: "Renamed thumbnail.png"),
+        ]
+        let others = [
+            fixture.snapshotsFolder.appending(path: "notes.txt"),
+            fixture.snapshotsFolder.appending(path: ".hidden.png"),
+            fixture.snapshotsFolder.appending(path: "Older/Tingra Preview 2026-09-01 09.00.00.png"),
+        ]
+        for url in images { try fixture.write(url, byteCount: 300) }
+        for url in others { try fixture.write(url, byteCount: 7) }
+
+        let item = try #require(fixture.store.inventory().first { $0.kind == .snapshots })
+        #expect(item.count == 2)
+        #expect(item.byteCount == 600)
+        #expect(item.folderURL?.standardizedFileURL == fixture.snapshotsFolder.standardizedFileURL)
+
+        #expect(fixture.store.removeAll().isEmpty)
+        for url in images + others {
+            #expect(fixture.exists(url), Comment(rawValue: url.lastPathComponent))
+        }
+        #expect(!AppDataKind.snapshots.isRemovable)
+    }
+
+    @Test("a snapshots folder not yet created counts none and offers no folder to open")
+    func snapshotsFolderNotYetCreated() throws {
+        let fixture = try AppDataFixture()
+        defer { fixture.tearDown() }
+        let item = try #require(fixture.store.inventory().first { $0.kind == .snapshots })
+        #expect(item.isEmpty)
+        #expect(item.folderURL == nil)
     }
 
     @Test("the log file is counted from its file, located by its folder, and kept by remove all")

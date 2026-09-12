@@ -268,6 +268,7 @@ struct ContentView: View {
                         LayerHandlesOverlay(model: model, edited: edited)
                     }
                 }
+                .snapshotMenu(model: model, subject: .preview, tapName: "previewMonitorSnapshot.menuItem")
                 MonitorTile(
                     source: model.programRelay,
                     label: programLabel,
@@ -279,6 +280,7 @@ struct ContentView: View {
                         LayerHandlesOverlay(model: model, edited: edited)
                     }
                 }
+                .snapshotMenu(model: model, subject: .program, tapName: "programMonitorSnapshot.menuItem")
             }
             .frame(height: Self.monitorsHeight(forWindowWidth: windowWidth))
 

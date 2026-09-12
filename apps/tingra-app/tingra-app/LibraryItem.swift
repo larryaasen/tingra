@@ -14,10 +14,20 @@ import UniformTypeIdentifiers
 
 /// One row of the Library's list (GLOSSARY.md, "Library"): a file the show
 /// uses, with what the list shows about it. Built from a project's media
-/// items today; the Snapshots and Recordings tabs build the same value
-/// from their folders when they land (ARCHITECTURE.md, "Media inputs and
-/// the Library's Media tab").
+/// items for the Media tab, and from the snapshots folder for the Snapshots
+/// tab (ARCHITECTURE.md, "Snapshots"); the Recordings tab will build the
+/// same value from its folder.
 struct LibraryItem: Identifiable, Equatable {
+    /// What a row is the row of: a project media item, which is an input
+    /// and drags as one, or a file in a folder, which drags as a file.
+    enum Identity: Hashable {
+        /// A project media item.
+        case media(MediaID)
+
+        /// A file in a folder the tab lists — a snapshot.
+        case file(URL)
+    }
+
     /// What kind of file a row is, for its symbol.
     enum Kind: Equatable {
         /// A still image.
@@ -43,8 +53,8 @@ struct LibraryItem: Identifiable, Equatable {
         }
     }
 
-    /// The row's identity: the media item's.
-    let id: MediaID
+    /// The row's identity: the media item's, or the file's.
+    let id: Identity
 
     /// The user-facing name: the file's name.
     let name: String
@@ -68,15 +78,32 @@ struct LibraryItem: Identifiable, Equatable {
     /// file's row draws with a warning, the layer list's dormant-input rule.
     let isAvailable: Bool
 
-    /// The identifier of the input that plays the file.
-    var inputID: InputID {
-        id.inputID
+    /// The media item the row is, or nil for a file row.
+    var mediaID: MediaID? {
+        guard case .media(let id) = id else { return nil }
+        return id
+    }
+
+    /// What the row's events name it by: the media item's id, or a file
+    /// row's file name — never its folder (the media rule).
+    var eventID: String {
+        switch id {
+        case .media(let id): id.rawValue
+        case .file(let url): url.lastPathComponent
+        }
+    }
+
+    /// The identifier of the input that plays the file, or nil for a file
+    /// row — a snapshot is not an input until it is added as media.
+    var inputID: InputID? {
+        mediaID?.inputID
     }
 
     /// The row's second line: the modification date, then the movie's
-    /// length or the file's size — whichever the file has.
+    /// length or the file's size — whichever the file has. A file row's date
+    /// carries the time too, since a show's snapshots share a day.
     var detail: String {
-        Self.detail(modifiedAt: modifiedAt, byteCount: byteCount, duration: duration)
+        Self.detail(modifiedAt: modifiedAt, byteCount: byteCount, duration: duration, includesTime: mediaID == nil)
     }
 
     /// The kind a content type implies: movies before images (a movie type
@@ -101,11 +128,14 @@ struct LibraryItem: Identifiable, Equatable {
     ///   - modifiedAt: The modification date, or nil.
     ///   - byteCount: The size in bytes, or nil.
     ///   - duration: The length in seconds, or nil.
+    ///   - includesTime: Whether the date carries the time of day.
     /// - Returns: The joined text, empty when nothing is known.
-    nonisolated static func detail(modifiedAt: Date?, byteCount: Int64?, duration: TimeInterval?) -> String {
+    nonisolated static func detail(
+        modifiedAt: Date?, byteCount: Int64?, duration: TimeInterval?, includesTime: Bool = false
+    ) -> String {
         var parts: [String] = []
         if let modifiedAt {
-            parts.append(modifiedAt.formatted(date: .abbreviated, time: .omitted))
+            parts.append(modifiedAt.formatted(date: .abbreviated, time: includesTime ? .shortened : .omitted))
         }
         if let duration {
             parts.append(Duration.seconds(duration).formatted(.time(pattern: .minuteSecond)))
@@ -133,7 +163,7 @@ struct LibraryItem: Identifiable, Equatable {
         media.map { item in
             let facts = attributes(item.url)
             return LibraryItem(
-                id: item.id,
+                id: .media(item.id),
                 name: item.name,
                 url: item.url,
                 kind: kind(of: UTType(filenameExtension: item.url.pathExtension)),
@@ -141,6 +171,26 @@ struct LibraryItem: Identifiable, Equatable {
                 byteCount: facts.byteCount,
                 duration: durations[item.id],
                 isAvailable: isAvailable(item.id.inputID)
+            )
+        }
+    }
+
+    /// The rows for the images in the snapshots folder, newest first
+    /// (``SnapshotListing``).
+    ///
+    /// - Parameter folder: The snapshots folder.
+    /// - Returns: One row per image; none for a folder not yet created.
+    static func snapshots(in folder: URL) -> [LibraryItem] {
+        SnapshotListing.files(in: folder).map { file in
+            LibraryItem(
+                id: .file(file.url),
+                name: file.url.lastPathComponent,
+                url: file.url,
+                kind: .image,
+                modifiedAt: file.modifiedAt,
+                byteCount: file.byteCount,
+                duration: nil,
+                isAvailable: true
             )
         }
     }

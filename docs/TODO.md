@@ -1237,10 +1237,39 @@ or two in the doc that owns them — none need a rewrite.
     camera rows' staging and drag affordances. Deferred to the next slice:
     per-layer playback (once/loop/hold, restart on take); file watching;
     typography controls.
-  - [ ] **Snapshots.** A still written to a Snapshots folder from any monitor
-    (program, preview, a multiview tile, the layer monitor) off the
-    compositor's existing accessors; the Library's Snapshots tab; a snapshot
-    goes onto a layer through the media plug-in with no code of its own.
+  - [x] **Snapshots** *(decided 2026-09-10, approved and built 2026-09-11,
+    uncommitted; record in ARCHITECTURE.md, "Snapshots", with its "Built as
+    recorded" differences)*. An app
+    iteration with the engine untouched. `EngineModel.saveSnapshot(_:)` over a
+    `SnapshotSubject` (program, preview, an input, the layer) reads the very
+    `MonitorFrameSource` that monitor draws (`latest`, then `image(for:)`),
+    so the file is what the monitor shows by construction. The frame is
+    rendered off the main actor and released before the encode, and the
+    file is written serially by a `SnapshotWriter` actor. **PNG in sRGB**,
+    alpha kept, no format choice. The folder is **`~/Pictures/Tingra
+    Snapshots`**: machine-local (`SnapshotPreferences`), chosen in a new
+    Snapshots section of the General pane, listed and kept by the Data
+    pane. Files are named like `Tingra Program 2026-09-10 14.03.12.png`
+    (`SnapshotFilename`, sharing the recording name's timestamp and suffix).
+    **Save Snapshot** is on every monitor's context menu. The menu bar gets
+    Program ▸ Save Snapshot of Program (**⌥⌘S**) and of Preview, and Layer ▸
+    Save Snapshot of Layer. Feedback is a badge on the monitor, never a
+    sound, since system audio can be on air, and never a flash. The
+    Library's **Media | Snapshots** tab strip (`LibraryTab`) lists the
+    folder's images newest first, re-read on events (tab shown, app
+    activated, own writes). Row menu: Quick Look, Reveal, Add to Media (the
+    route onto a layer), and Move to Trash (confirmed only when the file is
+    used as media). Rows drag as file URLs. Built with 32 new app tests
+    (filename, preferences, writer, listing, the model's `saveSnapshot` per
+    subject, the tab, the Data kind, the shortcut); 492 app tests green.
+    - [ ] Check by hand: the first snapshot into `~/Pictures` raises no TCC
+      prompt from a fresh permission state, and the Library's tab strip fits
+      the sidebar at its narrowest (280 points). Not seen by the building
+      session, which had no screen-capture or accessibility grant.
+    - [ ] Deferred from the record: a `program.snapshot` MCP tool returning
+      image content, so an agent can see the program (needs a daemon-side
+      program-frame accessor; the writer then moves to
+      `TingraComposition`); Copy Snapshot; JPEG/HEIC; interval capture.
   - [ ] **The Recordings tab** of the Library, over the recording folder —
     the sketch's "recorded videos panel".
   - [ ] **The log viewer window.** A new `EventSink` into an in-memory ring

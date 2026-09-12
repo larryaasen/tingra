@@ -26,7 +26,7 @@ A project is the saved file for an entire show. A project contains presets. A pr
 
 **Inspector** — the pane in the main window's trailing sidebar holding the selected layer's controls: its input, its position and size in program pixels or percent, placement presets, opacity, and its effect chain. Shown or hidden with ⌥⌘I or the toolbar's trailing button; empty until a layer is selected in the layer list or on the preview monitor.
 
-**Library** — the pane at the bottom of the trailing sidebar, under the inspector and behind a draggable splitter, listing the files a show produces and uses in three tabs: media, snapshots, and recordings. One list shape for all three — thumbnail, date, size or duration, Quick Look, Reveal in Finder, delete (planned at roadmap step 10).
+**Library** — the pane at the bottom of the trailing sidebar, under the inspector and behind a draggable splitter, listing the files a show produces and uses in three tabs: media, snapshots, and recordings. One list shape for all three — thumbnail, date, size or duration, Quick Look, Reveal in Finder, and the tab's own way to let go of a file (Remove from Project for media, Move to Trash for snapshots). The Media and Snapshots tabs are built (roadmap step 10); the Recordings tab is planned.
 
 **Preset** — a long term, persisted collection of settings you switch between during a live session and keep across sessions: its shots, layer arrangements, audio configuration, and connected inputs. Switching presets is seamless and does not interrupt what is already playing out.
 
@@ -56,7 +56,7 @@ A project is the saved file for an entire show. A project contains presets. A pr
 
 **Monitor** — an operator-facing view or output of a bus: the on-screen program and preview monitors, and the **audio monitor** — the program mix played to an output device the operator chooses, at a monitor level, so they hear what viewers hear. Nothing a monitor shows or plays reaches viewers, and no monitor control changes what does: the monitor level is the operator's own listening volume, never a stage of the program.
 
-**Snapshot** — a still image of whatever frame a monitor is showing — program, preview, a multiview tile, or a layer monitor — saved as an ordinary image file and listed in the Library's Snapshots tab. Being a still, a snapshot can go straight onto a layer as media (planned at roadmap step 10).
+**Snapshot** — a still image of whatever frame a monitor is showing — program, preview, a multiview tile, or a layer monitor — saved as an ordinary image file and listed in the Library's Snapshots tab. The command is **Save Snapshot** — never "take", which is the switcher's verb — from a monitor's context menu, the Program menu (⌥⌘S for program), or the Layer menu. Snapshots are PNGs in `~/Pictures/Tingra Snapshots` by default (chosen in the Recording settings pane), named for what was saved and when (`Tingra Program 2026-09-10 14.03.12.png`). Being a still, a snapshot goes onto a layer through the Library's Add to Media.
 
 **Sidebar** — one of the main window's side containers, named for where it sits: the **leading sidebar** on the left (presets, shots, inputs, media, destinations) and the **trailing sidebar** on the right (the inspector over the Library). A sidebar is a generic container; the **panes** inside it are whatever the window puts there, and a pane may move from one sidebar to another — or to a bottom sidebar, should one arrive — without changing what it is (Larry, 2026-09-10).
 

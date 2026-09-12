@@ -30,6 +30,14 @@ import TingraEventBus
 /// (``EngineModel/setProgramFormat(_:)``), so the disabled items are the
 /// courtesy and the refusal is the rule (ARCHITECTURE.md, "The program
 /// format as a project setting").
+///
+/// Above the format, **Save Snapshot of Program** (⌥⌘S) and **Save Snapshot
+/// of Preview**: the menu-bar home of the monitors' context-menu command
+/// (ARCHITECTURE.md, "Snapshots"). The verb is Save, never "Take" — take is
+/// the switcher's verb, and "Take Snapshot of Preview" one menu away from
+/// Take would read as a switch. Preview's item is enabled while a shot is
+/// staged; program always has a frame once the engine runs, and a request
+/// that finds none says so on the monitor.
 struct ProgramCommands: Commands {
     /// The engine model the items change the format through, and report
     /// their `tap` to.
@@ -42,6 +50,28 @@ struct ProgramCommands: Commands {
     /// The menu.
     var body: some Commands {
         CommandMenu(Text("Program", comment: "Title of the Program menu: the program's size and frame rate")) {
+            Button {
+                model.eventBus.tap("snapshotProgram.menuItem", domain: .composition)
+                Task { await model.saveSnapshot(.program) }
+            } label: {
+                Text(
+                    "Save Snapshot of Program",
+                    comment: "Program menu item saving the program monitor's frame as an image file")
+            }
+            .keyboardShortcut(ProductionShortcut.saveSnapshot.shortcut)
+
+            Button {
+                model.eventBus.tap("snapshotPreview.menuItem", domain: .composition)
+                Task { await model.saveSnapshot(.preview) }
+            } label: {
+                Text(
+                    "Save Snapshot of Preview",
+                    comment: "Program menu item saving the preview monitor's frame as an image file")
+            }
+            .disabled(model.previewShotID == nil)
+
+            Divider()
+
             Menu {
                 ForEach(ProgramSize.allCases) { size in
                     Toggle(isOn: sizeBinding(size)) {

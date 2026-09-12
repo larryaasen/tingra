@@ -29,7 +29,9 @@ import SwiftUI
 /// free, and there its tiles are as large as the screen rather than as large as
 /// the space the switcher leaves them (ARCHITECTURE.md, "The main window's two
 /// sections"). The tiles are inert on both surfaces, for the reason recorded on
-/// ``InputGridView``.
+/// ``InputGridView`` — the one thing a monitor here answers is a right-click's
+/// Save Snapshot (``SnapshotMonitorMenu``), which writes a file and changes
+/// nothing on air.
 struct MultiviewView: View {
     /// The engine model — read only: multiview changes nothing.
     let model: EngineModel
@@ -55,6 +57,7 @@ struct MultiviewView: View {
                     badgeTint: .green,
                     aspectRatio: model.programAspectRatio
                 )
+                .snapshotMenu(model: model, subject: .preview, tapName: "previewMonitorSnapshot.menuItem")
                 MonitorTile(
                     source: model.programRelay,
                     label: Text(
@@ -62,6 +65,7 @@ struct MultiviewView: View {
                     badgeTint: .red,
                     aspectRatio: model.programAspectRatio
                 )
+                .snapshotMenu(model: model, subject: .program, tapName: "programMonitorSnapshot.menuItem")
             }
 
             InputGridView(model: model)

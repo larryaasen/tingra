@@ -19,10 +19,21 @@ import TingraPlugInKit
 /// already on disk takes a numeric suffix rather than replacing what is
 /// there. A recording must never overwrite a recording.
 enum RecordingFilename {
-    /// The stem every recording's name begins with.
-    static let prefix = "Tingra"
+    /// The stem every recording's name begins with — and every snapshot's
+    /// (``SnapshotFilename``).
+    nonisolated static let prefix = "Tingra"
 
     /// Builds the date-stamped stem for a moment: `Tingra 2026-08-06 14.03.12`.
+    ///
+    /// - Parameter date: The moment the recording starts.
+    /// - Returns: The stem, without an extension.
+    static func stem(at date: Date) -> String {
+        "\(prefix) \(timestamp(at: date))"
+    }
+
+    /// The moment part of a file name: `2026-08-06 14.03.12` — shared by
+    /// recordings and snapshots (``SnapshotFilename``), so the two kinds of
+    /// file Tingra writes cannot drift into two date shapes.
     ///
     /// Dots separate the time components because a colon is not usable in a
     /// path, and the components are zero-padded and in descending order so
@@ -31,17 +42,20 @@ enum RecordingFilename {
     /// **filename**, not a label an operator reads in their own language, so
     /// it must not change shape with the locale.
     ///
-    /// - Parameter date: The moment the recording starts.
-    /// - Returns: The stem, without an extension.
-    static func stem(at date: Date) -> String {
+    /// - Parameter date: The moment to stamp.
+    /// - Returns: The timestamp.
+    nonisolated static func timestamp(at date: Date) -> String {
         let parts = Calendar(identifier: .gregorian).dateComponents(
             [.year, .month, .day, .hour, .minute, .second],
             from: date
         )
-        let year = (parts.year ?? 0).formatted(.number.precision(.integerLength(4)).grouping(.never))
+        // POSIX digits whatever the operator's locale: a locale with its own
+        // numerals would otherwise write them into the name.
+        let posix = Locale(identifier: "en_US_POSIX")
+        let year = (parts.year ?? 0).formatted(.number.precision(.integerLength(4)).grouping(.never).locale(posix))
         let fields = [parts.month, parts.day, parts.hour, parts.minute, parts.second]
-            .map { ($0 ?? 0).formatted(.number.precision(.integerLength(2)).grouping(.never)) }
-        return "\(prefix) \(year)-\(fields[0])-\(fields[1]) \(fields[2]).\(fields[3]).\(fields[4])"
+            .map { ($0 ?? 0).formatted(.number.precision(.integerLength(2)).grouping(.never).locale(posix)) }
+        return "\(year)-\(fields[0])-\(fields[1]) \(fields[2]).\(fields[3]).\(fields[4])"
     }
 
     /// Picks the URL a recording starting now should be written to.

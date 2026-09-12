@@ -9,6 +9,7 @@
 
 import CoreVideo
 import SwiftUI
+import TingraEventBus
 import TingraPlugInKit
 
 /// The **input grid**: one tile per running input, each carrying that input's
@@ -36,7 +37,9 @@ import TingraPlugInKit
 /// (ARCHITECTURE.md, "Multiview"). Staging stays on the switcher, which does
 /// it unambiguously. That holds all the more now that the grid sits *in* the
 /// main window, one row above the switcher that would have to interpret the
-/// guess.
+/// guess. A right-click's **Save Snapshot** is the one thing a tile answers
+/// (``SnapshotMonitorMenu``): it writes a file and changes nothing on air
+/// (ARCHITECTURE.md, "Snapshots").
 struct InputGridView: View {
     /// The engine model — read only: the grid changes nothing.
     let model: EngineModel
@@ -69,6 +72,12 @@ struct InputGridView: View {
                             badgeTint: tile.tally.badgeTint,
                             aspectRatio: model.programAspectRatio,
                             borderTint: tile.tally.borderTint
+                        )
+                        .snapshotMenu(
+                            model: model,
+                            subject: .input(tile.id),
+                            tapName: "inputMonitorSnapshot.menuItem",
+                            tapParams: ["id": .string(tile.id.rawValue), "name": .string(tile.name)]
                         )
                     }
                 }

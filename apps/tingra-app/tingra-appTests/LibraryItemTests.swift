@@ -50,6 +50,8 @@ struct LibraryItemTests {
         #expect(withSize.contains("1"))
         #expect(!withSize.contains("2:05"))
         #expect(LibraryItem.detail(modifiedAt: nil, byteCount: nil, duration: nil).isEmpty)
+        let withTime = LibraryItem.detail(modifiedAt: date, byteCount: 1_000_000, duration: nil, includesTime: true)
+        #expect(withTime.hasPrefix(date.formatted(date: .abbreviated, time: .shortened) + " · "))
         #expect(
             LibraryItem.detail(modifiedAt: nil, byteCount: 2048, duration: nil)
                 == Int64(2048).formatted(.byteCount(style: .file)))
@@ -67,7 +69,9 @@ struct LibraryItemTests {
             isAvailable: { $0 == InputID(rawValue: "m-movie") },
             attributes: { url in url.lastPathComponent == "clip.mov" ? (date, 5_000) : (nil, nil) }
         )
-        #expect(items.map(\.id) == [movie.id, image.id])
+        #expect(items.map(\.id) == [.media(movie.id), .media(image.id)])
+        #expect(items.map(\.mediaID) == [movie.id, image.id])
+        #expect(items[0].eventID == "m-movie")
         #expect(items[0].kind == .movie)
         #expect(items[0].isAvailable)
         #expect(items[0].duration == 42)
@@ -99,10 +103,10 @@ struct LibraryItemTests {
     @Test("Items compare equal when matching and unequal when a field differs")
     func equality() {
         let a = LibraryItem(
-            id: MediaID(rawValue: "m"), name: "a.png", url: URL(filePath: "/tmp/a.png"), kind: .image,
+            id: .media(MediaID(rawValue: "m")), name: "a.png", url: URL(filePath: "/tmp/a.png"), kind: .image,
             modifiedAt: nil, byteCount: 1, duration: nil, isAvailable: true)
         let b = LibraryItem(
-            id: MediaID(rawValue: "m"), name: "a.png", url: URL(filePath: "/tmp/a.png"), kind: .image,
+            id: .media(MediaID(rawValue: "m")), name: "a.png", url: URL(filePath: "/tmp/a.png"), kind: .image,
             modifiedAt: nil, byteCount: 1, duration: nil, isAvailable: false)
         #expect(a == a)
         #expect(a != b)

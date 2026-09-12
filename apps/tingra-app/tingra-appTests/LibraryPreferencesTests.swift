@@ -40,6 +40,23 @@ struct LibraryPreferencesTests {
         #expect(preferences.height() == LibraryPreferences.defaultHeight)
     }
 
+    @Test("A fresh install opens on the Media tab, and a chosen tab reads back")
+    func tabRoundTrips() throws {
+        let preferences = LibraryPreferences(defaults: try makeDefaults())
+        #expect(preferences.tab() == .media)
+        preferences.setTab(.snapshots)
+        #expect(preferences.tab() == .snapshots)
+        preferences.setTab(.media)
+        #expect(preferences.tab() == .media)
+    }
+
+    @Test("A stored tab this build does not know reads as Media")
+    func unknownTabIsMedia() throws {
+        let defaults = try makeDefaults()
+        defaults.set("recordings", forKey: LibraryPreferences.tabKey)
+        #expect(LibraryPreferences(defaults: defaults).tab() == .media)
+    }
+
     @Test("Clamping keeps the Library above its minimum and the inspector above its minimum")
     func clamping() {
         let column: CGFloat = 800

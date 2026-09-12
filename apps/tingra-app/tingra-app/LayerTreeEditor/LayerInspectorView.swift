@@ -180,6 +180,7 @@ struct LayerInspectorView: View {
                     badgeTint: .gray,
                     aspectRatio: model.programAspectRatio
                 )
+                .snapshotMenu(model: model, subject: .layer, tapName: "layerMonitorSnapshot.menuItem")
                 .padding(.top, 4)
             }
         } label: {

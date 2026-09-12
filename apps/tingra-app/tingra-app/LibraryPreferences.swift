@@ -8,12 +8,41 @@
 //
 
 import Foundation
+import SwiftUI
 
-/// Where the Library panel's height persists across launches — the
+/// Which tab the Library panel shows (GLOSSARY.md, "Library"): the
+/// project's media, or the snapshots folder (ARCHITECTURE.md, "Snapshots").
+enum LibraryTab: String, CaseIterable, Identifiable {
+    /// The project's media files.
+    case media
+
+    /// The images in the snapshots folder.
+    case snapshots
+
+    /// The tab itself, for `ForEach`.
+    var id: Self { self }
+
+    /// The tab's name on the segmented control.
+    var title: Text {
+        switch self {
+        case .media:
+            Text("Media", comment: "Library tab listing the project's media files")
+        case .snapshots:
+            Text(
+                "Snapshots",
+                comment:
+                    "Snapshots: the still images saved from monitors — the Library tab, the Data settings kind, and the General settings heading"
+            )
+        }
+    }
+}
+
+/// Where the Library panel's height and tab persist across launches — the
 /// sidebar-sections precedent (``SidebarPreferences``): the splitter between
 /// the layer inspector and the Library is part of the window's shape the
 /// operator set, so it comes back the way it was left (ARCHITECTURE.md,
-/// "Media inputs and the Library's Media tab").
+/// "Media inputs and the Library's Media tab"), and so does the tab they
+/// were on ("Snapshots").
 struct LibraryPreferences {
     /// The height the Library opens at on a fresh install: enough for the
     /// heading and four or five rows without starving the inspector above.
@@ -28,6 +57,9 @@ struct LibraryPreferences {
 
     /// The defaults key the height persists under.
     static let heightKey = "library.height"
+
+    /// The defaults key the tab persists under.
+    static let tabKey = "library.tab"
 
     /// The defaults database the value lives in (injectable, so tests run
     /// against their own suite rather than the user's).
@@ -55,6 +87,19 @@ struct LibraryPreferences {
     /// - Parameter height: The height to persist.
     func setHeight(_ height: CGFloat) {
         defaults.set(Double(height), forKey: Self.heightKey)
+    }
+
+    /// The persisted tab, or Media when none has been stored or the stored
+    /// value names no tab this build knows.
+    func tab() -> LibraryTab {
+        defaults.string(forKey: Self.tabKey).flatMap(LibraryTab.init(rawValue:)) ?? .media
+    }
+
+    /// Records the tab the Library shows.
+    ///
+    /// - Parameter tab: The tab to persist.
+    func setTab(_ tab: LibraryTab) {
+        defaults.set(tab.rawValue, forKey: Self.tabKey)
     }
 
     /// The height the Library may actually take in a column of the given

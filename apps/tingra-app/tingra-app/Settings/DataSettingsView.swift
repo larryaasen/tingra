@@ -19,11 +19,13 @@ import TingraEventBus
 /// checking a first run by hand: both need to know exactly what "all data"
 /// covers before removing it, so the pane lists every kind
 /// (``AppDataKind``) with its count, its size on disk, and where it is — the
-/// **folder** for the documents, the counter, and the recordings, clickable
+/// **folder** for the documents, the counter, the recordings, and the
+/// snapshots, clickable
 /// to open in the Finder, since the folder is what an operator goes and
 /// looks in — and the confirmation repeats the list with the counts of the
-/// moment rather than a summary. Recordings are in the list and out of the
-/// removal — the operator's shows, not the app's state about them — and the
+/// moment rather than a summary. Recordings and snapshots are in the list
+/// and out of the removal — the operator's work, not the app's state about
+/// it — and the
 /// pane says so on the row, in the confirmation, and in the footer. The rows
 /// carry no description line (dropped 2026-09-07, Larry): the name says what
 /// each thing is, and the confirmation is where the explaining happens.
@@ -97,7 +99,7 @@ struct DataSettingsView: View {
                 } label: {
                     Text("Start Over", comment: "Data settings: label of the remove-all row")
                     Text(
-                        "Removes everything listed above except recordings and the log file, then quits Tingra so its next launch is a first run.",
+                        "Removes everything listed above except recordings, snapshots, and the log file, then quits Tingra so its next launch is a first run.",
                         comment: "Data settings: description under the remove-all row"
                     )
                 }
@@ -169,6 +171,14 @@ struct DataSettingsView: View {
                     localized: "Recordings are kept: \(AppDataRow.amount(of: recordings)) in \(recordings.location).",
                     comment:
                         "Confirmation alert message closing line: the recordings are kept; the placeholders are how many there are and the folder"
+                ))
+        }
+        if let snapshots = model.appData.items.first(where: { $0.kind == .snapshots }) {
+            lines.append(
+                String(
+                    localized: "Snapshots are kept: \(AppDataRow.amount(of: snapshots)) in \(snapshots.location).",
+                    comment:
+                        "Confirmation alert message closing line: the snapshots are kept; the placeholders are how many there are and the folder"
                 ))
         }
         if let logFile = model.appData.items.first(where: { $0.kind == .logFile }) {
@@ -247,6 +257,12 @@ struct AppDataRow: View {
             LocalizedStringResource("Log File", comment: "Data settings: the log file's name")
         case .recordings:
             LocalizedStringResource("Recordings", comment: "Data settings: the recordings' name")
+        case .snapshots:
+            LocalizedStringResource(
+                "Snapshots",
+                comment:
+                    "Snapshots: the still images saved from monitors — the Library tab, the Data settings kind, and the General settings heading"
+            )
         }
     }
 
@@ -266,7 +282,7 @@ struct AppDataRow: View {
                 String(localized: "\(item.count) keys", comment: "Data settings: a count of stream keys")
             case .preferences:
                 String(localized: "\(item.count) entries", comment: "Data settings: a count of preference entries")
-            case .project, .destinations, .logSession, .logFile, .recordings:
+            case .project, .destinations, .logSession, .logFile, .recordings, .snapshots:
                 String(localized: "\(item.count) files", comment: "Data settings: a count of files")
             }
         guard let byteCount = item.byteCount else { return count }

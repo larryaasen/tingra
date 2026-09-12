@@ -1,6 +1,23 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "“%@” is used as media in this project. Layers showing it will show nothing until it is put back and Tingra is reopened." : {
+      "comment" : "Message of the alert confirming a snapshot used as media goes to the Trash; the placeholder is the file's name",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "„%@“ wird in diesem Projekt als Medium verwendet. Ebenen, die es zeigen, bleiben leer, bis es zurückgelegt und Tingra erneut geöffnet wird."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "«%@» se usa como medio en este proyecto. Las capas que lo muestran no mostrarán nada hasta que se devuelva a su sitio y se vuelva a abrir Tingra."
+          }
+        }
+      }
+    },
     "%@ (%@)" : {
       "comment" : "Shot bank tile caption: the shot's name, then the shortcut that stages it, e.g. Default (⌘1)",
       "localizations" : {
@@ -59,6 +76,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@ copia"
+          }
+        }
+      }
+    },
+    "%@ Layer" : {
+      "comment" : "Snapshot file name subject for the layer monitor: the layer's input name, then “Layer”",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Ebene"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Capa %@"
           }
         }
       }
@@ -704,6 +738,23 @@
         }
       }
     },
+    "Add to Media" : {
+      "comment" : "Library snapshot context menu item adding the image to the project as media",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zu Medien hinzufügen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Añadir a medios"
+          }
+        }
+      }
+    },
     "Adjust Effect" : {
       "comment" : "Undo action name: an effect parameter changed",
       "localizations" : {
@@ -1030,7 +1081,7 @@
       }
     },
     "Cancel" : {
-      "comment" : "Rename dialog cancel button, for a shot or a preset",
+      "comment" : "Cancel button of the alert confirming a snapshot goes to the Trash\nRename dialog cancel button, for a shot or a preset",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1212,6 +1263,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Conectando…"
+          }
+        }
+      }
+    },
+    "Couldn’t Move to Trash" : {
+      "comment" : "Title of the alert when a snapshot could not be moved to the Trash",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Konnte nicht in den Papierkorb gelegt werden"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo trasladar a la papelera"
           }
         }
       }
@@ -2649,7 +2717,7 @@
       }
     },
     "Media" : {
-      "comment" : "Sidebar section heading over the project's media files",
+      "comment" : "Library tab listing the project's media files\nSidebar section heading over the project's media files",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -2865,6 +2933,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Mover a la derecha"
+          }
+        }
+      }
+    },
+    "Move to Trash" : {
+      "comment" : "Library snapshot context menu item, and its confirmation button",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In den Papierkorb legen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Trasladar a la papelera"
+          }
+        }
+      }
+    },
+    "Move to Trash?" : {
+      "comment" : "Title of the alert confirming a snapshot used as media goes to the Trash",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In den Papierkorb legen?"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "¿Trasladar a la papelera?"
           }
         }
       }
@@ -3350,6 +3452,23 @@
         }
       }
     },
+    "No Picture to Save" : {
+      "comment" : "Badge on a monitor asked for a snapshot while it shows no picture",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kein Bild zum Sichern"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No hay imagen que guardar"
+          }
+        }
+      }
+    },
     "No presets in this project" : {
       "comment" : "Sidebar placeholder when the project has no presets",
       "localizations" : {
@@ -3406,6 +3525,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "No hay tomas en este preajuste"
+          }
+        }
+      }
+    },
+    "No Snapshots" : {
+      "comment" : "Library Snapshots tab empty state title",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Standbilder"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sin instantáneas"
           }
         }
       }
@@ -3559,6 +3695,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Sin transmisión"
+          }
+        }
+      }
+    },
+    "OK" : {
+      "comment" : "Button dismissing an alert that reports a problem",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OK"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aceptar"
           }
         }
       }
@@ -4263,6 +4416,7 @@
     },
     "Removes everything listed above except recordings and the log file, then quits Tingra so its next launch is a first run." : {
       "comment" : "Data settings: description under the remove-all row",
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -4274,6 +4428,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Elimina todo lo anterior salvo las grabaciones y el archivo de registro y luego sale de Tingra, para que el próximo inicio sea el primero."
+          }
+        }
+      }
+    },
+    "Removes everything listed above except recordings, snapshots, and the log file, then quits Tingra so its next launch is a first run." : {
+      "comment" : "Data settings: description under the remove-all row",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Entfernt alles oben Aufgeführte außer den Aufnahmen, den Standbildern und der Protokolldatei und beendet dann Tingra, damit der nächste Start ein erster Start ist."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Elimina todo lo anterior salvo las grabaciones, las instantáneas y el archivo de registro y luego sale de Tingra, para que el próximo inicio sea el primero."
           }
         }
       }
@@ -4500,6 +4671,23 @@
         }
       }
     },
+    "Right-click a monitor and choose Save Snapshot, or press ⌥⌘S to save the program." : {
+      "comment" : "Library Snapshots tab empty state description",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Klicke mit der rechten Maustaste auf einen Monitor und wähle „Standbild sichern“ oder drücke ⌥⌘S, um das Programm zu sichern."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Haz clic derecho en un monitor y elige «Guardar instantánea», o pulsa ⌥⌘S para guardar el programa."
+          }
+        }
+      }
+    },
     "Room Left" : {
       "comment" : "Recording settings: label of the row showing how much recording time the volume holds",
       "localizations" : {
@@ -4530,6 +4718,74 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "rtmp://server/app"
+          }
+        }
+      }
+    },
+    "Save Snapshot" : {
+      "comment" : "Monitor context menu item saving its picture as an image file",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Standbild sichern"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Guardar instantánea"
+          }
+        }
+      }
+    },
+    "Save Snapshot of Layer" : {
+      "comment" : "Layer menu item saving the selected layer, after its effects, as an image file",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Standbild der Ebene sichern"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Guardar instantánea de la capa"
+          }
+        }
+      }
+    },
+    "Save Snapshot of Preview" : {
+      "comment" : "Program menu item saving the preview monitor's frame as an image file",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Standbild von der Vorschau sichern"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Guardar instantánea del previo"
+          }
+        }
+      }
+    },
+    "Save Snapshot of Program" : {
+      "comment" : "Program menu item saving the program monitor's frame as an image file",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Standbild vom Programm sichern"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Guardar instantánea del programa"
           }
         }
       }
@@ -4565,6 +4821,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Guardado en este Mac"
+          }
+        }
+      }
+    },
+    "Saves the frame on the program monitor as a PNG in the snapshots folder." : {
+      "comment" : "Shortcuts settings: what the save snapshot shortcut does",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sichert das Bild auf dem Programmmonitor als PNG im Standbildordner."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Guarda el fotograma del monitor de programa como PNG en la carpeta de instantáneas."
           }
         }
       }
@@ -4995,6 +5268,91 @@
         }
       }
     },
+    "Snapshot Not Saved" : {
+      "comment" : "Badge on a monitor when its picture could not be saved",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Standbild nicht gesichert"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Instantánea no guardada"
+          }
+        }
+      }
+    },
+    "Snapshot Saved" : {
+      "comment" : "Badge on a monitor after its picture was saved as an image file",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Standbild gesichert"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Instantánea guardada"
+          }
+        }
+      }
+    },
+    "Snapshots" : {
+      "comment" : "Snapshots: the still images saved from monitors — the Library tab, the Data settings kind, and the General settings heading",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Standbilder"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Instantáneas"
+          }
+        }
+      }
+    },
+    "Snapshots are kept: %@ in %@." : {
+      "comment" : "Confirmation alert message closing line: the snapshots are kept; the placeholders are how many there are and the folder",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Standbilder bleiben erhalten: %1$@ in %2$@."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las instantáneas se conservan: %1$@ en %2$@."
+          }
+        }
+      }
+    },
+    "Snapshots are saved here as PNG files, each named for what was saved and when. Right-click a monitor, or press ⌥⌘S for the program." : {
+      "comment" : "General settings: footer explaining where snapshots go and how to save one",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Standbilder werden hier als PNG-Dateien gesichert, jeweils benannt nach Inhalt und Zeitpunkt. Klicke mit der rechten Maustaste auf einen Monitor oder drücke ⌥⌘S für das Programm."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las instantáneas se guardan aquí como archivos PNG, cada una con el nombre de lo guardado y el momento. Haz clic derecho en un monitor o pulsa ⌥⌘S para el programa."
+          }
+        }
+      }
+    },
     "Stage a shot on preview to take it." : {
       "comment" : "Hint beside the Take button while nothing is staged on preview"
     },
@@ -5395,6 +5753,23 @@
         }
       }
     },
+    "The folder %@ could not be created: %@" : {
+      "comment" : "Snapshot Not Saved badge tooltip: the snapshots folder could not be created; the placeholders are the folder and the system's reason",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Ordner %1$@ konnte nicht erstellt werden: %2$@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo crear la carpeta %1$@: %2$@"
+          }
+        }
+      }
+    },
     "The frame rate must be between 1 and 240." : {
       "comment" : "Custom program size sheet: the frame rate is out of range",
       "localizations" : {
@@ -5429,6 +5804,23 @@
         }
       }
     },
+    "The monitor was not showing a picture, so nothing was saved." : {
+      "comment" : "Tooltip on the No Picture to Save badge",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Monitor zeigte kein Bild, daher wurde nichts gesichert."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El monitor no mostraba ninguna imagen, así que no se guardó nada."
+          }
+        }
+      }
+    },
     "The number that marks a new launch in the log." : {
       "comment" : "Data settings: what the log session counter is",
       "extractionState" : "stale",
@@ -5443,6 +5835,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "El número que marca un nuevo inicio en el registro."
+          }
+        }
+      }
+    },
+    "The picture could not be made into an image file. Try again." : {
+      "comment" : "Snapshot Not Saved badge tooltip: the picture could not be rendered or encoded",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aus dem Bild konnte keine Bilddatei erstellt werden. Versuche es erneut."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo convertir la imagen en un archivo de imagen. Inténtalo de nuevo."
           }
         }
       }
@@ -5563,6 +5972,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "El tamaño y la frecuencia de fotogramas con que se compone y entrega el programa. Los cambios se aplican de inmediato; no están disponibles mientras se transmite o se graba."
+          }
+        }
+      }
+    },
+    "The snapshot could not be saved in %@: %@" : {
+      "comment" : "Snapshot Not Saved badge tooltip: the file could not be written; the placeholders are the folder and the system's reason",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Standbild konnte nicht in %1$@ gesichert werden: %2$@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo guardar la instantánea en %1$@: %2$@"
           }
         }
       }

@@ -15,21 +15,29 @@ import Testing
 @MainActor
 @Suite("ProductionShortcut")
 struct ProductionShortcutTests {
-    @Test("the pane lists seven shortcuts — the five most common, the take, and the status bar")
-    func theListIsTheFiveCommonOnesPlusTheTakeAndTheStatusBar() {
-        #expect(ProductionShortcut.allCases.count == 7)
+    @Test("the pane lists eight shortcuts — the five most common, the take, the snapshot, and the status bar")
+    func theListIsTheFiveCommonOnesPlusTheTakeTheSnapshotAndTheStatusBar() {
+        #expect(ProductionShortcut.allCases.count == 8)
         #expect(ProductionShortcut.allCases.contains(.take))
+        #expect(ProductionShortcut.allCases.contains(.saveSnapshot))
         #expect(ProductionShortcut.allCases.contains(.toggleStatusBar))
-        #expect(Set(ProductionShortcut.allCases).count == 7)
+        #expect(Set(ProductionShortcut.allCases).count == 8)
     }
 
-    @Test("the list reads stage, the two takes, the program controls, then the window command")
+    @Test("the list reads stage, the two takes, the program controls, the snapshot, then the window command")
     func theCaseOrderIsTheReadingOrder() {
         #expect(
             ProductionShortcut.allCases == [
-                .stageShot, .cut, .take, .fadeToBlack, .goLive, .record, .toggleStatusBar,
+                .stageShot, .cut, .take, .fadeToBlack, .goLive, .record, .saveSnapshot, .toggleStatusBar,
             ]
         )
+    }
+
+    @Test("saving a snapshot of the program is ⌥⌘S, leaving ⇧⌘S for the File menu")
+    func theSnapshotIsOptionCommandS() {
+        #expect(ProductionShortcut.saveSnapshot.key?.character == "s")
+        #expect(ProductionShortcut.saveSnapshot.modifiers == [.command, .option])
+        #expect(ProductionShortcut.saveSnapshot.symbol == "⌥⌘S")
     }
 
     @Test("the status bar is ⌘/ — the Finder's and Safari's assignment for it")

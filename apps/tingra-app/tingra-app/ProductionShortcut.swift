@@ -50,12 +50,16 @@ import SwiftUI
 /// ``toggleStatusBar`` is the one exception, and it proves the rule rather than
 /// bending it: window chrome has no control to hang a shortcut on, so it rides
 /// the View-menu item (``StatusBarCommands``) — which binds *this* case, so the
-/// pane and the menu bar still cannot disagree.
+/// pane and the menu bar still cannot disagree. ``saveSnapshot`` is the same
+/// case: a snapshot has no button, only a monitor's context menu, so it rides
+/// the Program menu's Save Snapshot of Program item (``ProgramCommands``).
+/// ⌥⌘S rather than ⇧⌘S or ⌥⇧⌘S, which are left for the File menu the
+/// document UI will bring (ARCHITECTURE.md, "Snapshots").
 ///
 /// **The case order is the reading order** the Shortcuts pane prints, so the
 /// pane needs no list of its own: stage a shot, take it (instantly or over the
-/// armed transition), take the program down, the two session controls, then the
-/// one window command.
+/// armed transition), take the program down, the two session controls, save a
+/// still of the program, then the one window command.
 enum ProductionShortcut: String, CaseIterable, Sendable {
     /// Stage the *n*th shot of the switcher on preview — ⌘1 through ⌘9.
     case stageShot
@@ -76,6 +80,9 @@ enum ProductionShortcut: String, CaseIterable, Sendable {
 
     /// Start or stop recording the program to a local file — ⌘R.
     case record
+
+    /// Save the program monitor's frame as an image file — ⌥⌘S.
+    case saveSnapshot
 
     /// Show or hide the window's status bar — ⌘/. The one window command in
     /// the list: it has no control of its own, so the View-menu item binds it
@@ -130,6 +137,7 @@ enum ProductionShortcut: String, CaseIterable, Sendable {
         case .fadeToBlack: "b"
         case .goLive: "g"
         case .record: "r"
+        case .saveSnapshot: "s"
         case .toggleStatusBar: "/"
         }
     }
@@ -139,6 +147,7 @@ enum ProductionShortcut: String, CaseIterable, Sendable {
         switch self {
         case .stageShot, .take, .goLive, .record, .toggleStatusBar: .command
         case .cut, .fadeToBlack: [.command, .shift]
+        case .saveSnapshot: [.command, .option]
         }
     }
 
@@ -164,6 +173,8 @@ enum ProductionShortcut: String, CaseIterable, Sendable {
             Self.symbol(modifiers: modifiers, keyLabel: "G")
         case .record:
             Self.symbol(modifiers: modifiers, keyLabel: "R")
+        case .saveSnapshot:
+            Self.symbol(modifiers: modifiers, keyLabel: "S")
         case .toggleStatusBar:
             Self.symbol(modifiers: modifiers, keyLabel: "/")
         }
@@ -191,6 +202,10 @@ enum ProductionShortcut: String, CaseIterable, Sendable {
             Text("Go Live", comment: "Shortcuts settings: name of the start/stop streaming action")
         case .record:
             Text("Record", comment: "Button that starts recording the program to a local file")
+        case .saveSnapshot:
+            Text(
+                "Save Snapshot of Program",
+                comment: "Program menu item saving the program monitor's frame as an image file")
         case .toggleStatusBar:
             Text("Show or Hide Status Bar", comment: "Shortcuts settings: name of the ⌘/ action")
         }
@@ -228,6 +243,11 @@ enum ProductionShortcut: String, CaseIterable, Sendable {
             Text(
                 "Starts recording the program to a local file, or stops and closes it.",
                 comment: "Shortcuts settings: what the record shortcut does"
+            )
+        case .saveSnapshot:
+            Text(
+                "Saves the frame on the program monitor as a PNG in the snapshots folder.",
+                comment: "Shortcuts settings: what the save snapshot shortcut does"
             )
         case .toggleStatusBar:
             Text(

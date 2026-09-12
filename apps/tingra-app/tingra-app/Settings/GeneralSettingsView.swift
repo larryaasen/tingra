@@ -9,9 +9,10 @@
 
 import SwiftUI
 import TingraEventBus
+import UniformTypeIdentifiers
 
 /// The General settings pane: the app's Appearance, System / Light / Dark,
-/// and whether the windows carry a status bar.
+/// whether the windows carry a status bar, and where snapshots are saved.
 ///
 /// A grouped `Form` with the control on the trailing edge of a labeled row —
 /// the shape every settings pane on macOS 26 has, and the one that keeps a
@@ -29,11 +30,18 @@ struct GeneralSettingsView: View {
     /// Whether the windows carry a status bar.
     @Bindable var statusBar: StatusBarModel
 
+    /// Whether the snapshots folder chooser is open.
+    @State private var isChoosingSnapshotFolder = false
+
     /// The pane.
     ///
-    /// Both settings sit in one section: they are the same kind of thing —
-    /// how the operator's windows are dressed — and two rows do not need a
-    /// heading between them to be told apart.
+    /// The two appearance settings sit in one section: they are the same kind
+    /// of thing — how the operator's windows are dressed — and two rows do not
+    /// need a heading between them to be told apart. The **Snapshots** folder
+    /// takes a section of its own beneath them, under its own heading
+    /// (Larry, 2026-09-12; it was in the Recording pane as first built):
+    /// a snapshot is taken from any monitor at any time, so where it lands is
+    /// not part of setting up a recording.
     var body: some View {
         Form {
             Section {
@@ -49,6 +57,42 @@ struct GeneralSettingsView: View {
                         comment: "General settings: checkbox showing or hiding the bar across the bottom of the windows"
                     )
                 }
+            }
+
+            Section {
+                LabeledContent {
+                    Button {
+                        model.eventBus.tap("snapshotFolder.button", domain: .composition)
+                        isChoosingSnapshotFolder = true
+                    } label: {
+                        Text("Choose Folder…", comment: "Button that picks the folder recordings are written to")
+                    }
+                } label: {
+                    Text(
+                        "Folder",
+                        comment: "Recording settings: label of the row naming the folder recordings are written to")
+                    Text(AppDataStore.abbreviatedPath(of: model.snapshotFolder))
+                        .font(.caption.monospaced())
+                        .textSelection(.enabled)
+                }
+                .fileImporter(isPresented: $isChoosingSnapshotFolder, allowedContentTypes: [.folder]) { result in
+                    // The operator chooses a location; the app never types a
+                    // path for them (HIG). A cancelled choice leaves the
+                    // folder as it was.
+                    guard case .success(let folder) = result else { return }
+                    model.setSnapshotFolder(folder)
+                }
+            } header: {
+                Text(
+                    "Snapshots",
+                    comment:
+                        "Snapshots: the still images saved from monitors — the Library tab, the Data settings kind, and the General settings heading"
+                )
+            } footer: {
+                Text(
+                    "Snapshots are saved here as PNG files, each named for what was saved and when. Right-click a monitor, or press ⌥⌘S for the program.",
+                    comment: "General settings: footer explaining where snapshots go and how to save one"
+                )
             }
         }
         .formStyle(.grouped)

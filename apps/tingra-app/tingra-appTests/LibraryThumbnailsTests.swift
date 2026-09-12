@@ -45,7 +45,8 @@ struct LibraryThumbnailsTests {
         defer { try? FileManager.default.removeItem(at: folder) }
         let url = try writePNG(into: folder)
         let item = LibraryItem(
-            id: MediaID(rawValue: "m"), name: "poster.png", url: url, kind: .image, modifiedAt: nil, byteCount: nil,
+            id: .media(MediaID(rawValue: "m")), name: "poster.png", url: url, kind: .image, modifiedAt: nil,
+            byteCount: nil,
             duration: nil, isAvailable: true)
         let thumbnails = LibraryThumbnails()
         let bus = EventBus()
@@ -62,7 +63,8 @@ struct LibraryThumbnailsTests {
         defer { try? FileManager.default.removeItem(at: folder) }
         let url = try writePNG(into: folder)
         let pending = LibraryItem(
-            id: MediaID(rawValue: "m"), name: "poster.png", url: url, kind: .image, modifiedAt: nil, byteCount: nil,
+            id: .media(MediaID(rawValue: "m")), name: "poster.png", url: url, kind: .image, modifiedAt: nil,
+            byteCount: nil,
             duration: nil, isAvailable: false)
         let thumbnails = LibraryThumbnails()
         await thumbnails.load(pending, reporting: nil)
@@ -78,7 +80,8 @@ struct LibraryThumbnailsTests {
     @MainActor
     func skipsUnavailableRow() async {
         let item = LibraryItem(
-            id: MediaID(rawValue: "m"), name: "gone.png", url: URL(filePath: "/nonexistent/gone.png"), kind: .image,
+            id: .media(MediaID(rawValue: "m")), name: "gone.png", url: URL(filePath: "/nonexistent/gone.png"),
+            kind: .image,
             modifiedAt: nil, byteCount: nil, duration: nil, isAvailable: false)
         let thumbnails = LibraryThumbnails()
         await thumbnails.load(item, reporting: nil)

@@ -55,12 +55,18 @@ enum AppDataKind: String, CaseIterable, Identifiable, Sendable {
     /// so the pane is complete, and **kept** by Remove All Data.
     case recordings
 
+    /// The snapshots in the snapshots folder — the operator's work too,
+    /// listed and **kept**, the recordings' rule (ARCHITECTURE.md,
+    /// "Snapshots").
+    case snapshots
+
     /// The kind itself, for `ForEach`.
     var id: Self { self }
 
     /// Whether Remove All Data removes this kind.
     ///
-    /// Everything but the recordings and the log file. A recording is the
+    /// Everything but the recordings, the snapshots, and the log file. A
+    /// recording or a snapshot is the
     /// show the operator made, not the app's state about it, and "the state
     /// before the app was ever used" is a state with no settings and no
     /// project — it says nothing about deleting the operator's movies. The
@@ -70,7 +76,7 @@ enum AppDataKind: String, CaseIterable, Identifiable, Sendable {
     /// very next event regardless (EVENTS.md, "File sink").
     var isRemovable: Bool {
         switch self {
-        case .recordings, .logFile: false
+        case .recordings, .snapshots, .logFile: false
         case .project, .destinations, .streamKeys, .preferences, .logSession: true
         }
     }
@@ -81,8 +87,8 @@ struct AppDataItem: Equatable, Identifiable, Sendable {
     /// The kind of data.
     let kind: AppDataKind
 
-    /// How many there are — files for the documents, the counter, and the
-    /// recordings; items for the stream keys; entries for the preferences.
+    /// How many there are — files for the documents, the counter, the
+    /// recordings, and the snapshots; items for the stream keys; entries for the preferences.
     /// Zero means nothing of this kind is saved.
     let count: Int
 
@@ -170,6 +176,9 @@ struct AppDataStore {
     /// change it in the recording panel.
     let recordingFolder: () -> URL
 
+    /// The snapshots folder, read at inventory time for the same reason.
+    let snapshotFolder: () -> URL
+
     /// Creates a store over the places the app writes.
     ///
     /// - Parameters:
@@ -181,6 +190,7 @@ struct AppDataStore {
     ///   - defaultsDomain: The domain those preferences persist under.
     ///   - secureStorage: The secret store holding the stream keys.
     ///   - recordingFolder: The recordings folder, read at inventory time.
+    ///   - snapshotFolder: The snapshots folder, read at inventory time.
     init(
         projectStore: ProjectStore,
         destinationsFileURL: URL,
@@ -189,7 +199,8 @@ struct AppDataStore {
         defaults: UserDefaults,
         defaultsDomain: String,
         secureStorage: any SecureStorage,
-        recordingFolder: @escaping () -> URL
+        recordingFolder: @escaping () -> URL,
+        snapshotFolder: @escaping () -> URL
     ) {
         self.projectStore = projectStore
         self.destinationsFileURL = destinationsFileURL
@@ -199,6 +210,7 @@ struct AppDataStore {
         self.defaultsDomain = defaultsDomain
         self.secureStorage = secureStorage
         self.recordingFolder = recordingFolder
+        self.snapshotFolder = snapshotFolder
     }
 
     /// The `.unreadable` sibling ``ProjectStore/setAsideUnreadableFile()``
@@ -251,6 +263,9 @@ struct AppDataStore {
             case .recordings:
                 let folder = recordingFolder()
                 return fileItem(kind, files: Self.recordings(in: folder), folder: folder)
+            case .snapshots:
+                let folder = snapshotFolder()
+                return fileItem(kind, files: SnapshotListing.files(in: folder).map(\.url), folder: folder)
             }
         }
     }
@@ -275,8 +290,9 @@ struct AppDataStore {
 
     /// Removes one kind.
     ///
-    /// - Parameter kind: The kind to remove; ``AppDataKind/recordings`` and
-    ///   ``AppDataKind/logFile`` are never removed and are no-ops here.
+    /// - Parameter kind: The kind to remove; ``AppDataKind/recordings``,
+    ///   ``AppDataKind/snapshots``, and ``AppDataKind/logFile`` are never
+    ///   removed and are no-ops here.
     /// - Throws: The file-system or secure-store error that stopped it.
     private func remove(_ kind: AppDataKind) throws {
         switch kind {
@@ -291,7 +307,7 @@ struct AppDataStore {
             defaults.removePersistentDomain(forName: defaultsDomain)
         case .logSession:
             try Self.removeIfPresent(logSessionFileURL)
-        case .recordings, .logFile:
+        case .recordings, .snapshots, .logFile:
             break
         }
     }
