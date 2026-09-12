@@ -1291,11 +1291,11 @@ or two in the doc that owns them — none need a rewrite.
     refused for the file being written); empty state points at Record
     (⌘R); no trailing control. Built with 16 new app tests; 508 app tests
     green in 58 suites.
+    - [x] The Library sliding right when a layer was selected — fixed in
+      the sidebar and the inspector, and verified by hand by Larry
+      2026-09-12 (the record's "Found on the first hand check").
     - [ ] Check by hand: three segments at 280 points (the heading yields,
-      the titles never abbreviate); a layer selected with a long input name
-      at 280 points, the inspector inside the column and the Library not
-      sliding right (fixed 2026-09-12 in the sidebar and the inspector, see
-      the record's "Found on the first hand check"); and a take appearing as its own row when
+      the titles never abbreviate), and a take appearing as its own row when
       Record is pressed and turning playable, with its length, on stop. Not
       seen by the building session, which had no screen-capture or
       accessibility grant.
