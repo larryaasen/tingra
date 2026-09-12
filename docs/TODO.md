@@ -1318,11 +1318,10 @@ or two in the doc that owns them — none need a rewrite.
     shortcut. Known limit: a second process writing the file would not
     reach the window. Built with 15 new `TingraHost` tests and 31 new app
     tests; `TingraHost` 192 and the app 539 green.
-    - [ ] Check by hand: the list following new lines while at the bottom
+    - [x] Check by hand: the list following new lines while at the bottom
       and not after scrolling up, the pinned launch headers, Edit ▸ Copy
-      after clicking a row, and Window ▸ Log above the window list. Not seen
-      by the building session, which had no screen-capture or accessibility
-      grant.
+      after clicking a row, and Window ▸ Log above the window list. Verified
+      by hand by Larry 2026-09-12.
   - [ ] **The external bundle loader**, tagging `TingraPlugInKit` 1.0.0
     (ARCHITECTURE.md, "Plug-in API stability and versioning").
   - [ ] **NDI as an external plug-in bundle**, outside this repo, importing
