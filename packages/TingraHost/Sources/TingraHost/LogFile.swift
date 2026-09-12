@@ -120,6 +120,94 @@ public struct LogFile: Sendable {
         try handle.truncate(atOffset: 0)
         return previous
     }
+
+    /// How much of the file one read takes: 2 MB, roughly ten to fifteen
+    /// thousand lines — what the log window opens with, and what each Load
+    /// Earlier Lines adds (ARCHITECTURE.md, "The log window"). The file has no
+    /// size cap, so it is never read whole.
+    public static let chunkByteCount = 2 << 20
+
+    /// Reads the whole lines in the bytes that end at an offset — the file's
+    /// end by default — going back at most `maxByteCount` bytes.
+    ///
+    /// A read that starts partway into the file drops the bytes before its
+    /// first newline, since they are the tail of a line that began earlier;
+    /// the returned ``LogFileChunk/startOffset`` is where the first whole line
+    /// begins, so the next read, ending there, returns that line whole and
+    /// consecutive reads meet with no line lost or doubled. The cut is made at
+    /// a newline byte, which never occurs inside a multibyte UTF-8 character,
+    /// so it cannot split one. The one exception is a single line longer than
+    /// `maxByteCount`: a read that holds no newline but its last returns no
+    /// lines and starts at its own first byte, so reading keeps moving back.
+    ///
+    /// A missing file reads as no lines. An offset past the file's end — the
+    /// file was cleared since it was taken — reads to the end.
+    ///
+    /// - Parameters:
+    ///   - offset: The byte the read ends before (default: the file's end).
+    ///   - maxByteCount: The most bytes to read (default: ``chunkByteCount``).
+    /// - Returns: The lines, oldest first, and the offset the first begins at.
+    /// - Throws: The file-system error when the file exists and cannot be read.
+    public func lines(before offset: UInt64? = nil, maxByteCount: Int = LogFile.chunkByteCount) throws
+        -> LogFileChunk
+    {
+        guard maxByteCount > 0, let size = byteCount.map({ UInt64(max($0, 0)) }) else {
+            return LogFileChunk(lines: [], startOffset: 0)
+        }
+        let end = min(offset ?? size, size)
+        let start = end > UInt64(maxByteCount) ? end - UInt64(maxByteCount) : 0
+        guard end > start else { return LogFileChunk(lines: [], startOffset: start) }
+
+        // Starting one byte early says whether `start` is itself the first
+        // byte of a line: that byte is then the newline the cut is made at.
+        let readStart = start > 0 ? start - 1 : 0
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+        try handle.seek(toOffset: readStart)
+        let data = try handle.read(upToCount: Int(end - readStart)) ?? Data()
+
+        var body = data[...]
+        var firstLineOffset = readStart
+        if start > 0 {
+            guard let newline = data.firstIndex(of: Self.newline), newline + 1 < data.endIndex else {
+                return LogFileChunk(lines: [], startOffset: start)
+            }
+            body = data[(newline + 1)...]
+            firstLineOffset = readStart + UInt64(newline + 1 - data.startIndex)
+        }
+        var lines = body.split(separator: Self.newline, omittingEmptySubsequences: false)
+            .map { String(decoding: $0, as: UTF8.self) }
+        // The file's last newline ends a line; it does not begin an empty one.
+        if lines.last == "" { lines.removeLast() }
+        return LogFileChunk(lines: lines, startOffset: firstLineOffset)
+    }
+
+    /// The byte that ends every line.
+    private static let newline = UInt8(ascii: "\n")
+}
+
+/// The lines one ``LogFile/lines(before:maxByteCount:)`` read returned, and
+/// where in the file they begin — which is where the next read, for the lines
+/// before these, ends.
+public struct LogFileChunk: Equatable, Sendable {
+    /// The whole lines read, oldest first, without their newlines.
+    public let lines: [String]
+
+    /// The byte offset in the file where the first line begins.
+    public let startOffset: UInt64
+
+    /// Creates a chunk.
+    ///
+    /// - Parameters:
+    ///   - lines: The lines, oldest first.
+    ///   - startOffset: Where the first line begins.
+    public init(lines: [String], startOffset: UInt64) {
+        self.lines = lines
+        self.startOffset = startOffset
+    }
+
+    /// Whether the file holds lines before these.
+    public var hasEarlierLines: Bool { startOffset > 0 }
 }
 
 /// What ``LogFile`` can refuse to do, with the cause and the fix in the

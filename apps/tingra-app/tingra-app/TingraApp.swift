@@ -63,6 +63,9 @@ struct TingraApp: App {
     /// The identifier the app menu's Settings… command opens.
     static let settingsWindowID = "settings"
 
+    /// The identifier Window ▸ Log and the Logging pane's Show Log open.
+    static let logWindowID = "log"
+
     /// The scenes: the main production window, the multiview monitoring
     /// window it can open, and the settings window (``SettingsView``).
     ///
@@ -114,6 +117,7 @@ struct TingraApp: App {
             SettingsCommands(model: model)
             QuitCommands(model: model)
             LogFileCommands(model: model)
+            LogWindowCommands(model: model)
         }
 
         // Multiview is a **separate window**, not a panel: the main window
@@ -160,6 +164,23 @@ struct TingraApp: App {
             SettingsView(model: model, appearance: appearance, statusBar: statusBar)
         }
         .windowResizability(.contentMinSize)
+        .commandsRemoved()
+
+        // The log is a **window**, not a panel: a log wants width and stays
+        // open across projects, the way Xcode's and Console's do. It reads
+        // the log file and follows the bus only while it is open, so closed
+        // it holds nothing (ARCHITECTURE.md, "The log window").
+        // `LogWindowCommands` puts Window ▸ Log in the menu with a `tap`;
+        // `commandsRemoved()` drops the scene's own item, which has no
+        // closure to report one from.
+        Window(
+            String(localized: "Log", comment: "Title of the log window, and its Window-menu command"),
+            id: Self.logWindowID
+        ) {
+            LogWindowView(model: model)
+                .frame(minWidth: 560, minHeight: 320)
+        }
+        .defaultSize(width: 1000, height: 640)
         .commandsRemoved()
     }
 }

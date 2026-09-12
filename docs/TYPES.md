@@ -228,10 +228,26 @@ internal surface a reader needs to navigate the target instead.
 - `LogFile` — the locator over the app's one log file
   (`~/Library/Logs/Tingra/Tingra.log`, `defaultURL`): its folder, whether it
   exists, its size, a dated snapshot copy for sharing (`Tingra Log
-  2026-09-08.txt`), and an in-place truncate that keeps a running sink writing.
-  Emits nothing — the `log.cleared` event is the app's to send.
+  2026-09-08.txt`), an in-place truncate that keeps a running sink writing,
+  and (2026-09-12, for the log window) `lines(before:maxByteCount:)`, the whole
+  lines in the bytes ending at an offset — the file's end by default, going
+  back `chunkByteCount` (2 MB) — cut at a newline so consecutive reads meet
+  with no line lost or doubled. Emits nothing — the `log.cleared` event is the
+  app's to send.
 - `LogFileError` — what `LogFile` refuses: `empty(URL)`, a snapshot asked of a
   log that does not exist or holds nothing.
+- `LogFileChunk` — one `LogFile.lines(before:maxByteCount:)` read: the lines,
+  oldest first, and the byte offset the first begins at, which is where the
+  read for the lines before them ends (`hasEarlierLines`).
+- `LogLevel` — the word a log line begins with (`INFO`, `DEBUG`, `ERROR`),
+  derived from the event's group; public since 2026-09-12 because a `LogEntry`
+  carries it.
+- `LogEntry` — one log line read back (2026-09-12): the whole text and, where
+  the line is in the human format, its level, log session ID, domain (none for
+  a tap), name, and whether it is a tap. The reading half of
+  `LogLineFormatter`, in the same file; a line not in the format keeps its text
+  with no parsed parts rather than being dropped. The group and param values are
+  not read back — a line does not carry them reliably.
 - `OutputRegistry` — the actor where output plug-ins register their providers —
   streaming (resolved by destination URL scheme) and recording (resolved by
   file extension) — in one registry; the host's concrete `OutputRegistering`.
@@ -1587,6 +1603,37 @@ surface is:
   system's Tingra Help: the same dated snapshot, handed to
   `NSSharingServicePicker` over the key window (a `ShareLink` cannot sit in a
   menu), after its own `tap` (`logShare.menuItem`).
+- The **Log window** (2026-09-12; ARCHITECTURE.md, "The log window"), in
+  `LogWindow/`:
+  - `LogWindowModel` — the `@Observable @MainActor` model, owned by
+    `EngineModel` over the same `LogFile`: opening attaches a `LogWindowSink`
+    and then reads the file's last 2 MB off the main actor, appending the live
+    lines the read did not already contain (`liveLines(_:notIn:)`, the longest
+    overlap); Load Earlier Lines prepends the chunk before; Pause detaches and
+    Resume reloads; a `log.cleared` line empties the list; closing lets every
+    line go. A read that cannot complete is a `log.read` error and
+    `readFailure`. `LogFileModel.clearedEventName` names the event both use.
+  - `LogWindowFilter` / `LogLaunchScope` — what the window shows: levels, taps,
+    one domain or all, all launches or this one (matched on the log session
+    ID), and a `localizedStandardContains` search. A line that did not parse
+    shows under every level and hides only under a domain or This Launch.
+  - `LogWindowLine` / `LogLaunchGroup` — a loaded line with a unique identity
+    (lines themselves repeat), and a run of consecutive lines from one launch,
+    split wherever a parsed line's log session changes.
+  - `LogWindowPreferences` — the levels, taps, and launch choices, in
+    machine-local `UserDefaults`; the domain and search do not persist.
+  - `LogWindowSink` — the `EventSink` attached only while the window is open and
+    not paused: each event as the file sink's line, every group, keeping
+    nothing.
+  - `LogWindowView` — the window: a lazy `ScrollView` of monospaced rows under
+    pinned launch headers, ERROR red and DEBUG secondary, following the newest
+    line while scrolled to the bottom; the selected line whole beneath, with
+    Edit ▸ Copy; toolbar Levels menu (Info, Debug, Errors, Taps), Domain and
+    Launch pickers, Pause/Resume, and search; empty states for no log, no
+    match, and a read that could not complete.
+  - `LogWindowCommands` — Window ▸ Log (`logWindow.menuItem`), above the window
+    list; the scene's own item is removed. The Logging pane's Show Log button
+    (`logShow.button`) opens the same window.
 - `AboutSettingsView` — the About pane: the app's icon, name, and version.
 - `AppearanceMode` — System, Light, or Dark — three cases rather than a boolean,
   because "follow the system" is a state and not the absence of a choice.

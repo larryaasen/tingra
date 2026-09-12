@@ -241,3 +241,115 @@ struct LogFileTests {
         #expect(a != LogFileError.empty(URL(filePath: "/b/Tingra.log")))
     }
 }
+
+@Suite("LogFile lines")
+struct LogFileLinesTests {
+    /// Writes `text` to a log file in a fresh folder and returns the file.
+    private func logFile(_ text: String, in folder: TemporaryFolder) throws -> LogFile {
+        let logFile = LogFile(url: folder.file("Tingra.log"))
+        try Data(text.utf8).write(to: logFile.url)
+        return logFile
+    }
+
+    @Test("a missing file reads as no lines with nothing earlier")
+    func missingFile() throws {
+        let folder = try TemporaryFolder()
+        defer { folder.remove() }
+        let chunk = try LogFile(url: folder.file("Tingra.log")).lines()
+        #expect(chunk == LogFileChunk(lines: [], startOffset: 0))
+        #expect(!chunk.hasEarlierLines)
+    }
+
+    @Test("a file smaller than the read comes back whole, without the final newline's empty line")
+    func smallerThanRead() throws {
+        let folder = try TemporaryFolder()
+        defer { folder.remove() }
+        let chunk = try logFile("alpha\nbravo\n", in: folder).lines(maxByteCount: 100)
+        #expect(chunk == LogFileChunk(lines: ["alpha", "bravo"], startOffset: 0))
+    }
+
+    @Test("a read starting partway into a line drops that line's tail and starts at the next line")
+    func cutsAtLineBoundary() throws {
+        let folder = try TemporaryFolder()
+        defer { folder.remove() }
+        // alpha\n is bytes 0–5, bravo\n 6–11, charlie\n 12–19.
+        let file = try logFile("alpha\nbravo\ncharlie\n", in: folder)
+
+        #expect(try file.lines(maxByteCount: 10) == LogFileChunk(lines: ["charlie"], startOffset: 12))
+        // A read starting exactly at a line's first byte keeps that line.
+        #expect(try file.lines(maxByteCount: 8) == LogFileChunk(lines: ["charlie"], startOffset: 12))
+        #expect(try file.lines(maxByteCount: 9) == LogFileChunk(lines: ["charlie"], startOffset: 12))
+        #expect(
+            try file.lines(before: 12, maxByteCount: 12) == LogFileChunk(lines: ["alpha", "bravo"], startOffset: 0))
+    }
+
+    @Test("a cut inside a multibyte character never splits it")
+    func multibyteStraddle() throws {
+        let folder = try TemporaryFolder()
+        defer { folder.remove() }
+        // héllo\n is bytes 0–6 (é is two bytes, 1–2); wörld\n is 7–13. A
+        // 12-byte read starts at 2, inside the é.
+        let file = try logFile("héllo\nwörld\n", in: folder)
+
+        let last = try file.lines(maxByteCount: 12)
+        #expect(last == LogFileChunk(lines: ["wörld"], startOffset: 7))
+        #expect(try file.lines(before: last.startOffset, maxByteCount: 12).lines == ["héllo"])
+    }
+
+    @Test("consecutive reads back to the start meet with no line lost or doubled")
+    func consecutiveReadsMeet() throws {
+        let folder = try TemporaryFolder()
+        defer { folder.remove() }
+        let written = (1...200).map { "line \($0) " + String(repeating: "x", count: $0 % 17) }
+        let file = try logFile(written.joined(separator: "\n") + "\n", in: folder)
+
+        var chunks: [LogFileChunk] = [try file.lines(maxByteCount: 64)]
+        while let earliest = chunks.last, earliest.hasEarlierLines {
+            chunks.append(try file.lines(before: earliest.startOffset, maxByteCount: 64))
+        }
+
+        #expect(chunks.reversed().flatMap(\.lines) == written)
+    }
+
+    @Test("an offset past the end, as after a clear, reads to the file's end")
+    func offsetPastEnd() throws {
+        let folder = try TemporaryFolder()
+        defer { folder.remove() }
+        let file = try logFile("alpha\nbravo\n", in: folder)
+        try file.clear()
+        try Data("cleared\n".utf8).write(to: file.url)
+
+        #expect(try file.lines(before: 500) == LogFileChunk(lines: ["cleared"], startOffset: 0))
+    }
+
+    @Test("a line longer than the read yields no lines but still moves back")
+    func lineLongerThanRead() throws {
+        let folder = try TemporaryFolder()
+        defer { folder.remove() }
+        let file = try logFile("short\n" + String(repeating: "y", count: 40) + "\n", in: folder)
+
+        let chunk = try file.lines(maxByteCount: 10)
+        #expect(chunk.lines.isEmpty)
+        #expect(chunk.startOffset < 46)
+        #expect(chunk.hasEarlierLines)
+    }
+
+    @Test("a folder where the file should be throws rather than reading as empty")
+    func unreadableThrows() throws {
+        let folder = try TemporaryFolder()
+        defer { folder.remove() }
+        let url = folder.file("Tingra.log")
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        #expect(throws: (any Error).self) {
+            try LogFile(url: url).lines()
+        }
+    }
+
+    @Test("chunks with the same lines and offset are equal, and differ when either differs")
+    func chunkEquality() {
+        let chunk = LogFileChunk(lines: ["a"], startOffset: 4)
+        #expect(chunk == LogFileChunk(lines: ["a"], startOffset: 4))
+        #expect(chunk != LogFileChunk(lines: ["a"], startOffset: 0))
+        #expect(chunk != LogFileChunk(lines: ["b"], startOffset: 4))
+    }
+}

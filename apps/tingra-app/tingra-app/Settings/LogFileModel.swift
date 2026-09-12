@@ -30,6 +30,10 @@ import TingraHost
 @MainActor
 @Observable
 final class LogFileModel {
+    /// The name of the event a clear is recorded as — also the line the Log
+    /// window empties its list on (``LogWindowModel``).
+    static let clearedEventName = "log.cleared"
+
     /// The file's size in bytes as of the last ``refresh()``, or nil when
     /// there is no file yet.
     private(set) var byteCount: Int64?
@@ -97,7 +101,7 @@ final class LogFileModel {
         do {
             let previous = try logFile.clear()
             clearFailure = nil
-            eventBus.event("log.cleared", domain: .platform, params: ["previousBytes": .int(Int(previous))])
+            eventBus.event(Self.clearedEventName, domain: .platform, params: ["previousBytes": .int(Int(previous))])
             return true
         } catch {
             let reason = Self.reason(for: error)

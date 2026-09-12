@@ -39,6 +39,9 @@ struct LoggingSettingsView: View {
     /// Whether the clear confirmation is showing.
     @State private var isClearConfirmationPresented = false
 
+    /// Opens the Log window.
+    @Environment(\.openWindow) private var openWindow
+
     /// The pane.
     var body: some View {
         Form {
@@ -81,6 +84,20 @@ struct LoggingSettingsView: View {
             }
 
             Section {
+                LabeledContent {
+                    Button {
+                        model.eventBus.tap("logShow.button", domain: .platform)
+                        openWindow(id: TingraApp.logWindowID)
+                    } label: {
+                        Text("Show Log", comment: "Logging settings: button that opens the Log window")
+                    }
+                } label: {
+                    Text("Log Window", comment: "Logging settings: label of the row that opens the Log window")
+                    Text(
+                        "Shows the log as it is written, with filters and search.",
+                        comment: "Logging settings: description under the Log Window row")
+                }
+
                 LabeledContent {
                     ShareLink(
                         item: LogSnapshot(logFile: model.logFileModel.logFile),

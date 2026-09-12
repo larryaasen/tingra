@@ -1299,10 +1299,30 @@ or two in the doc that owns them — none need a rewrite.
       Record is pressed and turning playable, with its length, on stop. Not
       seen by the building session, which had no screen-capture or
       accessibility grant.
-  - [ ] **The log viewer window.** A new `EventSink` into an in-memory ring
-    with group/domain filters, search, and pause, opened from the Window
-    menu; a window rather than a panel because a log wants width and outlives
-    a project.
+  - [x] **The log window** *(decided, approved, and built 2026-09-12,
+    uncommitted; record in ARCHITECTURE.md, "The log window", with its
+    "Built as recorded" differences)*. A window rather than a panel
+    because a log wants width and outlives a project. The planned in-memory
+    ring is **dropped** (Larry: why keep in memory what is already on disk):
+    the window reads the last 2 MB of the log file off the main actor, with a
+    Load Earlier Lines row for more, and follows new lines by attaching its
+    own sink to the bus only while it is open and not paused, formatted by
+    the same `LogLineFormatter` — no file watcher, no polling, and nothing
+    held once it closes. The attach-then-read seam skips lines already in
+    the tail. Filters are what a line carries — level, taps, domain (found
+    in the lines), launch (log session ID), and search — since the line
+    format has no group and adding one was rejected. A public `LogEntry`
+    beside the formatter and a tail read on `LogFile`, both in
+    `TingraHost`; Pause detaches and Resume reloads; `log.cleared` empties
+    the list. Window ▸ Log and a Show Log button in the Logging pane, no
+    shortcut. Known limit: a second process writing the file would not
+    reach the window. Built with 15 new `TingraHost` tests and 31 new app
+    tests; `TingraHost` 192 and the app 539 green.
+    - [ ] Check by hand: the list following new lines while at the bottom
+      and not after scrolling up, the pinned launch headers, Edit ▸ Copy
+      after clicking a row, and Window ▸ Log above the window list. Not seen
+      by the building session, which had no screen-capture or accessibility
+      grant.
   - [ ] **The external bundle loader**, tagging `TingraPlugInKit` 1.0.0
     (ARCHITECTURE.md, "Plug-in API stability and versioning").
   - [ ] **NDI as an external plug-in bundle**, outside this repo, importing

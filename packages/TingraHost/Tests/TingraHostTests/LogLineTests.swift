@@ -182,3 +182,102 @@ struct LogSessionTests {
         #expect(LogSession.increment(at: url) == 1)
     }
 }
+
+@Suite("LogEntry")
+struct LogEntryTests {
+    /// Sends one event through a fresh bus and returns it — a real event with
+    /// a real date, which is all a round trip needs.
+    private func sentEvent(
+        _ group: EventGroup,
+        domain: EventDomain = .capture,
+        name: String = "device.connected",
+        params: [String: EventValue]? = nil
+    ) async -> EventBusEvent? {
+        let bus = EventBus()
+        let events = bus.events()
+        bus.send(group, domain: domain, name: name, params: params)
+        bus.shutdown()
+        for await event in events {
+            return event
+        }
+        return nil
+    }
+
+    @Test(
+        "every group's formatted line reads back its level, session, domain, and name", arguments: EventGroup.allCases)
+    func roundTrip(group: EventGroup) async throws {
+        let event = try #require(
+            await sentEvent(group, domain: .output, name: "stream.started", params: ["attempt": .int(2)]))
+        let line = LogLineFormatter(sessionID: 42, timeZone: .gmt).line(for: event)
+
+        let entry = LogEntry(line: line)
+
+        #expect(entry.text == line)
+        #expect(entry.isParsed)
+        #expect(entry.level == LogLevel(group: group))
+        #expect(entry.sessionID == 42)
+        #expect(entry.name == "stream.started")
+        #expect(entry.isTap == (group == .tap))
+        // A tap's line drops the domain, so it reads back none.
+        #expect(entry.domain == (group == .tap ? nil : "output"))
+    }
+
+    @Test("a local zone with an offset in its abbreviation still reads back")
+    func zoneWithOffset() async throws {
+        let event = try #require(await sentEvent(.event))
+        let india = try #require(TimeZone(identifier: "Asia/Kolkata"))
+        let line = LogLineFormatter(sessionID: 3, timeZone: india).line(for: event)
+
+        let entry = LogEntry(line: line)
+
+        #expect(entry.sessionID == 3)
+        #expect(entry.domain == "capture")
+    }
+
+    @Test("params with spaces leave the domain and name intact")
+    func paramsWithSpaces() {
+        let entry = LogEntry(
+            line: " INFO 07-04-2026 15:50:02.250 EDT [0042] @ capture device.connected id=x name=MacBook Pro Microphone"
+        )
+        #expect(entry.level == .info)
+        #expect(entry.domain == "capture")
+        #expect(entry.name == "device.connected")
+    }
+
+    @Test("a tap without params and a line without params both read their names")
+    func withoutParams() {
+        #expect(LogEntry(line: " INFO 01-01-1970 00:00:00.000 GMT [0001] @ tap=>cut.button").name == "cut.button")
+        let plain = LogEntry(line: "DEBUG 01-01-1970 00:00:00.000 GMT [0001] @ output stream.connect.timeout")
+        #expect(plain.name == "stream.connect.timeout")
+        #expect(plain.level == .debug)
+    }
+
+    @Test(
+        "a line not in the format is kept whole with no parsed parts",
+        arguments: [
+            "",
+            "earlier line",
+            "NOTICE 01-01-1970 00:00:00.000 GMT [0001] @ output stream.started",
+            " INFO 01-01-1970 00:00:00.000 GMT 0001 @ output stream.started",
+            " INFO 01-01-1970 00:00:00.000 GMT [0001] @ output",
+            " INFO 01-01-1970 00:00:00.000 GMT [0001] @ tap=>",
+        ]
+    )
+    func unparsedLine(line: String) {
+        let entry = LogEntry(line: line)
+        #expect(entry.text == line)
+        #expect(!entry.isParsed)
+        #expect(entry.level == nil)
+        #expect(entry.sessionID == nil)
+        #expect(entry.domain == nil)
+        #expect(entry.name == nil)
+        #expect(!entry.isTap)
+    }
+
+    @Test("entries from the same line are equal, and from different lines are not")
+    func equality() {
+        let line = " INFO 01-01-1970 00:00:00.000 GMT [0001] @ tap=>cut.button"
+        #expect(LogEntry(line: line) == LogEntry(line: line))
+        #expect(LogEntry(line: line) != LogEntry(line: line + " - {shot: pip}"))
+    }
+}

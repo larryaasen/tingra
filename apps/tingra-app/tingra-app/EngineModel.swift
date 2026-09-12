@@ -1238,6 +1238,11 @@ final class EngineModel {
     /// the file sink appends to (``LogFileModel``).
     @ObservationIgnored private(set) lazy var logFileModel = LogFileModel(logFile: logFile, eventBus: eventBus)
 
+    /// The Log window's model — the log file's recent lines, followed live
+    /// while the window is open — over the same ``logFile`` the file sink
+    /// appends to (``LogWindowModel``).
+    @ObservationIgnored private(set) lazy var logWindowModel = LogWindowModel(logFile: logFile, eventBus: eventBus)
+
     /// The camera currently cast in the built-in camera role — the device the
     /// preset's camera-bound layers were last bound to. A camera picker
     /// change rebinds this device's layers to the new choice; picking "None"
