@@ -263,7 +263,7 @@ struct AudioMixerTests {
         let tickTimes = ticks(2)
         let mixer = makeMixer(tickTimes: tickTimes)
 
-        let program = mixer.programAudio()
+        let program = mixer.programAudio(bufferingPolicy: .unbounded)
         mixer.start()
         let blocks = await collect(program, limit: 2)
 
@@ -284,7 +284,7 @@ struct AudioMixerTests {
         mixer.setChannelStrips([ChannelStrip(input: FakeAudioInput(id: "mic", buffers: [audio]), level: 0.5)])
         await letFillTasksDrain()
 
-        let program = mixer.programAudio()
+        let program = mixer.programAudio(bufferingPolicy: .unbounded)
         mixer.start()
         let block = try #require(await collect(program, limit: 1).first)
 
@@ -302,7 +302,7 @@ struct AudioMixerTests {
         mixer.setChannelStrips([ChannelStrip(input: FakeAudioInput(id: "stereo", buffers: [audio]))])
         await letFillTasksDrain()
 
-        let program = mixer.programAudio()
+        let program = mixer.programAudio(bufferingPolicy: .unbounded)
         mixer.start()
         let block = try #require(await collect(program, limit: 1).first)
 
@@ -324,7 +324,7 @@ struct AudioMixerTests {
         ])
         await letFillTasksDrain()
 
-        let program = mixer.programAudio()
+        let program = mixer.programAudio(bufferingPolicy: .unbounded)
         mixer.start()
         let block = try #require(await collect(program, limit: 1).first)
 
@@ -342,7 +342,7 @@ struct AudioMixerTests {
         ])
         await letFillTasksDrain()
 
-        let program = mixer.programAudio()
+        let program = mixer.programAudio(bufferingPolicy: .unbounded)
         mixer.start()
         let block = try #require(await collect(program, limit: 1).first)
 
@@ -361,7 +361,7 @@ struct AudioMixerTests {
         mixer.setLevel(0.5, forInput: input.id)
         await letFillTasksDrain()
 
-        let program = mixer.programAudio()
+        let program = mixer.programAudio(bufferingPolicy: .unbounded)
         mixer.start()
         let block = try #require(await collect(program, limit: 1).first)
 
@@ -377,7 +377,7 @@ struct AudioMixerTests {
         mixer.setChannelStrips([ChannelStrip(input: FakeAudioInput(id: "mic", buffers: [audio]), level: -1)])
         await letFillTasksDrain()
 
-        let program = mixer.programAudio()
+        let program = mixer.programAudio(bufferingPolicy: .unbounded)
         mixer.start()
         let block = try #require(await collect(program, limit: 1).first)
 
@@ -393,7 +393,7 @@ struct AudioMixerTests {
         mixer.setChannelStrips([ChannelStrip(input: FakeAudioInput(id: "mic", buffers: [audio]), pan: -1)])
         await letFillTasksDrain()
 
-        let program = mixer.programAudio()
+        let program = mixer.programAudio(bufferingPolicy: .unbounded)
         mixer.start()
         let block = try #require(await collect(program, limit: 1).first)
 
@@ -412,7 +412,7 @@ struct AudioMixerTests {
         ])
         await letFillTasksDrain()
 
-        let program = mixer.programAudio()
+        let program = mixer.programAudio(bufferingPolicy: .unbounded)
         mixer.start()
         let block = try #require(await collect(program, limit: 1).first)
 
@@ -429,7 +429,7 @@ struct AudioMixerTests {
         mixer.setChannelStrips([ChannelStrip(input: FakeAudioInput(id: "mic", buffers: [audio]), pan: 0)])
         await letFillTasksDrain()
 
-        let program = mixer.programAudio()
+        let program = mixer.programAudio(bufferingPolicy: .unbounded)
         mixer.start()
         let block = try #require(await collect(program, limit: 1).first)
 
@@ -447,7 +447,7 @@ struct AudioMixerTests {
         mixer.setChannelStrips([ChannelStrip(input: FakeAudioInput(id: "stereo", buffers: [audio]), pan: 1)])
         await letFillTasksDrain()
 
-        let program = mixer.programAudio()
+        let program = mixer.programAudio(bufferingPolicy: .unbounded)
         mixer.start()
         let block = try #require(await collect(program, limit: 1).first)
 
@@ -466,7 +466,7 @@ struct AudioMixerTests {
         mixer.setPan(-1, forInput: input.id)
         await letFillTasksDrain()
 
-        let program = mixer.programAudio()
+        let program = mixer.programAudio(bufferingPolicy: .unbounded)
         mixer.start()
         let block = try #require(await collect(program, limit: 1).first)
 
@@ -495,7 +495,7 @@ struct AudioMixerTests {
         mixer.setChannelStrips([ChannelStrip(input: FakeAudioInput(id: "mic", buffers: [audio]))])
         await letFillTasksDrain()
 
-        let program = mixer.programAudio()
+        let program = mixer.programAudio(bufferingPolicy: .unbounded)
         mixer.start()
         let blocks = await collect(program, limit: 2)
 
@@ -517,7 +517,7 @@ struct AudioMixerTests {
         mixer.setChannelStrips([ChannelStrip(input: FakeAudioInput(id: "mic", buffers: [audio]))])
         await letFillTasksDrain()
 
-        let program = mixer.programAudio()
+        let program = mixer.programAudio(bufferingPolicy: .unbounded)
         mixer.start()
         let block = try #require(await collect(program, limit: 1).first)
 
@@ -537,7 +537,7 @@ struct AudioMixerTests {
         await letFillTasksDrain()
         mixer.setChannelStrips([])
 
-        let program = mixer.programAudio()
+        let program = mixer.programAudio(bufferingPolicy: .unbounded)
         mixer.start()
         let block = try #require(await collect(program, limit: 1).first)
 
@@ -548,7 +548,7 @@ struct AudioMixerTests {
     @Test("stop finishes the program-audio stream")
     func stopFinishesProgramStream() async {
         let mixer = makeMixer(tickTimes: ticks(1))
-        let program = mixer.programAudio()
+        let program = mixer.programAudio(bufferingPolicy: .unbounded)
         mixer.start()
         _ = await collect(program, limit: 1)
 
@@ -574,7 +574,7 @@ struct AudioMixerTests {
         mixer.setChannelStrips([ChannelStrip(input: input)])
         await letFillTasksDrain()
 
-        let meters = mixer.meterReadings()
+        let meters = mixer.meterReadings(bufferingPolicy: .unbounded)
         mixer.start()
         let block = try #require(await collectMeters(meters, limit: 1).first)
 
@@ -594,7 +594,7 @@ struct AudioMixerTests {
         mixer.setChannelStrips([ChannelStrip(input: input)])
         await letFillTasksDrain()
 
-        let meters = mixer.meterReadings()
+        let meters = mixer.meterReadings(bufferingPolicy: .unbounded)
         mixer.start()
         let block = try #require(await collectMeters(meters, limit: 1).first)
 
@@ -612,8 +612,8 @@ struct AudioMixerTests {
         mixer.setChannelStrips([ChannelStrip(input: input, level: 0, isMuted: true)])
         await letFillTasksDrain()
 
-        let meters = mixer.meterReadings()
-        let program = mixer.programAudio()
+        let meters = mixer.meterReadings(bufferingPolicy: .unbounded)
+        let program = mixer.programAudio(bufferingPolicy: .unbounded)
         mixer.start()
         let meterBlock = try #require(await collectMeters(meters, limit: 1).first)
         let mixedBlock = try #require(await collect(program, limit: 1).first)
@@ -635,7 +635,7 @@ struct AudioMixerTests {
         mixer.setChannelStrips([ChannelStrip(input: input)])
         await letFillTasksDrain()
 
-        let meters = mixer.meterReadings()
+        let meters = mixer.meterReadings(bufferingPolicy: .unbounded)
         mixer.start()
         let block = try #require(await collectMeters(meters, limit: 1).first)
 
@@ -652,7 +652,7 @@ struct AudioMixerTests {
         mixer.setChannelStrips([ChannelStrip(input: input)])
         await letFillTasksDrain()
 
-        let meters = mixer.meterReadings()
+        let meters = mixer.meterReadings(bufferingPolicy: .unbounded)
         mixer.start()
         let blocks = await collectMeters(meters, limit: 2)
 
@@ -665,7 +665,7 @@ struct AudioMixerTests {
     @Test("stop finishes the meter stream")
     func stopFinishesMeterStream() async {
         let mixer = makeMixer(tickTimes: ticks(1))
-        let meters = mixer.meterReadings()
+        let meters = mixer.meterReadings(bufferingPolicy: .unbounded)
         mixer.start()
         _ = await collectMeters(meters, limit: 1)
 
@@ -686,7 +686,7 @@ struct AudioMixerTests {
         mixer.setEffects([ScalingEffect(factor: 2)], forInput: input.id)
         await letFillTasksDrain()
 
-        let program = mixer.programAudio()
+        let program = mixer.programAudio(bufferingPolicy: .unbounded)
         mixer.start()
         let block = try #require(await collect(program, limit: 1).first)
 
@@ -708,7 +708,7 @@ struct AudioMixerTests {
         mixer.setEffects([OffsetEffect(offset: 0.25), ScalingEffect(factor: 2)], forInput: input.id)
         await letFillTasksDrain()
 
-        let program = mixer.programAudio()
+        let program = mixer.programAudio(bufferingPolicy: .unbounded)
         mixer.start()
         let block = try #require(await collect(program, limit: 1).first)
 
@@ -731,7 +731,7 @@ struct AudioMixerTests {
         mixer.setEffectParameters(["factor": .double(100)], forEffectAt: 0, forInput: InputID(rawValue: "gone"))
         await letFillTasksDrain()
 
-        let program = mixer.programAudio()
+        let program = mixer.programAudio(bufferingPolicy: .unbounded)
         mixer.start()
         let block = try #require(await collect(program, limit: 1).first)
 
@@ -749,7 +749,7 @@ struct AudioMixerTests {
         mixer.setEffects([ScalingEffect(factor: 2)], forInput: input.id)
         await letFillTasksDrain()
 
-        let meters = mixer.meterReadings()
+        let meters = mixer.meterReadings(bufferingPolicy: .unbounded)
         mixer.start()
         let block = try #require(await collectMeters(meters, limit: 1).first)
 
@@ -772,7 +772,7 @@ struct AudioMixerTests {
         mixer.setChannelStrips([ChannelStrip(input: input, level: 0.5)])
         await letFillTasksDrain()
 
-        let program = mixer.programAudio()
+        let program = mixer.programAudio(bufferingPolicy: .unbounded)
         mixer.start()
         let block = try #require(await collect(program, limit: 1).first)
 
@@ -790,7 +790,7 @@ struct AudioMixerTests {
         mixer.setEffects([TruncatingEffect()], forInput: input.id)
         await letFillTasksDrain()
 
-        let program = mixer.programAudio()
+        let program = mixer.programAudio(bufferingPolicy: .unbounded)
         mixer.start()
         let block = try #require(await collect(program, limit: 1).first)
 
@@ -812,7 +812,7 @@ struct AudioMixerTests {
         mixer.setEffects([], forInput: input.id)
         await letFillTasksDrain()
 
-        let program = mixer.programAudio()
+        let program = mixer.programAudio(bufferingPolicy: .unbounded)
         mixer.start()
         let block = try #require(await collect(program, limit: 1).first)
 
@@ -831,7 +831,7 @@ struct AudioMixerTests {
         mixer.setChannelStrips([ChannelStrip(input: FakeAudioInput(id: "mic", buffers: [audio]))])
         await letFillTasksDrain()
 
-        let meters = mixer.meterReadings()
+        let meters = mixer.meterReadings(bufferingPolicy: .unbounded)
         mixer.start()
         let block = try #require(await collectMeters(meters, limit: 1).first)
 
@@ -851,7 +851,7 @@ struct AudioMixerTests {
         mixer.setChannelStrips([ChannelStrip(input: input, level: 0.5)])
         await letFillTasksDrain()
 
-        let meters = mixer.meterReadings()
+        let meters = mixer.meterReadings(bufferingPolicy: .unbounded)
         mixer.start()
         let block = try #require(await collectMeters(meters, limit: 1).first)
 
@@ -869,7 +869,7 @@ struct AudioMixerTests {
         mixer.setChannelStrips([ChannelStrip(input: input, isMuted: true)])
         await letFillTasksDrain()
 
-        let meters = mixer.meterReadings()
+        let meters = mixer.meterReadings(bufferingPolicy: .unbounded)
         mixer.start()
         let block = try #require(await collectMeters(meters, limit: 1).first)
 
@@ -886,7 +886,7 @@ struct AudioMixerTests {
         mixer.setChannelStrips([ChannelStrip(input: FakeAudioInput(id: "mic", buffers: [audio]), pan: -1)])
         await letFillTasksDrain()
 
-        let meters = mixer.meterReadings()
+        let meters = mixer.meterReadings(bufferingPolicy: .unbounded)
         mixer.start()
         let block = try #require(await collectMeters(meters, limit: 1).first)
 
@@ -901,7 +901,7 @@ struct AudioMixerTests {
         let tickTimes = ticks(2)
         let mixer = makeMixer(tickTimes: tickTimes)
 
-        let meters = mixer.meterReadings()
+        let meters = mixer.meterReadings(bufferingPolicy: .unbounded)
         mixer.start()
         let blocks = await collectMeters(meters, limit: 2)
 
@@ -920,7 +920,7 @@ struct AudioMixerTests {
         await letFillTasksDrain()
 
         let monitor = RecordingMonitor()
-        let program = mixer.programAudio()
+        let program = mixer.programAudio(bufferingPolicy: .unbounded)
         mixer.start()
         // The app's tee: one drain, the monitor a leaf on it.
         var streamed: [CapturedAudio] = []
@@ -955,7 +955,7 @@ struct AudioMixerTests {
             if let monitor, let monitorLevel {
                 await monitor.setLevel(monitorLevel)
             }
-            let program = mixer.programAudio()
+            let program = mixer.programAudio(bufferingPolicy: .unbounded)
             mixer.start()
             let block = try #require(await collect(program, limit: 1).first)
             await monitor?.play(block)
@@ -980,7 +980,7 @@ struct AudioMixerTests {
         mixer.setChannelStrips([ChannelStrip(input: quietInput), ChannelStrip(input: loudInput)])
         await letFillTasksDrain()
 
-        let meters = mixer.meterReadings()
+        let meters = mixer.meterReadings(bufferingPolicy: .unbounded)
         mixer.start()
         let block = try #require(await collectMeters(meters, limit: 1).first)
 
@@ -1009,7 +1009,7 @@ struct AudioMixerTests {
             let mixer = try makeTonedMixer(ticks: 1)
             await letFillTasksDrain()
             if openingTheMaster { mixer.setMasterFade(false) }
-            let program = mixer.programAudio()
+            let program = mixer.programAudio(bufferingPolicy: .unbounded)
             mixer.start()
             let block = try #require(await collect(program, limit: 1).first)
             return try #require(samples(of: block, sampleRate: format.sampleRate))
@@ -1030,7 +1030,7 @@ struct AudioMixerTests {
         let duration = 4 * Double(format.blockFrames) / format.sampleRate
         mixer.setMasterFade(true, duration: duration)
 
-        let program = mixer.programAudio()
+        let program = mixer.programAudio(bufferingPolicy: .unbounded)
         mixer.start()
         let blocks = await collect(program, limit: 5)
 
@@ -1051,7 +1051,7 @@ struct AudioMixerTests {
         let duration = 4 * Double(format.blockFrames) / format.sampleRate
         mixer.setMasterFade(true, duration: duration)
 
-        let program = mixer.programAudio()
+        let program = mixer.programAudio(bufferingPolicy: .unbounded)
         mixer.start()
         let block = try #require(await collect(program, limit: 1).first)
 
@@ -1079,7 +1079,7 @@ struct AudioMixerTests {
         // the first one fully down.
         mixer.setMasterFade(true, duration: 0)
 
-        let meters = mixer.meterReadings()
+        let meters = mixer.meterReadings(bufferingPolicy: .unbounded)
         mixer.start()
         let blocks = await collectMeters(meters, limit: 2)
         let block = try #require(blocks.last)
@@ -1096,7 +1096,7 @@ struct AudioMixerTests {
         await letFillTasksDrain()
         mixer.setMasterFade(true, duration: 0)
 
-        let program = mixer.programAudio()
+        let program = mixer.programAudio(bufferingPolicy: .unbounded)
         mixer.start()
         let blocks = await collect(program, limit: 3)
 
@@ -1116,7 +1116,7 @@ struct AudioMixerTests {
         mixer.setMasterFade(true, duration: 0)
         mixer.setMasterFade(false, duration: 0)
 
-        let program = mixer.programAudio()
+        let program = mixer.programAudio(bufferingPolicy: .unbounded)
         mixer.start()
         let block = try #require(await collect(program, limit: 1).first)
 
@@ -1233,5 +1233,63 @@ struct AudioMixerTests {
         // sample, so a ramp across blocks is continuous with no repeats.
         #expect(left == [1, 0.75, 0.5, 0.25])
         #expect(right == left)
+    }
+}
+
+/// The program-audio and meter streams hold at most a second of un-taken
+/// blocks by default, so a stalled consumer loses old blocks rather than
+/// growing the buffer without limit (ARCHITECTURE.md, "Bounded frame
+/// streams").
+@Suite("AudioMixer bounded streams")
+struct AudioMixerBoundedStreamTests {
+    /// The mix format the tests run at.
+    private let format = MixFormat(sampleRate: 48_000, blockFrames: 1024)
+
+    /// `count` consecutive block-aligned tick times.
+    private func ticks(_ count: Int) -> [CMTime] {
+        (0..<count).map {
+            CMTime(value: CMTimeValue($0 * format.blockFrames), timescale: CMTimeScale(format.sampleRate))
+        }
+    }
+
+    /// A mixer over a synthetic clock that fires every tick at once.
+    private func makeMixer(tickTimes: [CMTime]) -> AudioMixer {
+        AudioMixer(clock: SyntheticClock(tickTimes: tickTimes), format: format, eventBus: EventBus())
+    }
+
+    @Test("the default bound is one second of blocks")
+    func defaultBoundIsOneSecond() {
+        #expect(AudioMixer.bufferedBlockCount == 48)
+        #expect(Double(AudioMixer.bufferedBlockCount * format.blockFrames) / format.sampleRate > 1)
+    }
+
+    @Test("a consumer attaching after more than a second of ticks receives the newest second of program audio")
+    func stalledProgramConsumerGetsTheNewestSecond() async {
+        let tickTimes = ticks(AudioMixer.bufferedBlockCount + 12)
+        let mixer = makeMixer(tickTimes: tickTimes)
+
+        let program = mixer.programAudio()
+        mixer.start()
+        await letFillTasksDrain()
+
+        let blocks = await collect(program, limit: AudioMixer.bufferedBlockCount)
+        #expect(blocks.count == AudioMixer.bufferedBlockCount)
+        #expect(blocks.first?.presentationTime == tickTimes[12])
+        #expect(blocks.last?.presentationTime == tickTimes.last)
+    }
+
+    @Test("a consumer attaching after more than a second of ticks receives the newest second of meter blocks")
+    func stalledMeterConsumerGetsTheNewestSecond() async {
+        let tickTimes = ticks(AudioMixer.bufferedBlockCount + 12)
+        let mixer = makeMixer(tickTimes: tickTimes)
+
+        let meters = mixer.meterReadings()
+        mixer.start()
+        await letFillTasksDrain()
+
+        let blocks = await collectMeters(meters, limit: AudioMixer.bufferedBlockCount)
+        #expect(blocks.count == AudioMixer.bufferedBlockCount)
+        #expect(blocks.first?.time == tickTimes[12])
+        #expect(blocks.last?.time == tickTimes.last)
     }
 }

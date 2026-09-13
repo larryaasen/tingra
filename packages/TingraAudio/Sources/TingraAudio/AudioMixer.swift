@@ -245,11 +245,32 @@ public final class AudioMixer: Sendable {
         self.queueCapacity = Int(format.sampleRate)
     }
 
+    /// How many un-taken blocks ``programAudio(bufferingPolicy:)`` and
+    /// ``meterReadings(bufferingPolicy:)`` hold by default: 48 blocks of
+    /// 1024 frames at 48 kHz, one second — the same one-second cap each
+    /// channel's intake queue already has, so a consumer that stalls loses
+    /// what it could not have played on time anyway and the buffer can
+    /// never grow past a second (ARCHITECTURE.md, "Bounded frame streams").
+    public static let bufferedBlockCount = 48
+
     /// The program-audio stream: one mixed block per mix tick, PTS on the
     /// master clock. A new call replaces the previous consumer (finishing
     /// its stream), matching the one-consumer contract the media seams use.
-    public func programAudio() -> AsyncStream<CapturedAudio> {
-        AsyncStream { continuation in
+    ///
+    /// **Bounded by default** to the newest ``bufferedBlockCount`` blocks
+    /// (one second): audio is continuous, so unlike a frame stream the
+    /// newest block alone would drop sound whenever the consumer breathed,
+    /// but an unbounded buffer behind a stalled consumer would grow without
+    /// limit. A test that counts every block off a synthetic clock passes
+    /// `.unbounded`.
+    ///
+    /// - Parameter bufferingPolicy: How many un-taken blocks the stream
+    ///   holds. Defaults to the newest second.
+    public func programAudio(
+        bufferingPolicy: AsyncStream<CapturedAudio>.Continuation.BufferingPolicy = .bufferingNewest(
+            bufferedBlockCount)
+    ) -> AsyncStream<CapturedAudio> {
+        AsyncStream(bufferingPolicy: bufferingPolicy) { continuation in
             let previous = state.withLock { state in
                 let previous = state.programContinuation
                 state.programContinuation = continuation
@@ -269,9 +290,20 @@ public final class AudioMixer: Sendable {
     /// every strip has contributed. Readings are per-block data, so they ride this dedicated stream
     /// and never the event bus (EVENTS.md, control plane only). A new call
     /// replaces the previous consumer (finishing its stream) — the
-    /// one-consumer contract of ``programAudio()``.
-    public func meterReadings() -> AsyncStream<MeterBlock> {
-        AsyncStream { continuation in
+    /// one-consumer contract of ``programAudio(bufferingPolicy:)``.
+    ///
+    /// Bounded by default to the newest ``bufferedBlockCount`` blocks, like
+    /// the program audio: a peak hold folded from this stream misses nothing
+    /// while its consumer is within a second of the mix, and a consumer
+    /// further behind than that loses old readings rather than growing the
+    /// buffer without limit.
+    ///
+    /// - Parameter bufferingPolicy: How many un-taken blocks the stream
+    ///   holds. Defaults to the newest second.
+    public func meterReadings(
+        bufferingPolicy: AsyncStream<MeterBlock>.Continuation.BufferingPolicy = .bufferingNewest(bufferedBlockCount)
+    ) -> AsyncStream<MeterBlock> {
+        AsyncStream(bufferingPolicy: bufferingPolicy) { continuation in
             let previous = state.withLock { state in
                 let previous = state.meterContinuation
                 state.meterContinuation = continuation

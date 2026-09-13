@@ -1201,7 +1201,8 @@ or two in the doc that owns them — none need a rewrite.
   record is ARCHITECTURE.md, "Step 10")*. Seven iterations in a decided order,
   each still to be designed and recorded before its code under the
   decide-then-build rule. Set aside from the sketch: **audio mixer
-  improvements** (Larry scopes those separately) and a bottom panel under the
+  improvements** (Larry scopes those separately — the first slice opened
+  2026-09-12 as "The console mixer", below) and a bottom panel under the
   content column (rejected — the Library goes in the trailing column).
   - [x] **The program format as a project setting** *(decided, approved, and
     built 2026-09-10; record in ARCHITECTURE.md, "The program format as a
@@ -1272,7 +1273,7 @@ or two in the doc that owns them — none need a rewrite.
       `TingraComposition`); Copy Snapshot; JPEG/HEIC; interval capture.
   - [x] **The Recordings tab** of the Library, over the recording folder —
     the sketch's "recorded videos panel" *(decided, approved, and built
-    2026-09-12, uncommitted; record in ARCHITECTURE.md, "The Recordings
+    2026-09-12; record in ARCHITECTURE.md, "The Recordings
     tab", with its "Built as recorded" differences)*.
     Inherits the Snapshots tab wholesale and differs where a take differs
     from a still: the default folder becomes **`~/Movies/Tingra
@@ -1299,8 +1300,8 @@ or two in the doc that owns them — none need a rewrite.
       Record is pressed and turning playable, with its length, on stop. Not
       seen by the building session, which had no screen-capture or
       accessibility grant.
-  - [x] **The log window** *(decided, approved, and built 2026-09-12,
-    uncommitted; record in ARCHITECTURE.md, "The log window", with its
+  - [x] **The log window** *(decided, approved, and built 2026-09-12;
+    record in ARCHITECTURE.md, "The log window", with its
     "Built as recorded" differences)*. A window rather than a panel
     because a log wants width and outlives a project. The planned in-memory
     ring is **dropped** (Larry: why keep in memory what is already on disk):
@@ -1322,6 +1323,56 @@ or two in the doc that owns them — none need a rewrite.
       and not after scrolling up, the pinned launch headers, Edit ▸ Copy
       after clicking a row, and Window ▸ Log above the window list. Verified
       by hand by Larry 2026-09-12.
+  - [x] **The console mixer** *(Larry's mixer scope, first slice; decided and
+    built 2026-09-12; record in ARCHITECTURE.md, "The console mixer")*. The
+    mixer stays in the main window and takes Logic's strip anatomy: strips
+    as **columns** in a horizontal scroll view (name, Effects, pan, peak
+    readout, fader beside meter, level readout, mute), the master column
+    kept at the trailing edge outside the scroll. **dB faders** through a
+    pure `FaderScale` breakpoint table — silence at the bottom stop, unity
+    three quarters up, +6 dB at the top for strips, unity at the top for
+    the monitor (its playback gain clamps at 1) — with the document and
+    the engine keeping linear gain (no format change); double-click resets
+    to unity (`mixerLevel.reset`, `monitorLevel.reset` taps). **Vertical
+    meters** beside the faders over one travel. **Peak hold** on
+    `MeterRelay`, folded per block by the meter drain (never draw-time, so
+    an occluded window misses nothing), shown as a `PeakReadout` above each
+    meter, red once at full scale, click to reset (`meterPeak.reset`).
+    Built with 25 new app tests; 564 app tests green.
+    - [ ] Check by hand: the column proportions and the readouts at the
+      small control size, the horizontal scroll with many strips, and a
+      double-click on a fader returning it to unity. Not seen by the
+      building session — Larry's Xcode debug instance was running.
+    - [ ] Later slices, each named in the record: typed dB entry, a scale
+      beside the meter, narrow/wide strips, solo as pre-fader listen on the
+      monitor bus (never in place), strip color and icon, in-place rename.
+  - [x] **Bounded frame streams** *(a defect found and fixed 2026-09-12;
+    record in ARCHITECTURE.md, "Bounded frame streams")*. The debug app
+    reached 111 GB: the compositor's program and preview streams were
+    unbounded and drained on the main actor, which fell behind six 60 Hz
+    monitors, so every surplus 8 MB frame queued forever. Fixed on both
+    sides: `programFrames`/`previewFrames` default to `.bufferingNewest(1)`,
+    `programAudio`/`meterReadings` to one second of blocks
+    (`AudioMixer.bufferedBlockCount`), the app's session tees likewise; the
+    four drains are `Task.detached` over lock-guarded relays and a new
+    `ProgramTee`. Tests count frames off synthetic clocks with an explicit
+    `.unbounded`; new tests prove the defaults. TingraComposition 212,
+    TingraAudio 69, the app 571 green.
+    - [ ] **Monitors draw at 60 Hz unconditionally.** Six `MTKView`s each
+      redraw through Core Image every display frame whether or not a new
+      program frame arrived — the idle 100 % of a core, and the main-thread
+      load that tipped the drains. Draw on demand (`enableSetNeedsDisplay`
+      + `setNeedsDisplay` when a frame lands) or pin
+      `preferredFramesPerSecond` to the program rate.
+    - [ ] **What grew main-thread load over the first eleven minutes** of
+      both leaking sessions is not known; with the streams bounded it is a
+      performance question, not a memory one. Measure with the log window
+      open and closed once the monitor draw cadence is fixed.
+    - [ ] **Bound the inputs' `frames()`/`audio()` streams** — generators,
+      media, capture. Their consumers are nonisolated and were healthy, but
+      the buffers are unbounded; `Input.frames()` has no policy parameter
+      (stability contract), so the bound goes inside each conformer, with
+      the generators' and media tests taught to attach before ticking.
   - [ ] **The external bundle loader**, tagging `TingraPlugInKit` 1.0.0
     (ARCHITECTURE.md, "Plug-in API stability and versioning").
   - [ ] **NDI as an external plug-in bundle**, outside this repo, importing

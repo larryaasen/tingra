@@ -338,8 +338,24 @@ public final class Compositor: Sendable {
     /// The program-frame stream: one composited frame per program tick. A
     /// new call replaces the previous consumer (finishing its stream),
     /// matching the one-consumer contract the media seams use.
-    public func programFrames() -> AsyncStream<CapturedFrame> {
-        AsyncStream { continuation in
+    ///
+    /// **Latest wins by default.** The stream keeps only the newest frame a
+    /// consumer has not yet taken (`bufferingPolicy` defaults to
+    /// `.bufferingNewest(1)`): a consumer that falls behind sees the
+    /// current frame next, never a backlog, and a stalled consumer pins one
+    /// frame, never the whole run — every program frame is an 8 MB
+    /// `IOSurface`, and an unbounded buffer behind a starved main thread
+    /// once grew past 100 GB (ARCHITECTURE.md, "Bounded frame streams").
+    /// This is CLOCK.md's pull-based, latest-frame-wins rule applied to
+    /// the bus's own consumer. A test that counts every frame off a
+    /// synthetic clock passes `.unbounded`.
+    ///
+    /// - Parameter bufferingPolicy: How many un-taken frames the stream
+    ///   holds. Defaults to the newest one.
+    public func programFrames(
+        bufferingPolicy: AsyncStream<CapturedFrame>.Continuation.BufferingPolicy = .bufferingNewest(1)
+    ) -> AsyncStream<CapturedFrame> {
+        AsyncStream(bufferingPolicy: bufferingPolicy) { continuation in
             let previous = state.withLock { state in
                 let previous = state.programContinuation
                 state.programContinuation = continuation
@@ -358,8 +374,16 @@ public final class Compositor: Sendable {
     /// a live canvas, so an empty preview stays empty rather than rendering
     /// a background nobody staged. Frames arrive again as soon as a shot is
     /// staged.
-    public func previewFrames() -> AsyncStream<CapturedFrame> {
-        AsyncStream { continuation in
+    ///
+    /// Latest wins by default, exactly as ``programFrames(bufferingPolicy:)``
+    /// — the same buffer, the same reason.
+    ///
+    /// - Parameter bufferingPolicy: How many un-taken frames the stream
+    ///   holds. Defaults to the newest one.
+    public func previewFrames(
+        bufferingPolicy: AsyncStream<CapturedFrame>.Continuation.BufferingPolicy = .bufferingNewest(1)
+    ) -> AsyncStream<CapturedFrame> {
+        AsyncStream(bufferingPolicy: bufferingPolicy) { continuation in
             let previous = state.withLock { state in
                 let previous = state.previewContinuation
                 state.previewContinuation = continuation

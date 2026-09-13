@@ -25,6 +25,12 @@ import SwiftUI
 /// bracketed in one go. Control size and enablement come from the SwiftUI
 /// environment, so `.controlSize(.small)` and `.disabled(_:)` apply as they
 /// would to any control.
+///
+/// A **double-click** reaches `onDoubleClick` instead of moving the knob —
+/// the fader's return to unity (ARCHITECTURE.md, "The console mixer"), the
+/// reset convention the pan slider set. AppKit tracks a whole drag inside
+/// `mouseDown`, so the second click of a double-click arrives as its own
+/// event with `clickCount == 2`, which is where ``FaderSlider`` catches it.
 struct VerticalSlider: NSViewRepresentable {
     /// The slider's value, updated continuously as it drags.
     @Binding var value: Double
@@ -40,6 +46,10 @@ struct VerticalSlider: NSViewRepresentable {
     /// Called with `true` when an edit begins and `false` when it ends.
     let onEditingChanged: (Bool) -> Void
 
+    /// Called on a double-click, in place of a drag — the fader's reset.
+    /// Nil leaves a double-click to AppKit, which treats it as a click.
+    let onDoubleClick: (() -> Void)?
+
     /// The surrounding control size, mirrored onto the `NSSlider`.
     @Environment(\.controlSize) private var controlSize
 
@@ -52,17 +62,21 @@ struct VerticalSlider: NSViewRepresentable {
     ///   - value: The value the slider edits.
     ///   - range: The slider's range, bottom to top.
     ///   - label: The accessibility label and tool tip.
+    ///   - onDoubleClick: Called on a double-click in place of a drag, or
+    ///     nil to leave double-clicks to AppKit.
     ///   - onEditingChanged: Called as an edit begins (`true`) and ends
     ///     (`false`).
     init(
         value: Binding<Double>,
         in range: ClosedRange<Double>,
         label: String,
+        onDoubleClick: (() -> Void)? = nil,
         onEditingChanged: @escaping (Bool) -> Void
     ) {
         self._value = value
         self.range = range
         self.label = label
+        self.onDoubleClick = onDoubleClick
         self.onEditingChanged = onEditingChanged
     }
 
@@ -71,10 +85,10 @@ struct VerticalSlider: NSViewRepresentable {
         Coordinator(parent: self)
     }
 
-    /// Creates the `NSSlider`, standing, continuous, wired to the
-    /// coordinator.
-    func makeNSView(context: Context) -> NSSlider {
-        let slider = NSSlider(
+    /// Creates the slider, standing, continuous, wired to the coordinator
+    /// for both its action and its double-click.
+    func makeNSView(context: Context) -> FaderSlider {
+        let slider = FaderSlider(
             value: value,
             minValue: range.lowerBound,
             maxValue: range.upperBound,
@@ -83,6 +97,7 @@ struct VerticalSlider: NSViewRepresentable {
         )
         slider.isVertical = true
         slider.isContinuous = true
+        slider.onDoubleClick = { [weak coordinator = context.coordinator] in coordinator?.doubleClicked() }
         return slider
     }
 
@@ -91,7 +106,7 @@ struct VerticalSlider: NSViewRepresentable {
     /// slider is the source of truth while the operator holds it, and a
     /// binding that lands a step late must not snap the knob back under the
     /// pointer.
-    func updateNSView(_ slider: NSSlider, context: Context) {
+    func updateNSView(_ slider: FaderSlider, context: Context) {
         context.coordinator.parent = self
         if !context.coordinator.isEditing, slider.doubleValue != value {
             slider.doubleValue = value
@@ -138,6 +153,13 @@ struct VerticalSlider: NSViewRepresentable {
             apply(sender.doubleValue, from: NSApp.currentEvent?.type)
         }
 
+        /// A double-click on the slider: forwarded to the representable's
+        /// `onDoubleClick`, the fader's reset. Nothing to do when the caller
+        /// gave none.
+        func doubleClicked() {
+            parent.onDoubleClick?()
+        }
+
         /// The action's logic, apart from the `NSSlider` so it is testable:
         /// opens an edit on the first change, writes the value, and closes
         /// the edit unless the change came mid-drag. A change with no mouse
@@ -167,5 +189,28 @@ struct VerticalSlider: NSViewRepresentable {
             default: false
             }
         }
+    }
+}
+
+/// The `NSSlider` behind ``VerticalSlider``: a stock slider that hands a
+/// double-click to ``onDoubleClick`` instead of tracking it as a drag. The
+/// first click of the pair is tracked as usual (AppKit tracks a whole drag
+/// inside `mouseDown`), so a double-click first lands the knob where it was
+/// clicked and then resets it — the same two steps a double-click on a
+/// SwiftUI `Slider` with the pan slider's tap gesture goes through.
+@MainActor
+final class FaderSlider: NSSlider {
+    /// Called on a double-click, in place of the drag. Nil treats a
+    /// double-click as a click.
+    var onDoubleClick: (() -> Void)?
+
+    /// Catches the second click of a double-click before AppKit tracks it,
+    /// and otherwise tracks the drag as any slider does.
+    override func mouseDown(with event: NSEvent) {
+        if event.clickCount == 2, let onDoubleClick {
+            onDoubleClick()
+            return
+        }
+        super.mouseDown(with: event)
     }
 }

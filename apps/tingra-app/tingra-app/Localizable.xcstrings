@@ -1,6 +1,40 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "−∞" : {
+      "comment" : "Peak readout when nothing has been metered yet",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "−∞"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "−∞"
+          }
+        }
+      }
+    },
+    "−∞ dB" : {
+      "comment" : "A fader's readout at silence",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "−∞ dB"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "−∞ dB"
+          }
+        }
+      }
+    },
     "“%@” is used as media in this project. Layers showing it will show nothing until it is put back and Tingra is reopened." : {
       "comment" : "Message of the alert confirming a snapshot used as media goes to the Trash; the placeholder is the file's name",
       "localizations" : {
@@ -37,6 +71,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%1$@ (%2$@)"
+          }
+        }
+      }
+    },
+    "%@ dB" : {
+      "comment" : "A fader's readout: its gain in decibels",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ dB"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ dB"
+          }
+        }
+      }
+    },
+    "%@, over" : {
+      "comment" : "Accessibility value of a peak hold that reached full scale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@, übersteuert"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@, saturado"
           }
         }
       }
@@ -3917,6 +3985,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Panorámica"
+          }
+        }
+      }
+    },
+    "Peak" : {
+      "comment" : "Accessibility label of a meter's peak hold readout",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Spitzenpegel"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pico"
+          }
+        }
+      }
+    },
+    "Peak (click to reset)" : {
+      "comment" : "Help tag on a meter's peak hold readout",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Spitzenpegel (zum Zurücksetzen klicken)"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pico (clic para restablecer)"
           }
         }
       }

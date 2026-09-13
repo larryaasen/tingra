@@ -945,19 +945,34 @@ surface is:
   rather than surprise-live, and a reference to one the operator deleted is
   dropped.
 - `MixerView` — the mixer panel: one channel strip per authored audio channel
-  and per discovered audio input, each with a mute toggle, a meter, a live level
-  slider, a pan slider that recenters on double-click, and an Effects button
-  badged with the chain's length; a strip whose device is absent stays on the
-  panel, marked not connected, its settings kept for the device's return —
-  with the **master column** standing at the panel's trailing edge, the
-  console's master section (2026-09-08; a row under the strips before that),
-  as two headed groups divided from each other: **Master**, the post-fader
-  stereo master meter, and **Monitor**, the device picker over the operator's
-  own monitor level fader, its readout, and the monitor mute (2026-09-09; the
-  control room cut, keeping device and level while silencing playback, the same
-  control as a strip's mute) — meter and fader both vertical over one travel. There is deliberately no master fader — the engine has no master
-  gain of the operator's, and the monitor level scales only what the operator
-  hears (TODO.md, "Does the recorded mix need a master fader?").
+  and per discovered audio input, each a **column** with a console strip's
+  anatomy (2026-09-12, ARCHITECTURE.md "The console mixer"; one row per strip
+  before that): the name, an Effects button badged with the chain's length, a
+  pan slider that recenters on double-click, the peak-hold readout, a dB
+  **fader standing beside the meter** over one travel, the level readout in
+  decibels, and the mute — the strips side by side in a horizontal scroll, so
+  many inputs grow the panel sideways; a strip whose device is absent stays on
+  the panel, marked not connected, its settings kept for the device's return —
+  with the **master column** standing at the panel's trailing edge outside the
+  scroll, the console's master section (2026-09-08), as two headed groups
+  divided from each other: **Master**, the peak-hold readout over the
+  post-fader stereo master meter, and **Monitor**, the device picker over the
+  operator's own monitor level fader (unity at its top), its dB readout, and
+  the monitor mute (2026-09-09; the control room cut, keeping device and level
+  while silencing playback, the same control as a strip's mute). A
+  double-click returns a fader to unity. There is deliberately no master
+  fader — the engine has no master gain of the operator's, and the monitor
+  level scales only what the operator hears (TODO.md, "Does the recorded mix
+  need a master fader?").
+- `FaderScale` — the pure, unit-tested mapping between a fader's travel and
+  the linear gain it stands for (2026-09-12): a breakpoint table linear in
+  decibels between stops — silence at the bottom, −60 dB a tenth of the way
+  up, unity three quarters up, +6 dB at the top for a strip (`strip`); the
+  same table cut at unity and stretched so unity is the top for the monitor
+  (`monitor`, since its playback gain clamps at 1) — with position ⇄ gain
+  conversions, the decibel helpers, and the readout's formatting (one decimal,
+  explicit sign, nil at silence). Presentation only: the document and the
+  engine keep linear gain.
 - `EffectChainView` — one strip's audio effect chain, in a popover: slots in
   signal order with Move Up / Move Down / Remove, an Add Effect menu over every
   registered audio effect, and a slider paired with an `EffectParameterField`
@@ -999,8 +1014,14 @@ surface is:
   both symbols (each laid out hidden under the visible one) because they
   differ in glyph width and height and a bordered button sizes to its label —
   so a mute button never changes size as it flips (2026-09-09).
-- `StripMeter` — one strip's meter: a compact capsule showing the strip's
-  pre-fader signal.
+- `StripMeter` — one strip's meter: a capsule standing beside the strip's
+  fader over the same travel, showing the strip's pre-fader signal.
+- `PeakReadout` / `PeakSubject` — a meter's peak-hold readout (2026-09-12):
+  the held peak in dBFS to one decimal above the meter, `−∞` until anything
+  is metered, red (and "over" to VoiceOver) once the hold reached full scale;
+  a plain button that resets the hold, reporting `meterPeak.reset` with the
+  subject's id — a strip's input id, or `master`. Samples the relay in a
+  ten-hertz `TimelineView`, never through observation.
 - `MasterMeter` — the master's meter: two capsules showing the program mix
   post-fader, one per program channel — stereo because the master is where the
   operator judges the stereo image; standing, left beside right, over the same
@@ -1010,15 +1031,38 @@ surface is:
   side — an RMS bar over broadcast green/yellow/red zones with a decayed peak
   marker, drawn at display cadence in a `TimelineView` sampling the shared
   `MeterRelay` the model's meter drain fills, so readings never churn SwiftUI
-  observation. Fills along one axis — rightward lying in a strip row, upward
-  standing in the master column — through unit-tested geometry helpers.
+  observation. Fills along one axis — upward standing beside a fader, every
+  meter on the panel since the console layout, or rightward lying down —
+  through unit-tested geometry helpers.
+- `MeterRelay` — the lock-guarded, nonisolated holder the meter drain writes
+  off the main actor and the meters sample on it: the latest tick's strip
+  readings and master reading, plus each meter's **peak hold** (2026-09-12)
+  — the loudest sample since its last reset, folded **per block** by
+  `fold(_:)` rather than at draw time, so a hot block while the window is
+  occluded is held all the same; `resetPeak` per strip and `resetMasterPeak`.
+  Unit-tested.
+- `ProgramFrameRelay` — the lock-guarded, nonisolated holder of the latest
+  program (or preview) frame (2026-09-12, ARCHITECTURE.md "Bounded frame
+  streams"; a `@MainActor` class before that): the program drain stores off
+  the main actor, the `MTKView` coordinator reads `latest` at display cadence,
+  and the preview relay stops accepting — emptying itself — while nothing is
+  staged. A `MonitorFrameSource`. Unit-tested.
+- `ProgramTee` — the lock-guarded, nonisolated tee the program and
+  program-audio drains yield every frame and block into (2026-09-12): the
+  stream session's and the recording session's leaves attach and detach on
+  the main actor, a detach finishes the leaf's stream, and an attach over a
+  leaf finishes the one it replaces — the four continuations the model used
+  to hold, in one place the drains can reach without the main thread.
+  Unit-tested.
 - `VerticalSlider` — a vertical slider: an `NSSlider` standing on end behind
   `NSViewRepresentable`, mirroring `Slider(value:in:onEditingChanged:)` — the
   binding updates through the drag and the editing callback brackets it, so the
   drag-end `tap` convention holds — with control size and enablement mirrored
   from the SwiftUI environment. SwiftUI's `Slider` lays out horizontally only.
   Its unit-tested `Coordinator` turns AppKit's continuous action stream into
-  that shape.
+  that shape, and forwards a double-click to an optional `onDoubleClick` — the
+  fader's return to unity (2026-09-12) — caught by `FaderSlider`, the
+  `NSSlider` subclass beneath it, before AppKit would track it as a drag.
 - `MeterBallistics` — the unit-tested draw-time ballistics: instant attack,
   20 dB/s decay on a −60…0 dBFS scale.
 - `SessionPreferences` / `SessionPosition` — where the operator's position

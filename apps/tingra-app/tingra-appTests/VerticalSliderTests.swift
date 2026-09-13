@@ -29,14 +29,42 @@ struct VerticalSliderTests {
         /// Every editing transition, in order.
         var editing: [Bool] = []
 
+        /// How many double-clicks reached the callback.
+        var doubleClicks = 0
+
         /// A slider whose binding and callback write into this recorder.
         var slider: VerticalSlider {
             VerticalSlider(
                 value: Binding(get: { self.values.last ?? 0 }, set: { self.values.append($0) }),
                 in: 0...1,
-                label: "Test"
+                label: "Test",
+                onDoubleClick: { self.doubleClicks += 1 }
             ) { self.editing.append($0) }
         }
+    }
+
+    @Test("a double-click reaches the reset callback and moves nothing")
+    func doubleClickReachesTheCallback() {
+        let recorder = Recorder()
+        let coordinator = VerticalSlider.Coordinator(parent: recorder.slider)
+        coordinator.doubleClicked()
+        #expect(recorder.doubleClicks == 1)
+        #expect(recorder.values.isEmpty)
+        #expect(recorder.editing.isEmpty)
+    }
+
+    @Test("a double-click with no callback is a no-op")
+    func doubleClickWithoutCallback() {
+        let recorder = Recorder()
+        let slider = VerticalSlider(
+            value: Binding(get: { 0 }, set: { recorder.values.append($0) }),
+            in: 0...1,
+            label: "Test"
+        ) { recorder.editing.append($0) }
+        let coordinator = VerticalSlider.Coordinator(parent: slider)
+        coordinator.doubleClicked()
+        #expect(recorder.values.isEmpty)
+        #expect(recorder.editing.isEmpty)
     }
 
     @Test("a drag is bracketed as one edit: open on the first change, closed on release")

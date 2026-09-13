@@ -445,7 +445,7 @@ final class EngineModel {
     /// empty preview shows nothing (ARCHITECTURE.md, "The preview bus").
     private(set) var previewShotID: ShotID? {
         didSet {
-            if previewShotID == nil { previewRelay.latest = nil }
+            previewRelay.setAccepting(previewShotID != nil)
             recordSessionPosition()
         }
     }
@@ -1089,16 +1089,15 @@ final class EngineModel {
     /// resolves the status and cleans up.
     @ObservationIgnored private var streamTask: Task<Void, Never>?
 
-    /// The continuation feeding the active session its program video: the one
-    /// program drain (``programTask``) tees each composited frame here while a
-    /// stream is live, so streaming reuses the same program the preview shows
-    /// without opening a second `Compositor.programFrames()` consumer.
-    @ObservationIgnored private var streamContinuation: AsyncStream<CapturedFrame>.Continuation?
-
-    /// The continuation feeding the active session its program audio: the one
-    /// program-audio drain (``programAudioTask``) tees each mixed block here
-    /// while a stream is live — the audio mirror of ``streamContinuation``.
-    @ObservationIgnored private var streamAudioContinuation: AsyncStream<CapturedAudio>.Continuation?
+    /// The program tee: the one program drain (``programTask``) and the one
+    /// program-audio drain (``programAudioTask``) hand every composited frame
+    /// and mixed block here, and the tee passes them to whichever sessions
+    /// are attached — the stream session while a stream is live, the
+    /// recording session while recording — so both reuse the same program
+    /// the monitor shows without a second `Compositor.programFrames()`
+    /// consumer. Lock-guarded and nonisolated, so the drains run off the
+    /// main actor (ARCHITECTURE.md, "Bounded frame streams").
+    @ObservationIgnored private let tee = ProgramTee()
 
     /// The task observing the bus for `stream.*` status events — the stream
     /// status is event-driven, never polled.
@@ -1116,15 +1115,6 @@ final class EngineModel {
 
     /// The task running the recording session's `run()`.
     @ObservationIgnored private var recordTask: Task<Void, Never>?
-
-    /// The continuation feeding the recording session its program video — the
-    /// second leaf on the same program tee ``streamContinuation`` is the first
-    /// leaf of.
-    @ObservationIgnored private var recordContinuation: AsyncStream<CapturedFrame>.Continuation?
-
-    /// The continuation feeding the recording session its program audio — the
-    /// audio mirror of ``recordContinuation``.
-    @ObservationIgnored private var recordAudioContinuation: AsyncStream<CapturedAudio>.Continuation?
 
     /// Where the operator's recording folder and container live.
     @ObservationIgnored private let recordingPreferences: RecordingPreferences
@@ -1521,34 +1511,40 @@ final class EngineModel {
         // preview costs nothing (ARCHITECTURE.md, "The preview bus").
         let preview = compositor.previewFrames()
         compositor.start()
-        previewTask = Task { [weak self] in
+        // Both drains run **off the main actor** (`Task.detached`): the relays
+        // and the tee are lock-guarded, so a frame never waits for the main
+        // thread, and a busy main thread can only cost the monitor a draw,
+        // never queue frames (ARCHITECTURE.md, "Bounded frame streams").
+        let previewRelay = self.previewRelay
+        previewTask = Task.detached {
             for await frame in preview {
                 // A frame the tick rendered just before preview was cleared
-                // can still be in flight here; storing it would repaint the
-                // monitor the clear just emptied, so it is dropped.
-                guard let self, previewShotID != nil else { continue }
-                previewRelay.latest = frame.pixelBuffer
+                // can still be in flight here; the relay stops accepting when
+                // preview clears, so it cannot repaint the emptied monitor.
+                previewRelay.store(frame)
             }
         }
-        programTask = Task { [weak self] in
+        let programRelay = self.programRelay
+        let tee = self.tee
+        let eventBus = self.eventBus
+        programTask = Task.detached {
             var sawFrame = false
             for await frame in program {
-                self?.programRelay.latest = frame.pixelBuffer
+                programRelay.store(frame)
                 // While a stream is live, tee the same program frame into the
                 // session — one program drain feeds both the preview and the
                 // stream, so the compositor's single-consumer contract holds.
                 // The recording session is the second leaf on the same tee,
                 // fed the identical frame: both sinks record the same program
                 // (ARCHITECTURE.md, "Recording in the app").
-                self?.streamContinuation?.yield(frame)
-                self?.recordContinuation?.yield(frame)
+                tee.yield(frame)
                 if !sawFrame {
                     sawFrame = true
                     // A one-time milestone (not per-frame traffic): confirms the
                     // compositor is producing program frames into the preview
                     // relay at all — the background canvas ticks from the first
                     // frame even before an input delivers.
-                    self?.eventBus.event("preview.firstFrame", domain: .composition)
+                    eventBus.event("preview.firstFrame", domain: .composition)
                 }
             }
         }
@@ -1562,10 +1558,9 @@ final class EngineModel {
         let programAudio = mixer.programAudio()
         let monitor = self.monitor
         mixer.start()
-        programAudioTask = Task { [weak self] in
+        programAudioTask = Task.detached {
             for await block in programAudio {
-                self?.streamAudioContinuation?.yield(block)
-                self?.recordAudioContinuation?.yield(block)
+                tee.yield(block)
                 await monitor.play(block)
             }
         }
@@ -1575,10 +1570,10 @@ final class EngineModel {
         // meters sample at display cadence — per-block data, never the event
         // bus (EVENTS.md).
         let meters = mixer.meterReadings()
-        meterTask = Task { [weak self] in
+        let meterRelay = self.meterRelay
+        meterTask = Task.detached {
             for await block in meters {
-                self?.meterRelay.latest = block.strips
-                self?.meterRelay.master = block.master
+                meterRelay.fold(block)
             }
         }
 
@@ -3651,10 +3646,14 @@ final class EngineModel {
         // Tee the program into a fresh stream: the drains in `start()` forward
         // each composited frame and each mixed block here while the
         // continuations are set.
-        let (programStream, continuation) = AsyncStream.makeStream(of: CapturedFrame.self)
-        streamContinuation = continuation
-        let (programAudioStream, audioContinuation) = AsyncStream.makeStream(of: CapturedAudio.self)
-        streamAudioContinuation = audioContinuation
+        // Bounded like the bus streams they mirror: the newest frame, and
+        // the newest second of audio — a session that falls behind drops,
+        // never queues (ARCHITECTURE.md, "Bounded frame streams").
+        let (programStream, continuation) = AsyncStream.makeStream(
+            of: CapturedFrame.self, bufferingPolicy: .bufferingNewest(1))
+        let (programAudioStream, audioContinuation) = AsyncStream.makeStream(
+            of: CapturedAudio.self, bufferingPolicy: .bufferingNewest(AudioMixer.bufferedBlockCount))
+        tee.attachStream(video: continuation, audio: audioContinuation)
 
         let session = StreamSession(
             programVideo: programStream,
@@ -3778,10 +3777,11 @@ final class EngineModel {
         let url = RecordingFilename.url(in: recordingFolder, container: recordingContainer, at: .now)
         let configuration = recordingConfiguration
 
-        let (programStream, continuation) = AsyncStream.makeStream(of: CapturedFrame.self)
-        recordContinuation = continuation
-        let (programAudioStream, audioContinuation) = AsyncStream.makeStream(of: CapturedAudio.self)
-        recordAudioContinuation = audioContinuation
+        let (programStream, continuation) = AsyncStream.makeStream(
+            of: CapturedFrame.self, bufferingPolicy: .bufferingNewest(1))
+        let (programAudioStream, audioContinuation) = AsyncStream.makeStream(
+            of: CapturedAudio.self, bufferingPolicy: .bufferingNewest(AudioMixer.bufferedBlockCount))
+        tee.attachRecording(video: continuation, audio: audioContinuation)
 
         let session = StreamSession(
             programVideo: programStream,
@@ -3856,10 +3856,7 @@ final class EngineModel {
     /// Releases the finished recording session's plumbing so a new recording
     /// can start.
     private func teardownRecording() {
-        recordContinuation?.finish()
-        recordContinuation = nil
-        recordAudioContinuation?.finish()
-        recordAudioContinuation = nil
+        tee.detachRecording()
         recordSession = nil
         recordTask = nil
         recordingStartedAt = nil
@@ -4173,10 +4170,7 @@ final class EngineModel {
     /// Releases the finished session's plumbing: finishes the program tees
     /// and drops the session references so a new stream can start.
     private func teardownStream() {
-        streamContinuation?.finish()
-        streamContinuation = nil
-        streamAudioContinuation?.finish()
-        streamAudioContinuation = nil
+        tee.detachStream()
         streamSession = nil
         streamTask = nil
     }
@@ -4820,24 +4814,6 @@ enum TakeTransitionKind: String, CaseIterable {
     /// A custom-shader reveal with ``EngineModel/shaderName`` at the
     /// default shader-transition duration.
     case shader
-}
-
-/// A plain, `@MainActor` holder for the latest program pixel buffer: the
-/// writer (the ``EngineModel``'s program drain) and the reader (the
-/// `MTKView` coordinator) share one instance, so the preview samples the
-/// program at display rate without pushing 30 fps of state changes through
-/// SwiftUI.
-@MainActor
-final class ProgramFrameRelay: MonitorFrameSource {
-    /// The most recent program frame's pixel buffer, or nil before the
-    /// first frame — and, for the preview relay, again whenever preview is
-    /// cleared, so the monitor empties instead of holding a stale frame.
-    /// Under the frame ownership rule the relay is the one holder; the
-    /// coordinator only reads it to draw.
-    var latest: CVPixelBuffer?
-
-    /// Creates an empty relay.
-    init() {}
 }
 
 /// A no-op `ToolRegistering`: the app does not host the MCP tool surface

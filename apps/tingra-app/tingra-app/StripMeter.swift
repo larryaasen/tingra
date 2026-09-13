@@ -8,37 +8,230 @@
 //
 
 import SwiftUI
+import Synchronization
 import TingraAudio
+import TingraEventBus
 import TingraPlugInKit
 
-/// A plain, `@MainActor` holder for the latest meter readings: the writer
-/// (the ``EngineModel``'s meter drain) and the readers (each strip's
-/// ``StripMeter``) share one instance, so the meters render at reading
-/// cadence without pushing a mix tick's worth of state changes per block
-/// through SwiftUI observation — the ``ProgramFrameRelay`` pattern applied
-/// to audio (ARCHITECTURE.md, "Per-strip meters").
-@MainActor
-final class MeterRelay {
+/// A plain, lock-guarded holder for the latest meter readings: the writer
+/// (the ``EngineModel``'s meter drain, off the main actor) and the readers
+/// (each strip's ``StripMeter``, on it) share one instance, so the meters
+/// render at reading cadence without pushing a mix tick's worth of state
+/// changes per block through SwiftUI observation — the ``ProgramFrameRelay``
+/// pattern applied to audio (ARCHITECTURE.md, "Per-strip meters").
+///
+/// The relay also keeps each meter's **peak hold** (GLOSSARY.md, "Meter"):
+/// the loudest sample since the operator last reset it, folded in
+/// **per block** by ``fold(_:)`` rather than at draw time, so a hot block
+/// that arrives while the window is occluded or the meters idle is held
+/// all the same — the one thing a peak hold exists to catch
+/// (ARCHITECTURE.md, "The console mixer").
+nonisolated final class MeterRelay: Sendable {
+    /// What the lock guards: the latest readings and the holds.
+    private struct State {
+        /// The most recent mix tick's readings, keyed by input id.
+        var latest: [InputID: MeterReading] = [:]
+
+        /// The most recent mix tick's post-fader master reading.
+        var master: StereoMeterReading = .floor
+
+        /// Each strip's held peak, keyed by input id.
+        var heldPeaks: [InputID: Float] = [:]
+
+        /// The master's held peak.
+        var heldMasterPeak: Float = 0
+    }
+
+    /// The guarded state. A lock rather than main-actor isolation so the
+    /// meter drain writes off the main thread and never queues behind it
+    /// (ARCHITECTURE.md, "Bounded frame streams"); the meters read under
+    /// the same lock at display cadence.
+    private let state = Mutex(State())
+
     /// The most recent mix tick's readings, keyed by input id — empty before
     /// the first tick.
-    var latest: [InputID: MeterReading] = [:]
+    var latest: [InputID: MeterReading] {
+        state.withLock { $0.latest }
+    }
 
     /// The most recent mix tick's **post-fader** master reading — what the
     /// master meter draws (GLOSSARY.md, "Master"). At the floor before the
     /// first tick.
-    var master: StereoMeterReading = .floor
+    var master: StereoMeterReading {
+        state.withLock { $0.master }
+    }
+
+    /// Each strip's held peak — the loudest sample magnitude metered since
+    /// the strip's hold was last reset — keyed by input id. No entry until
+    /// a strip has metered anything.
+    var heldPeaks: [InputID: Float] {
+        state.withLock { $0.heldPeaks }
+    }
+
+    /// The master's held peak: the louder channel's loudest sample since
+    /// the master's hold was last reset. `0` until anything is metered.
+    var heldMasterPeak: Float {
+        state.withLock { $0.heldMasterPeak }
+    }
 
     /// Creates an empty relay.
     init() {}
+
+    /// Takes one mix tick's block: the latest readings replace the previous
+    /// tick's, and every peak folds into its hold.
+    ///
+    /// - Parameter block: The tick's meter block.
+    func fold(_ block: MeterBlock) {
+        state.withLock { state in
+            state.latest = block.strips
+            state.master = block.master
+            for (id, reading) in block.strips {
+                state.heldPeaks[id] = max(state.heldPeaks[id] ?? 0, reading.peak)
+            }
+            state.heldMasterPeak = max(state.heldMasterPeak, block.master.left.peak, block.master.right.peak)
+        }
+    }
+
+    /// Resets one strip's peak hold, so the readout starts over from the
+    /// next block.
+    ///
+    /// - Parameter id: The strip's input id.
+    func resetPeak(forInput id: InputID) {
+        state.withLock { $0.heldPeaks[id] = nil }
+    }
+
+    /// Resets the master's peak hold.
+    func resetMasterPeak() {
+        state.withLock { $0.heldMasterPeak = 0 }
+    }
 }
 
-/// One channel strip's meter (GLOSSARY.md, "Meter"): a compact capsule
-/// beside the strip's controls showing the strip's **pre-fader** signal — an
-/// RMS bar over broadcast green/yellow/red zones with a decayed peak
-/// marker. Display only: it reports no events and edits nothing; under the
-/// app's mute-stops-device policy a muted strip's meter rests at the floor
-/// because no samples arrive (app policy, not meter semantics —
-/// ARCHITECTURE.md, "Per-strip meters").
+/// The subject of a ``PeakReadout``: one strip's hold, or the master's.
+enum PeakSubject: Equatable {
+    /// A channel strip's hold, by input id.
+    case strip(InputID)
+
+    /// The master's hold.
+    case master
+
+    /// The `id` param the readout's reset `tap` reports.
+    var tapID: String {
+        switch self {
+        case .strip(let id): id.rawValue
+        case .master: "master"
+        }
+    }
+}
+
+/// A meter's **peak hold** readout (GLOSSARY.md, "Meter"): the held peak in
+/// dBFS to one decimal above the meter, `−∞` until anything is metered,
+/// and **red once the hold reached full scale** — a sample magnitude of 1
+/// or more, an over. Clicking it resets the hold, reporting `meterPeak.reset`
+/// with the subject's id; nothing else resets one
+/// (ARCHITECTURE.md, "The console mixer").
+///
+/// Samples the shared ``MeterRelay`` inside a `TimelineView` like the
+/// capsule does, so the hold never passes through SwiftUI observation — at
+/// ten hertz rather than display cadence, since a figure needs no
+/// per-frame redraw.
+struct PeakReadout: View {
+    /// The relay holding the peaks.
+    let relay: MeterRelay
+
+    /// Whose hold the readout shows.
+    let subject: PeakSubject
+
+    /// The bus the reset's `tap` is reported on.
+    let eventBus: EventBus
+
+    /// A sample magnitude at or above which a hold reads as an over — full
+    /// scale, 0 dBFS.
+    static let overThreshold: Float = 1
+
+    /// How often the readout samples the relay, in seconds.
+    static let sampleInterval: TimeInterval = 0.1
+
+    /// The readout: the figure as a plain button that resets the hold.
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: Self.sampleInterval)) { _ in
+            let peak = heldPeak
+            let figure = Self.text(forHeldPeak: peak)
+            let isOver = Self.isOver(peak)
+            Button {
+                eventBus.tap("meterPeak.reset", domain: .audio, params: ["id": .string(subject.tapID)])
+                reset()
+            } label: {
+                figure.map { Text($0) } ?? Text("−∞", comment: "Peak readout when nothing has been metered yet")
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(
+                isOver ? AnyShapeStyle(.red) : figure == nil ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.secondary)
+            )
+            .monospacedDigit()
+            .help(Text("Peak (click to reset)", comment: "Help tag on a meter's peak hold readout"))
+            .accessibilityLabel(Text("Peak", comment: "Accessibility label of a meter's peak hold readout"))
+            .accessibilityValue(accessibilityValue(figure: figure, isOver: isOver))
+        }
+    }
+
+    /// The subject's held peak on the relay, or nil when nothing has been
+    /// metered since the last reset.
+    private var heldPeak: Float? {
+        switch subject {
+        case .strip(let id): relay.heldPeaks[id]
+        case .master: relay.heldMasterPeak > 0 ? relay.heldMasterPeak : nil
+        }
+    }
+
+    /// Resets the subject's hold on the relay.
+    private func reset() {
+        switch subject {
+        case .strip(let id): relay.resetPeak(forInput: id)
+        case .master: relay.resetMasterPeak()
+        }
+    }
+
+    /// What VoiceOver reads for the figure: the figure itself, marked as an
+    /// over when the color says so, since color must not be the only signal.
+    private func accessibilityValue(figure: String?, isOver: Bool) -> Text {
+        guard let figure else {
+            return Text("−∞", comment: "Peak readout when nothing has been metered yet")
+        }
+        return isOver
+            ? Text("\(figure), over", comment: "Accessibility value of a peak hold that reached full scale")
+            : Text(figure)
+    }
+
+    /// The readout's figure for a held peak: its dBFS to one decimal with
+    /// an explicit sign, or nil when nothing is held (a nil or silent
+    /// peak).
+    ///
+    /// - Parameter peak: The held sample magnitude, or nil.
+    /// - Returns: The formatted figure, or nil.
+    static func text(forHeldPeak peak: Float?) -> String? {
+        guard let peak, peak > 0 else { return nil }
+        return FaderScale.readout(forGain: Double(peak))
+    }
+
+    /// Whether a held peak reads as an over — at or above full scale.
+    ///
+    /// - Parameter peak: The held sample magnitude, or nil.
+    /// - Returns: True at or above ``overThreshold``.
+    static func isOver(_ peak: Float?) -> Bool {
+        guard let peak else { return false }
+        return peak >= overThreshold
+    }
+}
+
+/// One channel strip's meter (GLOSSARY.md, "Meter"): a capsule **standing
+/// beside the strip's fader** over the same travel — the console's
+/// meter-beside-fader arrangement (ARCHITECTURE.md, "The console mixer") —
+/// showing the strip's **pre-fader** signal: an RMS bar over broadcast
+/// green/yellow/red zones with a decayed peak marker. Display only: it
+/// reports no events and edits nothing; under the app's mute-stops-device
+/// policy a muted strip's meter rests at the floor because no samples
+/// arrive (app policy, not meter semantics — ARCHITECTURE.md, "Per-strip
+/// meters").
 ///
 /// The meter draws in a `TimelineView` sampling the shared ``MeterRelay``
 /// each display frame — readings never drive SwiftUI observation, the
@@ -51,10 +244,11 @@ struct StripMeter: View {
     /// The strip's input id — the relay key.
     let id: InputID
 
-    /// The meter body: one capsule over the strip's pre-fader reading.
+    /// The meter body: one standing capsule over the strip's pre-fader
+    /// reading, as tall as the fader beside it.
     var body: some View {
-        MeterCapsule(thickness: 6) { relay.latest[id] ?? .floor }
-            .frame(width: 72)
+        MeterCapsule(thickness: 6, axis: .vertical) { relay.latest[id] ?? .floor }
+            .frame(height: MasterMeter.length)
             .help(Text("Meter", comment: "Help tag and accessibility label of a channel strip's meter"))
             .accessibilityLabel(
                 Text("Meter", comment: "Help tag and accessibility label of a channel strip's meter"))
@@ -79,9 +273,10 @@ struct MasterMeter: View {
     /// The relay the meter samples.
     let relay: MeterRelay
 
-    /// The meter's travel in points — shared with the monitor fader beside
-    /// it, so the two read against one scale.
-    static let length: CGFloat = 110
+    /// The meter's travel in points — shared by every fader and meter on the
+    /// panel, the strips' and the monitor's, so they all read against one
+    /// length.
+    static let length: CGFloat = 120
 
     /// The master meter body: the left channel beside the right, standing.
     var body: some View {
@@ -106,9 +301,10 @@ struct MasterMeter: View {
 /// through SwiftUI observation — the `MTKView` preview's rule applied to
 /// audio display (ARCHITECTURE.md, "Per-strip meters").
 ///
-/// The capsule fills along one ``axis``: left to right lying in a strip row,
-/// bottom to top standing in the master column — the same scale and zones
-/// either way, only the direction differs.
+/// The capsule fills along one ``axis``: bottom to top standing beside a
+/// fader (every meter on the panel since the console layout), or left to
+/// right lying down — the same scale and zones either way, only the
+/// direction differs.
 struct MeterCapsule: View {
     /// The capsule's thickness in points — its height lying horizontally,
     /// its width standing vertically.

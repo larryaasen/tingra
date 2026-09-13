@@ -34,6 +34,8 @@ A project is the saved file for an entire show. A project contains presets. A pr
 
 **Effect** — a processing step applied to media in the engine. A **video effect** applies to a layer, a shot, or the program: color adjustment, blur, a frame (rounded corners and a border), a crop, keying, stylization. An **audio effect** applies to a channel strip: gain, filtering, and (later) EQ and compression. **Filter** is the interchangeable term for a single video processing unit; an effect may chain several filters. Effects are plug-ins, so first- and third-party effects register through one seam.
 
+**Fader** — a channel strip's or the monitor's level control: a vertical slider read in decibels, with silence at its bottom stop and unity (0 dB) three quarters of the way up its travel, where a double-click returns it. A strip's fader reaches +6 dB; the monitor's tops out at unity, since it only scales what the operator hears. The stored value is the linear gain the fader stands for, never the decibel figure.
+
 **Effect chain** — the ordered effects applied to one thing: a channel strip's audio chain, a layer's video chain. Order is signal order — each effect processes what the one before it produced — and the chain persists with the thing that owns it. An audio chain sits post-intake and pre-fader, so it shapes what the strip's meter reads and what its fader rides.
 
 **Title** — a text graphic rendered by the engine: lower thirds, headings, tickers, credits.
@@ -72,7 +74,7 @@ A project is the saved file for an entire show. A project contains presets. A pr
 
 **Channel strip** — one input's slot in the mixer: its level, mute, pan, meter, routing, and audio effect chain.
 
-**Meter** — a level display measured at each mix tick: the block's peak and RMS. A **strip meter** is **pre-fader** — it reads what the strip delivers to the fader, after intake and the strip's effect chain but before its level, pan, and mute — so it answers "what is this input delivering" and holds steady while the operator rides the fader. The **master meter** is **post-fader** and stereo: it reads the program mix itself, after every strip's chain, level, pan, and mute, so it shows what is actually going out and reveals the stereo image a hard-panned strip leaves behind.
+**Meter** — a level display measured at each mix tick: the block's peak and RMS. A **strip meter** is **pre-fader** — it reads what the strip delivers to the fader, after intake and the strip's effect chain but before its level, pan, and mute — so it answers "what is this input delivering" and holds steady while the operator rides the fader. The **master meter** is **post-fader** and stereo: it reads the program mix itself, after every strip's chain, level, pan, and mute, so it shows what is actually going out and reveals the stereo image a hard-panned strip leaves behind. A meter's **peak hold** is the loudest sample since the operator last reset it, shown as a figure in dBFS above the meter and red once it reached full scale.
 
 **Routing** — where a channel strip's signal goes: the bus its audio feeds. V1 has exactly one bus — the program mix — so a strip's routing is its membership in the preset's audio configuration: the authored channels, persisted with their level, pan, and mute, that the mixer rebuilds its strips from. Sends and additional buses are later.
 

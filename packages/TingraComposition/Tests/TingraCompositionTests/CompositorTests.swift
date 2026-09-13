@@ -339,7 +339,7 @@ struct CompositorTests {
         let recorder = RenderRecorder()
         let compositor = makeCompositor(recorder: recorder, tickTimes: ticks)
 
-        let program = compositor.programFrames()
+        let program = compositor.programFrames(bufferingPolicy: .unbounded)
         compositor.start()
 
         let times = await collect(program, limit: 3)
@@ -355,7 +355,7 @@ struct CompositorTests {
         // A shot referencing an input that never delivers a frame.
         compositor.setShot(Shot(layers: [Layer(input: InputID(rawValue: "camera"))]))
 
-        let program = compositor.programFrames()
+        let program = compositor.programFrames(bufferingPolicy: .unbounded)
         compositor.start()
 
         let times = await collect(program, limit: 2)
@@ -373,7 +373,7 @@ struct CompositorTests {
         let second = Shot(layers: [Layer(input: InputID(rawValue: "b"))])
         compositor.setShot(first)
 
-        let program = compositor.programFrames()
+        let program = compositor.programFrames(bufferingPolicy: .unbounded)
         compositor.start()
         // Switch after the tick task has begun; later ticks see the new shot.
         compositor.setShot(second)
@@ -397,7 +397,7 @@ struct CompositorTests {
         // Let the fill task drain the input's frames into the slot first.
         try? await Task.sleep(nanoseconds: 20_000_000)
 
-        let program = compositor.programFrames()
+        let program = compositor.programFrames(bufferingPolicy: .unbounded)
         compositor.start()
         _ = await collect(program, limit: 1)
 
@@ -415,7 +415,7 @@ struct CompositorTests {
         compositor.loadPreset(Preset(name: "Live", shots: [display, camera]))
 
         #expect(compositor.activeShotID == display.id)
-        let program = compositor.programFrames()
+        let program = compositor.programFrames(bufferingPolicy: .unbounded)
         compositor.start()
         _ = await collect(program, limit: 2)
         #expect(recorder.recorded.allSatisfy { $0.shot == display })
@@ -441,7 +441,7 @@ struct CompositorTests {
 
         #expect(compositor.activeShotID == camera.id)
         #expect(compositor.programShot == editedCamera)
-        let program = compositor.programFrames()
+        let program = compositor.programFrames(bufferingPolicy: .unbounded)
         compositor.start()
         _ = await collect(program, limit: 2)
         #expect(recorder.recorded.allSatisfy { $0.shot == editedCamera })
@@ -464,7 +464,7 @@ struct CompositorTests {
         #expect(compositor.activeShotID == nil)
         #expect(compositor.programShot == display)
 
-        let program = compositor.programFrames()
+        let program = compositor.programFrames(bufferingPolicy: .unbounded)
         compositor.start()
         _ = await collect(program, limit: 2)
         #expect(recorder.recorded.allSatisfy { $0.shot == display })
@@ -491,7 +491,7 @@ struct CompositorTests {
         let interview = Shot(id: ShotID(rawValue: "interview"), name: "Interview")
         compositor.loadPreset(Preset(name: "Rehearsal", shots: [interview]))
 
-        let program = compositor.programFrames()
+        let program = compositor.programFrames(bufferingPolicy: .unbounded)
         compositor.start()
         _ = await collect(program, limit: 4)
 
@@ -513,7 +513,7 @@ struct CompositorTests {
         let camera = Shot(id: ShotID(rawValue: "camera"), name: "Camera")
         compositor.loadPreset(Preset(name: "Live", shots: [display, camera]))
 
-        let program = compositor.programFrames()
+        let program = compositor.programFrames(bufferingPolicy: .unbounded)
         compositor.start()
         compositor.take(shotID: camera.id)
         _ = await collect(program, limit: 4)
@@ -537,7 +537,7 @@ struct CompositorTests {
         let camera = Shot(id: ShotID(rawValue: "camera"), name: "Camera")
         compositor.loadPreset(Preset(name: "Live", shots: [display, camera]))
 
-        let program = compositor.programFrames()
+        let program = compositor.programFrames(bufferingPolicy: .unbounded)
         compositor.start()
         compositor.take(shotID: camera.id, transition: .dissolve(duration: 0.1))
         _ = await collect(program, limit: 5)
@@ -574,7 +574,7 @@ struct CompositorTests {
         let camera = Shot(id: ShotID(rawValue: "camera"), name: "Camera")
         compositor.loadPreset(Preset(name: "Live", shots: [display, camera]))
 
-        let program = compositor.programFrames()
+        let program = compositor.programFrames(bufferingPolicy: .unbounded)
         compositor.start()
         compositor.take(shotID: camera.id, transition: .dissolve(duration: 0))
         _ = await collect(program, limit: 2)
@@ -598,7 +598,7 @@ struct CompositorTests {
         let camera = Shot(id: ShotID(rawValue: "camera"), name: "Camera")
         compositor.loadPreset(Preset(name: "Live", shots: [display, camera]))
 
-        let program = compositor.programFrames()
+        let program = compositor.programFrames(bufferingPolicy: .unbounded)
         compositor.start()
         compositor.take(shotID: camera.id, transition: .wipe(edge: .right, duration: 0.1))
         _ = await collect(program, limit: 5)
@@ -636,7 +636,7 @@ struct CompositorTests {
         let camera = Shot(id: ShotID(rawValue: "camera"), name: "Camera")
         compositor.loadPreset(Preset(name: "Live", shots: [display, camera]))
 
-        let program = compositor.programFrames()
+        let program = compositor.programFrames(bufferingPolicy: .unbounded)
         compositor.start()
         compositor.take(shotID: camera.id, transition: .wipe(edge: .top, duration: 0))
         _ = await collect(program, limit: 2)
@@ -663,7 +663,7 @@ struct CompositorTests {
         let camera = Shot(id: ShotID(rawValue: "camera"), name: "Camera")
         compositor.loadPreset(Preset(name: "Live", shots: [display, camera]))
 
-        let program = compositor.programFrames()
+        let program = compositor.programFrames(bufferingPolicy: .unbounded)
         compositor.start()
         compositor.take(shotID: camera.id, transition: .shader(name: .blinds, duration: 0.1))
         _ = await collect(program, limit: 5)
@@ -703,7 +703,7 @@ struct CompositorTests {
         compositor.take(shotID: ShotID(rawValue: "does-not-exist"))
         #expect(compositor.activeShotID == display.id)
 
-        let program = compositor.programFrames()
+        let program = compositor.programFrames(bufferingPolicy: .unbounded)
         compositor.start()
         _ = await collect(program, limit: 2)
         #expect(recorder.recorded.allSatisfy { $0.shot == display })
@@ -724,7 +724,7 @@ struct CompositorTests {
         )
         compositor.updateShot(edited)
 
-        let program = compositor.programFrames()
+        let program = compositor.programFrames(bufferingPolicy: .unbounded)
         compositor.start()
         _ = await collect(program, limit: 3)
 
@@ -750,7 +750,7 @@ struct CompositorTests {
         compositor.take(shotID: display.id)
 
         #expect(compositor.shots.first { $0.id == display.id } == edited)
-        let program = compositor.programFrames()
+        let program = compositor.programFrames(bufferingPolicy: .unbounded)
         compositor.start()
         _ = await collect(program, limit: 4)
         #expect(recorder.recorded.last?.shot == edited)
@@ -770,7 +770,7 @@ struct CompositorTests {
 
         #expect(compositor.shots.first { $0.id == camera.id } == edited)
         #expect(compositor.activeShotID == display.id)
-        let program = compositor.programFrames()
+        let program = compositor.programFrames(bufferingPolicy: .unbounded)
         compositor.start()
         _ = await collect(program, limit: 2)
         // The program keeps rendering the untouched active shot.
@@ -805,7 +805,7 @@ struct CompositorTests {
         let edited = Shot(id: camera.id, name: camera.name, layers: [Layer(input: InputID(rawValue: "extra"))])
         compositor.updateShot(edited)
 
-        let program = compositor.programFrames()
+        let program = compositor.programFrames(bufferingPolicy: .unbounded)
         compositor.start()
         _ = await collect(program, limit: 4)
 
@@ -830,7 +830,7 @@ struct CompositorTests {
 
         #expect(compositor.shots == [display, added])
         #expect(compositor.activeShotID == display.id)
-        let program = compositor.programFrames()
+        let program = compositor.programFrames(bufferingPolicy: .unbounded)
         compositor.start()
         _ = await collect(program, limit: 2)
         // The program keeps rendering the shot that was already on air.
@@ -897,7 +897,7 @@ struct CompositorTests {
 
         #expect(compositor.shots == [display])
         #expect(compositor.activeShotID == display.id)
-        let program = compositor.programFrames()
+        let program = compositor.programFrames(bufferingPolicy: .unbounded)
         compositor.start()
         _ = await collect(program, limit: 2)
         #expect(recorder.recorded.allSatisfy { $0.shot == display })
@@ -919,7 +919,7 @@ struct CompositorTests {
         // The follower (wide) now occupies the removed shot's position.
         #expect(compositor.shots == [display, wide])
         #expect(compositor.activeShotID == wide.id)
-        let program = compositor.programFrames()
+        let program = compositor.programFrames(bufferingPolicy: .unbounded)
         compositor.start()
         _ = await collect(program, limit: 2)
         #expect(recorder.recorded.allSatisfy { $0.shot == wide })
@@ -954,7 +954,7 @@ struct CompositorTests {
         #expect(compositor.activeShotID == nil)
         // The tick keeps rendering: an empty shot over the default background
         // is still a live canvas.
-        let program = compositor.programFrames()
+        let program = compositor.programFrames(bufferingPolicy: .unbounded)
         compositor.start()
         let times = await collect(program, limit: 2)
         #expect(times.count == 2)
@@ -991,7 +991,7 @@ struct CompositorTests {
         compositor.removeShot(shotID: camera.id)
 
         #expect(compositor.activeShotID == display.id)
-        let program = compositor.programFrames()
+        let program = compositor.programFrames(bufferingPolicy: .unbounded)
         compositor.start()
         _ = await collect(program, limit: 2)
         // A hard cut: no tick blends, every tick renders the adjacent shot.
@@ -1016,7 +1016,7 @@ struct CompositorTests {
 
         #expect(compositor.shots == [camera])
         #expect(compositor.activeShotID == camera.id)
-        let program = compositor.programFrames()
+        let program = compositor.programFrames(bufferingPolicy: .unbounded)
         compositor.start()
         _ = await collect(program, limit: 4)
         let calls = recorder.recorded
@@ -1042,7 +1042,7 @@ struct CompositorTests {
         #expect(compositor.shots == [camera, display, wide])
         // The on-program shot keeps its identity, only its position changed.
         #expect(compositor.activeShotID == camera.id)
-        let program = compositor.programFrames()
+        let program = compositor.programFrames(bufferingPolicy: .unbounded)
         compositor.start()
         _ = await collect(program, limit: 2)
         #expect(recorder.recorded.allSatisfy { $0.shot == camera })
@@ -1121,7 +1121,7 @@ struct CompositorTests {
 
         #expect(compositor.shots == [camera, display])
         #expect(compositor.activeShotID == camera.id)
-        let program = compositor.programFrames()
+        let program = compositor.programFrames(bufferingPolicy: .unbounded)
         compositor.start()
         _ = await collect(program, limit: 4)
         let calls = recorder.recorded
@@ -1138,7 +1138,7 @@ struct CompositorTests {
         let recorder = RenderRecorder()
         let compositor = makeCompositor(recorder: recorder, tickTimes: ticks)
 
-        let program = compositor.programFrames()
+        let program = compositor.programFrames(bufferingPolicy: .unbounded)
         compositor.start()
         compositor.stop()
 
@@ -1173,8 +1173,8 @@ struct CompositorTests {
         compositor.loadPreset(previewPreset)
         compositor.setPreview(shotID: ShotID(rawValue: "b"))
 
-        let program = compositor.programFrames()
-        let preview = compositor.previewFrames()
+        let program = compositor.programFrames(bufferingPolicy: .unbounded)
+        let preview = compositor.previewFrames(bufferingPolicy: .unbounded)
         compositor.start()
 
         #expect(await collect(program, limit: 2) == ticks)
@@ -1193,8 +1193,8 @@ struct CompositorTests {
         let compositor = makeCompositor(recorder: recorder, tickTimes: ticks)
         compositor.loadPreset(previewPreset)
 
-        let program = compositor.programFrames()
-        _ = compositor.previewFrames()
+        let program = compositor.programFrames(bufferingPolicy: .unbounded)
+        _ = compositor.previewFrames(bufferingPolicy: .unbounded)
         compositor.start()
 
         _ = await collect(program, limit: 2)
@@ -1214,7 +1214,7 @@ struct CompositorTests {
         compositor.loadPreset(previewPreset)
         compositor.setPreview(shotID: ShotID(rawValue: "b"))
 
-        let program = compositor.programFrames()
+        let program = compositor.programFrames(bufferingPolicy: .unbounded)
         compositor.start()
 
         _ = await collect(program, limit: 2)
@@ -1231,7 +1231,7 @@ struct CompositorTests {
         compositor.loadPreset(previewPreset)
         compositor.setPreview(shotID: ShotID(rawValue: "b"))
 
-        let preview = compositor.previewFrames()
+        let preview = compositor.previewFrames(bufferingPolicy: .unbounded)
         compositor.start()
 
         #expect(await collect(preview, limit: 2) == ticks)
@@ -1309,8 +1309,8 @@ struct CompositorTests {
         // so the transition must already be pending when the ticks run.
         compositor.takePreview(transition: .dissolve(duration: 4.0 / 30.0))
 
-        let program = compositor.programFrames()
-        let preview = compositor.previewFrames()
+        let program = compositor.programFrames(bufferingPolicy: .unbounded)
+        let preview = compositor.previewFrames(bufferingPolicy: .unbounded)
         compositor.start()
 
         _ = await collect(program, limit: 4)
@@ -1424,7 +1424,7 @@ struct CompositorTests {
         compositor.loadPreset(previewPreset)
         compositor.setPreview(shotID: ShotID(rawValue: "b"))
 
-        let preview = compositor.previewFrames()
+        let preview = compositor.previewFrames(bufferingPolicy: .unbounded)
         compositor.start()
         compositor.stop()
 
@@ -1528,7 +1528,7 @@ struct CompositorTests {
         #expect(compositor.programShot.id == ShotID(rawValue: "b"))
         #expect(compositor.programInputIDs == [InputID(rawValue: "camera"), InputID(rawValue: "display")])
 
-        let program = compositor.programFrames()
+        let program = compositor.programFrames(bufferingPolicy: .unbounded)
         compositor.start()
         _ = await collect(program, limit: 2)
 
@@ -1568,7 +1568,7 @@ struct CompositorTests {
         let compositor = makeCompositor(recorder: recorder, tickTimes: ticks)
         compositor.loadPreset(fadePreset)
 
-        let program = compositor.programFrames()
+        let program = compositor.programFrames(bufferingPolicy: .unbounded)
         compositor.start()
         _ = await collect(program, limit: 3)
 
@@ -1586,7 +1586,7 @@ struct CompositorTests {
         // it reaches black on the fourth.
         compositor.setFadeToBlack(true, duration: 4.0 / 30.0)
 
-        let program = compositor.programFrames()
+        let program = compositor.programFrames(bufferingPolicy: .unbounded)
         compositor.start()
         _ = await collect(program, limit: 4)
 
@@ -1618,7 +1618,7 @@ struct CompositorTests {
         // One tick of ramp, so every tick after the first is held black.
         compositor.setFadeToBlack(true, duration: 0)
 
-        let program = compositor.programFrames()
+        let program = compositor.programFrames(bufferingPolicy: .unbounded)
         compositor.start()
         let times = await collect(program, limit: 3)
 
@@ -1645,7 +1645,7 @@ struct CompositorTests {
         compositor.take(shotID: ShotID(rawValue: "b"), transition: .dissolve(duration: 4.0 / 30.0))
         compositor.setFadeToBlack(true, duration: 8.0 / 30.0)
 
-        let program = compositor.programFrames()
+        let program = compositor.programFrames(bufferingPolicy: .unbounded)
         compositor.start()
         _ = await collect(program, limit: 4)
 
@@ -1670,7 +1670,7 @@ struct CompositorTests {
         compositor.loadPreset(fadePreset)
         compositor.setFadeToBlack(true, duration: 4.0 / 30.0)
 
-        let program = compositor.programFrames()
+        let program = compositor.programFrames(bufferingPolicy: .unbounded)
         compositor.start()
         _ = await collect(program, limit: 2)
 
@@ -1691,7 +1691,7 @@ struct CompositorTests {
         // program stays black and the active shot moves.
         compositor.take(shotID: ShotID(rawValue: "b"))
 
-        let program = compositor.programFrames()
+        let program = compositor.programFrames(bufferingPolicy: .unbounded)
         compositor.start()
         _ = await collect(program, limit: 3)
 
@@ -1709,8 +1709,8 @@ struct CompositorTests {
         compositor.setPreview(shotID: ShotID(rawValue: "b"))
         compositor.setFadeToBlack(true, duration: 0)
 
-        let program = compositor.programFrames()
-        let preview = compositor.previewFrames()
+        let program = compositor.programFrames(bufferingPolicy: .unbounded)
+        let preview = compositor.previewFrames(bufferingPolicy: .unbounded)
         compositor.start()
         _ = await collect(program, limit: 3)
         _ = await collect(preview, limit: 3)
@@ -1730,7 +1730,7 @@ struct CompositorTests {
         compositor.loadPreset(fadePreset)
 
         compositor.setFadeToBlack(true, duration: 0)
-        let program = compositor.programFrames()
+        let program = compositor.programFrames(bufferingPolicy: .unbounded)
         compositor.start()
         _ = await collect(program, limit: 1)
 
@@ -1853,7 +1853,7 @@ struct CompositorTests {
             eventBus: EventBus(),
             makeRenderer: { MockShotRenderer(recorder: recorder) }
         )
-        let program = compositor.programFrames()
+        let program = compositor.programFrames(bufferingPolicy: .unbounded)
         var iterator = program.makeAsyncIterator()
         var arms = clock.arms.makeAsyncIterator()
         compositor.start()
@@ -1886,7 +1886,7 @@ struct CompositorTests {
             eventBus: EventBus(),
             makeRenderer: { MockShotRenderer(recorder: recorder) }
         )
-        let program = compositor.programFrames()
+        let program = compositor.programFrames(bufferingPolicy: .unbounded)
         var frames = program.makeAsyncIterator()
         var arms = clock.arms.makeAsyncIterator()
         compositor.start()
@@ -1941,5 +1941,77 @@ struct CompositorTests {
         }
         #expect(resolution == "1280x720")
         #expect(fps == "60")
+    }
+}
+
+/// The program and preview streams keep only the newest un-taken frame by
+/// default, so a consumer that stalls pins one frame, never a backlog
+/// (ARCHITECTURE.md, "Bounded frame streams").
+@Suite("Compositor bounded streams")
+struct CompositorBoundedStreamTests {
+    /// A compositor over a synthetic clock that fires every tick at once.
+    private func makeCompositor(recorder: RenderRecorder, tickTimes: [CMTime]) -> Compositor {
+        Compositor(
+            clock: SyntheticClock(tickTimes: tickTimes),
+            format: ProgramFormat(width: 2, height: 2, frameRate: 30),
+            eventBus: EventBus(),
+            makeRenderer: { MockShotRenderer(recorder: recorder) }
+        )
+    }
+
+    /// Lets the tick task render every synthetic tick before a consumer
+    /// attaches — the stalled-consumer case the bound exists for.
+    private func letTicksRender() async {
+        try? await Task.sleep(for: .milliseconds(50))
+    }
+
+    @Test("a consumer attaching after several ticks receives only the latest program frame")
+    func stalledProgramConsumerGetsTheLatestFrame() async {
+        let ticks = (0..<5).map { CMTime(value: CMTimeValue($0), timescale: 30) }
+        let recorder = RenderRecorder()
+        let compositor = makeCompositor(recorder: recorder, tickTimes: ticks)
+
+        let program = compositor.programFrames()
+        compositor.start()
+        await letTicksRender()
+
+        // Every tick rendered — the bound is at the buffer, not the renderer.
+        #expect(recorder.recorded.map(\.time) == ticks)
+        var iterator = program.makeAsyncIterator()
+        let first = await iterator.next()
+        #expect(first?.presentationTime == ticks.last)
+    }
+
+    @Test("a consumer attaching after several ticks receives only the latest preview frame")
+    func stalledPreviewConsumerGetsTheLatestFrame() async {
+        let ticks = (0..<5).map { CMTime(value: CMTimeValue($0), timescale: 30) }
+        let recorder = RenderRecorder()
+        let compositor = makeCompositor(recorder: recorder, tickTimes: ticks)
+        let shot = Shot(layers: [Layer(input: InputID(rawValue: "a"))])
+        compositor.setShot(shot)
+        compositor.addShot(shot, at: 0)
+        compositor.setPreview(shotID: shot.id)
+
+        let preview = compositor.previewFrames()
+        compositor.start()
+        await letTicksRender()
+
+        var iterator = preview.makeAsyncIterator()
+        let first = await iterator.next()
+        #expect(first?.presentationTime == ticks.last)
+    }
+
+    @Test("an unbounded stream, asked for explicitly, keeps every frame")
+    func unboundedStreamKeepsEveryFrame() async {
+        let ticks = (0..<5).map { CMTime(value: CMTimeValue($0), timescale: 30) }
+        let recorder = RenderRecorder()
+        let compositor = makeCompositor(recorder: recorder, tickTimes: ticks)
+
+        let program = compositor.programFrames(bufferingPolicy: .unbounded)
+        compositor.start()
+        await letTicksRender()
+
+        let times = await collect(program, limit: 5)
+        #expect(times == ticks)
     }
 }
