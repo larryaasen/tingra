@@ -43,4 +43,10 @@ extension UTType {
     /// `com.moonwink.tingra.input`, one of the app's `com.moonwink.tingra.*`
     /// identifiers (CLAUDE.md, "Toolchain & CI").
     nonisolated static let tingraInput = UTType(exportedAs: "com.moonwink.tingra.input")
+
+    /// The project document's type (`.tingraproject`, JSON inside), declared
+    /// in the app's Info.plist so the Finder knows the file is Tingra's and
+    /// the open and save panels can filter on it (ARCHITECTURE.md,
+    /// "Projects as documents").
+    nonisolated static let tingraProject = UTType(exportedAs: "com.moonwink.tingra.project", conformingTo: .json)
 }

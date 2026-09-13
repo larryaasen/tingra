@@ -10,23 +10,27 @@
 import Foundation
 import TingraComposition
 
-/// Loads and saves the app's project document — the saved file for a whole
-/// show (GLOSSARY.md, "Project").
+/// Loads and saves one project document — the saved file for a whole show
+/// (GLOSSARY.md, "Project").
 ///
-/// This iteration keeps a single autosaved project at a fixed location under
-/// the app's Application Support directory (the established Tingra home, next
-/// to the daemon's socket); explicit Save/Open menu commands and multiple
-/// projects arrive with the document UI (see ARCHITECTURE.md, "Project
-/// save/load"). The document is JSON — pretty-printed with sorted keys so it
-/// diffs and inspects cleanly — written atomically so a crash mid-save never
-/// leaves a truncated file.
+/// A store is one file. The **default project** lives at a fixed location
+/// under the app's Application Support directory (the established Tingra
+/// home, next to the daemon's socket) and is what a fresh install opens;
+/// every other project is a file the operator named and placed through the
+/// File menu, and the app makes a store for whichever is open
+/// (ARCHITECTURE.md, "Projects as documents"). The document is JSON —
+/// pretty-printed with sorted keys so it diffs and inspects cleanly —
+/// written atomically so a crash mid-save never leaves a truncated file.
 ///
-/// The directory is injectable so tests exercise real load/save round-trips
+/// The location is injectable so tests exercise real load/save round-trips
 /// against a temporary directory, never the user's own project file.
 struct ProjectStore {
-    /// The file name of the single autosaved project. `.tingraproject` is the
+    /// The file name of the default project. `.tingraproject` is the
     /// project document's extension; the content is JSON.
     static let fileName = "Default.tingraproject"
+
+    /// The project document's file extension, without the dot.
+    static let fileExtension = "tingraproject"
 
     /// The directory holding the project file.
     let directoryURL: URL
@@ -34,13 +38,27 @@ struct ProjectStore {
     /// The project file's location.
     let fileURL: URL
 
-    /// Creates a store rooted at the given directory.
+    /// Creates the store of the default project under the given directory.
     ///
     /// - Parameter directory: The directory holding the project file
     ///   (default: `~/Library/Application Support/Tingra`).
     init(directory: URL = URL.applicationSupportDirectory.appending(path: "Tingra")) {
         self.directoryURL = directory
         self.fileURL = directory.appending(path: Self.fileName)
+    }
+
+    /// Creates the store of the project at the given file.
+    ///
+    /// - Parameter fileURL: The project document's location.
+    init(fileURL: URL) {
+        self.fileURL = fileURL
+        self.directoryURL = fileURL.deletingLastPathComponent()
+    }
+
+    /// The project's user-facing name: the file's name without its
+    /// extension — what the window's title shows.
+    var name: String {
+        fileURL.deletingPathExtension().lastPathComponent
     }
 
     /// Loads the project document, or returns nil when no file exists yet (a

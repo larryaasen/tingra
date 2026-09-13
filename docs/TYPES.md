@@ -448,8 +448,14 @@ internal surface a reader needs to navigate the target instead.
   `MediaID`, absolute path (no bookmark; the app is not sandboxed), and cached
   display name; the document's record from which the app asks the media
   registry for the input on each launch.
+- `ProjectID` — a stable, string-backed identifier for a project document
+  itself, not its file (a fresh UUID by default): what lets the app keep the
+  operator's position per show outside the document (2026-09-13;
+  ARCHITECTURE.md, "Projects as documents").
 - `Project` — the saved document for a whole show: a versioned, plain `Codable`
-  value type holding the presets, the stream `destination` (key excluded — it
+  value type holding the optional `id` (absent in a document written before
+  projects had one; the app assigns and saves it), the presets, the stream
+  `destination` (key excluded — it
   lives in secure storage), each shot's optional default transition, the
   optional `programFormat` (absent meaning 1080p30), and the optional `media`
   list. The
@@ -1078,7 +1084,11 @@ surface is:
   switcher (its kind, the wipe edge, the shader, and since 2026-09-13 the take
   duration in seconds), as ids and raw values in
   machine-local `UserDefaults` on the `MonitorPreferences` pattern — not the
-  project document, which stays a pure description of the show. The armed
+  project document, which stays a pure description of the show. Scoped per
+  project since 2026-09-13 (`projectID`, keys under `session.projects.<id>`;
+  `scoped(to:)` moves the bus position, the transition stays global; an
+  unscoped store reads the one-project era's flat keys), and holding the
+  `lastProjectURL` the launch reopens. The armed
   transition comes back whatever the document holds; a value the app no
   longer knows reads nil and leaves the picker on its default, and a duration
   is clamped to the panel's range on restore. `EngineModel` records
@@ -1193,7 +1203,10 @@ surface is:
   settings checkbox and the View-menu item write — shared rather than each
   window reading `UserDefaults` for itself, since `UserDefaults` is not
   observable and the two controls live outside the windows they change.
-- `TingraAppDelegate` — the two AppKit hooks: it answers every quit with
+- `TingraAppDelegate` — the AppKit hooks: `application(_:open:)` takes a
+  project document the Finder handed the app (a double-click, a Dock drop),
+  holding it until the main window's task hands the model over when it
+  launched the app; it answers every quit with
   `.terminateLater` so the shutdown is recorded on the bus and drained to the
   log before the process exits (`EngineModel.shutDown(reason:)`, with the cause
   read from the quit Apple event through `TerminationReason`) and a recording
@@ -1407,9 +1420,23 @@ surface is:
   duplicate under a fresh id with the source's shot ids preserved — so switching
   between original and copy holds the on-program shot — and a rename that
   ignores empty names.
-- `ProjectStore` — loads and autosaves the `.tingraproject` document under
-  `~/Library/Application Support/Tingra`, setting an unreadable file aside
+- `ProjectStore` — loads and saves one `.tingraproject` document: the
+  default project's under `~/Library/Application Support/Tingra` (what a
+  fresh install opens and the Data pane removes), or, since 2026-09-13, any
+  file the operator named and placed (`init(fileURL:)`), with the `name` the
+  window title shows; sets the default project's unreadable file aside
   rather than overwriting it.
+- `ProjectCommands` — the File menu's project items (2026-09-13;
+  ARCHITECTURE.md, "Projects as documents"): New Project… (⌘N), Open… (⌘O),
+  an Open Recent submenu over `EngineModel.recentProjectURLs` ending in Clear
+  Menu, Save As… (⇧⌘S), and Reveal in Finder — plain commands over the one
+  autosaved project the engine keeps open, not a `DocumentGroup`; New, Open,
+  and Open Recent disabled while streaming or recording.
+- `ProjectFilePanel` — the AppKit open and save panels those items run,
+  filtered to the project document's type (`UTType.tingraProject`).
+- `ProjectSwitch` — the pure rule behind the disabled items and the model's
+  refusal to replace the open project: the program format's own
+  (`"streaming"` / `"recording"` / nil).
 - `MonitorView` — the Core Image `MTKView` that samples one frame source at
   display rate — one instance over program, another over preview, and one per
   input tile in multiview; it was `ProgramPreviewView` while program was the

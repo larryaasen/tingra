@@ -127,6 +127,45 @@ struct ProjectCodableTests {
 
     // MARK: Destinations
 
+    @Test("a document without an id key decodes with the id nil — a document written before projects had one")
+    func projectOptionalIDDefaults() throws {
+        let data = try #require(#"{"version":1,"presets":[]}"#.data(using: .utf8))
+        let decoded = try JSONDecoder().decode(Project.self, from: data)
+        #expect(decoded.id == nil)
+    }
+
+    @Test("a project with an id round-trips through JSON under an id key")
+    func projectIDRoundTrips() throws {
+        let project = Project(id: ProjectID(rawValue: "show-1"), presets: [])
+        let data = try JSONEncoder().encode(project)
+        let object = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(Set(object.keys) == ["version", "id", "presets"])
+        #expect(object["id"] as? String == "show-1")
+        let decoded = try JSONDecoder().decode(Project.self, from: data)
+        #expect(decoded == project)
+    }
+
+    @Test("a project without an id encodes no id key")
+    func projectWithoutIDOmitsKey() throws {
+        let data = try JSONEncoder().encode(Project(presets: []))
+        let object = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(object["id"] == nil)
+    }
+
+    @Test("a fresh ProjectID is a unique UUID string")
+    func projectIDIsFresh() {
+        let one = ProjectID()
+        let two = ProjectID()
+        #expect(one != two)
+        #expect(UUID(uuidString: one.rawValue) != nil)
+    }
+
+    @Test("projects with different ids are not equal")
+    func projectIDInequality() {
+        #expect(Project(id: ProjectID(rawValue: "a")) != Project(id: ProjectID(rawValue: "b")))
+        #expect(Project(id: ProjectID(rawValue: "a")) == Project(id: ProjectID(rawValue: "a")))
+    }
+
     @Test("the document format version is 1 — pre-release, the format grows within v1")
     func currentVersionIsOne() {
         #expect(Project.currentVersion == 1)

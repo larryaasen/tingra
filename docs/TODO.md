@@ -1384,6 +1384,29 @@ or two in the doc that owns them — none need a rewrite.
       the buffers are unbounded; `Input.frames()` has no policy parameter
       (stability contract), so the bound goes inside each conformer, with
       the generators' and media tests taught to attach before ticking.
+  - [x] **Projects as documents** *(added, decided, and built 2026-09-13 on
+    Larry noticing the app could only open the default project; record in
+    ARCHITECTURE.md, "Projects as documents")*. A File menu — New Project…
+    (⌘N), Open… (⌘O), Open Recent (the system document controller's list,
+    with Clear Menu), Save As… (⇧⌘S), Reveal in Finder — over the one
+    autosaved project the engine keeps open; deliberately not `DocumentGroup`
+    (one engine, one program, no dirty state). `ProjectStore` per file with
+    the default location as its default; the launch reopens the last project
+    (`SessionPreferences.lastProjectURL`) and falls back to the default one
+    when it is missing or unreadable, leaving the operator's file alone;
+    Remove All Data still removes the default project and preferences only.
+    `Project.id` (`ProjectID`, an optional key within v1) scopes the session
+    position per project (`session.projects.<id>.*`, the transition staying
+    global), a document without one assigned an id on load. The project file
+    is a declared document type (`com.moonwink.tingra.project`,
+    `.tingraproject`), so the Finder opens it through
+    `application(_:open:)`. Switching is refused while streaming or
+    recording (`ProjectSwitch.refusal`, the program format's rule); Save As
+    stays enabled. Window title = project name with the document proxy icon.
+    Events `project.opened`/`created`/`savedAs`/`reopen`, errors
+    `project.open`/`project.new`. Tests: per-file store, scoped preferences,
+    the refusal, `Project.id` round trip. Deferred: Rename/Move To from the
+    title bar, a Duplicate command, an MCP tool that opens a project.
   - [ ] **The external bundle loader**, tagging `TingraPlugInKit` 1.0.0
     (ARCHITECTURE.md, "Plug-in API stability and versioning").
   - [ ] **NDI as an external plug-in bundle**, outside this repo, importing

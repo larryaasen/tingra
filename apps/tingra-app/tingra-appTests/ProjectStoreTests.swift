@@ -123,3 +123,37 @@ struct ProjectStoreTests {
         #expect(store.fileURL == directory.appending(path: "Default.tingraproject"))
     }
 }
+
+/// Exercises a store made for one project file rather than the default
+/// location — what the File menu's Open, New, and Save As make
+/// (ARCHITECTURE.md, "Projects as documents").
+@Suite("ProjectStore per file")
+struct ProjectFileStoreTests {
+    @Test("a store made for a file derives its directory and name from the file")
+    func fileStoreLocation() {
+        let url = URL(filePath: "/tmp/shows/Sunday Service.tingraproject")
+        let store = ProjectStore(fileURL: url)
+        #expect(store.fileURL == url)
+        #expect(store.directoryURL == URL(filePath: "/tmp/shows", directoryHint: .isDirectory))
+        #expect(store.name == "Sunday Service")
+    }
+
+    @Test("the default store is named Default and carries the project extension")
+    func defaultStoreName() {
+        let store = ProjectStore()
+        #expect(store.name == "Default")
+        #expect(store.fileURL.pathExtension == ProjectStore.fileExtension)
+        #expect(store.fileURL.lastPathComponent == ProjectStore.fileName)
+    }
+
+    @Test("a project saved through a per-file store loads back unchanged from a fresh store over the same file")
+    func fileStoreRoundTrips() throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appending(path: "Show.tingraproject")
+        let project = Project(id: ProjectID(rawValue: "show-1"), presets: [Preset(name: "Live", shots: [])])
+        try ProjectStore(fileURL: url).save(project)
+        #expect(try ProjectStore(fileURL: url).load() == project)
+        #expect(FileManager.default.fileExists(atPath: url.path(percentEncoded: false)))
+    }
+}

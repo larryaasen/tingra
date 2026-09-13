@@ -192,3 +192,77 @@ struct SessionPreferencesTests {
         #expect(a != .none)
     }
 }
+
+/// Exercises the per-project scope the store gained when projects became
+/// documents (ARCHITECTURE.md, "Projects as documents"): each show keeps
+/// its own position, the switcher's transition stays global, and the last
+/// opened project is remembered.
+@Suite("SessionPreferences per project")
+struct SessionPreferencesScopeTests {
+    /// A store over its own throwaway defaults suite.
+    private func makeDefaults() throws -> (UserDefaults, String) {
+        let name = "tingra.tests.\(UUID().uuidString)"
+        return (try #require(UserDefaults(suiteName: name)), name)
+    }
+
+    @Test("two projects keep their bus positions apart")
+    func positionsAreScopedByProject() throws {
+        let (defaults, name) = try makeDefaults()
+        defer { defaults.removePersistentDomain(forName: name) }
+        let show = SessionPreferences(defaults: defaults, projectID: ProjectID(rawValue: "show"))
+        let rehearsal = SessionPreferences(defaults: defaults, projectID: ProjectID(rawValue: "rehearsal"))
+
+        show.position = SessionPosition(presetID: PresetID(rawValue: "a"), activeShotID: ShotID(rawValue: "wide"))
+        rehearsal.position = SessionPosition(presetID: PresetID(rawValue: "b"), previewShotID: ShotID(rawValue: "bars"))
+
+        #expect(show.position.presetID == PresetID(rawValue: "a"))
+        #expect(show.position.activeShotID == ShotID(rawValue: "wide"))
+        #expect(show.position.previewShotID == nil)
+        #expect(rehearsal.position.presetID == PresetID(rawValue: "b"))
+        #expect(rehearsal.position.activeShotID == nil)
+        #expect(rehearsal.position.previewShotID == ShotID(rawValue: "bars"))
+    }
+
+    @Test("the armed transition is shared across project scopes")
+    func transitionIsGlobal() throws {
+        let (defaults, name) = try makeDefaults()
+        defer { defaults.removePersistentDomain(forName: name) }
+        let show = SessionPreferences(defaults: defaults, projectID: ProjectID(rawValue: "show"))
+        show.position = SessionPosition(transitionKind: .wipe, wipeEdge: .left, transitionDuration: 2)
+
+        let other = show.scoped(to: ProjectID(rawValue: "other"))
+        #expect(other.projectID == ProjectID(rawValue: "other"))
+        #expect(other.position.transitionKind == .wipe)
+        #expect(other.position.wipeEdge == .left)
+        #expect(other.position.transitionDuration == 2)
+        #expect(other.position.presetID == nil)
+    }
+
+    @Test("an unscoped store reads the flat keys of the one-project era, which a scoped store does not see")
+    func unscopedStoreUsesFlatKeys() throws {
+        let (defaults, name) = try makeDefaults()
+        defer { defaults.removePersistentDomain(forName: name) }
+        let flat = SessionPreferences(defaults: defaults)
+        flat.position = SessionPosition(presetID: PresetID(rawValue: "old"))
+
+        #expect(defaults.string(forKey: "session.activePresetID") == "old")
+        #expect(flat.scoped(to: nil).position.presetID == PresetID(rawValue: "old"))
+        #expect(flat.scoped(to: ProjectID(rawValue: "new")).position.presetID == nil)
+    }
+
+    @Test("the last opened project round-trips, and nil removes it")
+    func lastProjectRoundTrips() throws {
+        let (defaults, name) = try makeDefaults()
+        defer { defaults.removePersistentDomain(forName: name) }
+        let preferences = SessionPreferences(defaults: defaults)
+        #expect(preferences.lastProjectURL == nil)
+
+        let url = URL(filePath: "/Users/operator/Shows/Sunday.tingraproject")
+        preferences.lastProjectURL = url
+        #expect(SessionPreferences(defaults: defaults, projectID: ProjectID(rawValue: "x")).lastProjectURL == url)
+
+        preferences.lastProjectURL = nil
+        #expect(preferences.lastProjectURL == nil)
+        #expect(defaults.object(forKey: "session.projectPath") == nil)
+    }
+}

@@ -1378,6 +1378,23 @@
         }
       }
     },
+    "Clear Menu" : {
+      "comment" : "Open Recent submenu item emptying the list of recent projects",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einträge löschen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Borrar menú"
+          }
+        }
+      }
+    },
     "Clear the log file?" : {
       "comment" : "Confirmation alert title before emptying the log file",
       "localizations" : {
@@ -1889,57 +1906,6 @@
         }
       }
     },
-    "Duration" : {
-      "comment" : "Label before the transition duration field on the transition panel",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dauer"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Duración"
-          }
-        }
-      }
-    },
-    "How long a dissolve, wipe, or shader transition runs, in seconds. A cut is instant." : {
-      "comment" : "Tooltip on the transition duration field and stepper",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wie lange eine Überblendung, Wischblende oder Shader-Blende läuft, in Sekunden. Ein Schnitt ist sofort."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cuánto dura una disolución, cortinilla o transición de shader, en segundos. Un corte es instantáneo."
-          }
-        }
-      }
-    },
-    "s" : {
-      "comment" : "Unit after the transition duration field: seconds, abbreviated",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "s"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "s"
-          }
-        }
-      }
-    },
     "Duplicate" : {
       "comment" : "Context menu: duplicate this shot or preset",
       "localizations" : {
@@ -1970,6 +1936,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Duplicar capa"
+          }
+        }
+      }
+    },
+    "Duration" : {
+      "comment" : "Label before the transition duration field on the transition panel",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dauer"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Duración"
           }
         }
       }
@@ -2464,6 +2447,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ocultar barra de estado"
+          }
+        }
+      }
+    },
+    "How long a dissolve, wipe, or shader transition runs, in seconds. A cut is instant." : {
+      "comment" : "Tooltip on the transition duration field and stepper",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wie lange eine Überblendung, Wischblende oder Shader-Blende läuft, in Sekunden. Ein Schnitt ist sofort."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cuánto dura una disolución, cortinilla o transición de shader, en segundos. Un corte es instantáneo."
           }
         }
       }
@@ -3509,6 +3509,23 @@
         }
       }
     },
+    "New Project…" : {
+      "comment" : "File menu item making a new project at a chosen location",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neues Projekt …"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nuevo proyecto…"
+          }
+        }
+      }
+    },
     "New Shot" : {
       "comment" : "Default name of a newly added shot",
       "localizations" : {
@@ -4279,6 +4296,23 @@
         }
       }
     },
+    "Open Recent" : {
+      "comment" : "File menu submenu listing recently opened projects",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Benutzte Projekte"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abrir reciente"
+          }
+        }
+      }
+    },
     "Open Settings" : {
       "comment" : "Tooltip on the Settings toolbar button",
       "localizations" : {
@@ -4326,6 +4360,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Abrir esta carpeta en el Finder"
+          }
+        }
+      }
+    },
+    "Open…" : {
+      "comment" : "File menu item opening a project file",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Öffnen …"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abrir…"
           }
         }
       }
@@ -5234,7 +5285,7 @@
       }
     },
     "Reveal in Finder" : {
-      "comment" : "Logging settings: button that shows the log file in the Finder\nMenu item that reveals the file in Finder",
+      "comment" : "Logging settings: button that shows the log file in the Finder\nMenu item showing a file in the Finder\nMenu item that reveals the file in Finder",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -5314,6 +5365,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "rtmp://server/app"
+          }
+        }
+      }
+    },
+    "s" : {
+      "comment" : "Unit after the transition duration field: seconds, abbreviated",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "s"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "s"
+          }
+        }
+      }
+    },
+    "Save As…" : {
+      "comment" : "File menu item writing the open project to a new file and continuing there",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sichern unter …"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Guardar como…"
           }
         }
       }
@@ -6916,6 +7001,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Unidad"
+          }
+        }
+      }
+    },
+    "Untitled" : {
+      "comment" : "Default name of a new project file",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ohne Titel"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sin título"
           }
         }
       }

@@ -8,6 +8,7 @@
 //
 
 import AVFoundation
+import AppKit
 import CoreGraphics
 import CoreImage
 import CoreVideo
@@ -1225,12 +1226,48 @@ final class EngineModel {
     /// configuration pass. Nothing saves before they do.
     private var hasSessionPreset: Bool { !presets.isEmpty }
 
-    /// The store the project document loads from and autosaves to.
-    @ObservationIgnored private let store = ProjectStore()
+    /// The store of the **default project** — what a fresh install opens,
+    /// what a launch falls back to when the last project cannot be reopened,
+    /// and what the Data settings pane removes. The operator's own project
+    /// files elsewhere are theirs, like recordings (ARCHITECTURE.md,
+    /// "Projects as documents").
+    @ObservationIgnored private let defaultStore = ProjectStore()
+
+    /// The store of the **open project** — the default one until the
+    /// operator opens, creates, or saves as another through the File menu —
+    /// which the document loads from and autosaves to.
+    @ObservationIgnored private var store = ProjectStore()
+
+    /// The open project's file, observed so the window's title and document
+    /// proxy follow a switch (``TingraApp``).
+    private(set) var projectURL: URL
+
+    /// The open project's name — its file name without the extension — for
+    /// the window title.
+    var projectName: String {
+        projectURL.deletingPathExtension().lastPathComponent
+    }
+
+    /// The open project's identity: read from the document, or assigned to
+    /// a document written before projects had ids and saved with it. What
+    /// the session position is scoped by (``SessionPreferences``).
+    @ObservationIgnored private var projectID: ProjectID?
+
+    /// The projects opened, created, or saved as through the File menu, most
+    /// recent first — the Open Recent submenu's rows. Kept by the system's
+    /// document controller, which also feeds the Apple menu's Recent Items
+    /// and the Dock; mirrored here so the menu observes a change.
+    private(set) var recentProjectURLs: [URL] = []
+
+    /// A project the Finder asked the app to open while the engine was still
+    /// booting — a double-clicked document — opened once ``start()`` has
+    /// the show up (``openProjectWhenReady(_:)``).
+    @ObservationIgnored private var pendingProjectURL: URL?
 
     /// Where the operator's position — active preset, program shot, staged
-    /// shot — persists between launches (``SessionPreferences``).
-    @ObservationIgnored private let sessionPreferences = SessionPreferences()
+    /// shot — persists between launches (``SessionPreferences``), scoped to
+    /// the open project once its id is known.
+    @ObservationIgnored private var sessionPreferences = SessionPreferences()
 
     /// The position recorded by the last run, read at the top of
     /// ``loadProject()`` before any assignment can overwrite it, and consumed
@@ -1259,7 +1296,7 @@ final class EngineModel {
     /// process.
     @ObservationIgnored private(set) lazy var appData = AppDataModel(
         store: AppDataStore(
-            projectStore: store,
+            projectStore: defaultStore,
             destinationsFileURL: destinationStore.fileURL,
             logSessionFileURL: LogSession.counterFileURL,
             logFileURL: logFile.url,
@@ -1462,6 +1499,7 @@ final class EngineModel {
         recordingPreferences: RecordingPreferences = RecordingPreferences()
     ) {
         self.monitor = monitor
+        self.projectURL = ProjectStore().fileURL
         self.snapshotPreferences = snapshotPreferences
         self.recordingPreferences = recordingPreferences
         self.monitorPreferences = monitorPreferences
@@ -1647,6 +1685,13 @@ final class EngineModel {
 
         await reconfigure()
         await reconfigureAudio()
+
+        // A document double-clicked while the engine was booting: the show
+        // is up now, so it can be replaced like any File ▸ Open.
+        if let url = pendingProjectURL {
+            pendingProjectURL = nil
+            await openProject(at: url)
+        }
     }
 
     // MARK: Device lists
@@ -4562,65 +4607,110 @@ final class EngineModel {
         eventBus.shutdown()
     }
 
-    /// Loads the project document at boot, adopting its first preset as the
-    /// active preset (the active preset is session state — the document
-    /// records no "active" field) and pointing the pickers at the devices its
-    /// layers reference; with no file (or a file holding no presets), it
-    /// leaves the presets unseeded — ``establishSessionPreset()`` seeds them
-    /// from the built-in arrangement on the first configuration pass — and
-    /// defaults the pickers to the first discovered devices. An unreadable
-    /// file is reported and set aside, never silently overwritten (see
-    /// ARCHITECTURE.md, "Project save/load").
+    /// Loads the project document at boot — the project the app last had
+    /// open when the file is still there and readable, else the default
+    /// project — adopting the recorded preset (or the document's first) as
+    /// the active preset and pointing the pickers at the devices its layers
+    /// reference; with no file (or a file holding no presets), it leaves the
+    /// presets unseeded — ``establishSessionPreset()`` seeds them from the
+    /// built-in arrangement on the first configuration pass — and defaults
+    /// the pickers to the first discovered devices.
+    ///
+    /// A last project that is missing or unreadable is reported as
+    /// `project.reopen` and left alone — it is the operator's file, moved or
+    /// edited by hand — and the launch falls back to the default project,
+    /// whose own unreadable file is set aside rather than silently
+    /// overwritten (see ARCHITECTURE.md, "Project save/load" and "Projects
+    /// as documents").
     private func loadProject() {
-        let path = store.fileURL.path(percentEncoded: false)
         // Read before anything below assigns a preset or a shot: each
-        // assignment records the new position over the old.
-        let recorded = sessionPreferences.position
-        // The armed transition needs no document to come back: it is the
-        // switcher's own setting, restored whatever the project holds.
-        if let kind = recorded.transitionKind { takeTransitionKind = kind }
-        if let edge = recorded.wipeEdge { wipeEdge = edge }
-        if let shader = recorded.shaderName { shaderName = shader }
-        if let duration = recorded.transitionDuration { setTakeTransitionDuration(duration) }
-        do {
-            if let project = try store.load() {
-                // A document written before transient shots existed carries
-                // the automatic shots the app made to stage clicked inputs;
-                // under the rule they were never the operator's, so they are
-                // dropped rather than promoted, and the next save writes them
-                // out (ARCHITECTURE.md, "The shot bank").
-                presets = project.presets.map { preset in
-                    Preset(
-                        id: preset.id,
-                        name: preset.name,
-                        shots: ShotEdit.persistedShots(of: preset.shots),
-                        audioChannels: preset.audioChannels
-                    )
-                }
-                let dropped = zip(project.presets, presets).reduce(0) { $0 + $1.0.shots.count - $1.1.shots.count }
-                if dropped > 0 {
+        // assignment records the new position over the old. The armed
+        // transition needs no document to come back: it is the switcher's
+        // own setting, global across projects, restored whatever the
+        // project holds.
+        let armed = sessionPreferences.position
+        if let kind = armed.transitionKind { takeTransitionKind = kind }
+        if let edge = armed.wipeEdge { wipeEdge = edge }
+        if let shader = armed.shaderName { shaderName = shader }
+        if let duration = armed.transitionDuration { setTakeTransitionDuration(duration) }
+
+        recentProjectURLs = NSDocumentController.shared.recentDocumentURLs
+        var loaded: Project?
+        if let last = sessionPreferences.lastProjectURL,
+            last.standardizedFileURL != defaultStore.fileURL.standardizedFileURL
+        {
+            let lastStore = ProjectStore(fileURL: last)
+            let lastPath = last.path(percentEncoded: false)
+            do {
+                if let project = try lastStore.load() {
+                    store = lastStore
+                    loaded = project
+                } else {
                     eventBus.event(
-                        "project.transientShotsDropped",
+                        "project.reopen",
                         domain: .composition,
-                        params: ["path": .string(path), "count": .int(dropped)]
+                        params: ["path": .string(lastPath), "reason": .string("missing")]
                     )
-                    scheduleAutosave()
                 }
-                // Hold this project's references; ``loadDestinations()``
-                // merges them with the operator's store to build the panel
-                // rows (each key stays in secure storage, read lazily when the
-                // panel prefills that row's field).
-                projectDestinationReferences = project.destinations
-                // The program's format is the project's; an absent key is
-                // the 1080p30 default. The compositor may already exist
-                // (a monitor's relay creates it), so it is told too — a
-                // no-op when the format is the one it was built with.
-                format = project.programFormat ?? ProgramFormat()
-                compositor.setFormat(format)
-                // The media list is the document's; its inputs register once
-                // the load returns (``registerProjectMedia()``).
-                media = project.media ?? []
+            } catch {
+                eventBus.error(
+                    "project.reopen",
+                    domain: .composition,
+                    params: ["path": .string(lastPath), "error": .string(String(describing: error))]
+                )
             }
+        }
+        if loaded == nil {
+            store = defaultStore
+            loaded = loadDefaultProject()
+        }
+        projectURL = store.fileURL
+
+        guard let project = loaded else {
+            // A fresh project: default to the first discovered devices; the
+            // first configuration pass seeds the built-in arrangement from
+            // whatever actually starts.
+            selectedDisplayID = displays.first?.id
+            selectedCameraID = cameras.first?.id
+            return
+        }
+        let recorded = adoptDocument(project)
+
+        // The recorded preset when the document still holds it, else the
+        // first — and the recorded shots wait for the compositor to have the
+        // pool (``establishSessionPreset()``).
+        guard let loadedPreset = recorded.launchPreset(in: presets) else {
+            selectedDisplayID = displays.first?.id
+            selectedCameraID = cameras.first?.id
+            return
+        }
+
+        restoredPosition = recorded
+        activePresetID = loadedPreset.id
+        shots = loadedPreset.shots
+        bindPickers()
+        noteRecentProject(store.fileURL)
+        eventBus.event(
+            "project.loaded",
+            domain: .composition,
+            params: [
+                "path": .string(store.fileURL.path(percentEncoded: false)),
+                "presets": .int(presets.count),
+                "shots": .int(shots.count),
+            ]
+        )
+    }
+
+    /// Reads the default project's document, or returns nil when there is
+    /// none yet (a fresh install). An unreadable file is reported and set
+    /// aside, never silently overwritten (see ARCHITECTURE.md, "Project
+    /// save/load").
+    ///
+    /// - Returns: The default project, or nil when there is no readable one.
+    private func loadDefaultProject() -> Project? {
+        let path = defaultStore.fileURL.path(percentEncoded: false)
+        do {
+            return try defaultStore.load()
         } catch {
             eventBus.error(
                 "project.load",
@@ -4628,7 +4718,7 @@ final class EngineModel {
                 params: ["path": .string(path), "error": .string(String(describing: error))]
             )
             do {
-                let setAside = try store.setAsideUnreadableFile()
+                let setAside = try defaultStore.setAsideUnreadableFile()
                 eventBus.event(
                     "project.setAside",
                     domain: .composition,
@@ -4641,36 +4731,154 @@ final class EngineModel {
                     params: ["path": .string(path), "error": .string(String(describing: error))]
                 )
             }
+            return nil
         }
+    }
 
-        // The recorded preset when the document still holds it, else the
-        // first — and the recorded shots wait for the compositor to have the
-        // pool (``establishSessionPreset()``).
-        guard let loadedPreset = recorded.launchPreset(in: presets) else {
-            // A fresh project: default to the first discovered devices; the
-            // first configuration pass seeds the built-in arrangement from
-            // whatever actually starts.
-            selectedDisplayID = displays.first?.id
-            selectedCameraID = cameras.first?.id
-            return
+    /// Takes a document's content as the app's — the presets, the
+    /// destination references, the program format, the media list, and the
+    /// document's identity — from the store already installed as ``store``,
+    /// and returns the position recorded for that project so the caller can
+    /// choose the preset and shots to put back. The one path both the boot
+    /// load and a File-menu switch go through (ARCHITECTURE.md, "Projects as
+    /// documents").
+    ///
+    /// A document written before projects had ids is read under the
+    /// one-project era's flat position keys, then assigned an id and
+    /// autosaved with it, so its position carries across the launch that
+    /// names it.
+    ///
+    /// - Parameter project: The document to adopt.
+    /// - Returns: The recorded position for that project.
+    private func adoptDocument(_ project: Project) -> SessionPosition {
+        let path = store.fileURL.path(percentEncoded: false)
+        // A document written before transient shots existed carries the
+        // automatic shots the app made to stage clicked inputs; under the
+        // rule they were never the operator's, so they are dropped rather
+        // than promoted, and the next save writes them out
+        // (ARCHITECTURE.md, "The shot bank").
+        presets = project.presets.map { preset in
+            Preset(
+                id: preset.id,
+                name: preset.name,
+                shots: ShotEdit.persistedShots(of: preset.shots),
+                audioChannels: preset.audioChannels
+            )
         }
+        let dropped = zip(project.presets, presets).reduce(0) { $0 + $1.0.shots.count - $1.1.shots.count }
+        if dropped > 0 {
+            eventBus.event(
+                "project.transientShotsDropped",
+                domain: .composition,
+                params: ["path": .string(path), "count": .int(dropped)]
+            )
+            scheduleAutosave()
+        }
+        // Hold this project's references; ``loadDestinations()`` merges
+        // them with the operator's store to build the panel rows (each key
+        // stays in secure storage, read lazily when the panel prefills that
+        // row's field).
+        projectDestinationReferences = project.destinations
+        // The program's format is the project's; an absent key is the
+        // 1080p30 default. The compositor may already exist (a monitor's
+        // relay creates it), so it is told too — a no-op when the format is
+        // the one it was built with.
+        format = project.programFormat ?? ProgramFormat()
+        compositor.setFormat(format)
+        // The media list is the document's; its inputs register once the
+        // load returns (``registerProjectMedia()``).
+        media = project.media ?? []
+        mediaDurations = [:]
+        mediaSizes = [:]
 
-        restoredPosition = recorded
-        activePresetID = loadedPreset.id
-        shots = loadedPreset.shots
+        let recorded: SessionPosition
+        if let id = project.id {
+            projectID = id
+            sessionPreferences = sessionPreferences.scoped(to: id)
+            recorded = sessionPreferences.position
+        } else {
+            recorded = sessionPreferences.scoped(to: nil).position
+            let id = ProjectID()
+            projectID = id
+            sessionPreferences = sessionPreferences.scoped(to: id)
+            scheduleAutosave()
+        }
+        sessionPreferences.lastProjectURL = store.fileURL
+        return recorded
+    }
 
-        // The pickers reflect the loaded document: the first referenced input
-        // of each kind that is currently discovered plays that built-in role.
-        // A referenced input that is not discovered stays bound — its layers
-        // contribute nothing until it returns (or the operator removes and
-        // re-adds the layer in the layer-tree editor).
+    /// Points the pickers at the devices the active preset's layers
+    /// reference: the first referenced input of each kind that is currently
+    /// discovered plays that built-in role. A referenced input that is not
+    /// discovered stays bound — its layers contribute nothing until it
+    /// returns (or the operator rebinds the layer in the inspector).
+    private func bindPickers() {
         let referenced = shots.flatMap { $0.layers.map(\.input) }
         boundCameraID = referenced.first { id in cameras.contains { $0.id == id } }
         boundDisplayID = referenced.first { id in displays.contains { $0.id == id } }
         selectedCameraID = boundCameraID
         selectedDisplayID = boundDisplayID
+    }
+
+    // MARK: Projects
+
+    /// Whether the open project can be replaced right now — the File menu's
+    /// New, Open, and Open Recent items are enabled while it can
+    /// (``ProjectSwitch``).
+    var canReplaceProject: Bool {
+        ProjectSwitch.refusal(isStreaming: isStreaming, isRecording: isRecording) == nil
+    }
+
+    /// Opens a project file the operator chose, replacing the open show
+    /// with it — File ▸ Open…, Open Recent, or a document double-clicked in
+    /// the Finder (ARCHITECTURE.md, "Projects as documents").
+    ///
+    /// **Refused while streaming or recording**, as a program format change
+    /// is, and for the larger reason: a switch tears down the shot pool, the
+    /// media inputs, and the destination list, and the sinks are delivering
+    /// them. The File menu's items are disabled then; this refusal — a
+    /// `project.open` error event carrying the `reason` — is the rule. A
+    /// file that is missing or not a project document is reported the same
+    /// way and the open show stays exactly as it was; nothing is set aside,
+    /// since the file is the operator's. Opening the project already open
+    /// changes nothing.
+    ///
+    /// - Parameter url: The project document to open.
+    func openProject(at url: URL) async {
+        guard hasSessionPreset, !isRemovingData else { return }
+        let path = url.path(percentEncoded: false)
+        if let reason = ProjectSwitch.refusal(isStreaming: isStreaming, isRecording: isRecording) {
+            eventBus.error(
+                "project.open",
+                domain: .composition,
+                params: ["path": .string(path), "reason": .string(reason)]
+            )
+            return
+        }
+        guard url.standardizedFileURL != store.fileURL.standardizedFileURL else { return }
+        let target = ProjectStore(fileURL: url)
+        let project: Project
+        do {
+            guard let loaded = try target.load() else {
+                eventBus.error(
+                    "project.open",
+                    domain: .composition,
+                    params: ["path": .string(path), "reason": .string("missing")]
+                )
+                return
+            }
+            project = loaded
+        } catch {
+            eventBus.error(
+                "project.open",
+                domain: .composition,
+                params: ["path": .string(path), "error": .string(String(describing: error))]
+            )
+            return
+        }
+        await replaceShow(with: project, store: target)
         eventBus.event(
-            "project.loaded",
+            "project.opened",
             domain: .composition,
             params: [
                 "path": .string(path),
@@ -4678,6 +4886,199 @@ final class EngineModel {
                 "shots": .int(shots.count),
             ]
         )
+    }
+
+    /// Opens a project the Finder handed the app, whenever the engine is
+    /// ready for it: a document double-clicked while the app runs opens at
+    /// once; one that launched the app becomes the project the boot loads,
+    /// and one arriving mid-boot waits for ``start()`` to finish.
+    ///
+    /// - Parameter url: The project document to open.
+    func openProjectWhenReady(_ url: URL) async {
+        if !started {
+            sessionPreferences.lastProjectURL = url
+        } else if hasSessionPreset {
+            await openProject(at: url)
+        } else {
+            pendingProjectURL = url
+        }
+    }
+
+    /// Makes a new project at a location the operator chose — the built-in
+    /// arrangement around the cast devices that are running, as a fresh
+    /// install is seeded — writes it at once so the file exists from the
+    /// moment it is made, and opens it. Refused while streaming or recording
+    /// like ``openProject(at:)``, as a `project.new` error.
+    ///
+    /// - Parameter url: Where the new project document goes.
+    func newProject(at url: URL) async {
+        guard hasSessionPreset, !isRemovingData else { return }
+        let path = url.path(percentEncoded: false)
+        if let reason = ProjectSwitch.refusal(isStreaming: isStreaming, isRecording: isRecording) {
+            eventBus.error(
+                "project.new",
+                domain: .composition,
+                params: ["path": .string(path), "reason": .string(reason)]
+            )
+            return
+        }
+        let project = Project(id: ProjectID(), presets: [seededShow().preset])
+        await replaceShow(with: project, store: ProjectStore(fileURL: url))
+        saveProject()
+        eventBus.event("project.created", domain: .composition, params: ["path": .string(path)])
+    }
+
+    /// Writes the open show to a new file and makes that file the open
+    /// project — Save As… on an autosaving document: from here on the edits
+    /// land there, and the previous file keeps what it had. Allowed while
+    /// live, since nothing on air changes. A write that cannot land is
+    /// reported as `project.save` and the open project stays where it was.
+    ///
+    /// - Parameter url: The new project document's location.
+    func saveProjectAs(to url: URL) {
+        guard hasSessionPreset, !isRemovingData else { return }
+        let target = ProjectStore(fileURL: url)
+        guard url.standardizedFileURL != store.fileURL.standardizedFileURL else { return }
+        autosaveTask?.cancel()
+        autosaveTask = nil
+        let previous = store.fileURL
+        guard writeProject(to: target) else { return }
+        store = target
+        projectURL = url
+        sessionPreferences.lastProjectURL = url
+        noteRecentProject(url)
+        eventBus.event(
+            "project.savedAs",
+            domain: .composition,
+            params: [
+                "from": .string(previous.path(percentEncoded: false)),
+                "path": .string(url.path(percentEncoded: false)),
+            ]
+        )
+    }
+
+    /// Empties the Open Recent submenu — its Clear Menu item.
+    func clearRecentProjects() {
+        NSDocumentController.shared.clearRecentDocuments(nil)
+        recentProjectURLs = []
+    }
+
+    /// Records a project as recently opened, in the system's list — so it
+    /// shows in Open Recent, the Apple menu's Recent Items, and the Dock.
+    ///
+    /// - Parameter url: The project document.
+    private func noteRecentProject(_ url: URL) {
+        NSDocumentController.shared.noteNewRecentDocumentURL(url)
+        recentProjectURLs = NSDocumentController.shared.recentDocumentURLs
+    }
+
+    /// Replaces the open show with a document — the runtime counterpart of
+    /// the boot load, against an engine that already has a show on air.
+    ///
+    /// The outgoing show's last edits are flushed to its file first, so the
+    /// file cannot change under a pending autosave. Its media inputs are
+    /// unregistered — they were the document's, and the sidebar and the
+    /// layer editor must stop listing them — and its transient shots go
+    /// with the pool, since they were session state of a show that is no
+    /// longer open. Then the document is adopted, its media registered, its
+    /// destinations merged with the operator's store, and its preset put on
+    /// the buses (``activatePreset(recorded:)``).
+    ///
+    /// - Parameters:
+    ///   - project: The document to open.
+    ///   - target: Its store, which becomes ``store``.
+    private func replaceShow(with project: Project, store target: ProjectStore) async {
+        if autosaveTask != nil { saveProject() }
+        for item in media {
+            await registry.unregister(item.id.inputID)
+        }
+        store = target
+        projectURL = target.fileURL
+        let recorded = adoptDocument(project)
+        if !media.isEmpty {
+            await registerProjectMedia()
+        }
+        await readDeviceLists()
+        await loadDestinations()
+        await activatePreset(recorded: recorded)
+        noteRecentProject(store.fileURL)
+    }
+
+    /// Puts an adopted document's preset on the buses: the recorded preset
+    /// when the document holds it, else its first — seeding the built-in
+    /// arrangement into a document that has none, since a show cannot have
+    /// no preset — with the pickers bound to the devices its layers
+    /// reference, and the recorded program and staged shots restored where
+    /// they still exist (``restoreSessionPosition(in:)``). When nothing is
+    /// recorded, the compositor's by-id rule holds a shot the new pool also
+    /// has — a copy made by Save As switches seamlessly — and otherwise the
+    /// outgoing show leaves the air with a cut to the first shot, the
+    /// preset-removal rule. Then the inputs reconfigure around the new
+    /// show, and the mixer takes the preset's authored audio channels as a
+    /// boot does, the seed policy as its fallback.
+    ///
+    /// - Parameter recorded: The position recorded for the adopted project.
+    private func activatePreset(recorded: SessionPosition) async {
+        if presets.isEmpty {
+            presets = [seededShow().preset]
+            scheduleAutosave()
+        }
+        guard let preset = recorded.launchPreset(in: presets) else { return }
+        activePresetID = preset.id
+        shots = preset.shots
+        bindPickers()
+        compositor.loadPreset(preset)
+        restoredPosition = recorded
+        restoreSessionPosition(in: preset)
+        if compositor.activeShotID == nil {
+            if let first = preset.shots.first {
+                compositor.take(shotID: first.id)
+            } else {
+                compositor.setShot(Shot())
+            }
+        }
+        activeShotID = compositor.activeShotID
+        previewShotID = compositor.previewShotID
+        ensurePreviewStaged()
+        syncTally()
+        await reconfigure()
+        mixerStrips = MixerStrip.strips(channels: preset.audioChannels, discovered: audioInputs)
+        await reconfigureAudio()
+    }
+
+    /// The built-in arrangement seeded around whatever cast devices are
+    /// running, as a preset — a fresh install's first show, and a new
+    /// project's (``ProgramLayout``). The bars generator is discovered
+    /// rather than started: a generator needs no authorization, so the seed
+    /// can reference it before it runs.
+    private struct SeededShow {
+        /// The seeded preset, named Default.
+        let preset: Preset
+
+        /// The display cast in the built-in role, when one is running.
+        let displayID: InputID?
+
+        /// The camera cast in the built-in role, when one is running.
+        let cameraID: InputID?
+
+        /// Whether the seed references the bars generator, which then needs
+        /// a configuration pass to start it.
+        let referencesBars: Bool
+    }
+
+    /// Seeds the built-in arrangement around the running cast devices.
+    ///
+    /// - Returns: The seeded preset and the devices it was laid out around.
+    private func seededShow() -> SeededShow {
+        let displayID = selectedDisplayID.flatMap { activeInputs[$0] != nil ? $0 : nil }
+        let cameraID = selectedCameraID.flatMap { activeInputs[$0] != nil ? $0 : nil }
+        let barsID = videoInputs.first { $0.id == BarsGenerator.inputID }?.id
+        let preset = Preset(
+            id: PresetID(rawValue: "default"),
+            name: String(localized: "Default", comment: "Name of a fresh project's seeded preset"),
+            shots: ProgramLayout.shots(displayID: displayID, cameraID: cameraID, barsID: barsID)
+        )
+        return SeededShow(preset: preset, displayID: displayID, cameraID: cameraID, referencesBars: barsID != nil)
     }
 
     /// Completes the first configuration pass: when no project file supplied
@@ -4692,23 +5093,20 @@ final class EngineModel {
     /// document).
     private func establishSessionPreset() {
         if !hasSessionPreset {
-            let displayID = selectedDisplayID.flatMap { activeInputs[$0] != nil ? $0 : nil }
-            let cameraID = selectedCameraID.flatMap { activeInputs[$0] != nil ? $0 : nil }
-            // The bars generator is discovered rather than started: a
-            // generator needs no authorization, so the seed can reference it
-            // before it runs and ask for the pass that starts it.
-            let barsID = videoInputs.first { $0.id == BarsGenerator.inputID }?.id
-            shots = ProgramLayout.shots(displayID: displayID, cameraID: cameraID, barsID: barsID)
-            if barsID != nil { reconfigureRequested = true }
-            boundDisplayID = displayID
-            boundCameraID = cameraID
-            let seeded = Preset(
-                id: PresetID(rawValue: "default"),
-                name: String(localized: "Default", comment: "Name of a fresh project's seeded preset"),
-                shots: shots
-            )
-            presets = [seeded]
-            activePresetID = seeded.id
+            let seeded = seededShow()
+            shots = seeded.preset.shots
+            if seeded.referencesBars { reconfigureRequested = true }
+            boundDisplayID = seeded.displayID
+            boundCameraID = seeded.cameraID
+            presets = [seeded.preset]
+            // A fresh project is named before its position is first
+            // recorded, so the record lands under its own scope.
+            let id = ProjectID()
+            projectID = id
+            sessionPreferences = sessionPreferences.scoped(to: id)
+            sessionPreferences.lastProjectURL = store.fileURL
+            noteRecentProject(store.fileURL)
+            activePresetID = seeded.preset.id
             eventBus.event(
                 "project.seeded",
                 domain: .composition,
@@ -4822,6 +5220,19 @@ final class EngineModel {
         guard hasSessionPreset, !isRemovingData else { return }
         autosaveTask?.cancel()
         autosaveTask = nil
+        writeProject(to: store)
+    }
+
+    /// Writes the open show to a store — the document ``saveProject()``
+    /// autosaves and ``saveProjectAs(to:)`` copies: every preset in switcher
+    /// order, the active one refreshed with its live layer-tree edits first,
+    /// under the project's id.
+    ///
+    /// - Parameter target: The store to write through.
+    /// - Returns: Whether the write landed; a write that could not is
+    ///   reported as `project.save` on the bus.
+    @discardableResult
+    private func writeProject(to target: ProjectStore) -> Bool {
         syncActivePreset()
         // The document records only which destinations this show streams to
         // and whether each is enabled; the names and URLs belong to the
@@ -4830,27 +5241,30 @@ final class EngineModel {
         // never changed it round-trips to the document it had before the
         // setting existed.
         let project = Project(
+            id: projectID,
             presets: presets,
             destinations: DestinationEdit.references(from: destinations),
             programFormat: format == ProgramFormat() ? nil : format,
             media: media.isEmpty ? nil : media
         )
         do {
-            try store.save(project)
+            try target.save(project)
             eventBus.event(
                 "project.saved",
                 domain: .composition,
-                params: ["path": .string(store.fileURL.path(percentEncoded: false))]
+                params: ["path": .string(target.fileURL.path(percentEncoded: false))]
             )
+            return true
         } catch {
             eventBus.error(
                 "project.save",
                 domain: .composition,
                 params: [
-                    "path": .string(store.fileURL.path(percentEncoded: false)),
+                    "path": .string(target.fileURL.path(percentEncoded: false)),
                     "error": .string(String(describing: error)),
                 ]
             )
+            return false
         }
     }
 

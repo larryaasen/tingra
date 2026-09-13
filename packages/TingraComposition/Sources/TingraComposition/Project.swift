@@ -9,6 +9,28 @@
 
 import Foundation
 
+/// A stable identifier for a ``Project`` — the document itself, not its
+/// file: it survives Save As, a move, and a rename, which is what lets the
+/// app keep the operator's position (the active preset, the program and
+/// staged shots) per show in machine-local preferences without writing it
+/// into the document (ARCHITECTURE.md, "Projects as documents").
+/// String-backed like ``PresetID`` and ``ShotID``; defaults to a fresh UUID.
+public struct ProjectID: RawRepresentable, Hashable, Sendable, Codable {
+    /// The identifier string — a UUID by default, or a caller-chosen stable
+    /// token.
+    public let rawValue: String
+
+    /// Creates an identifier from its string form.
+    public init(rawValue: String) {
+        self.rawValue = rawValue
+    }
+
+    /// Creates a fresh, unique identifier (a new UUID string).
+    public init() {
+        self.rawValue = UUID().uuidString
+    }
+}
+
 /// The saved document for a whole show (GLOSSARY.md, "Project"): everything
 /// needed to reopen the show exactly as it was — the presets (each with its
 /// shots, optional per-shot default transitions, and optional authored audio
@@ -37,6 +59,12 @@ public struct Project: Sendable, Equatable, Codable {
 
     /// The document format version this project was written with.
     public let version: Int
+
+    /// The document's own stable identity, or `nil` for a document written
+    /// before projects had one — the app assigns an id to such a document
+    /// on load and writes it with the next save. An **optional key within
+    /// v1** — the pre-release rule, no version bump.
+    public let id: ProjectID?
 
     /// The presets the project holds, in switcher order. The document format
     /// holds an array from the start; the app surfaces only the first preset
@@ -73,6 +101,7 @@ public struct Project: Sendable, Equatable, Codable {
     ///
     /// - Parameters:
     ///   - version: The document format version (default: ``currentVersion``).
+    ///   - id: The document's stable identity (default: none).
     ///   - presets: The presets, in switcher order (default: none).
     ///   - destinations: The destinations this project streams to (default:
     ///     none).
@@ -81,12 +110,14 @@ public struct Project: Sendable, Equatable, Codable {
     ///   - media: The files added as media (default: none).
     public init(
         version: Int = Project.currentVersion,
+        id: ProjectID? = nil,
         presets: [Preset] = [],
         destinations: [DestinationReference]? = nil,
         programFormat: ProgramFormat? = nil,
         media: [ProjectMedia]? = nil
     ) {
         self.version = version
+        self.id = id
         self.presets = presets
         self.destinations = destinations
         self.programFormat = programFormat
@@ -96,6 +127,7 @@ public struct Project: Sendable, Equatable, Codable {
     /// The coding keys — stable camelCase names for the project document.
     private enum CodingKeys: String, CodingKey {
         case version
+        case id
         case presets
         case destinations
         case programFormat
@@ -108,7 +140,7 @@ public struct Project: Sendable, Equatable, Codable {
 
     /// Decodes a project. `version` is required (a document must declare its
     /// format so future versions can migrate it) and must not exceed
-    /// ``currentVersion``; `presets`, `destinations`, `programFormat`,
+    /// ``currentVersion``; `id`, `presets`, `destinations`, `programFormat`,
     /// `media`, and the older single `destination` are optional (a minimal document
     /// decodes forgivingly with them absent).
     ///
@@ -143,6 +175,7 @@ public struct Project: Sendable, Equatable, Codable {
             )
         }
         self.version = version
+        id = try container.decodeIfPresent(ProjectID.self, forKey: .id)
         presets = try container.decodeIfPresent([Preset].self, forKey: .presets) ?? []
         if let list = try container.decodeIfPresent([DestinationReference].self, forKey: .destinations) {
             destinations = list
@@ -161,15 +194,16 @@ public struct Project: Sendable, Equatable, Codable {
         media = try container.decodeIfPresent([ProjectMedia].self, forKey: .media)
     }
 
-    /// Encodes a project, writing `version` and `presets` always and
+    /// Encodes a project, writing `version` and `presets` always and `id`,
     /// `destinations`, `programFormat`, and `media` only when set, so a
-    /// project with no destination, the default format, or no media
+    /// project with no id, no destination, the default format, or no media
     /// round-trips to a document without those keys (and reads them back
     /// as nil). The superseded
     /// single `destination` key is never written.
     public func encode(to encoder: any Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(version, forKey: .version)
+        try container.encodeIfPresent(id, forKey: .id)
         try container.encode(presets, forKey: .presets)
         try container.encodeIfPresent(destinations, forKey: .destinations)
         try container.encodeIfPresent(programFormat, forKey: .programFormat)

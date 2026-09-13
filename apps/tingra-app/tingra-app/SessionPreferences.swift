@@ -97,19 +97,48 @@ struct SessionPosition: Equatable, Sendable {
 /// properties' own observers) and read once at launch, before the first
 /// assignment can overwrite it. Ids only — a deleted preset or shot is
 /// simply not found at the next launch (``SessionPosition``).
+///
+/// **Scoped per project since 2026-09-13** (ARCHITECTURE.md, "Projects as
+/// documents"): the preset and shot ids belong to one show, so a store is
+/// made for a ``ProjectID`` and keeps that show's position under keys of
+/// its own — switching projects and back finds each where it was left. The
+/// armed transition is the switcher's setting rather than any show's, and
+/// stays global, as does ``lastProjectURL``. A store with no project scope
+/// reads and writes the flat keys of the one-project era, which is how a
+/// document written before projects had ids keeps its position across the
+/// launch that assigns it one.
 struct SessionPreferences {
     /// The defaults database the values live in (injectable, so tests run
     /// against their own suite rather than the user's).
     private let defaults: UserDefaults
 
+    /// The project whose position this store keeps, or nil for the flat
+    /// keys of the one-project era.
+    let projectID: ProjectID?
+
     /// The active preset's id key.
-    private static let presetKey = "session.activePresetID"
+    private var presetKey: String { scoped("activePresetID") }
 
     /// The program shot's id key.
-    private static let activeShotKey = "session.activeShotID"
+    private var activeShotKey: String { scoped("activeShotID") }
 
     /// The staged shot's id key.
-    private static let previewShotKey = "session.previewShotID"
+    private var previewShotKey: String { scoped("previewShotID") }
+
+    /// The last opened project's path key — global, since it names the
+    /// scope rather than living in one.
+    private static let projectPathKey = "session.projectPath"
+
+    /// A bus-position key under this store's project scope
+    /// (`session.projects.<id>.<name>`), or the flat `session.<name>` key
+    /// when the store has none.
+    ///
+    /// - Parameter name: The key's own name.
+    /// - Returns: The full key.
+    private func scoped(_ name: String) -> String {
+        guard let projectID else { return "session.\(name)" }
+        return "session.projects.\(projectID.rawValue).\(name)"
+    }
 
     /// The armed transition kind's key.
     private static let transitionKindKey = "session.transitionKind"
@@ -123,12 +152,39 @@ struct SessionPreferences {
     /// The take duration's key.
     private static let transitionDurationKey = "session.transitionDuration"
 
-    /// Creates a store over a defaults database.
+    /// Creates a store over a defaults database, for one project's position.
     ///
-    /// - Parameter defaults: The database to read and write (the standard
-    ///   one by default).
-    init(defaults: UserDefaults = .standard) {
+    /// - Parameters:
+    ///   - defaults: The database to read and write (the standard one by
+    ///     default).
+    ///   - projectID: The project whose position the store keeps, or nil
+    ///     (the default) for the flat keys of the one-project era.
+    init(defaults: UserDefaults = .standard, projectID: ProjectID? = nil) {
         self.defaults = defaults
+        self.projectID = projectID
+    }
+
+    /// The same store scoped to another project — the position keys move,
+    /// the transition keys and the last project do not.
+    ///
+    /// - Parameter projectID: The project to scope to.
+    /// - Returns: A store over the same defaults for that project.
+    func scoped(to projectID: ProjectID?) -> SessionPreferences {
+        SessionPreferences(defaults: defaults, projectID: projectID)
+    }
+
+    /// The project the app had open when it last ran, or nil when none was
+    /// recorded — a fresh install, a removal, or every launch before
+    /// projects became documents, all of which open the default project.
+    /// Stored as a path: the app is not sandboxed, so no bookmark is needed,
+    /// and a path reads plainly in the defaults. Setting nil removes the key.
+    var lastProjectURL: URL? {
+        get {
+            defaults.string(forKey: Self.projectPathKey).map { URL(filePath: $0) }
+        }
+        nonmutating set {
+            defaults.set(newValue?.path(percentEncoded: false), forKey: Self.projectPathKey)
+        }
     }
 
     /// The recorded position; ``SessionPosition/none`` on a fresh install.
@@ -140,9 +196,9 @@ struct SessionPreferences {
     var position: SessionPosition {
         get {
             SessionPosition(
-                presetID: defaults.string(forKey: Self.presetKey).map(PresetID.init(rawValue:)),
-                activeShotID: defaults.string(forKey: Self.activeShotKey).map(ShotID.init(rawValue:)),
-                previewShotID: defaults.string(forKey: Self.previewShotKey).map(ShotID.init(rawValue:)),
+                presetID: defaults.string(forKey: presetKey).map(PresetID.init(rawValue:)),
+                activeShotID: defaults.string(forKey: activeShotKey).map(ShotID.init(rawValue:)),
+                previewShotID: defaults.string(forKey: previewShotKey).map(ShotID.init(rawValue:)),
                 transitionKind: defaults.string(forKey: Self.transitionKindKey).flatMap(
                     TakeTransitionKind.init(rawValue:)),
                 wipeEdge: defaults.string(forKey: Self.wipeEdgeKey).flatMap(WipeEdge.init(rawValue:)),
@@ -151,9 +207,9 @@ struct SessionPreferences {
             )
         }
         nonmutating set {
-            defaults.set(newValue.presetID?.rawValue, forKey: Self.presetKey)
-            defaults.set(newValue.activeShotID?.rawValue, forKey: Self.activeShotKey)
-            defaults.set(newValue.previewShotID?.rawValue, forKey: Self.previewShotKey)
+            defaults.set(newValue.presetID?.rawValue, forKey: presetKey)
+            defaults.set(newValue.activeShotID?.rawValue, forKey: activeShotKey)
+            defaults.set(newValue.previewShotID?.rawValue, forKey: previewShotKey)
             defaults.set(newValue.transitionKind?.rawValue, forKey: Self.transitionKindKey)
             defaults.set(newValue.wipeEdge?.rawValue, forKey: Self.wipeEdgeKey)
             defaults.set(newValue.shaderName?.rawValue, forKey: Self.shaderNameKey)

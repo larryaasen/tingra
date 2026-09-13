@@ -101,12 +101,25 @@ struct TingraApp: App {
                     StatusBarView(model: model, statusBar: statusBar)
                 }
             }
+            // The window is titled for the open project, with the document
+            // proxy icon every Mac document window carries, so a switch is
+            // visible where the eye expects it (ARCHITECTURE.md, "Projects
+            // as documents").
+            .navigationTitle(model.projectName)
+            .navigationDocument(model.projectURL)
             .task {
                 appDelegate.model = model
+                // A document double-clicked to launch the app arrived at the
+                // delegate before the model existed; handed over before the
+                // boot, it is the project the boot loads.
+                for url in appDelegate.takePendingProjectURLs() {
+                    await model.openProjectWhenReady(url)
+                }
                 await model.start()
             }
         }
         .commands {
+            ProjectCommands(model: model)
             SidebarVisibilityCommands(model: model, visibility: $sidebarVisibility)
             InspectorCommands(model: model, isPresented: $isInspectorPresented)
             ProgramCommands(model: model, isCustomSizePresented: $isCustomSizePresented)
@@ -199,6 +212,38 @@ struct TingraApp: App {
 final class TingraAppDelegate: NSObject, NSApplicationDelegate {
     /// The engine model, handed over once the main window's task runs.
     var model: EngineModel?
+
+    /// Project documents the Finder asked the app to open before the main
+    /// window's task handed the model over — a document double-clicked to
+    /// launch the app — in the order they arrived.
+    private var pendingProjectURLs: [URL] = []
+
+    /// Hands over the project documents that arrived before the model did,
+    /// emptying the list.
+    ///
+    /// - Returns: The documents, in the order they arrived.
+    func takePendingProjectURLs() -> [URL] {
+        defer { pendingProjectURLs = [] }
+        return pendingProjectURLs
+    }
+
+    /// Opens a project document the Finder handed the app — a double-click,
+    /// a drop on the Dock icon, or `open` from a shell. The last one wins
+    /// when several arrive at once, since the app keeps one project open;
+    /// before the model exists they wait for the main window's task
+    /// (``takePendingProjectURLs()``).
+    ///
+    /// - Parameters:
+    ///   - application: The application (unused).
+    ///   - urls: The documents to open.
+    func application(_ application: NSApplication, open urls: [URL]) {
+        guard let model else {
+            pendingProjectURLs.append(contentsOf: urls)
+            return
+        }
+        guard let url = urls.last else { return }
+        Task { await model.openProjectWhenReady(url) }
+    }
 
     /// Turns off automatic window tabbing, before any window exists.
     ///

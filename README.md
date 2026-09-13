@@ -48,11 +48,15 @@ and they nest: **project > preset > shot > layers.**
 | **Effect on program** | Closing one show, opening another | None — the switch is seamless, program keeps playing | This *is* the change viewers see, via cut, dissolve, wipe, or shader | Immediate on the next tick, if its shot is on program |
 
 A project is saved as a `.tingraproject` file (JSON inside). Every preset,
-every shot, and every layer is in it. Which preset is active and which shots
-are on program and preview are *where the operator is standing* rather than
-part of the show, so they stay out of the document — but they are not lost
-either: the app records them in machine-local preferences and restores them at
-launch, along with the armed transition.
+every shot, and every layer is in it. The app keeps one project open and
+autosaves it; the File menu makes a new one, opens another (or a recent one,
+or one double-clicked in the Finder), and saves the open show under a new
+name, and the launch reopens the project that was open last. Which preset is
+active and which shots are on program and preview are *where the operator is
+standing* rather than part of the show, so they stay out of the document —
+but they are not lost either: the app records them per project in
+machine-local preferences and restores them at launch, along with the armed
+transition.
 
 ## Getting started: the CLI and MCP server
 
