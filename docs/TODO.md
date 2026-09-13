@@ -433,6 +433,17 @@ or two in the doc that owns them — none need a rewrite.
       shared `VideoEffectChain`, `MonitorFrameSource.image(for:)`) showing
       the selected layer's input after its chain, behind a disclosure
       closed by default and not drawn while closed.
+    - [x] **A crop trims the frame** *(built 2026-09-13 — ARCHITECTURE.md,
+      "A crop trims the frame")* — every chain edit that moves the picture's
+      extent moves the layer's frame by the same mapping
+      (`LayerFrameGesture.following(_:from:to:)`), so a crop cuts the
+      picture down in place instead of stretching the kept region into the
+      old frame; one document edit and one undo step with the chain change.
+    - [x] **Shot thumbnails are the shot** *(built 2026-09-13 — ARCHITECTURE.md,
+      "Shot thumbnails are the shot")* — a bank tile composes every layer of
+      its shot lazily on its own draw (`CoreImageShotRenderer.composedImage`,
+      `ShotThumbnailSource`) instead of showing the dominant layer's frame;
+      the stacked-layers glyph and `ShotBankTile.thumbnailInput` are gone.
     - [x] **Monitoring is ruled out of step 7** *(decided 2026-07-19)* —
       the monitoring slice the docs point at from three places (the app's
       "no audio preview yet" drain note, the mixer record's "a future

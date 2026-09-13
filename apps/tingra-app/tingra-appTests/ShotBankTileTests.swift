@@ -79,68 +79,7 @@ struct ShotBankTileTests {
         #expect(ShotBankTile.tiles(shots: [], onProgram: nil, onPreview: nil).isEmpty)
     }
 
-    // MARK: Thumbnail
-
-    @Test("a single-layer shot's thumbnail is that layer's input")
-    func singleLayerThumbnail() {
-        let shot = Self.shot("a", "Camera", layers: [Layer(input: Self.camera)])
-
-        #expect(ShotBankTile.thumbnailInput(of: shot) == Self.camera)
-    }
-
-    @Test("a picture-in-picture shot's thumbnail is the full-frame display, not the camera inset on top")
-    func pictureInPictureThumbnailIsTheLargestLayer() {
-        let shot = Self.shot("pip", "PiP", layers: ProgramLayout.layers(displayID: Self.display, cameraID: Self.camera))
-
-        // The camera is the topmost layer; the display covers more of the frame.
-        #expect(shot.layers.last?.input == Self.camera)
-        #expect(ShotBankTile.thumbnailInput(of: shot) == Self.display)
-    }
-
-    @Test("a small layer on the bottom loses to a larger layer above it")
-    func largerUpperLayerWins() {
-        let shot = Self.shot(
-            "a", "Overlay",
-            layers: [
-                Layer(input: Self.bars, frame: CGRect(x: 0, y: 0, width: 0.3, height: 0.3)),
-                Layer(input: Self.camera, frame: CGRect(x: 0.1, y: 0.1, width: 0.8, height: 0.8)),
-            ]
-        )
-
-        #expect(ShotBankTile.thumbnailInput(of: shot) == Self.camera)
-    }
-
-    @Test("two layers of equal area resolve to the lower one")
-    func tieGoesToTheLowestLayer() {
-        let shot = Self.shot("a", "Split", layers: [Layer(input: Self.display), Layer(input: Self.camera)])
-
-        #expect(ShotBankTile.thumbnailInput(of: shot) == Self.display)
-    }
-
-    @Test("a shot with no layers has no thumbnail input")
-    func noLayersNoThumbnail() {
-        #expect(ShotBankTile.thumbnailInput(of: Self.shot("a", "Empty")) == nil)
-        #expect(
-            ShotBankTile.tiles(shots: [Self.shot("a", "Empty")], onProgram: nil, onPreview: nil).first?.thumbnailInput
-                == nil)
-    }
-
-    // MARK: Layer count and transience
-
-    @Test("a tile carries its shot's layer count")
-    func layerCount() {
-        let tiles = ShotBankTile.tiles(
-            shots: [
-                Self.shot("a", "Empty"),
-                Self.shot("b", "Camera", layers: [Layer(input: Self.camera)]),
-                Self.shot("c", "PiP", layers: ProgramLayout.layers(displayID: Self.display, cameraID: Self.camera)),
-            ],
-            onProgram: nil,
-            onPreview: nil
-        )
-
-        #expect(tiles.map(\.layerCount) == [0, 1, 2])
-    }
+    // MARK: Transience
 
     @Test("an automatic shot is a transient tile, and an authored one is not")
     func transience() {
@@ -160,17 +99,13 @@ struct ShotBankTileTests {
     @Test("two tiles are equal only when every field matches")
     func equality() {
         let tile = ShotBankTile(
-            id: ShotID(rawValue: "a"), name: "Wide", tally: .idle, thumbnailInput: Self.camera, layerCount: 1,
-            isTransient: false)
+            id: ShotID(rawValue: "a"), name: "Wide", tally: .idle, isTransient: false)
         let same = ShotBankTile(
-            id: ShotID(rawValue: "a"), name: "Wide", tally: .idle, thumbnailInput: Self.camera, layerCount: 1,
-            isTransient: false)
+            id: ShotID(rawValue: "a"), name: "Wide", tally: .idle, isTransient: false)
         let staged = ShotBankTile(
-            id: ShotID(rawValue: "a"), name: "Wide", tally: .staged, thumbnailInput: Self.camera, layerCount: 1,
-            isTransient: false)
+            id: ShotID(rawValue: "a"), name: "Wide", tally: .staged, isTransient: false)
         let transient = ShotBankTile(
-            id: ShotID(rawValue: "a"), name: "Wide", tally: .idle, thumbnailInput: Self.camera, layerCount: 1,
-            isTransient: true)
+            id: ShotID(rawValue: "a"), name: "Wide", tally: .idle, isTransient: true)
 
         #expect(tile == same)
         #expect(tile != staged)

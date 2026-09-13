@@ -12,7 +12,7 @@ import TingraComposition
 
 /// Where the operator was standing when the app last ran: the active preset,
 /// the shot on program, the shot staged on preview, and the transition armed
-/// on the switcher — its kind, the wipe edge, and the shader.
+/// on the switcher — its kind, the wipe edge, the shader, and the duration.
 ///
 /// A value rather than loose ids because the pieces are restored
 /// **together** — a staged shot is only meaningful within the preset it was
@@ -43,6 +43,12 @@ struct SessionPosition: Equatable, Sendable {
 
     /// The shader armed on the switcher, or nil when none was recorded.
     var shaderName: TransitionShader?
+
+    /// The take duration set on the switcher, in seconds, or nil when none
+    /// was recorded (2026-09-13, with the panel's duration field). Clamped
+    /// on restore like any typed value, so an out-of-range number read back
+    /// is kept within the panel's range rather than trusted.
+    var transitionDuration: TimeInterval?
 
     /// A position with nothing recorded — a fresh install, or a removal.
     static let none = SessionPosition()
@@ -114,6 +120,9 @@ struct SessionPreferences {
     /// The armed shader's key.
     private static let shaderNameKey = "session.shaderName"
 
+    /// The take duration's key.
+    private static let transitionDurationKey = "session.transitionDuration"
+
     /// Creates a store over a defaults database.
     ///
     /// - Parameter defaults: The database to read and write (the standard
@@ -126,7 +135,8 @@ struct SessionPreferences {
     /// Setting a nil id removes its key, so a cleared program (a held
     /// snapshot) or an empty preview reads back as nil rather than as a
     /// stale id. A transition value the app no longer knows reads nil
-    /// rather than trapping.
+    /// rather than trapping, and a duration that is not a number reads nil
+    /// rather than zero.
     var position: SessionPosition {
         get {
             SessionPosition(
@@ -136,7 +146,8 @@ struct SessionPreferences {
                 transitionKind: defaults.string(forKey: Self.transitionKindKey).flatMap(
                     TakeTransitionKind.init(rawValue:)),
                 wipeEdge: defaults.string(forKey: Self.wipeEdgeKey).flatMap(WipeEdge.init(rawValue:)),
-                shaderName: defaults.string(forKey: Self.shaderNameKey).flatMap(TransitionShader.init(rawValue:))
+                shaderName: defaults.string(forKey: Self.shaderNameKey).flatMap(TransitionShader.init(rawValue:)),
+                transitionDuration: defaults.object(forKey: Self.transitionDurationKey) as? TimeInterval
             )
         }
         nonmutating set {
@@ -146,6 +157,7 @@ struct SessionPreferences {
             defaults.set(newValue.transitionKind?.rawValue, forKey: Self.transitionKindKey)
             defaults.set(newValue.wipeEdge?.rawValue, forKey: Self.wipeEdgeKey)
             defaults.set(newValue.shaderName?.rawValue, forKey: Self.shaderNameKey)
+            defaults.set(newValue.transitionDuration, forKey: Self.transitionDurationKey)
         }
     }
 }

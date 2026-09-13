@@ -843,10 +843,19 @@ final class EngineModel {
     /// - Returns: The aspect ratio, or nil.
     func layerPictureAspectRatio(for layer: Layer) -> CGFloat? {
         guard let extent = inputExtent(for: layer.input) else { return nil }
-        let effects = (layer.effects ?? []).compactMap(makeVideoEffect(for:))
-        let picture = LayerFrameGesture.pictureExtent(extent, through: effects)
+        let picture = LayerFrameGesture.pictureExtent(extent, through: liveEffects(of: layer))
         guard picture.width > 0, picture.height > 0 else { return nil }
         return picture.width / picture.height
+    }
+
+    /// A layer's persisted chain as live video effects in signal order,
+    /// a slot with no provider left out (it renders as pass-through) —
+    /// the chain Match Input and the frame-following crop rule measure.
+    ///
+    /// - Parameter layer: The layer whose chain to resolve.
+    /// - Returns: The live effects.
+    private func liveEffects(of layer: Layer) -> [any VideoEffect] {
+        (layer.effects ?? []).compactMap(makeVideoEffect(for:))
     }
 
     /// One persisted chain slot as a live video effect at its settings, or
@@ -982,6 +991,46 @@ final class EngineModel {
     /// ``TakeTransitionKind/shader``; remembered like ``takeTransitionKind``.
     var shaderName: TransitionShader = .iris {
         didSet { recordSessionPosition() }
+    }
+
+    /// The length, in seconds, of the next timed take — the panel's one
+    /// **rate** knob (2026-09-13), the AUTO rate of a hardware switcher:
+    /// every dissolve, wipe, and shader transition runs this long, whether
+    /// the kind was armed explicitly or came from the taken shot's own
+    /// ``Shot/defaultTransition`` (the shot keeps its kind, edge, and shader;
+    /// the rate is the operator's). A cut has no length, so the rate is
+    /// simply not read for one. Session state bound from the panel's
+    /// duration field and stepper, remembered like ``takeTransitionKind``.
+    /// Set through ``setTakeTransitionDuration(_:)``, which clamps to
+    /// ``takeTransitionDurationRange``.
+    private(set) var takeTransitionDuration: TimeInterval = Transition.defaultDissolveDuration {
+        didSet { recordSessionPosition() }
+    }
+
+    /// The lengths a timed take may have: instant-as-a-tick (the compositor
+    /// rounds a zero to its first tick) up to ten seconds, past which a
+    /// transition is a hold, not a switch.
+    static let takeTransitionDurationRange: ClosedRange<TimeInterval> = 0...10
+
+    /// Sets the length of the next timed take, clamped to
+    /// ``takeTransitionDurationRange`` — so a typed "60" becomes ten seconds
+    /// and a stepped-past-zero value stays zero, and the field shows what was
+    /// kept.
+    ///
+    /// - Parameter seconds: The requested length in seconds.
+    func setTakeTransitionDuration(_ seconds: TimeInterval) {
+        takeTransitionDuration = Self.clampedTakeTransitionDuration(seconds)
+    }
+
+    /// The length a requested take duration is kept at: clamped to
+    /// ``takeTransitionDurationRange``, and a non-finite value (a parsed
+    /// "inf") falls back to the default so the compositor never converts one.
+    ///
+    /// - Parameter seconds: The requested length in seconds.
+    /// - Returns: The length within range.
+    static func clampedTakeTransitionDuration(_ seconds: TimeInterval) -> TimeInterval {
+        guard seconds.isFinite else { return Transition.defaultDissolveDuration }
+        return min(max(seconds, takeTransitionDurationRange.lowerBound), takeTransitionDurationRange.upperBound)
     }
 
     /// The latest program frame, handed to the preview view to draw. Held
@@ -1248,6 +1297,23 @@ final class EngineModel {
     /// against — filled at boot from the effect registry, before the
     /// compositor starts.
     @ObservationIgnored private let videoEffectProviders = VideoEffectProviderBox()
+
+    /// A renderer for the shot bank's thumbnails over the given Core Image
+    /// context — the monitors' shared one — resolving layer chains through
+    /// the same ``videoEffectProviders`` the compositor's renderer reads,
+    /// so a tile composes a shot exactly as program would
+    /// (ARCHITECTURE.md, "Shot thumbnails are the shot"). Its effect
+    /// instances are its own: an effect may carry state, and a monitor
+    /// never shares the compositor's.
+    ///
+    /// - Parameter context: The context the thumbnails will be drawn with.
+    /// - Returns: The renderer.
+    func makeThumbnailRenderer(context: CIContext) -> CoreImageShotRenderer {
+        CoreImageShotRenderer(context: context) { [videoEffectProviders] configuration in
+            videoEffectProviders.provider(for: configuration.effect)?
+                .makeEffect(parameters: configuration.parameters)
+        }
+    }
 
     /// The compositor producing the program frames. Its renderer resolves
     /// each layer's authored chain through ``videoEffectProviders``, so
@@ -1841,6 +1907,23 @@ final class EngineModel {
     ///   not running or has not delivered one yet.
     func latestFrame(forInput id: InputID) -> CVPixelBuffer? {
         compositor.latestFrame(forInput: id)?.pixelBuffer
+    }
+
+    /// The latest frame of every input a shot's layers are bound to, keyed
+    /// by input — the `frames` a renderer composes from — read from the
+    /// compositor's read-only latest-wins slots (a share, never a copy;
+    /// ownership clause 4). An input that has not delivered is absent, so
+    /// its layer contributes nothing, exactly as on program. For the shot
+    /// bank's tiles (``ShotThumbnailSource``).
+    ///
+    /// - Parameter shot: The shot whose layers' inputs to read.
+    /// - Returns: The frames, keyed by input.
+    func latestFrames(for shot: Shot) -> [InputID: CapturedFrame] {
+        var frames: [InputID: CapturedFrame] = [:]
+        for layer in shot.layers where frames[layer.input] == nil {
+            frames[layer.input] = compositor.latestFrame(forInput: layer.input)
+        }
+        return frames
     }
 
     /// Re-reads the tally from the compositor: which inputs are on program,
@@ -3235,13 +3318,18 @@ final class EngineModel {
     /// Appends a video effect to the edited shot's layer at the given
     /// index, at its neutral settings. A layer-tree edit like any other:
     /// live on program at the next tick and autosaved debounced; the Add
-    /// Effect menu's `tap` carries the observability (EVENTS.md).
+    /// Effect menu's `tap` carries the observability (EVENTS.md). Every
+    /// chain edit — this and the three below — trims the layer's frame to
+    /// follow the picture's extent (``followingPictureExtent(ofLayerAt:from:to:)``).
     ///
     /// - Parameters:
     ///   - effect: The effect to append.
     ///   - index: The layer's index in the shot's `layers` array.
     func addLayerEffect(_ effect: EffectID, toLayerAt index: Int) {
-        applyShotEdit(.addEffect) { LayerTreeEdit.addingEffect(effect, toLayerAt: index, in: $0) }
+        applyShotEdit(.addEffect) {
+            followingPictureExtent(
+                ofLayerAt: index, from: $0, to: LayerTreeEdit.addingEffect(effect, toLayerAt: index, in: $0))
+        }
     }
 
     /// Removes one slot from the edited shot's layer's effect chain.
@@ -3250,7 +3338,11 @@ final class EngineModel {
     ///   - effectIndex: The chain slot to remove.
     ///   - index: The layer's index in the shot's `layers` array.
     func removeLayerEffect(at effectIndex: Int, fromLayerAt index: Int) {
-        applyShotEdit(.removeEffect) { LayerTreeEdit.removingEffect(at: effectIndex, fromLayerAt: index, in: $0) }
+        applyShotEdit(.removeEffect) {
+            followingPictureExtent(
+                ofLayerAt: index, from: $0,
+                to: LayerTreeEdit.removingEffect(at: effectIndex, fromLayerAt: index, in: $0))
+        }
     }
 
     /// Moves one slot of the edited shot's layer's effect chain — order is
@@ -3262,14 +3354,18 @@ final class EngineModel {
     ///   - index: The layer's index in the shot's `layers` array.
     func moveLayerEffect(at effectIndex: Int, to destination: Int, ofLayerAt index: Int) {
         applyShotEdit(.moveEffect) {
-            LayerTreeEdit.movingEffect(at: effectIndex, to: destination, ofLayerAt: index, in: $0)
+            followingPictureExtent(
+                ofLayerAt: index, from: $0,
+                to: LayerTreeEdit.movingEffect(at: effectIndex, to: destination, ofLayerAt: index, in: $0))
         }
     }
 
     /// Sets one parameter of one slot in the edited shot's layer's effect
     /// chain, applied live tick by tick like the frame and opacity
     /// sliders. Gesture-rate, so it reports nothing itself — the slider's
-    /// drag-end `tap` carries the observability (EVENTS.md).
+    /// drag-end `tap` carries the observability (EVENTS.md). A crop inset
+    /// trims the frame with it, tick by tick, so the kept picture never
+    /// stretches (``followingPictureExtent(ofLayerAt:from:to:)``).
     ///
     /// - Parameters:
     ///   - value: The parameter's new value.
@@ -3293,9 +3389,41 @@ final class EngineModel {
         _ value: JSONValue, forKey key: String, ofEffectAt effectIndex: Int, atLayer index: Int
     ) {
         applyShotEdit(.adjustEffect) {
-            LayerTreeEdit.settingEffectParameter(
-                value, forKey: key, ofEffectAt: effectIndex, ofLayerAt: index, in: $0)
+            followingPictureExtent(
+                ofLayerAt: index, from: $0,
+                to: LayerTreeEdit.settingEffectParameter(
+                    value, forKey: key, ofEffectAt: effectIndex, ofLayerAt: index, in: $0))
         }
+    }
+
+    /// The edited shot with one layer's frame trimmed to follow its chain:
+    /// when a chain edit moves the picture's extent — a crop dialed in,
+    /// eased back, removed, or reordered — the frame follows by the same
+    /// mapping, so what stays visible stays where it was at the same scale
+    /// and a crop never re-stretches the picture it keeps
+    /// (``LayerFrameGesture/following(_:from:to:)``; ARCHITECTURE.md, "A
+    /// crop trims the frame"). Both chains are measured the way Match
+    /// Input measures — against the input's latest frame, or against the
+    /// program's own size before one arrives, an equivalent yardstick for
+    /// insets that are fractions of the picture. Applied inside the one
+    /// edit, so the chain change and the frame change are one undo step.
+    ///
+    /// - Parameters:
+    ///   - index: The layer's index in the shot's `layers` array.
+    ///   - before: The shot before the chain edit.
+    ///   - after: The shot with the chain edited.
+    /// - Returns: `after`, its frame trimmed if the picture's extent moved.
+    private func followingPictureExtent(ofLayerAt index: Int, from before: Shot, to after: Shot) -> Shot {
+        guard before.layers.indices.contains(index), after.layers.indices.contains(index) else { return after }
+        let layer = after.layers[index]
+        let extent =
+            inputExtent(for: layer.input)
+            ?? CGRect(x: 0, y: 0, width: Int(format.width), height: Int(format.height))
+        let oldPicture = LayerFrameGesture.pictureExtent(extent, through: liveEffects(of: before.layers[index]))
+        let newPicture = LayerFrameGesture.pictureExtent(extent, through: liveEffects(of: layer))
+        let frame = LayerFrameGesture.following(layer.frame, from: oldPicture, to: newPicture)
+        guard frame != layer.frame else { return after }
+        return LayerTreeEdit.settingFrame(frame, ofLayerAt: index, in: after)
     }
 
     /// The user-facing name of a registered video effect, for the layer
@@ -4453,6 +4581,7 @@ final class EngineModel {
         if let kind = recorded.transitionKind { takeTransitionKind = kind }
         if let edge = recorded.wipeEdge { wipeEdge = edge }
         if let shader = recorded.shaderName { shaderName = shader }
+        if let duration = recorded.transitionDuration { setTakeTransitionDuration(duration) }
         do {
             if let project = try store.load() {
                 // A document written before transient shots existed carries
@@ -4636,8 +4765,9 @@ final class EngineModel {
 
     /// Records the operator's position for the next launch — called from the
     /// observers of ``activePresetID``, ``activeShotID``, ``previewShotID``,
-    /// ``takeTransitionKind``, ``wipeEdge``, and ``shaderName``, so no path
-    /// that moves a bus or arms a transition can forget to. Silent while data
+    /// ``takeTransitionKind``, ``wipeEdge``, ``shaderName``, and
+    /// ``takeTransitionDuration``, so no path that moves a bus or arms a
+    /// transition can forget to. Silent while data
     /// is being removed, so the preferences the operator just cleared are not
     /// written back by the quit that follows.
     private func recordSessionPosition() {
@@ -4648,7 +4778,8 @@ final class EngineModel {
             previewShotID: previewShotID,
             transitionKind: takeTransitionKind,
             wipeEdge: wipeEdge,
-            shaderName: shaderName
+            shaderName: shaderName,
+            transitionDuration: takeTransitionDuration
         )
     }
 
@@ -4769,32 +4900,81 @@ final class EngineModel {
     }
 
     /// The concrete transition ``take(_:)`` passes to the compositor for the
-    /// shot being taken: the switcher's explicitly selected kind at its
-    /// default duration (with the selected edge for a wipe) — or, on Default,
-    /// the taken shot's own ``Shot/defaultTransition``, falling back to a cut
-    /// for a shot with no default (today's behavior for every shot that never
-    /// set one). Resolution lives here in the app, not the compositor: the
-    /// override source is switcher session state, and
+    /// shot being taken: the switcher's explicitly selected kind (with the
+    /// selected edge for a wipe or shader for a shader transition) — or, on
+    /// Default, the taken shot's own ``Shot/defaultTransition``, falling back
+    /// to a cut for a shot with no default (today's behavior for every shot
+    /// that never set one) — every timed kind at the panel's
+    /// ``takeTransitionDuration``. Resolution lives here in the app, not the
+    /// compositor: the override source is switcher session state, and
     /// `take(shotID:transition:)` keeps its caller-states-the-transition
     /// contract (ARCHITECTURE.md, "Per-shot default transitions").
     ///
     /// - Parameter shotID: The id of the shot being taken.
     /// - Returns: The transition to take it with.
     private func resolvedTransition(for shotID: ShotID) -> Transition {
-        switch takeTransitionKind {
-        case .default: shots.first { $0.id == shotID }?.defaultTransition ?? .cut
+        Self.resolvedTransition(
+            kind: takeTransitionKind,
+            shotDefault: shots.first { $0.id == shotID }?.defaultTransition,
+            wipeEdge: wipeEdge,
+            shaderName: shaderName,
+            duration: takeTransitionDuration
+        )
+    }
+
+    /// The pure resolution behind ``resolvedTransition(for:)``, so the rule
+    /// is unit-tested without an engine: the kind's transition, or the shot's
+    /// default (a cut when it has none), then the panel's duration applied to
+    /// whichever timed transition came out.
+    ///
+    /// - Parameters:
+    ///   - kind: The kind armed on the panel.
+    ///   - shotDefault: The taken shot's own default transition, if any.
+    ///   - wipeEdge: The edge armed for a wipe.
+    ///   - shaderName: The shader armed for a shader transition.
+    ///   - duration: The panel's take duration in seconds.
+    /// - Returns: The transition to take with.
+    static func resolvedTransition(
+        kind: TakeTransitionKind,
+        shotDefault: Transition?,
+        wipeEdge: WipeEdge,
+        shaderName: TransitionShader,
+        duration: TimeInterval
+    ) -> Transition {
+        let chosen: Transition =
+            switch kind {
+            case .default: shotDefault ?? .cut
+            case .cut: .cut
+            case .dissolve: .dissolve
+            case .wipe: .wipe(edge: wipeEdge)
+            case .shader: .shader(name: shaderName)
+            }
+        return chosen.withDuration(duration)
+    }
+}
+
+extension Transition {
+    /// This transition at another length: the same kind, edge, and shader
+    /// over `duration` seconds — a cut unchanged, since it has no length.
+    /// How the panel's one rate knob applies to whatever transition a take
+    /// resolved to, a shot's own default included.
+    ///
+    /// - Parameter duration: The length in seconds.
+    /// - Returns: The transition with its duration replaced.
+    func withDuration(_ duration: TimeInterval) -> Transition {
+        switch self {
         case .cut: .cut
-        case .dissolve: .dissolve
-        case .wipe: .wipe(edge: wipeEdge)
-        case .shader: .shader(name: shaderName)
+        case .dissolve: .dissolve(duration: duration)
+        case .wipe(let edge, _): .wipe(edge: edge, duration: duration)
+        case .shader(let name, _): .shader(name: name, duration: duration)
         }
     }
 }
 
 /// The transition kinds the shot switcher's picker offers (GLOSSARY.md,
 /// "Transition") — the UI's session-state selection, mapped to a concrete
-/// ``Transition`` (with the selected wipe edge or shader, and the default
-/// durations) at take time.
+/// ``Transition`` (with the selected wipe edge or shader, and the panel's
+/// take duration) at take time.
 enum TakeTransitionKind: String, CaseIterable {
     /// The taken shot's own ``Shot/defaultTransition`` (a cut when it has
     /// none) — the initial selection, so per-shot defaults are effective
@@ -4804,15 +4984,15 @@ enum TakeTransitionKind: String, CaseIterable {
     /// An instant cut, regardless of the taken shot's default.
     case cut
 
-    /// A crossfade at the default dissolve duration.
+    /// A crossfade over ``EngineModel/takeTransitionDuration``.
     case dissolve
 
-    /// A directional reveal from ``EngineModel/wipeEdge`` at the default
-    /// wipe duration.
+    /// A directional reveal from ``EngineModel/wipeEdge`` over
+    /// ``EngineModel/takeTransitionDuration``.
     case wipe
 
-    /// A custom-shader reveal with ``EngineModel/shaderName`` at the
-    /// default shader-transition duration.
+    /// A custom-shader reveal with ``EngineModel/shaderName`` over
+    /// ``EngineModel/takeTransitionDuration``.
     case shader
 }
 

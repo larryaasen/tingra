@@ -60,7 +60,7 @@ struct SessionPreferencesTests {
         #expect(SessionPreferences(defaults: defaults).position == position)
     }
 
-    @Test("the armed transition — kind, wipe edge, and shader — round-trips with the position")
+    @Test("the armed transition — kind, wipe edge, shader, and duration — round-trips with the position")
     func armedTransitionRoundTrips() throws {
         let (preferences, defaults, name) = try makePreferences()
         defer { defaults.removePersistentDomain(forName: name) }
@@ -68,7 +68,8 @@ struct SessionPreferencesTests {
             presetID: PresetID(rawValue: "show"),
             transitionKind: .wipe,
             wipeEdge: .top,
-            shaderName: .blinds)
+            shaderName: .blinds,
+            transitionDuration: 1.25)
 
         preferences.position = position
 
@@ -77,6 +78,17 @@ struct SessionPreferencesTests {
         #expect(read.transitionKind == .wipe)
         #expect(read.wipeEdge == .top)
         #expect(read.shaderName == .blinds)
+        #expect(read.transitionDuration == 1.25)
+    }
+
+    @Test("a duration that was never recorded reads nil, not zero")
+    func unrecordedDurationReadsNil() throws {
+        let (preferences, defaults, name) = try makePreferences()
+        defer { defaults.removePersistentDomain(forName: name) }
+        preferences.position = SessionPosition(transitionKind: .dissolve)
+
+        #expect(preferences.position.transitionDuration == nil)
+        #expect(defaults.object(forKey: "session.transitionDuration") == nil)
     }
 
     @Test("a transition value the app no longer knows reads nil rather than trapping")
@@ -86,12 +98,14 @@ struct SessionPreferencesTests {
         defaults.set("teleport", forKey: "session.transitionKind")
         defaults.set("inside", forKey: "session.wipeEdge")
         defaults.set("plasma", forKey: "session.shaderName")
+        defaults.set("fast", forKey: "session.transitionDuration")
 
         let read = preferences.position
 
         #expect(read.transitionKind == nil)
         #expect(read.wipeEdge == nil)
         #expect(read.shaderName == nil)
+        #expect(read.transitionDuration == nil)
         #expect(SessionPosition.none.transitionKind == nil)
     }
 

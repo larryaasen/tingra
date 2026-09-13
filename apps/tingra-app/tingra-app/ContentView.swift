@@ -260,9 +260,13 @@ struct ContentView: View {
                 // The layer handles ride the monitor showing the edited
                 // shot: preview while it is staged, program only in the
                 // fallback where nothing is (``EditedShot``).
+                // Square corners on both (Larry, 2026-09-13): a monitor
+                // shows the exact pixels going to air, corners included,
+                // the way Final Cut's Viewer and every switcher's program
+                // pane do; rounding is for tiles that are buttons.
                 MonitorTile(
                     source: model.previewRelay, label: previewLabel, badgeTint: .green,
-                    aspectRatio: model.programAspectRatio
+                    aspectRatio: model.programAspectRatio, cornerRadius: 0
                 ) {
                     if let edited = model.editedShot, model.previewShotID == edited.shot.id {
                         LayerHandlesOverlay(model: model, edited: edited)
@@ -274,7 +278,8 @@ struct ContentView: View {
                     label: programLabel,
                     badgeTint: .red,
                     aspectRatio: model.programAspectRatio,
-                    statusBadge: model.isFadedToBlack ? fadedToBlackLabel : nil
+                    statusBadge: model.isFadedToBlack ? fadedToBlackLabel : nil,
+                    cornerRadius: 0
                 ) {
                     if let edited = model.editedShot, model.previewShotID != edited.shot.id {
                         LayerHandlesOverlay(model: model, edited: edited)

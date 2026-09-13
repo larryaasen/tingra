@@ -107,6 +107,19 @@ struct MonitorView: NSViewRepresentable {
     /// input's slot in multiview.
     let source: any MonitorFrameSource
 
+    /// The corner radius of the picture, applied to the `MTKView`'s own
+    /// layer. ``MonitorTile`` clips its whole stack with a SwiftUI
+    /// `clipShape`, and that clip is enough for the badge and the tally
+    /// border — but not, it turned out, for the hosted Metal view once a
+    /// tile carries ``LayerHandlesOverlay``: the preview monitor drew
+    /// square corners under a rounded outline while the program monitor
+    /// beside it stayed rounded (Larry, 2026-09-13, from a screenshot).
+    /// Rounding the layer itself does not depend on how SwiftUI hosts the
+    /// view, so the picture keeps its corners whatever sits over it. The
+    /// main monitors have since gone square by decision (they pass zero);
+    /// the layer rounding stays for any rounded tile that grows an overlay.
+    var cornerRadius: CGFloat = 0
+
     /// Builds the drawing coordinator.
     func makeCoordinator() -> Coordinator {
         Coordinator(source: source)
@@ -127,6 +140,9 @@ struct MonitorView: NSViewRepresentable {
         // the program tick, not the view, paces the compositor.
         view.isPaused = false
         view.enableSetNeedsDisplay = false
+        view.wantsLayer = true
+        view.layer?.masksToBounds = true
+        view.layer?.cornerRadius = cornerRadius
         return view
     }
 
@@ -138,6 +154,7 @@ struct MonitorView: NSViewRepresentable {
     /// input (found on the Library's first use, 2026-09-10).
     func updateNSView(_ nsView: MTKView, context: Context) {
         context.coordinator.source = source
+        nsView.layer?.cornerRadius = cornerRadius
     }
 
     /// Draws the source's latest frame into the `MTKView`'s drawable with
@@ -293,8 +310,13 @@ struct MonitorTile<Overlay: View>: View {
     var statusBadge: Text?
 
     /// The corner radius of the picture and its tally border: 8 for the
-    /// monitors, the multiview, and the bank; the layer list's row
-    /// thumbnails pass a smaller one, since 8 on a 20-point tile is a pill.
+    /// multiview, the bank, and the layer monitor; the layer list's row
+    /// thumbnails pass a smaller one, since 8 on a 20-point tile is a pill;
+    /// and the preview and program monitors — in the main window and in
+    /// the multiview alike — pass **zero** (Larry, 2026-09-13) — a monitor shows the exact pixels going to air,
+    /// corners included, as Final Cut's Viewer and every switcher's program
+    /// pane do, and a rounded corner would hide the very pixels where a
+    /// lower-third edge or a safe-area overshoot shows.
     var cornerRadius: CGFloat = 8
 
     /// The picture's width over its height — the program's
@@ -342,9 +364,10 @@ struct MonitorTile<Overlay: View>: View {
         self.overlay = overlay
     }
 
-    /// The monitor: video, its overlay, tally border, then badge.
+    /// The monitor: video (rounded on its own layer — see
+    /// ``MonitorView/cornerRadius``), its overlay, tally border, then badge.
     var body: some View {
-        MonitorView(source: source)
+        MonitorView(source: source, cornerRadius: cornerRadius)
             .aspectRatio(aspectRatio, contentMode: .fit)
             .overlay { overlay() }
             .frame(maxWidth: .infinity, maxHeight: .infinity)

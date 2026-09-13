@@ -6,7 +6,7 @@ The canonical vocabulary for Tingra, for both users and developers. These terms 
 
 **Project > preset > shot > layers.**
 
-A project is the saved file for an entire show. A project contains presets. A preset is a long term collection of settings you switch between while live. A shot is a short term composition within a preset. Layers stack inside a shot.
+A project is the saved file for an entire show. A project contains presets. A preset is a long term collection of settings you switch between while live. A shot is one composition within a preset, the unit you switch between while live. Layers stack inside a shot. All of it is saved in the project.
 
 ## Media and composition
 
@@ -20,7 +20,7 @@ A project is the saved file for an entire show. A project contains presets. A pr
 
 **Layer tree** — the data structure holding a shot's layers and their ordering, transforms, and effect chains. The compositor renders the layer tree to a single frame.
 
-**Shot** — a short term composition: a specific arrangement of layers designed to be taken to program, cut away from, and returned to. Shots are quick to create, switch, and discard. A shot is **authored** when the operator made it — added it, duplicated one, renamed one, dropped or chose an input to make one, or received it in a new project's seeded arrangement — and **transient** (recorded as `automatic`) when the app made one to stage an input the operator clicked, naming it after that device. The distinction is lifecycle as well as provenance: an authored shot persists in the preset and is listed everywhere shots are; a transient shot lives only while it is staged, is never written to the document, and appears only as the shot bank's dashed tile — it becomes authored when the operator keeps it, edits it, or takes it to air, and is discarded when they stage something else.
+**Shot** — a composition within a preset: a specific arrangement of layers designed to be taken to program, cut away from, and returned to. Shots are quick to create and switch, but not short-lived: a shot is persisted with its preset in the project document, layers and all, and outlives any number of takes — only its time on air is brief. A shot is **authored** when the operator made it — added it, duplicated one, renamed one, dropped or chose an input to make one, or received it in a new project's seeded arrangement — and **transient** (recorded as `automatic`) when the app made one to stage an input the operator clicked, naming it after that device. The distinction is lifecycle as well as provenance: an authored shot persists in the preset and is listed everywhere shots are; a transient shot lives only while it is staged, is never written to the document, and appears only as the shot bank's dashed tile — it becomes authored when the operator keeps it, edits it, or takes it to air, and is discarded when they stage something else.
 
 **Shot bank** — the row of shot tiles under the main window's monitors: one thumbnail tile per shot of the active preset, in switcher order, tally-bordered, clicked to stage. It is the switcher's row of shot buttons with a picture on each, and the place an input becomes a shot — by drag from the sidebar, by the Add Shot menu behind the plus button beside the Shots heading (the same items the Shots menu and the sidebar's Shots section header offer), or as the dashed transient tile a sidebar click stages.
 

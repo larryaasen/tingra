@@ -49,13 +49,17 @@ struct MultiviewView: View {
         VStack(spacing: 12) {
             HStack(spacing: 12) {
                 // Preview left of program, the same left-to-right reading
-                // order the main window uses.
+                // order the main window uses — and square-cornered like the
+                // main window's, since these are the same two bus monitors
+                // (ARCHITECTURE.md, "The preview and program monitors are
+                // square-cornered"); the input tiles beneath stay rounded.
                 MonitorTile(
                     source: model.previewRelay,
                     label: Text(
                         "Preview", comment: "Name of the preview bus — labels its monitor and its switcher row"),
                     badgeTint: .green,
-                    aspectRatio: model.programAspectRatio
+                    aspectRatio: model.programAspectRatio,
+                    cornerRadius: 0
                 )
                 .snapshotMenu(model: model, subject: .preview, tapName: "previewMonitorSnapshot.menuItem")
                 MonitorTile(
@@ -63,7 +67,8 @@ struct MultiviewView: View {
                     label: Text(
                         "Program", comment: "Name of the program bus — labels its monitor and its switcher row"),
                     badgeTint: .red,
-                    aspectRatio: model.programAspectRatio
+                    aspectRatio: model.programAspectRatio,
+                    cornerRadius: 0
                 )
                 .snapshotMenu(model: model, subject: .program, tapName: "programMonitorSnapshot.menuItem")
             }

@@ -254,6 +254,39 @@ enum LayerFrameGesture {
         }
     }
 
+    /// The frame trimmed to follow a change in the picture's extent — a
+    /// crop dialed in, eased back, removed, or reordered — so the pixels
+    /// that stay visible stay exactly where they were, at the same scale:
+    /// Keynote's mask and Final Cut Pro's Trim, where cropping cuts the
+    /// picture down and never re-stretches what is left (ARCHITECTURE.md,
+    /// "A crop trims the frame"). The frame maps the old extent onto the
+    /// program; the new extent is placed through that same mapping, the
+    /// extents' bottom-left origin flipped into the frame's top-left one.
+    /// Neither dimension goes below ``minimumSize``.
+    ///
+    /// - Parameters:
+    ///   - frame: The layer's frame, which shows `oldExtent`.
+    ///   - oldExtent: The picture extent before the chain edit, in pixels.
+    ///   - newExtent: The picture extent after it, in pixels.
+    /// - Returns: The frame that shows `newExtent` through the same
+    ///   mapping, or the frame unchanged when either extent is empty or the
+    ///   extent did not move.
+    static func following(_ frame: CGRect, from oldExtent: CGRect, to newExtent: CGRect) -> CGRect {
+        guard oldExtent.width > 0, oldExtent.height > 0, newExtent.width > 0, newExtent.height > 0,
+            oldExtent != newExtent
+        else { return frame }
+        let scaleX = frame.width / oldExtent.width
+        let scaleY = frame.height / oldExtent.height
+        return CGRect(
+            x: frame.minX + (newExtent.minX - oldExtent.minX) * scaleX,
+            // Top is the picture's top: the extent's maxY edge in
+            // bottom-left space is the frame's minY edge in top-left space.
+            y: frame.minY + (oldExtent.maxY - newExtent.maxY) * scaleY,
+            width: max(newExtent.width * scaleX, minimumSize),
+            height: max(newExtent.height * scaleY, minimumSize)
+        )
+    }
+
     /// The frame nudged one step in a direction.
     ///
     /// - Parameters:

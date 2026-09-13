@@ -41,15 +41,18 @@ and they nest: **project > preset > shot > layers.**
 
 | | Project | Preset | Shot | Layer |
 |---|---|---|---|---|
-| **What it is** | The saved document for a whole show | A collection of settings inside that document | A short-term composition inside a preset | One positioned element inside a shot |
-| **Lifespan** | The show | Long-term; kept across sessions | Short-term; quick to create, switch, discard | As long as the shot holds it |
+| **What it is** | The saved document for a whole show | A collection of settings inside that document | A composition inside a preset, saved with it | One positioned element inside a shot |
+| **Lifespan** | The show | Long-term; kept across sessions | Persisted; kept across sessions with its preset, however briefly it is on air | As long as the shot holds it |
 | **Count** | One per show, one open at a time | Many per project | Many per preset | Several per shot, in stacking order |
 | **Contains** | Every preset, destination configuration, and setting | Its shots, layer arrangements, audio channels, connected inputs | Its layer tree and an optional default transition | An input, a frame rect, an opacity, and an optional effect chain |
 | **Effect on program** | Closing one show, opening another | None — the switch is seamless, program keeps playing | This *is* the change viewers see, via cut, dissolve, wipe, or shader | Immediate on the next tick, if its shot is on program |
 
-A project is saved as a `.tingraproject` file (JSON inside). Which preset is
-active, and which shot is on program, is session state — never part of the
-saved document.
+A project is saved as a `.tingraproject` file (JSON inside). Every preset,
+every shot, and every layer is in it. Which preset is active and which shots
+are on program and preview are *where the operator is standing* rather than
+part of the show, so they stay out of the document — but they are not lost
+either: the app records them in machine-local preferences and restores them at
+launch, along with the armed transition.
 
 ## Getting started: the CLI and MCP server
 

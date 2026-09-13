@@ -207,6 +207,60 @@ struct LayerFrameGestureTests {
         let grown = input.insetBy(dx: -20, dy: -20)
         #expect(LayerFrameGesture.pictureExtent(input, through: [ExtentEffect(extent: grown)]) == input)
     }
+
+    @Test("following a crop trims the frame by the same fractions, keeping the kept pixels in place")
+    func followingCrop() {
+        // A square input shown square; a quarter cut from each side leaves
+        // the middle half at the same scale, so the frame keeps its height,
+        // halves its width, and starts a quarter of the old width in.
+        let input = CGRect(x: 0, y: 0, width: 1000, height: 1000)
+        let sides = CGRect(x: 250, y: 0, width: 500, height: 1000)
+        let trimmed = LayerFrameGesture.following(square, from: input, to: sides)
+        #expect(same(trimmed, CGRect(x: 0.225, y: 0.1, width: 0.25, height: 0.5)))
+        // Top is the picture's top: a top inset lowers the extent's maxY in
+        // bottom-left space and moves the frame's minY down in top-left space.
+        let top = CGRect(x: 0, y: 0, width: 1000, height: 800)
+        let topTrimmed = LayerFrameGesture.following(square, from: input, to: top)
+        #expect(same(topTrimmed, CGRect(x: 0.1, y: 0.2, width: 0.5, height: 0.4)))
+        // A bottom inset holds the frame's top edge.
+        let bottom = CGRect(x: 0, y: 200, width: 1000, height: 800)
+        let bottomTrimmed = LayerFrameGesture.following(square, from: input, to: bottom)
+        #expect(same(bottomTrimmed, CGRect(x: 0.1, y: 0.1, width: 0.5, height: 0.4)))
+    }
+
+    @Test("following a crop keeps a stretched frame's scale on each axis, and grows back when the crop is eased")
+    func followingKeepsScaleAndReverses() {
+        // A 2:1 frame showing a square input is stretched twice as wide as
+        // tall; a crop trims each axis at that axis's own scale.
+        let input = CGRect(x: 0, y: 0, width: 1000, height: 1000)
+        let kept = CGRect(x: 100, y: 100, width: 800, height: 800)
+        let trimmed = LayerFrameGesture.following(wide, from: input, to: kept)
+        #expect(same(trimmed, CGRect(x: 0.24, y: 0.32, width: 0.32, height: 0.16)))
+        // Easing the crop back maps through the trimmed frame to the original.
+        #expect(same(LayerFrameGesture.following(trimmed, from: kept, to: input), wide))
+        // Cropping in two steps lands where one step would.
+        let narrower = CGRect(x: 200, y: 100, width: 600, height: 800)
+        let twoSteps = LayerFrameGesture.following(trimmed, from: kept, to: narrower)
+        #expect(same(twoSteps, LayerFrameGesture.following(wide, from: input, to: narrower)))
+    }
+
+    @Test(
+        "following leaves the frame alone when the extent did not move or is empty, and never shrinks below the minimum"
+    )
+    func followingEdges() {
+        let input = CGRect(x: 0, y: 0, width: 1920, height: 1080)
+        #expect(LayerFrameGesture.following(square, from: input, to: input) == square)
+        #expect(LayerFrameGesture.following(square, from: .zero, to: input) == square)
+        #expect(LayerFrameGesture.following(square, from: input, to: .zero) == square)
+        // A small frame cropped hard clamps to the minimum size, origin held.
+        let small = CGRect(x: 0.5, y: 0.5, width: 0.05, height: 0.05)
+        let sliver = CGRect(x: 0, y: 0, width: 192, height: 108)
+        let clamped = LayerFrameGesture.following(small, from: input, to: sliver)
+        #expect(clamped.width == LayerFrameGesture.minimumSize)
+        #expect(clamped.height == LayerFrameGesture.minimumSize)
+        #expect(abs(clamped.minX - 0.5) < 1e-9)
+        #expect(abs(clamped.minY - (0.5 + 0.05 * (1080 - 108) / 1080)) < 1e-9)
+    }
 }
 
 /// A video effect whose declared output extent is fixed — or, with nil,

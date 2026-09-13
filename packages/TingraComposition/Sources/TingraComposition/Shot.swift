@@ -58,8 +58,9 @@ public enum ShotOrigin: String, Sendable, Equatable, Codable, CaseIterable {
     case automatic
 }
 
-/// A short-term composition: an ordered arrangement of layers plus the
-/// background they sit over (GLOSSARY.md, "Shot"). The compositor renders a
+/// A composition within a preset: an ordered arrangement of layers plus the
+/// background they sit over (GLOSSARY.md, "Shot"), persisted with the preset
+/// in the project document. The compositor renders a
 /// shot's layer tree to a single program frame each tick, and a shot is taken
 /// to program by ``Compositor/take(shotID:)`` (a cut).
 ///

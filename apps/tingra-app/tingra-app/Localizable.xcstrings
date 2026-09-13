@@ -1,36 +1,19 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
-    "−∞" : {
-      "comment" : "Peak readout when nothing has been metered yet",
+    "“%@” is still being recorded. Stop the recording before moving it to the Trash." : {
+      "comment" : "Reason a recording could not be moved to the Trash: it is the take being recorded; the placeholder is the file's name",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "−∞"
+            "value" : "„%@“ wird gerade aufgenommen. Beende die Aufnahme, bevor du die Datei in den Papierkorb legst."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "−∞"
-          }
-        }
-      }
-    },
-    "−∞ dB" : {
-      "comment" : "A fader's readout at silence",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "−∞ dB"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "−∞ dB"
+            "value" : "«%@» todavía se está grabando. Detén la grabación antes de trasladar el archivo a la papelera."
           }
         }
       }
@@ -71,40 +54,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%1$@ (%2$@)"
-          }
-        }
-      }
-    },
-    "%@ dB" : {
-      "comment" : "A fader's readout: its gain in decibels",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ dB"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ dB"
-          }
-        }
-      }
-    },
-    "%@, over" : {
-      "comment" : "Accessibility value of a peak hold that reached full scale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@, übersteuert"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@, saturado"
           }
         }
       }
@@ -156,6 +105,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@ copia"
+          }
+        }
+      }
+    },
+    "%@ dB" : {
+      "comment" : "A fader's readout: its gain in decibels",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ dB"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ dB"
           }
         }
       }
@@ -225,6 +191,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%1$@, %2$@"
+          }
+        }
+      }
+    },
+    "%@, over" : {
+      "comment" : "Accessibility value of a peak hold that reached full scale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@, übersteuert"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@, saturado"
           }
         }
       }
@@ -471,6 +454,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "• %1$@: %2$@ — %3$@"
+          }
+        }
+      }
+    },
+    "−∞" : {
+      "comment" : "Peak readout when nothing has been metered yet",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "−∞"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "−∞"
+          }
+        }
+      }
+    },
+    "−∞ dB" : {
+      "comment" : "A fader's readout at silence",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "−∞ dB"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "−∞ dB"
           }
         }
       }
@@ -866,6 +883,40 @@
         }
       }
     },
+    "All Domains" : {
+      "comment" : "Log window: the domain filter's choice that shows every domain",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alle Bereiche"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Todos los dominios"
+          }
+        }
+      }
+    },
+    "All Launches" : {
+      "comment" : "Log window: the launch filter's choice that shows every launch",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alle Starts"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Todos los inicios"
+          }
+        }
+      }
+    },
     "Appearance" : {
       "comment" : "General settings: label of the light/dark appearance control",
       "localizations" : {
@@ -1242,6 +1293,23 @@
         }
       }
     },
+    "Change the filters or the search to see more." : {
+      "comment" : "Log window: description when the filters hide every line",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ändere die Filter oder die Suche, um mehr zu sehen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cambia los filtros o la búsqueda para ver más."
+          }
+        }
+      }
+    },
     "Checking…" : {
       "comment" : "Permissions settings: status before the first read",
       "localizations" : {
@@ -1378,6 +1446,23 @@
         }
       }
     },
+    "Couldn’t Read the Log" : {
+      "comment" : "Log window: title when the log file cannot be read",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Protokoll konnte nicht gelesen werden"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo leer el registro"
+          }
+        }
+      }
+    },
     "Custom Size" : {
       "comment" : "Title of the sheet for a typed program size and frame rate",
       "localizations" : {
@@ -1459,6 +1544,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Datos"
+          }
+        }
+      }
+    },
+    "Debug" : {
+      "comment" : "Log window: the level filter for DEBUG lines",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Debug"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Depuración"
           }
         }
       }
@@ -1719,6 +1821,23 @@
         }
       }
     },
+    "Domain" : {
+      "comment" : "Log window: label of the domain filter",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bereich"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dominio"
+          }
+        }
+      }
+    },
     "Drag a camera, display, or generator here, or choose Add Shot." : {
       "comment" : "Placeholder tile in the shot bank when the preset has no shots",
       "localizations" : {
@@ -1766,6 +1885,57 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Arrastra para cambiar el tamaño de la Biblioteca"
+          }
+        }
+      }
+    },
+    "Duration" : {
+      "comment" : "Label before the transition duration field on the transition panel",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dauer"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Duración"
+          }
+        }
+      }
+    },
+    "How long a dissolve, wipe, or shader transition runs, in seconds. A cut is instant." : {
+      "comment" : "Tooltip on the transition duration field and stepper",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wie lange eine Überblendung, Wischblende oder Shader-Blende läuft, in Sekunden. Ein Schnitt ist sofort."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cuánto dura una disolución, cortinilla o transición de shader, en segundos. Un corte es instantáneo."
+          }
+        }
+      }
+    },
+    "s" : {
+      "comment" : "Unit after the transition duration field: seconds, abbreviated",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "s"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "s"
           }
         }
       }
@@ -1953,6 +2123,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Error"
+          }
+        }
+      }
+    },
+    "Errors" : {
+      "comment" : "Log window: the level filter for ERROR lines",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fehler"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Errores"
           }
         }
       }
@@ -2315,6 +2502,23 @@
         }
       }
     },
+    "Info" : {
+      "comment" : "Log window: the level filter for INFO lines",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Info"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Información"
+          }
+        }
+      }
+    },
     "Input" : {
       "comment" : "Layer inspector row: the input the layer is bound to",
       "localizations" : {
@@ -2430,6 +2634,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "I"
+          }
+        }
+      }
+    },
+    "Launch" : {
+      "comment" : "Log window: label of the launch filter",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Start"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inicio"
+          }
+        }
+      }
+    },
+    "Launch %@" : {
+      "comment" : "Log window: the header over one launch's lines; the placeholder is the four-digit log session ID",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Start %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inicio %@"
           }
         }
       }
@@ -2553,6 +2791,23 @@
         }
       }
     },
+    "Levels" : {
+      "comment" : "Log window: the toolbar menu of level and tap filters",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stufen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Niveles"
+          }
+        }
+      }
+    },
     "Library" : {
       "comment" : "Heading of the Library panel listing the show's files",
       "localizations" : {
@@ -2604,6 +2859,23 @@
         }
       }
     },
+    "Load Earlier Lines" : {
+      "comment" : "Log window: button at the top of the list that reads older lines",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Frühere Zeilen laden"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cargar líneas anteriores"
+          }
+        }
+      }
+    },
     "Location" : {
       "comment" : "Logging settings: label of the row naming where the log file is",
       "localizations" : {
@@ -2638,6 +2910,23 @@
         }
       }
     },
+    "Log" : {
+      "comment" : "Title of the log window, and its Window-menu command",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Protokoll"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Registro"
+          }
+        }
+      }
+    },
     "Log File" : {
       "comment" : "Data settings: the log file's name\nLogging settings: heading over the log file's location and size",
       "localizations" : {
@@ -2668,6 +2957,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Contador de sesión del registro"
+          }
+        }
+      }
+    },
+    "Log Window" : {
+      "comment" : "Logging settings: label of the row that opens the Log window",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Protokollfenster"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ventana de registro"
           }
         }
       }
@@ -3102,6 +3408,7 @@
     },
     "Multiple layers" : {
       "comment" : "Accessibility label of the glyph on a shot tile with more than one layer",
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -3477,6 +3784,40 @@
         }
       }
     },
+    "No Lines Match" : {
+      "comment" : "Log window: title when the filters hide every line",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine passenden Zeilen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ninguna línea coincide"
+          }
+        }
+      }
+    },
+    "No Log Yet" : {
+      "comment" : "Log window: title when the log file holds no lines",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noch kein Protokoll"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aún no hay registro"
+          }
+        }
+      }
+    },
     "No Media" : {
       "comment" : "Library empty state title",
       "localizations" : {
@@ -3593,6 +3934,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ninguna salida de grabación escribe archivos .%@."
+          }
+        }
+      }
+    },
+    "No Recordings" : {
+      "comment" : "Library Recordings tab empty state title",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Aufnahmen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sin grabaciones"
           }
         }
       }
@@ -3989,6 +4347,23 @@
         }
       }
     },
+    "Pause" : {
+      "comment" : "Log window: toolbar button that freezes the list",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pausieren"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pausar"
+          }
+        }
+      }
+    },
     "Peak" : {
       "comment" : "Accessibility label of a meter's peak hold readout",
       "localizations" : {
@@ -4155,6 +4530,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Preajustes"
+          }
+        }
+      }
+    },
+    "Press Record (⌘R) to record the program." : {
+      "comment" : "Library Recordings tab empty state description",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Drücke „Aufnehmen“ (⌘R), um das Programm aufzunehmen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulsa «Grabar» (⌘R) para grabar el programa."
           }
         }
       }
@@ -4359,6 +4751,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Archivo de grabación"
+          }
+        }
+      }
+    },
+    "Recording…" : {
+      "comment" : "Library Recordings tab: detail line of the take being recorded now",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wird aufgenommen…"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grabando…"
           }
         }
       }
@@ -4807,6 +5216,23 @@
         }
       }
     },
+    "Resume" : {
+      "comment" : "Log window: toolbar button that follows the log again after a pause",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fortsetzen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reanudar"
+          }
+        }
+      }
+    },
     "Reveal in Finder" : {
       "comment" : "Logging settings: button that shows the log file in the Finder\nMenu item that reveals the file in Finder",
       "localizations" : {
@@ -5046,6 +5472,23 @@
         }
       }
     },
+    "Search Log" : {
+      "comment" : "Log window: the search field's placeholder",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Protokoll durchsuchen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Buscar en el registro"
+          }
+        }
+      }
+    },
     "Select a layer in the list or on the preview monitor." : {
       "comment" : "Inspector column empty state description",
       "localizations" : {
@@ -5077,6 +5520,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Selecciona una capa para editar su marco y opacidad."
+          }
+        }
+      }
+    },
+    "Select a line to read it whole." : {
+      "comment" : "Log window: placeholder in the detail area when no line is selected",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wähle eine Zeile, um sie vollständig zu lesen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Selecciona una línea para leerla completa."
           }
         }
       }
@@ -5319,6 +5779,23 @@
         }
       }
     },
+    "Show Log" : {
+      "comment" : "Logging settings: button that opens the Log window",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Protokoll anzeigen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostrar registro"
+          }
+        }
+      }
+    },
     "Show or Hide Status Bar" : {
       "comment" : "Shortcuts settings: name of the ⌘/ action",
       "localizations" : {
@@ -5400,6 +5877,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Muestra u oculta la barra en la parte inferior de la ventana que informa de la grabación y la transmisión."
+          }
+        }
+      }
+    },
+    "Shows the log as it is written, with filters and search." : {
+      "comment" : "Logging settings: description under the Log Window row",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zeigt das Protokoll, während es geschrieben wird, mit Filtern und Suche."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Muestra el registro mientras se escribe, con filtros y búsqueda."
           }
         }
       }
@@ -5965,6 +6459,23 @@
         }
       }
     },
+    "Taps" : {
+      "comment" : "Log window: the filter that shows or hides tap lines",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Klicks"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clics"
+          }
+        }
+      }
+    },
     "The folder %@ could not be created: %@" : {
       "comment" : "Snapshot Not Saved badge tooltip: the snapshots folder could not be created; the placeholders are the folder and the system's reason",
       "localizations" : {
@@ -6222,6 +6733,23 @@
         }
       }
     },
+    "This Launch" : {
+      "comment" : "Log window: the launch filter's choice that shows only this launch",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Start"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este inicio"
+          }
+        }
+      }
+    },
     "This removes what Tingra has saved on this Mac, then quits. It cannot be undone." : {
       "comment" : "Confirmation alert message before removing all data: the opening line",
       "localizations" : {
@@ -6286,6 +6814,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Tingra registra en este archivo lo que hace, cada evento de su bus de eventos, en el formato que escribe la opción --log-file de la línea de comandos. Consola muestra los mismos eventos en el registro del sistema."
+          }
+        }
+      }
+    },
+    "Tingra writes a line here for everything it does." : {
+      "comment" : "Log window: description when the log file holds no lines",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tingra schreibt hier für alles, was es tut, eine Zeile."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tingra escribe aquí una línea por cada cosa que hace."
           }
         }
       }
@@ -6627,499 +7172,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Y"
-          }
-        }
-      }
-    },
-    "No Recordings" : {
-      "comment" : "Library Recordings tab empty state title",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Keine Aufnahmen"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sin grabaciones"
-          }
-        }
-      }
-    },
-    "Press Record (⌘R) to record the program." : {
-      "comment" : "Library Recordings tab empty state description",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Drücke „Aufnehmen“ (⌘R), um das Programm aufzunehmen."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Pulsa «Grabar» (⌘R) para grabar el programa."
-          }
-        }
-      }
-    },
-    "Recording…" : {
-      "comment" : "Library Recordings tab: detail line of the take being recorded now",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wird aufgenommen…"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Grabando…"
-          }
-        }
-      }
-    },
-    "“%@” is still being recorded. Stop the recording before moving it to the Trash." : {
-      "comment" : "Reason a recording could not be moved to the Trash: it is the take being recorded; the placeholder is the file's name",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "„%@“ wird gerade aufgenommen. Beende die Aufnahme, bevor du die Datei in den Papierkorb legst."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "«%@» todavía se está grabando. Detén la grabación antes de trasladar el archivo a la papelera."
-          }
-        }
-      }
-    },
-    "Log" : {
-      "comment" : "Title of the log window, and its Window-menu command",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Protokoll"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Registro"
-          }
-        }
-      }
-    },
-    "Search Log" : {
-      "comment" : "Log window: the search field's placeholder",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Protokoll durchsuchen"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Buscar en el registro"
-          }
-        }
-      }
-    },
-    "Load Earlier Lines" : {
-      "comment" : "Log window: button at the top of the list that reads older lines",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Frühere Zeilen laden"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cargar líneas anteriores"
-          }
-        }
-      }
-    },
-    "Launch %@" : {
-      "comment" : "Log window: the header over one launch's lines; the placeholder is the four-digit log session ID",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Start %@"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Inicio %@"
-          }
-        }
-      }
-    },
-    "Select a line to read it whole." : {
-      "comment" : "Log window: placeholder in the detail area when no line is selected",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wähle eine Zeile, um sie vollständig zu lesen."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Selecciona una línea para leerla completa."
-          }
-        }
-      }
-    },
-    "Couldn’t Read the Log" : {
-      "comment" : "Log window: title when the log file cannot be read",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Protokoll konnte nicht gelesen werden"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No se pudo leer el registro"
-          }
-        }
-      }
-    },
-    "No Log Yet" : {
-      "comment" : "Log window: title when the log file holds no lines",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Noch kein Protokoll"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Aún no hay registro"
-          }
-        }
-      }
-    },
-    "Tingra writes a line here for everything it does." : {
-      "comment" : "Log window: description when the log file holds no lines",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tingra schreibt hier für alles, was es tut, eine Zeile."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tingra escribe aquí una línea por cada cosa que hace."
-          }
-        }
-      }
-    },
-    "No Lines Match" : {
-      "comment" : "Log window: title when the filters hide every line",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Keine passenden Zeilen"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ninguna línea coincide"
-          }
-        }
-      }
-    },
-    "Change the filters or the search to see more." : {
-      "comment" : "Log window: description when the filters hide every line",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ändere die Filter oder die Suche, um mehr zu sehen."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cambia los filtros o la búsqueda para ver más."
-          }
-        }
-      }
-    },
-    "Taps" : {
-      "comment" : "Log window: the filter that shows or hides tap lines",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Klicks"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Clics"
-          }
-        }
-      }
-    },
-    "Levels" : {
-      "comment" : "Log window: the toolbar menu of level and tap filters",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Stufen"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Niveles"
-          }
-        }
-      }
-    },
-    "All Domains" : {
-      "comment" : "Log window: the domain filter's choice that shows every domain",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Alle Bereiche"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Todos los dominios"
-          }
-        }
-      }
-    },
-    "Domain" : {
-      "comment" : "Log window: label of the domain filter",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bereich"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dominio"
-          }
-        }
-      }
-    },
-    "All Launches" : {
-      "comment" : "Log window: the launch filter's choice that shows every launch",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Alle Starts"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Todos los inicios"
-          }
-        }
-      }
-    },
-    "This Launch" : {
-      "comment" : "Log window: the launch filter's choice that shows only this launch",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dieser Start"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Este inicio"
-          }
-        }
-      }
-    },
-    "Launch" : {
-      "comment" : "Log window: label of the launch filter",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Start"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Inicio"
-          }
-        }
-      }
-    },
-    "Resume" : {
-      "comment" : "Log window: toolbar button that follows the log again after a pause",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Fortsetzen"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Reanudar"
-          }
-        }
-      }
-    },
-    "Pause" : {
-      "comment" : "Log window: toolbar button that freezes the list",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Pausieren"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Pausar"
-          }
-        }
-      }
-    },
-    "Info" : {
-      "comment" : "Log window: the level filter for INFO lines",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Info"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Información"
-          }
-        }
-      }
-    },
-    "Debug" : {
-      "comment" : "Log window: the level filter for DEBUG lines",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Debug"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Depuración"
-          }
-        }
-      }
-    },
-    "Errors" : {
-      "comment" : "Log window: the level filter for ERROR lines",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Fehler"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Errores"
-          }
-        }
-      }
-    },
-    "Show Log" : {
-      "comment" : "Logging settings: button that opens the Log window",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Protokoll anzeigen"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mostrar registro"
-          }
-        }
-      }
-    },
-    "Log Window" : {
-      "comment" : "Logging settings: label of the row that opens the Log window",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Protokollfenster"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ventana de registro"
-          }
-        }
-      }
-    },
-    "Shows the log as it is written, with filters and search." : {
-      "comment" : "Logging settings: description under the Log Window row",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Zeigt das Protokoll, während es geschrieben wird, mit Filtern und Suche."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Muestra el registro mientras se escribe, con filtros y búsqueda."
           }
         }
       }

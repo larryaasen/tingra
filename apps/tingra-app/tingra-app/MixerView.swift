@@ -270,12 +270,20 @@ struct MixerView: View {
     /// One channel strip's column, top to bottom: the name (marked when the
     /// strip's device is absent), Effects, pan, the peak readout, the fader
     /// beside the meter, the level readout, and the mute.
+    ///
+    /// The name wraps to **two lines** (Larry, 2026-09-13) — a device name
+    /// like "MacBook Pro Microphone" is three words, and one line at 92
+    /// points showed the first and an ellipsis — and it reserves those two
+    /// lines whether it needs them or not, so every strip's Effects button,
+    /// pan, and fader sit at the same height across the row. A name longer
+    /// still truncates at the end, with the full name as the help tag.
     private func stripColumn(_ strip: MixerStrip) -> some View {
         VStack(spacing: 8) {
             HStack(spacing: 4) {
                 Text(strip.name)
                     .fontWeight(.semibold)
-                    .lineLimit(1)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2, reservesSpace: true)
                     .truncationMode(.tail)
                     .foregroundStyle(strip.isMuted || !isConnected(strip) ? .secondary : .primary)
                 if !isConnected(strip) {

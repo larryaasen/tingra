@@ -22,13 +22,13 @@ import TingraPlugInKit
 /// way the monitors above are captioned with the shot they show, rather than
 /// a badge on the picture, which on a thumbnail this size covered a quarter of
 /// it — and wears the tally border the monitors' convention gives it: red on
-/// program, green staged, none idle. For its picture it draws the latest frame
-/// of the layer that covers most of the frame
-/// (``ShotBankTile/thumbnailInput(of:)``), pulled through the same
-/// ``InputFrameSource`` the multiview's tiles read: the compositor's
-/// read-only slot, drawn and dropped. A shot with more than one layer wears a
-/// stacked-layers glyph so one input's picture is not mistaken for the whole
-/// composition; a shot with no layers is black over its caption. Clicking a
+/// program, green staged, none idle. For its picture it draws **the whole
+/// shot** — every layer's latest frame through its chain, placed and blended
+/// over the background as program would — composed lazily on each draw by
+/// ``ShotThumbnailSource`` over the bank's one renderer and the compositor's
+/// read-only frame slots, drawn and dropped (ARCHITECTURE.md, "Shot
+/// thumbnails are the shot"); a shot with no layers, or none delivering yet,
+/// is black over its caption. Clicking a
 /// tile stages that shot on preview — staging is not taking, and Take stays
 /// the one step to air. The tile's context menu is the shared
 /// ``ShotContextMenu`` on the `switcher` surface: Move Left / Move Right, and
@@ -74,6 +74,26 @@ struct ShotBankView: View {
 
     /// Whether a drag is over the row's empty end, where a drop appends.
     @State private var isEndTargeted = false
+
+    /// The bank's one renderer, shared by every tile's
+    /// ``ShotThumbnailSource`` over the monitors' Core Image context, so its
+    /// per-layer chain instances persist across draws — state, because the
+    /// renderer caches and the view is rebuilt on every model change.
+    @State private var thumbnailRenderer: CoreImageShotRenderer
+
+    /// Creates the bank over the model.
+    ///
+    /// - Parameters:
+    ///   - model: The engine model.
+    ///   - height: The tiles' picture height.
+    ///   - onRename: What Rename… does after its `tap`.
+    init(model: EngineModel, height: CGFloat, onRename: @escaping (Shot) -> Void) {
+        self.model = model
+        self.height = height
+        self.onRename = onRename
+        _thumbnailRenderer = State(
+            initialValue: model.makeThumbnailRenderer(context: MonitorRenderContext.shared.ciContext))
+    }
 
     /// The gap between tiles.
     private static let tileSpacing: CGFloat = 8
@@ -259,22 +279,6 @@ struct ShotBankView: View {
                     )
             }
         }
-        .overlay(alignment: .bottomTrailing) {
-            if tile.layerCount > 1 {
-                Image(systemName: "square.3.layers.3d")
-                    .font(.caption.weight(.semibold))
-                    .padding(6)
-                    .background(.black.opacity(0.6), in: .capsule)
-                    .foregroundStyle(.white)
-                    .padding(8)
-                    .accessibilityLabel(
-                        Text(
-                            "Multiple layers",
-                            comment: "Accessibility label of the glyph on a shot tile with more than one layer"
-                        )
-                    )
-            }
-        }
     }
 
     /// The Keep button on a transient tile: promotes the shot to authored, so
@@ -328,16 +332,13 @@ struct ShotBankView: View {
             }
     }
 
-    /// Where a tile reads its picture: the dominant layer's input, or nothing
-    /// for a shot with no layers.
+    /// Where a tile reads its picture: the whole shot, composed on each draw
+    /// (``ShotThumbnailSource``).
     ///
     /// - Parameter tile: The tile.
     /// - Returns: The frame source.
     private func thumbnailSource(for tile: ShotBankTile) -> any MonitorFrameSource {
-        if let input = tile.thumbnailInput {
-            return InputFrameSource(model: model, id: input)
-        }
-        return EmptyFrameSource()
+        ShotThumbnailSource(model: model, shotID: tile.id, renderer: thumbnailRenderer)
     }
 
     /// Handles a dropped input: inserts a full-frame authored shot of it at
@@ -361,11 +362,4 @@ struct ShotBankView: View {
         Task { await model.addShot(showing: input, at: index) }
         return true
     }
-}
-
-/// A frame source with no frames: what a tile draws for a shot with no
-/// layers — black over its caption, ``MonitorView``'s clear colour.
-private struct EmptyFrameSource: MonitorFrameSource {
-    /// Always nil: nothing to draw.
-    var latest: CVPixelBuffer? { nil }
 }

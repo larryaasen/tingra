@@ -12,8 +12,8 @@ import TingraComposition
 import TingraEventBus
 
 /// The main window's **transition panel**: the controls that move what is
-/// staged on preview to program — the transition the take uses, then Cut and
-/// Take — on one row under a Transition heading.
+/// staged on preview to program — Cut and Take, the transition the take
+/// uses, and how long it runs — on one row under a Transition heading.
 ///
 /// Its own panel, under its own heading, because these controls used to
 /// trail the preview row of shot buttons, and that row is gone (the shot
@@ -22,16 +22,31 @@ import TingraEventBus
 /// Take is the one step to air, and it should not be the last button on a
 /// row of nine.
 ///
-/// **One row, reading left to right in the order the operator works it**
-/// (2026-09-07): arm a transition, then take. The transition kind is a
-/// **pop-up menu** rather than the segmented control it started as — four
-/// segments plus a heading took a row of their own, where a pop-up names the
-/// armed transition in one word and leaves the row to the buttons. The wipe
-/// edge and shader pickers show beside it only while they apply: a wipe has
-/// an edge and a shader has a name, a cut has neither, and a control for a
-/// choice that does not exist would be a control the operator has to learn
-/// to ignore. The kind menu itself is always present, so the row's leading
-/// edge is stable across kinds.
+/// **One row: the take leads, its settings trail** (Larry, 2026-09-13,
+/// revising the 2026-09-07 arm-then-take order). Cut and Take sit at the
+/// row's leading edge — they are the panel's reason, the two buttons the
+/// operator's hand goes to, and a button at a fixed position is one the
+/// hand learns. After them, the armed transition: the kind as a **pop-up
+/// menu** rather than the segmented control it started as — four segments
+/// plus a heading took a row of their own, where a pop-up names the armed
+/// transition in one word — with the wipe edge and shader pickers beside it
+/// only while they apply: a wipe has an edge and a shader has a name, a cut
+/// has neither, and a control for a choice that does not exist would be a
+/// control the operator has to learn to ignore. Right after those, the
+/// **duration** — a field and stepper in seconds, the panel's one rate
+/// knob, applied to every timed take (a shot's own default transition keeps
+/// its kind, edge, and shader and takes the panel's length — the AUTO rate
+/// of a hardware panel, which the shot buttons do not override). It sits
+/// beside the pickers rather than at the row's far end (Larry, 2026-09-13):
+/// it is the armed transition's third setting, and a setting that is read
+/// with its kind belongs next to it, not across a wide window from it. It
+/// is disabled rather than hidden while Cut is armed, so the group keeps its
+/// shape across kinds; a cut has no length to set.
+///
+/// The length is **time, not frames**: `Transition` carries seconds, and the
+/// compositor converts to whole program ticks at take time (rounded, at
+/// least one), so the same half second is 15 ticks at 30 fps and 30 at 60
+/// — the operator's setting survives a frame-rate change.
 ///
 /// **What the panel does not carry.** Which shot is staged and which is on
 /// program are read off the monitors' captions directly above; the panel
@@ -53,24 +68,15 @@ struct TransitionPanel: View {
     /// selection.
     @Bindable var model: EngineModel
 
-    /// The panel: heading, then the one row — the transition kind (and its
-    /// detail picker), Cut, Take, and the hint while nothing is staged.
+    /// The panel: heading, then the one row — Cut, Take, the transition kind
+    /// (and its detail picker), the duration, and the hint while nothing is
+    /// staged.
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Transition", comment: "Section heading over the Cut, Take, and transition controls")
                 .font(.headline)
 
             HStack(spacing: 12) {
-                kindPicker
-
-                if model.takeTransitionKind == .wipe {
-                    edgePicker
-                }
-
-                if model.takeTransitionKind == .shader {
-                    shaderPicker
-                }
-
                 // Cut left of Take, the order the two live side by side on a
                 // hardware panel: CUT takes instantly, AUTO takes over the
                 // armed transition.
@@ -120,6 +126,18 @@ struct TransitionPanel: View {
                     )
                 )
 
+                kindPicker
+
+                if model.takeTransitionKind == .wipe {
+                    edgePicker
+                }
+
+                if model.takeTransitionKind == .shader {
+                    shaderPicker
+                }
+
+                durationControls
+
                 if model.previewShotID == nil {
                     Text(
                         "Stage a shot on preview to take it.",
@@ -137,6 +155,74 @@ struct TransitionPanel: View {
     /// The transport buttons' minimum width, so Cut and Take read as a
     /// matched pair whatever their titles' lengths in a given language.
     private static let transportButtonWidth: CGFloat = 72
+
+    /// The duration field's width: room for "10.00" and a grouping-free
+    /// locale's decimal mark.
+    private static let durationFieldWidth: CGFloat = 56
+
+    /// The stepper's increment in seconds: a tenth, the resolution a rate is
+    /// usually spoken in ("half a second", "a second and a half").
+    private static let durationStep: TimeInterval = 0.1
+
+    /// The take duration beside the pickers: a label, the committing
+    /// field (``CommittingNumberField`` — commits once, on Return or when
+    /// focus leaves, never per keystroke), a stepper, and the unit. Disabled
+    /// while Cut is armed. The field reports `transitionDuration.field` and
+    /// the stepper `transitionDuration.stepper`, each where its action
+    /// executes.
+    private var durationControls: some View {
+        HStack(spacing: 4) {
+            Text("Duration", comment: "Label before the transition duration field on the transition panel")
+                .foregroundStyle(.secondary)
+            CommittingNumberField(
+                value: model.takeTransitionDuration,
+                fractionDigits: 2,
+                label: Text(
+                    "Duration",
+                    comment: "Label before the transition duration field on the transition panel")
+            ) { typed in
+                model.eventBus.tap(
+                    "transitionDuration.field",
+                    domain: .composition,
+                    params: ["seconds": .double(typed)]
+                )
+                model.setTakeTransitionDuration(typed)
+            }
+            .frame(width: Self.durationFieldWidth)
+            Stepper(
+                value: durationBinding.reportingTap(
+                    to: model.eventBus, "transitionDuration.stepper", domain: .composition,
+                    params: { ["seconds": .double($0)] }),
+                in: EngineModel.takeTransitionDurationRange,
+                step: Self.durationStep
+            ) {
+                Text(
+                    "Duration",
+                    comment: "Label before the transition duration field on the transition panel")
+            }
+            .labelsHidden()
+            Text("s", comment: "Unit after the transition duration field: seconds, abbreviated")
+                .foregroundStyle(.secondary)
+        }
+        .disabled(model.takeTransitionKind == .cut)
+        .help(
+            Text(
+                "How long a dissolve, wipe, or shader transition runs, in seconds. A cut is instant.",
+                comment: "Tooltip on the transition duration field and stepper"
+            )
+        )
+    }
+
+    /// The duration as a binding for the stepper: reads the model's value and
+    /// writes through ``EngineModel/setTakeTransitionDuration(_:)``, which
+    /// clamps.
+    private var durationBinding: Binding<TimeInterval> {
+        Binding {
+            model.takeTransitionDuration
+        } set: { seconds in
+            model.setTakeTransitionDuration(seconds)
+        }
+    }
 
     /// The transition kind picker: Default (each shot's own default
     /// transition, ``EngineModel/takeTransitionKind``), or an explicit Cut,

@@ -94,15 +94,17 @@ public final class CoreImageShotRenderer: ShotRenderer {
         self.makeVideoEffect = makeVideoEffect
     }
 
-    /// Creates a renderer over an injected Core Image context (the test
-    /// seam): a software `CIContext` makes compositing deterministic and
-    /// GPU-free for unit tests.
+    /// Creates a renderer over an injected Core Image context: a software
+    /// `CIContext` makes compositing deterministic and GPU-free for unit
+    /// tests, and a front end that only asks for
+    /// ``composedImage(shot:frames:format:)`` hands in the context it
+    /// already draws with rather than paying for a second Metal one.
     ///
     /// - Parameters:
     ///   - context: The Core Image context to render with.
     ///   - makeVideoEffect: The effect resolver (see the public
     ///     initializer); nil renders every chain as pass-through.
-    init(context: CIContext, makeVideoEffect: VideoEffectFactory? = nil) {
+    public init(context: CIContext, makeVideoEffect: VideoEffectFactory? = nil) {
         self.context = context
         self.outputColorSpace = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
         self.makeVideoEffect = makeVideoEffect
@@ -117,6 +119,25 @@ public final class CoreImageShotRenderer: ShotRenderer {
     ) -> CapturedFrame? {
         let image = layerTreeImage(shot: shot, frames: frames, format: format)
         return renderToBuffer(image, format: format, time: time)
+    }
+
+    /// The shot's layer tree composited over its background as one **lazy**
+    /// `CIImage` in program pixels — the same graph
+    /// ``render(shot:frames:format:time:)`` renders to a buffer, handed
+    /// back unrendered so a monitor can draw it into its own drawable at
+    /// its own size in a single pass (ARCHITECTURE.md, "Shot thumbnails are
+    /// the shot"). Nothing is rendered here and no buffer is produced; a
+    /// layer whose input has no frame contributes nothing, as on program.
+    ///
+    /// - Parameters:
+    ///   - shot: The layer tree to compose, bottom to top, over its
+    ///     background.
+    ///   - frames: The latest frame each input has produced, keyed by
+    ///     ``InputID``.
+    ///   - format: The program geometry the layers are placed against.
+    /// - Returns: The composed image, its extent the program rectangle.
+    public func composedImage(shot: Shot, frames: [InputID: CapturedFrame], format: ProgramFormat) -> CIImage {
+        layerTreeImage(shot: shot, frames: frames, format: format)
     }
 
     /// Composites a dissolve: both shots' layer trees are rendered

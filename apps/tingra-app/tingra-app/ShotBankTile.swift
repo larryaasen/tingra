@@ -7,13 +7,13 @@
 //  SPDX-License-Identifier: MIT
 //
 
-import CoreGraphics
 import TingraComposition
 import TingraPlugInKit
 
 /// One shot's tile in the main window's **shot bank** (``ShotBankView``):
-/// which shot it is, what its tally reads, which input's picture stands in
-/// for it, and whether it is a transient shot the operator has not kept.
+/// which shot it is, what its tally reads, and whether it is a transient
+/// shot the operator has not kept (its picture is the composed shot itself —
+/// ``ShotThumbnailSource``).
 ///
 /// A plain value derived by ``tiles(shots:onProgram:onPreview:)``, a pure
 /// function of the pool and the two bus ids — the ``MultiviewTile`` pattern
@@ -31,15 +31,6 @@ struct ShotBankTile: Identifiable, Equatable {
     /// What this tile's tally border reads: red on program, green staged,
     /// none idle — the shot-level rule the sidebar's shot rows read.
     let tally: MultiviewTile.Tally
-
-    /// The input whose latest frame the tile draws, or nil for a shot with no
-    /// layers (drawn black over its caption). See ``thumbnailInput(of:)``.
-    let thumbnailInput: InputID?
-
-    /// How many layers the shot has. A tile whose count is above one wears a
-    /// stacked-layers glyph, so a single input's picture is not mistaken for
-    /// the whole composition.
-    let layerCount: Int
 
     /// Whether the shot is **transient** — automatic, staged by clicking an
     /// input in the sidebar, kept only if the operator keeps, edits, or airs
@@ -73,33 +64,8 @@ struct ShotBankTile: Identifiable, Equatable {
                 id: shot.id,
                 name: shot.name,
                 tally: tally,
-                thumbnailInput: thumbnailInput(of: shot),
-                layerCount: shot.layers.count,
                 isTransient: shot.origin == .automatic
             )
         }
-    }
-
-    /// The input whose picture stands in for a shot: the layer covering the
-    /// **largest area** of the frame, the lowest layer winning a tie.
-    ///
-    /// Not the topmost layer — for a picture-in-picture shot that is the
-    /// small camera inset, and the tile would show a face where the shot is
-    /// mostly a display — and not a composite of the shot, which would cost a
-    /// renderer pass per shot per tick for a picture the operator glances at.
-    /// The layer that fills most of the frame is what the shot mostly *is*.
-    /// Ties go to the lowest layer because it is the one drawn first, nearest
-    /// the background, and so the one the others sit over.
-    ///
-    /// - Parameter shot: The shot to choose for.
-    /// - Returns: The dominant layer's input, or nil for a shot with no layers.
-    static func thumbnailInput(of shot: Shot) -> InputID? {
-        var best: (input: InputID, area: CGFloat)?
-        for layer in shot.layers {
-            let area = layer.frame.width * layer.frame.height
-            if let current = best, area <= current.area { continue }
-            best = (layer.input, area)
-        }
-        return best?.input
     }
 }

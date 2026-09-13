@@ -487,7 +487,7 @@ internal surface a reader needs to navigate the target instead.
   stays `TingraAudio`'s deliberately non-`Codable` `ChannelStrip`.
 - `PresetID` — a stable, string-backed identifier for a preset (a fresh UUID by
   default).
-- `Shot` — a short-term composition with a stable `id` and user-facing `name`:
+- `Shot` — a persisted composition with a stable `id` and user-facing `name`:
   an ordered layer tree (bottom to top) over a `BackgroundColor`, plus an
   optional `defaultTransition` the shot is taken with when the caller does not
   name one (absent = a cut) and an `origin` saying who made it. `Codable` as
@@ -541,7 +541,10 @@ internal surface a reader needs to navigate the target instead.
 - `CoreImageShotRenderer` — the default renderer: composites the layer tree with
   a Metal-backed `CIContext`, GPU-resident, into an IOSurface-backed 32BGRA
   program buffer tagged BT.709 (a software `CIContext` makes the compositing
-  math unit-testable with no GPU); dissolves alpha-blend the two layer trees,
+  math unit-testable with no GPU; `init(context:makeVideoEffect:)` is public
+  since 2026-09-13 so a front end can hand in the context it draws with, and
+  `composedImage(shot:frames:format:)` hands the layer-tree graph back as a
+  lazy `CIImage` for a monitor to draw at its own size); dissolves alpha-blend the two layer trees,
   wipes blend them behind a soft-edged swept gradient mask, shader
   transitions blend through the first-party stitchable Metal kernels, compiled
   once at first use from compiled-in source, and the fade stage composites
@@ -901,14 +904,18 @@ surface is:
   buttons, and their General settings checkbox, lived here for one day and
   went with the bank — ARCHITECTURE.md, "The shot bank".)
 - `TransitionPanel` — the Cut, Take, and transition controls under their own
-  heading (2026-09-07), on **one row** in the order the operator works it: a
-  pop-up menu naming the armed transition — Default (each shot's own default
-  transition, the initial selection), or an explicit Cut, Dissolve, Wipe, or
-  Shader — with the wipe edge or shader name beside it while that kind is
-  selected; then Cut and Take as a matched large pair, Take prominent and red,
-  both disabled with a one-line hint while nothing is staged. Cut ⇧⌘↩ and Take
-  ⌘↩ stay on the buttons. Fade to Black left the panel for the toolbar the same
-  day (`FadeToBlackButton`): it is a master stage, not a transition.
+  heading (2026-09-07), on **one row**: Cut and Take lead as a matched large
+  pair (since 2026-09-13), Take prominent and red, both disabled with a
+  one-line hint while nothing is staged; then a pop-up menu naming the armed
+  transition — Default (each shot's own default transition, the initial
+  selection), or an explicit Cut, Dissolve, Wipe, or Shader — with the wipe
+  edge or shader name beside it while that kind is selected; and beside
+  those a **Duration** field and stepper in seconds (0–10 s, tenths),
+  the panel's one rate knob applied to every timed take, a shot's default
+  included, disabled while Cut is armed. Time, not frames: the compositor
+  converts to ticks at take time. Cut ⇧⌘↩ and Take ⌘↩ stay on the buttons.
+  Fade to Black left the panel for the toolbar on 2026-09-07
+  (`FadeToBlackButton`): it is a master stage, not a transition.
 - `FadeToBlackButton` — the latching Fade to Black control in the main
   window's toolbar, leading Start Streaming and Record (2026-09-07): it takes
   the whole program off air, picture and sound together, stays available when
@@ -1068,12 +1075,14 @@ surface is:
 - `SessionPreferences` / `SessionPosition` — where the operator's position
   persists between launches (2026-09-07): the active preset, the shot on
   program, the shot staged on preview, and the transition armed on the
-  switcher (its kind, the wipe edge, and the shader), as ids and raw values in
+  switcher (its kind, the wipe edge, the shader, and since 2026-09-13 the take
+  duration in seconds), as ids and raw values in
   machine-local `UserDefaults` on the `MonitorPreferences` pattern — not the
   project document, which stays a pure description of the show. The armed
   transition comes back whatever the document holds; a value the app no
-  longer knows reads nil and leaves the picker on its default. `EngineModel` records
-  it from the three properties' own observers, so no path that moves a bus
+  longer knows reads nil and leaves the picker on its default, and a duration
+  is clamped to the panel's range on restore. `EngineModel` records
+  it from the properties' own observers, so no path that moves a bus
   can forget, and reads it once at the top of `loadProject()` before any
   assignment overwrites it. `SessionPosition` validates the record against
   what actually loaded: `launchPreset(in:)` adopts the recorded preset while
@@ -1407,8 +1416,9 @@ surface is:
   only bus. A source that empties after showing frames (preview cleared) gets
   one cleared drawable, so the monitor never holds a stale frame.
 - `MonitorFrameSource` — the seam a monitor reads through, so those cases
-  share one draw path: a bus's `ProgramFrameRelay`, an `InputFrameSource`, or
-  the inspector's `LayerMonitorSource`. `image(for:)` (2026-09-10, defaulted
+  share one draw path: a bus's `ProgramFrameRelay`, an `InputFrameSource`,
+  the inspector's `LayerMonitorSource`, or the shot bank's
+  `ShotThumbnailSource`. `image(for:)` (2026-09-10, defaulted
   to the frame itself) is the `CIImage` the monitor draws for a frame, which
   is how the layer monitor hands a frame through the layer's chain on the
   one draw path.
@@ -1428,7 +1438,11 @@ surface is:
   tiles, which pass no badge and are captioned beneath instead. The main
   window's two monitors also hand it content drawn over the fitted video rect
   — the layer handles (2026-09-09); every other tile passes nothing. The
-  layer list's row thumbnails pass a smaller corner radius.
+  layer list's row thumbnails pass a smaller corner radius, and the preview
+  and program monitors — the main window's and the multiview's — pass zero
+  (2026-09-13): a monitor shows the exact pixels going to air,
+  square-cornered like Final Cut's Viewer, while the bank, multiview input,
+  and layer-monitor tiles stay rounded.
 - `MonitorRenderContext` — the one Metal device, command queue, and `CIContext`
   every monitor draws through, rather than one per view.
 - `InputGridView` — the multiview window's input grid: one tile per *running*
@@ -1451,10 +1465,16 @@ surface is:
   engine running every camera for monitoring; the engine again runs only what
   the show references.
 - `ShotBankTile` — the pure, unit-tested tile derivation behind it: one tile
-  per shot with the shot-level tally (red winning over green), the thumbnail
-  input — the layer covering the largest area of the frame, the lowest winning
-  a tie, so a picture-in-picture shot shows its display rather than its camera
-  inset — the layer count, and whether the shot is transient.
+  per shot with the shot-level tally (red winning over green) and whether the
+  shot is transient (the dominant-layer thumbnail input and the layer count
+  left with "Shot thumbnails are the shot", 2026-09-13).
+- `ShotThumbnailSource` — a bank tile's frame source (2026-09-13;
+  ARCHITECTURE.md, "Shot thumbnails are the shot"): the whole shot, every
+  layer's latest frame through its chain over the background, composed as a
+  lazy `CIImage` by the bank's one `CoreImageShotRenderer`
+  (`composedImage(shot:frames:format:)`) and drawn at thumbnail size in the
+  monitor's one pass; `latest` is the lowest delivering layer's frame, the cue
+  to draw, and `image(for:)` the composition.
 - `AddShotMenu` — the **Add Shot** menu the plus button beside the Shots
   heading opens: `AddShotMenuItems` under a caller-drawn label.
 - `AddShotMenuItems` — the Add Shot items every surface shares — Empty Shot,
