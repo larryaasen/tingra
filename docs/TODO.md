@@ -1407,6 +1407,35 @@ or two in the doc that owns them — none need a rewrite.
     `project.open`/`project.new`. Tests: per-file store, scoped preferences,
     the refusal, `Project.id` round trip. Deferred: Rename/Move To from the
     title bar, a Duplicate command, an MCP tool that opens a project.
+  - [x] **The app tier of plug-ins, Phase 0 and Phase 1** *(built 2026-09-13,
+    PLUGINS.md)*. A plug-in has up to two halves: the host tier above, and an
+    app tier that runs out of process as an ExtensionKit extension the app
+    discovers and hosts, speaking the existing MCP JSON-RPC over
+    `XPCMessageTransport`. The spike answered its five questions (findings
+    recorded in PLUGINS.md, "Spike findings"): the host declares its extension
+    point with a `.appextensionpoint` file in `Contents/Extensions`, no
+    entitlement exists; a warm `tools/call` round trip is 390 µs; program frames
+    cross the boundary as `IOSurface` at 60 Hz with no copy. Built: the
+    `TingraJSONRPC` package (the JSON-RPC types, `MessageTransport`, and the XPC
+    transport, lifted out of `TingraMCP` and re-exported), `TingraAppPlugInKit`
+    (descriptors, the Info.plist manifest, `PlugInConnection`,
+    `TingraAppExtension`), `Project.plugInData`, `MCPSession` as the app's
+    endpoint with the `tingra/*` methods, the app's pane and command registries,
+    panes in the trailing sidebar under the Library in shared disclosure chrome,
+    the Plug-ins menu, plug-in settings panes, and **Notes** — the first-party
+    extension embedded in Tingra.app (notes that save with the project, Show
+    Notes ⌥⌘N, a font-size settings pane). Deferred to Phase 2: the app's
+    first-party control tools (`ControlToolsPlugIn` against the app's
+    `ToolRegistry`) and resources; to Phase 3: locating a third-party
+    extension's bundle for its manifest, the enablement sheet
+    (`EXAppExtensionBrowserViewController`), and `TingraAppPlugInKit` 1.0.0
+    beside `TingraPlugInKit` 1.0.0. Larry's manual check: keyboard focus into
+    the hosted Notes editor (automation had no assistive access).
+  - [ ] **Plug-ins Phase 2 — seams into the engine** (PLUGINS.md): resources
+    (`tingra://session`, `tingra://program`, `tingra://inputs`,
+    `tingra://meters`, frames), the control tools in the app, activation
+    conditions, declared parameters on every host-tier registration, the
+    narrowed secure-storage method.
   - [ ] **The external bundle loader**, tagging `TingraPlugInKit` 1.0.0
     (ARCHITECTURE.md, "Plug-in API stability and versioning").
   - [ ] **NDI as an external plug-in bundle**, outside this repo, importing

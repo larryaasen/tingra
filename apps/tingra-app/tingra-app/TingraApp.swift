@@ -33,6 +33,12 @@ struct TingraApp: App {
     /// (see ``StatusBarModel``).
     @State private var statusBar = StatusBarModel()
 
+    /// The app-tier plug-in host, owned for the app's lifetime: discovers
+    /// the ExtensionKit extensions embedded in the app, fills the pane and
+    /// command registries, and hosts each plug-in's process on demand
+    /// (PLUGINS.md, "The app side").
+    @State private var plugInHost = AppPlugInHost()
+
     /// Whether the main window's sidebar is showing — the split view's own
     /// state, held here so the View menu's Show/Hide Sidebar item can read and
     /// write it (see ``SidebarVisibilityCommands``).
@@ -116,10 +122,13 @@ struct TingraApp: App {
                     await model.openProjectWhenReady(url)
                 }
                 await model.start()
+                plugInHost.start(model: model)
             }
+            .environment(plugInHost)
         }
         .commands {
             ProjectCommands(model: model)
+            PlugInCommands(model: model, host: plugInHost)
             SidebarVisibilityCommands(model: model, visibility: $sidebarVisibility)
             InspectorCommands(model: model, isPresented: $isInspectorPresented)
             ProgramCommands(model: model, isCustomSizePresented: $isCustomSizePresented)
@@ -175,6 +184,7 @@ struct TingraApp: App {
             id: Self.settingsWindowID
         ) {
             SettingsView(model: model, appearance: appearance, statusBar: statusBar)
+                .environment(plugInHost)
         }
         .windowResizability(.contentMinSize)
         .commandsRemoved()

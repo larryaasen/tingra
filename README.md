@@ -299,6 +299,21 @@ provider, first- or third-party; the package imports no third-party code.
 
 **Types:** [`TingraMediaPlugIns` in TYPES.md](docs/TYPES.md#packagestingramediaplugins)
 
+### `packages/TingraJSONRPC`
+
+The JSON-RPC 2.0 layer on its own (see [PLUGINS.md](docs/PLUGINS.md),
+Decision 14): the wire types (`JSONRPCID`, `JSONRPCError`, `JSONRPCResponse`,
+…), the shared message coder, the `MessageTransport` seam a session reads and
+writes through, the in-memory transports tests run against, and
+`XPCMessageTransport` — the transport an app-tier plug-in's ExtensionKit
+connection carries. Lifted out of `TingraMCP` on 2026-09-13 so an extension
+can speak the same protocol the daemon does without linking the daemon or the
+host; it depends on `TingraPlugInKit` for `JSONValue` alone and on nothing
+third-party. `TingraMCP` re-exports it, so nothing that imports `TingraMCP`
+changed.
+
+**Types:** [`TingraJSONRPC` in TYPES.md](docs/TYPES.md#packagestingrajsonrpc)
+
 ### `packages/TingraMCP`
 
 The MCP/Control service (see [MCP.md](docs/MCP.md)): the hand-rolled MCP
@@ -309,6 +324,25 @@ hundred lines behind this seam rather than the official swift-sdk's
 SwiftNIO/swift-log/eventsource stack.
 
 **Types:** [`TingraMCP` in TYPES.md](docs/TYPES.md#packagestingramcp)
+
+### `packages/TingraAppPlugInKit`
+
+The extension side of the app tier (see [PLUGINS.md](docs/PLUGINS.md), "The
+model: two tiers, one plug-in"): what an app-tier plug-in links to add a pane,
+a command, or a settings pane to Tingra.app from its own sandboxed ExtensionKit
+process. It holds the `Codable` descriptors and the `PlugInManifest` the app
+reads from an extension's Info.plist before the extension runs, the
+`TingraAppExtension` protocol an extension's `@main` type adopts (the kit owns
+the scenes, the connections, and the MCP handshake), and `PlugInConnection`,
+the extension's MCP client for calling the app's tools, filing events on the
+app's bus, and reading and writing its project- and app-scoped storage. It
+imports ExtensionKit and SwiftUI — the one package in the engine family that
+does, because it *is* the UI-side kit for extensions — and is linked only by
+extensions and the app, never by the engine or the CLI. Deliberately no default
+main-actor isolation: XPC delivers on the connection's own queue, so the
+UI-facing types say `@MainActor` themselves.
+
+**Types:** [`TingraAppPlugInKit` in TYPES.md](docs/TYPES.md#packagestingraapppluginkit)
 
 ### `apps/tingra-cli`
 
@@ -345,12 +379,21 @@ the CLI uses. A native Xcode project (`tingra-app.xcodeproj`, scheme
 package, so the bundle, the Info.plist usage descriptions, and a stable
 code signature are build settings rather than scripts — which is what lets one
 TCC grant for Screen Recording, Camera, and Microphone survive a rebuild. It
-links the ten engine packages as local package references — recording the
-program to a local file through the same `TingraRecordingPlugIns`
-`RecordingService` the CLI's `--record` drives, in its own session so it starts
-and stops independently of the stream. An app, so it exposes no public API
-beyond its `@main` entry. User-facing strings are localized
-(`Localizable.xcstrings`, en/de/es).
+links fourteen of the `packages/` libraries as local package references — the
+eleven it linked before the app tier, plus `TingraJSONRPC`, `TingraMCP`, and
+`TingraAppPlugInKit` for it — recording the program to a local file through the
+same `TingraRecordingPlugIns` `RecordingService` the CLI's `--record` drives, in
+its own session so it starts and stops independently of the stream. An app, so
+it exposes no public API beyond its `@main` entry. User-facing strings are
+localized (`Localizable.xcstrings`, en/de/es).
+
+The same project also builds the first-party **Notes** plug-in (`tingra-notes`,
+product `TingraNotes.appex`) as an ExtensionKit extension embedded in
+`Tingra.app/Contents/Extensions`: the app is the host of the app tier (see
+[PLUGINS.md](docs/PLUGINS.md)) — it discovers extensions against its extension
+point, hosts their panes in the trailing sidebar and the Settings window, and
+speaks MCP to each over XPC — and Notes, linking `TingraAppPlugInKit` alone
+from its own sandboxed process, is the proof a third-party plug-in follows.
 
 To build a signed, runnable copy, copy `apps/tingra-app/Local.xcconfig.example`
 to `Local.xcconfig` (git-ignored) and set your own Apple Developer Team ID; the

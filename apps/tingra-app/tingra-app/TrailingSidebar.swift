@@ -19,6 +19,9 @@ import TingraEventBus
 /// of the right sidebar behind a draggable splitter, and panes may move
 /// between sidebars later without the containers changing).
 ///
+/// Registered plug-in panes follow the Library as collapsible sections
+/// (``PlugInPaneSection``), the two existing panes unchanged above them.
+///
 /// A SwiftUI splitter rather than a bridged `NSSplitView`: the AppKit view
 /// would buy its autosave at the cost of hosting two SwiftUI trees inside a
 /// representable, and a divider with one persisted number is a few dozen
@@ -36,6 +39,10 @@ struct TrailingSidebar: View {
 
     /// Where the height persists.
     private let preferences: LibraryPreferences
+
+    /// The app-tier plug-in host, whose registered panes follow the Library
+    /// as collapsible sections (PLUGINS.md, "The app side").
+    @Environment(AppPlugInHost.self) private var plugInHost: AppPlugInHost?
 
     /// The sidebar's width bounds: wide enough for two fields beside a label,
     /// never so wide it starves the monitors.
@@ -84,6 +91,15 @@ struct TrailingSidebar: View {
                 }
                 LibraryView(model: model)
                     .frame(width: proxy.size.width, height: height, alignment: .leading)
+                // Registered plug-in panes, each in the shared disclosure
+                // chrome; a pane asking for another sidebar is hosted here
+                // until one exists — the operator's layout wins.
+                if let plugInHost {
+                    ForEach(plugInHost.panes.panes) { pane in
+                        PlugInPaneSection(pane: pane, host: plugInHost, model: model)
+                            .frame(width: proxy.size.width, alignment: .leading)
+                    }
+                }
             }
         }
         .inspectorColumnWidth(min: Self.minimumWidth, ideal: Self.idealWidth, max: Self.maximumWidth)

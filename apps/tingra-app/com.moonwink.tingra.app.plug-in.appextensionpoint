@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  com.moonwink.tingra.app.plug-in.appextensionpoint
+  tingra-app
+
+  Created by Larry Aasen on 2026-09-13.
+  Copyright © 2026 Larry Aasen.
+  SPDX-License-Identifier: MIT
+
+  The app's ExtensionKit extension point declaration (PLUGINS.md, "The app
+  tier's process model"). On macOS 13 through 25 a host declares an
+  extension point with this property list copied into Contents/Extensions
+  beside the embedded extensions; the macOS 26 code-declared
+  AppExtensionPoint API is above Tingra's floor. One dictionary per
+  extension point, keyed by its identifier; EXPresentsUserInterface says the
+  point hosts remote views (panes), not only headless connections.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>com.moonwink.tingra.app.plug-in</key>
+	<dict>
+		<key>EXPresentsUserInterface</key>
+		<true/>
+	</dict>
+</dict>
+</plist>

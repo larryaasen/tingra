@@ -8,6 +8,7 @@
 //
 
 import Foundation
+import TingraPlugInKit
 
 /// A stable identifier for a ``Project`` — the document itself, not its
 /// file: it survives Save As, a move, and a rename, which is what lets the
@@ -97,6 +98,18 @@ public struct Project: Sendable, Equatable, Codable {
     /// — the pre-release rule, no version bump.
     public let media: [ProjectMedia]?
 
+    /// Project-scoped storage for app-tier plug-ins, or `nil` when no plug-in
+    /// has written any (PLUGINS.md, "Storage", Decision 7). Each key is a
+    /// plug-in id — the raw value of the plug-in kit's `PlugInID`, kept as a
+    /// plain `String` here so the document type depends on nothing new — and
+    /// each value is opaque JSON the plug-in owns; the document neither reads
+    /// nor interprets it. A plug-in's write dirties the document like a layer
+    /// edit, so its data saves with the project and travels with it, and an
+    /// entry for a plug-in this build does not have round-trips untouched, so
+    /// a project opened without the plug-in loses nothing. An **optional key
+    /// within v1** — the pre-release rule, no version bump.
+    public let plugInData: [String: JSONValue]?
+
     /// Creates a project.
     ///
     /// - Parameters:
@@ -108,13 +121,16 @@ public struct Project: Sendable, Equatable, Codable {
     ///   - programFormat: The program's size and frame rate (default: none,
     ///     meaning 1920x1080 at 30).
     ///   - media: The files added as media (default: none).
+    ///   - plugInData: The app-tier plug-ins' project-scoped storage, keyed
+    ///     by plug-in id (default: none).
     public init(
         version: Int = Project.currentVersion,
         id: ProjectID? = nil,
         presets: [Preset] = [],
         destinations: [DestinationReference]? = nil,
         programFormat: ProgramFormat? = nil,
-        media: [ProjectMedia]? = nil
+        media: [ProjectMedia]? = nil,
+        plugInData: [String: JSONValue]? = nil
     ) {
         self.version = version
         self.id = id
@@ -122,6 +138,7 @@ public struct Project: Sendable, Equatable, Codable {
         self.destinations = destinations
         self.programFormat = programFormat
         self.media = media
+        self.plugInData = plugInData
     }
 
     /// The coding keys — stable camelCase names for the project document.
@@ -132,6 +149,7 @@ public struct Project: Sendable, Equatable, Codable {
         case destinations
         case programFormat
         case media
+        case plugInData
         /// Read-only: the single destination key written before a project
         /// could hold several. Decoded and folded into ``destinations``,
         /// never written again (see ``init(from:)``).
@@ -141,8 +159,8 @@ public struct Project: Sendable, Equatable, Codable {
     /// Decodes a project. `version` is required (a document must declare its
     /// format so future versions can migrate it) and must not exceed
     /// ``currentVersion``; `id`, `presets`, `destinations`, `programFormat`,
-    /// `media`, and the older single `destination` are optional (a minimal document
-    /// decodes forgivingly with them absent).
+    /// `media`, `plugInData`, and the older single `destination` are optional
+    /// (a minimal document decodes forgivingly with them absent).
     ///
     /// A document written with the single `destination` key folds it in as
     /// the only element of ``destinations`` — an **optional key within v1**
@@ -192,14 +210,15 @@ public struct Project: Sendable, Equatable, Codable {
         }
         programFormat = try container.decodeIfPresent(ProgramFormat.self, forKey: .programFormat)
         media = try container.decodeIfPresent([ProjectMedia].self, forKey: .media)
+        plugInData = try container.decodeIfPresent([String: JSONValue].self, forKey: .plugInData)
     }
 
     /// Encodes a project, writing `version` and `presets` always and `id`,
-    /// `destinations`, `programFormat`, and `media` only when set, so a
-    /// project with no id, no destination, the default format, or no media
-    /// round-trips to a document without those keys (and reads them back
-    /// as nil). The superseded
-    /// single `destination` key is never written.
+    /// `destinations`, `programFormat`, `media`, and `plugInData` only when
+    /// set, so a project with no id, no destination, the default format, no
+    /// media, or no plug-in data round-trips to a document without those
+    /// keys (and reads them back as nil). The superseded single `destination`
+    /// key is never written.
     public func encode(to encoder: any Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(version, forKey: .version)
@@ -208,5 +227,6 @@ public struct Project: Sendable, Equatable, Codable {
         try container.encodeIfPresent(destinations, forKey: .destinations)
         try container.encodeIfPresent(programFormat, forKey: .programFormat)
         try container.encodeIfPresent(media, forKey: .media)
+        try container.encodeIfPresent(plugInData, forKey: .plugInData)
     }
 }

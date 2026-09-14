@@ -1,6 +1,6 @@
 //
 //  AsyncQueue.swift
-//  TingraMCP
+//  TingraJSONRPC
 //
 //  Created by Larry Aasen on 2026-07-05.
 //  Copyright © 2026 Larry Aasen.
@@ -19,7 +19,7 @@ import Synchronization
 /// a lock-protected buffer with a single suspended waiter, never an
 /// `AsyncStream` iterator smuggled across an isolation boundary.
 /// Continuations are resumed after the lock is released.
-final class AsyncQueue<Element: Sendable>: Sendable {
+public final class AsyncQueue<Element: Sendable>: Sendable {
     /// The queue's protected state.
     private struct State {
         /// Elements produced but not yet consumed.
@@ -36,11 +36,11 @@ final class AsyncQueue<Element: Sendable>: Sendable {
     private let state = Mutex(State())
 
     /// Creates an empty queue.
-    init() {}
+    public init() {}
 
     /// Enqueues one element, resuming a waiting consumer if one is suspended.
     /// Ignored once finished.
-    func enqueue(_ element: Element) {
+    public func enqueue(_ element: Element) {
         let waiter = state.withLock { state -> CheckedContinuation<Element?, Never>? in
             guard !state.finished else { return nil }
             if let waiter = state.waiter {
@@ -55,7 +55,7 @@ final class AsyncQueue<Element: Sendable>: Sendable {
 
     /// Marks the producer finished; a waiting (or later) consumer gets nil.
     /// Idempotent.
-    func finish() {
+    public func finish() {
         let waiter = state.withLock { state -> CheckedContinuation<Element?, Never>? in
             state.finished = true
             let waiter = state.waiter
@@ -67,7 +67,7 @@ final class AsyncQueue<Element: Sendable>: Sendable {
 
     /// Awaits the next element, or nil once finished and drained. Single
     /// consumer only.
-    func next() async -> Element? {
+    public func next() async -> Element? {
         await withCheckedContinuation { (continuation: CheckedContinuation<Element?, Never>) in
             // Resolve under the lock, resume after releasing it.
             let resume: () -> Void = state.withLock { state in

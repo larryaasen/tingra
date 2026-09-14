@@ -29,6 +29,7 @@ let package = Package(
         .package(path: "../TingraEventBus"),
         .package(path: "../TingraPlugInKit"),
         .package(path: "../TingraHost"),
+        .package(path: "../TingraJSONRPC"),
     ],
     targets: [
         // A tiny C shim exposing launchd's `launch_activate_socket`, which the
@@ -41,6 +42,7 @@ let package = Package(
                 .product(name: "TingraEventBus", package: "TingraEventBus"),
                 .product(name: "TingraPlugInKit", package: "TingraPlugInKit"),
                 .product(name: "TingraHost", package: "TingraHost"),
+                .product(name: "TingraJSONRPC", package: "TingraJSONRPC"),
             ]
         ),
         .testTarget(name: "TingraMCPTests", dependencies: ["TingraMCP"]),

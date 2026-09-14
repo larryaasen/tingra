@@ -7277,6 +7277,40 @@
           }
         }
       }
+    },
+    "Plug-ins" : {
+      "comment" : "Title of the Plug-ins menu, one submenu per plug-in with commands",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Plug-ins"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Complementos"
+          }
+        }
+      }
+    },
+    "Loading plug-in…" : {
+      "comment" : "Placeholder shown in a plug-in's pane until its extension draws",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Plug-in wird geladen …"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cargando el complemento…"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

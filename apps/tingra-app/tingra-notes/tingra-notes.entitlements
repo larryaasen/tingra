@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  tingra-notes.entitlements
+  TingraNotes
+
+  Created by Larry Aasen on 2026-09-13.
+  Copyright © 2026 Larry Aasen.
+  SPDX-License-Identifier: MIT
+
+  The first-party Notes plug-in, an ExtensionKit extension embedded in
+  Tingra.app (PLUGINS.md, Decision 9). ExtensionKit extensions run
+  sandboxed; the sandbox is the only entitlement they need. Everything the
+  plug-in stores goes through the app over its connection, so no file or
+  network entitlement appears here.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>com.apple.security.app-sandbox</key>
+    <true/>
+</dict>
+</plist>

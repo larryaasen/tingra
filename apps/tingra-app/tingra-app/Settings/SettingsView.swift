@@ -8,6 +8,7 @@
 //
 
 import SwiftUI
+import TingraAppPlugInKit
 import TingraEventBus
 
 /// One pane of the settings window.
@@ -76,6 +77,27 @@ enum SettingsPane: String, CaseIterable, Hashable, Sendable {
     }
 }
 
+/// What the settings window's source list selects: one of the app's own
+/// panes, or a settings pane an app-tier plug-in registered — the list is
+/// identifier-backed for plug-ins while the built-in panes keep their
+/// closed enum (PLUGINS.md, "The app side").
+nonisolated enum SettingsSelection: Hashable, Sendable {
+    /// One of the app's own panes.
+    case builtIn(SettingsPane)
+
+    /// A plug-in's settings pane, by its id.
+    case plugIn(PaneID)
+
+    /// The value the `settingsPane.tab` tap reports: the built-in pane's
+    /// raw value, or the plug-in pane's id.
+    var tapValue: String {
+        switch self {
+        case .builtIn(let pane): pane.rawValue
+        case .plugIn(let id): id.rawValue
+        }
+    }
+}
+
 /// The settings window, reached from the app menu with ⌘, the way macOS
 /// reserves — eight panes for now: General, Streaming, Recording,
 /// Permissions, Shortcuts, Data, Logging, and About.
@@ -122,7 +144,11 @@ struct SettingsView: View {
     /// The pane on screen. View-local session state: which pane an operator
     /// last had open is not worth persisting, and a settings window that
     /// opens on General every time is what every Mac app does.
-    @State private var pane: SettingsPane = .general
+    @State private var selection: SettingsSelection = .builtIn(.general)
+
+    /// The app-tier plug-in host, whose registered settings panes follow
+    /// the built-in ones in the source list (PLUGINS.md, "The app side").
+    @Environment(AppPlugInHost.self) private var plugInHost: AppPlugInHost?
 
     /// The smallest the **detail column** may be: wide enough for a grouped
     /// form, tall enough for the Shortcuts pane's six rows without a scroll on
@@ -180,13 +206,25 @@ struct SettingsView: View {
     /// declared, not rely on no one ever aiming a command at it.
     var body: some View {
         NavigationSplitView(columnVisibility: .constant(.all)) {
-            List(SettingsPane.allCases, id: \.self, selection: paneSelection) { pane in
-                Label {
-                    pane.name
-                } icon: {
-                    Image(systemName: pane.systemImage)
+            List(selection: paneSelection) {
+                ForEach(SettingsPane.allCases, id: \.self) { pane in
+                    Label {
+                        pane.name
+                    } icon: {
+                        Image(systemName: pane.systemImage)
+                    }
+                    .tag(SettingsSelection.builtIn(pane))
                 }
-                .tag(pane)
+                // Plug-in settings panes follow the built-in ones, each a
+                // remote view hosted like a sidebar pane.
+                ForEach(plugInHost?.panes.settingsPanes ?? []) { pane in
+                    Label {
+                        Text(verbatim: pane.descriptor.title)
+                    } icon: {
+                        Image(systemName: pane.descriptor.systemImage)
+                    }
+                    .tag(SettingsSelection.plugIn(pane.id))
+                }
             }
             // The source-list style, the same one ``LeadingSidebar`` uses. It is
             // what makes the column run the **full height of the window** —
@@ -212,7 +250,7 @@ struct SettingsView: View {
                 }
             }
         } detail: {
-            content(for: pane)
+            content(for: selection)
                 .frame(minWidth: Self.minimumSize.width, minHeight: Self.minimumSize.height)
         }
         .onExitCommand {
@@ -224,12 +262,12 @@ struct SettingsView: View {
     /// The pane binding, reporting its own `tap` before the switch lands —
     /// the `Binding.reportingTap` rule, so restoring General at launch
     /// records no tap nobody made.
-    private var paneSelection: Binding<SettingsPane> {
-        $pane.reportingTap(
+    private var paneSelection: Binding<SettingsSelection> {
+        $selection.reportingTap(
             to: model.eventBus,
             "settingsPane.tab",
             domain: .platform,
-            params: { ["pane": .string($0.rawValue)] }
+            params: { ["pane": .string($0.tapValue)] }
         )
     }
 
@@ -241,9 +279,20 @@ struct SettingsView: View {
     ///
     /// - Parameter pane: The pane to draw.
     /// - Returns: Its view.
-    private func content(for pane: SettingsPane) -> some View {
-        paneBody(for: pane)
-            .navigationTitle(pane.name)
+    @ViewBuilder private func content(for selection: SettingsSelection) -> some View {
+        switch selection {
+        case .builtIn(let pane):
+            paneBody(for: pane)
+                .navigationTitle(pane.name)
+        case .plugIn(let id):
+            if let plugInHost, let pane = plugInHost.panes.settingsPanes.first(where: { $0.id == id }),
+                let plugIn = plugInHost.plugIns.first(where: { $0.id == pane.plugIn })
+            {
+                PlugInPaneHost(identity: plugIn.identity, pane: id, sceneID: pane.descriptor.sceneID, host: plugInHost)
+                    .id(plugInHost.paneGenerations[id, default: 0])
+                    .navigationTitle(Text(verbatim: pane.descriptor.title))
+            }
+        }
     }
 
     /// One pane's own view, without chrome.

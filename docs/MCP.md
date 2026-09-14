@@ -104,6 +104,21 @@ Many MCP sessions, one engine session (GLOSSARY.md: the session is the live runn
 - **Stream keys are transient in the daemon** (decided 2026-08-05). A key arrives as `stream_start` tool input and is held only for the life of the session it starts — the coordinator keeps the requested legs so `stream_status` can report each one — then released on **every** teardown path: an explicit `stream_stop`, a duration elapse, a lost connection, and a start that never went live. The daemon never writes a key to secure storage, so nothing outlives the session and nothing outlives the daemon; a later `stream_start` supplies the key again. Keys are never returned by any tool or event, only referenced redacted (`live_xx…`), per the redaction policy in EVENTS.md.
 - **Why the app persists keys and the daemon does not.** The app files each stream key in the host's Keychain backed secure storage, keyed by destination id, because an operator authors a destination once and returns to it — the key belongs to a document with an owner. The daemon's caller is an agent that already holds the key it is calling with, so persisting would create a secret at rest that no one owns and nothing expires. Durable keys arrive with the destination model, and they arrive as *the destination's* property, not the daemon's. **That model landed 2026-08-15** (DESTINATIONS.md): `stream_start` may now *resolve* a key by reference from the operator's store, and the resolved key is transient in the daemon on exactly the same terms as an inline one — the daemon still never writes a key, never returns one, and releases every key on every teardown path.
 
+## The app tier: the same MCP over XPC
+
+App-tier plug-ins (PLUGINS.md, decided 2026-09-13) are ExtensionKit extensions the app hosts out of process, and they speak to the app the way an agent speaks to the daemon: the extension is an MCP client, the app an MCP endpoint. Nothing new travels the wire — the JSON-RPC 2.0 types, `MessageTransport`, and the message coder moved from `TingraMCP` into `TingraJSONRPC` (re-exported by `TingraMCP`, so direct socket clients see no change), and `XPCMessageTransport` carries one JSON payload per XPC message over the `NSXPCConnection` ExtensionKit hands each side. The one Objective-C protocol on that connection, `TingraXPCMessageChannel`, has two methods — `open()` and `deliver(_:)` — and is a byte channel, not a second RPC protocol (CLAUDE.md). `open()` exists because an XPC connection is established on its first message, and a pane's connection is one the extension only ever reads on until the app speaks.
+
+The app's endpoint is `MCPSession` itself, now public, over the app's own `ToolRegistry` and status sink, with a `SessionMethodHandler` serving the methods the app tier adds beside MCP's own:
+
+| Method | Direction | Purpose |
+|---|---|---|
+| `initialize`, `notifications/initialized`, `ping`, `tools/list`, `tools/call` | extension → app | MCP as documented above; the tools are the app's registry (first-party control tools follow in Phase 2) |
+| `tingra/event` (notification) | extension → app | An event for the app's bus: `name`, optional `params`, optional `group` (`event` or `error`). It lands under the plug-in's id as its domain, so the log file, OSLog, and the log window carry it with everything else (EVENTS.md) |
+| `tingra/storage.get`, `tingra/storage.set` | extension → app | The plug-in's stored value for a `scope` of `project` (in the document under `plugInData`, dirtied and autosaved like any edit) or `application` (a JSON file under `~/Library/Application Support/Tingra/Plug-ins/<id>/`). The plug-in id is the connection's, never a param: a plug-in cannot reach another's data |
+| `tingra/command.perform` | app → extension | The one request the app makes: perform a command the manifest declared, after the app emitted the `tap` and revealed the pane the command names |
+
+Identity is per connection: the app opened the connection for a known extension, so the handler is built with that plug-in's id. Secrets are not a storage scope; a plug-in needing a key gets a narrowed secure-storage method later, never a plaintext file.
+
 ## Product grade requirements
 
 The MCP surface is a shipping feature for end users, so it carries product obligations:

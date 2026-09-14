@@ -82,6 +82,7 @@ struct PlugInLoaderTests {
         let activations = received.filter { $0.name == "plugin.activated" }
         #expect(activations.count == 2)
         #expect(activations.allSatisfy { $0.group == .event && $0.domain == .plugIn })
+        #expect(activations.allSatisfy { $0.params?["tier"] == .string("host") })
     }
 
     @Test("a plug-in that throws is skipped and reported as an error event; the rest load normally")
@@ -117,6 +118,37 @@ struct PlugInLoaderTests {
         #expect(errors.first?.name == "plugin.activation")
         #expect(errors.first?.params?["id"] == .string("com.example.rejecting"))
         #expect(errors.first?.params?["error"] == .string("the mock plug-in rejected activation"))
+        #expect(errors.first?.params?["tier"] == .string("host"))
+    }
+
+    @Test("every event the loader emits names the host tier, so app-tier events are distinguishable")
+    func eventsCarryTheHostTier() async throws {
+        let eventBus = EventBus()
+        let events = eventBus.events()
+        let context = PlugInContext(
+            eventBus: eventBus,
+            clock: HostClock(),
+            inputs: InputRegistry(),
+            outputs: OutputRegistry(),
+            effects: EffectRegistry(),
+            tools: ToolRegistry()
+        )
+        let plugIns: [any PlugIn] = [
+            MockPlugIn(id: PlugInID(rawValue: "com.example.healthy")),
+            MockPlugIn(id: PlugInID(rawValue: "com.example.rejecting"), rejection: MockActivationError()),
+        ]
+
+        await PlugInLoader().activate(plugIns, in: context)
+        eventBus.shutdown()
+
+        var received: [EventBusEvent] = []
+        for await event in events {
+            received.append(event)
+        }
+        let loaderEvents = received.filter { $0.name == "plugin.activated" || $0.name == "plugin.activation" }
+        #expect(loaderEvents.count == 2)
+        #expect(loaderEvents.allSatisfy { $0.params?["tier"] == .string("host") })
+        #expect(loaderEvents.allSatisfy { $0.params?["tier"] != .string("app") })
     }
 
     @Test("activating an empty plug-in list returns empty and emits nothing")

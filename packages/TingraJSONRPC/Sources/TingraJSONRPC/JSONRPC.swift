@@ -1,6 +1,6 @@
 //
 //  JSONRPC.swift
-//  TingraMCP
+//  TingraJSONRPC
 //
 //  Created by Larry Aasen on 2026-07-05.
 //  Copyright © 2026 Larry Aasen.
@@ -10,9 +10,9 @@
 import TingraPlugInKit
 
 /// A JSON-RPC 2.0 request/response identifier: a string or an integer (the
-/// spec also permits null, which this daemon never issues).
+/// spec also permits null, which no Tingra peer issues).
 ///
-/// The daemon echoes a request's id verbatim on its response, so the id is
+/// A server echoes a request's id verbatim on its response, so the id is
 /// carried as-is rather than normalized.
 public enum JSONRPCID: Sendable, Equatable {
     /// A numeric id.
@@ -48,13 +48,13 @@ extension JSONRPCID: Codable {
     }
 }
 
-/// The standard JSON-RPC 2.0 error codes the daemon uses, plus the meaning
+/// The standard JSON-RPC 2.0 error codes Tingra's peers use, plus the meaning
 /// each carries (see the JSON-RPC 2.0 specification, section 5.1).
 ///
 /// These describe *protocol* faults — a malformed message, an unknown
 /// method, bad params. A tool that runs and reports a failure is not a
 /// protocol error: it returns a normal result with `isError` set, keyed off
-/// the ``ErrorIdentifier`` registry (see ``MCPToolResult`` and MCP.md,
+/// the ``ErrorIdentifier`` registry (see `MCPToolResult` in TingraMCP and MCP.md,
 /// "Errors that teach").
 public enum JSONRPCErrorCode: Int, Sendable {
     /// Invalid JSON was received.
@@ -74,7 +74,9 @@ public enum JSONRPCErrorCode: Int, Sendable {
 }
 
 /// A JSON-RPC 2.0 error object, carried in a response's `error` member.
-public struct JSONRPCError: Sendable, Equatable, Codable {
+/// Also a Swift `Error`, so a method handler can throw the exact protocol
+/// error it wants a session to answer with.
+public struct JSONRPCError: Error, Sendable, Equatable, Codable {
     /// The numeric error code (see ``JSONRPCErrorCode``).
     public let code: Int
 
@@ -97,12 +99,12 @@ public struct JSONRPCError: Sendable, Equatable, Codable {
     }
 }
 
-/// An incoming JSON-RPC message the daemon receives from a client: a request
+/// An incoming JSON-RPC message a peer receives: a request
 /// (has both `method` and `id`) or a notification (has `method`, no `id`).
 ///
 /// A message with an `id` but no `method` is a *response* to a
-/// server-initiated request; the v1 daemon initiates none, so such messages
-/// decode with a nil `method` and are ignored by the session.
+/// request the reader itself sent; a server that initiates none lets such messages
+/// decode with a nil `method` and ignores them, and a client matches them to its pending requests.
 public struct JSONRPCIncoming: Sendable, Decodable {
     /// The protocol version tag; must be `"2.0"`.
     public let jsonrpc: String
@@ -110,7 +112,7 @@ public struct JSONRPCIncoming: Sendable, Decodable {
     /// The request/response id, absent on a notification.
     public let id: JSONRPCID?
 
-    /// The method name, absent on a client response the daemon does not act on.
+    /// The method name, absent on a response.
     public let method: String?
 
     /// The method parameters, if any.
@@ -120,7 +122,7 @@ public struct JSONRPCIncoming: Sendable, Decodable {
     public var isRequest: Bool { id != nil && method != nil }
 }
 
-/// A JSON-RPC 2.0 response the daemon sends: exactly one of `result` or
+/// A JSON-RPC 2.0 response: exactly one of `result` or
 /// `error` is present, and `id` echoes the request's id.
 public struct JSONRPCResponse: Sendable, Encodable {
     /// The protocol version tag, always `"2.0"`.
@@ -161,8 +163,8 @@ public struct JSONRPCResponse: Sendable, Encodable {
     }
 }
 
-/// A JSON-RPC 2.0 notification the daemon sends: a method call with no `id`,
-/// so the client sends no response. Status changes reach connected sessions
+/// A JSON-RPC 2.0 notification: a method call with no `id`,
+/// so the receiver sends no response. The daemon's status changes reach connected sessions
 /// this way (MCP.md, "Sessions and concurrency").
 public struct JSONRPCNotification: Sendable, Encodable {
     /// The protocol version tag, always `"2.0"`.

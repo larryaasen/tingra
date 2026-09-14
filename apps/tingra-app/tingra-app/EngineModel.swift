@@ -23,6 +23,7 @@ import TingraEffectPlugIns
 import TingraEventBus
 import TingraGeneratorPlugIns
 import TingraHost
+import TingraJSONRPC
 import TingraMediaPlugIns
 import TingraOutputPlugIns
 import TingraPlugInKit
@@ -1253,6 +1254,18 @@ final class EngineModel {
     /// the session position is scoped by (``SessionPreferences``).
     @ObservationIgnored private var projectID: ProjectID?
 
+    /// The project-scoped storage of app-tier plug-ins, by plug-in id: the
+    /// document's `plugInData` key, held opaque and written back as read so
+    /// a project opened without a plug-in loses nothing of its data
+    /// (PLUGINS.md, Decision 7; ``plugInProjectData(for:)``).
+    @ObservationIgnored private var plugInData: [String: JSONValue] = [:]
+
+    /// The host's tool registry: what the MCP endpoint app-tier plug-ins
+    /// call lists and dispatches against, and what host-tier plug-ins
+    /// register tools into through the plug-in context (PLUGINS.md,
+    /// Decision 10). Filled by first-party control tools in Phase 2.
+    @ObservationIgnored let toolRegistry = ToolRegistry()
+
     /// The projects opened, created, or saved as through the File menu, most
     /// recent first — the Open Recent submenu's rows. Kept by the system's
     /// document controller, which also feeds the Apple menu's Recent Items
@@ -1564,7 +1577,7 @@ final class EngineModel {
             inputs: registry,
             outputs: outputs,
             effects: effects,
-            tools: UnusedToolRegistering(),
+            tools: toolRegistry,
             media: mediaRegistry
         )
         await PlugInLoader().activate(
@@ -4790,6 +4803,8 @@ final class EngineModel {
         media = project.media ?? []
         mediaDurations = [:]
         mediaSizes = [:]
+        // Plug-in data is the document's, opaque to the app.
+        plugInData = project.plugInData ?? [:]
 
         let recorded: SessionPosition
         if let id = project.id {
@@ -5216,6 +5231,30 @@ final class EngineModel {
     /// any pending autosave. A save that cannot write is reported on the bus
     /// and the session continues: the edits are still live on program, only
     /// unsaved.
+    /// The project-scoped value an app-tier plug-in has stored in the open
+    /// project, or nil when it has none (PLUGINS.md, Decision 7).
+    ///
+    /// - Parameter plugIn: The plug-in's identifier.
+    func plugInProjectData(for plugIn: PlugInID) -> JSONValue? {
+        plugInData[plugIn.rawValue]
+    }
+
+    /// Replaces the project-scoped value an app-tier plug-in stores in the
+    /// open project; nil removes it. An edit like a layer edit: the
+    /// document is dirtied and autosaved, and the value travels with it.
+    ///
+    /// - Parameters:
+    ///   - value: The value to store.
+    ///   - plugIn: The plug-in's identifier.
+    func setPlugInProjectData(_ value: JSONValue?, for plugIn: PlugInID) {
+        guard plugInData[plugIn.rawValue] != value else { return }
+        plugInData[plugIn.rawValue] = value
+        eventBus.event(
+            "project.plugInDataEdited", domain: .composition,
+            params: ["plugIn": .string(plugIn.rawValue), "cleared": .bool(value == nil)])
+        scheduleAutosave()
+    }
+
     private func saveProject() {
         guard hasSessionPreset, !isRemovingData else { return }
         autosaveTask?.cancel()
@@ -5245,7 +5284,8 @@ final class EngineModel {
             presets: presets,
             destinations: DestinationEdit.references(from: destinations),
             programFormat: format == ProgramFormat() ? nil : format,
-            media: media.isEmpty ? nil : media
+            media: media.isEmpty ? nil : media,
+            plugInData: plugInData.isEmpty ? nil : plugInData
         )
         do {
             try target.save(project)
@@ -5408,12 +5448,6 @@ enum TakeTransitionKind: String, CaseIterable {
     /// A custom-shader reveal with ``EngineModel/shaderName`` over
     /// ``EngineModel/takeTransitionDuration``.
     case shader
-}
-
-/// A no-op `ToolRegistering`: the app does not host the MCP tool surface
-/// (the daemon does), but the shared `PlugInContext` still requires the seam.
-private struct UnusedToolRegistering: ToolRegistering {
-    func register(_ tool: any Tool) async throws {}
 }
 
 /// The video effect providers the compositor's renderer resolves layer

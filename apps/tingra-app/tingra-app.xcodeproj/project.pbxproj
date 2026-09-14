@@ -18,6 +18,12 @@
 		46DA99293005000000B79666 /* TingraPlugInKit in Frameworks */ = {isa = PBXBuildFile; productRef = 46DA99193005000000B79666 /* TingraPlugInKit */; };
 		46DA992A3005000000B79666 /* TingraRecordingPlugIns in Frameworks */ = {isa = PBXBuildFile; productRef = 46DA991A3005000000B79666 /* TingraRecordingPlugIns */; };
 		46DA992B3005000000B79666 /* TingraMediaPlugIns in Frameworks */ = {isa = PBXBuildFile; productRef = 46DA991B3005000000B79666 /* TingraMediaPlugIns */; };
+		5B14E5010000000000000A0F /* com.moonwink.tingra.app.plug-in.appextensionpoint in Embed ExtensionKit Extensions */ = {isa = PBXBuildFile; fileRef = 5B14E5010000000000000A0E /* com.moonwink.tingra.app.plug-in.appextensionpoint */; };
+		5B14E5020000000000000B40 /* TingraJSONRPC in Frameworks */ = {isa = PBXBuildFile; productRef = 5B14E5020000000000000B30 /* TingraJSONRPC */; };
+		5B14E5020000000000000B41 /* TingraMCP in Frameworks */ = {isa = PBXBuildFile; productRef = 5B14E5020000000000000B31 /* TingraMCP */; };
+		5B14E5020000000000000B42 /* TingraAppPlugInKit in Frameworks */ = {isa = PBXBuildFile; productRef = 5B14E5020000000000000B32 /* TingraAppPlugInKit */; };
+		5B14E5020000000000000B43 /* TingraAppPlugInKit in Frameworks */ = {isa = PBXBuildFile; productRef = 5B14E5020000000000000B33 /* TingraAppPlugInKit */; };
+		5B14E5020000000000000B0A /* TingraNotes.appex in Embed ExtensionKit Extensions */ = {isa = PBXBuildFile; fileRef = 5B14E5020000000000000B01 /* TingraNotes.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -28,13 +34,37 @@
 			remoteGlobalIDString = 46DA986130048EE400B79666;
 			remoteInfo = "tingra-app";
 		};
+		5B14E5020000000000000B0B /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 46DA985A30048EE400B79666 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 5B14E5020000000000000B03;
+			remoteInfo = "tingra-notes";
+		};
 /* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		5B14E5010000000000000A0B /* Embed ExtensionKit Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(EXTENSIONS_FOLDER_PATH)";
+			dstSubfolderSpec = 16;
+			files = (
+				5B14E5010000000000000A0F /* com.moonwink.tingra.app.plug-in.appextensionpoint in Embed ExtensionKit Extensions */,
+				5B14E5020000000000000B0A /* TingraNotes.appex in Embed ExtensionKit Extensions */,
+			);
+			name = "Embed ExtensionKit Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		46DA986230048EE400B79666 /* Tingra.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Tingra.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		46DA986F30048EE600B79666 /* tingra-appTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "tingra-appTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		46DA99413005000000B79666 /* Tingra.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Tingra.xcconfig; sourceTree = "<group>"; };
 		46DA99423005000000B79666 /* Local.xcconfig.example */ = {isa = PBXFileReference; lastKnownFileType = text; path = Local.xcconfig.example; sourceTree = "<group>"; };
+		5B14E5010000000000000A0E /* com.moonwink.tingra.app.plug-in.appextensionpoint */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "com.moonwink.tingra.app.plug-in.appextensionpoint"; sourceTree = "<group>"; };
+		5B14E5020000000000000B01 /* TingraNotes.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.extensionkit-extension"; includeInIndex = 0; path = TingraNotes.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -46,6 +76,11 @@
 		46DA99313005000000B79666 /* tingra-appTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = "tingra-appTests";
+			sourceTree = "<group>";
+		};
+		5B14E5020000000000000B02 /* tingra-notes */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "tingra-notes";
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -66,6 +101,9 @@
 				46DA99293005000000B79666 /* TingraPlugInKit in Frameworks */,
 				46DA992A3005000000B79666 /* TingraRecordingPlugIns in Frameworks */,
 				46DA992B3005000000B79666 /* TingraMediaPlugIns in Frameworks */,
+				5B14E5020000000000000B40 /* TingraJSONRPC in Frameworks */,
+				5B14E5020000000000000B41 /* TingraMCP in Frameworks */,
+				5B14E5020000000000000B42 /* TingraAppPlugInKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -73,6 +111,14 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5B14E5020000000000000B08 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5B14E5020000000000000B43 /* TingraAppPlugInKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -84,8 +130,10 @@
 			children = (
 				46DA99413005000000B79666 /* Tingra.xcconfig */,
 				46DA99423005000000B79666 /* Local.xcconfig.example */,
+				5B14E5010000000000000A0E /* com.moonwink.tingra.app.plug-in.appextensionpoint */,
 				46DA986430048EE400B79666 /* tingra-app */,
 				46DA99313005000000B79666 /* tingra-appTests */,
+				5B14E5020000000000000B02 /* tingra-notes */,
 				46DA986330048EE400B79666 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -95,6 +143,7 @@
 			children = (
 				46DA986230048EE400B79666 /* Tingra.app */,
 				46DA986F30048EE600B79666 /* tingra-appTests.xctest */,
+				5B14E5020000000000000B01 /* TingraNotes.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -109,10 +158,12 @@
 				46DA985E30048EE400B79666 /* Sources */,
 				46DA985F30048EE400B79666 /* Frameworks */,
 				46DA986030048EE400B79666 /* Resources */,
+				5B14E5010000000000000A0B /* Embed ExtensionKit Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				5B14E5020000000000000B0C /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				46DA986430048EE400B79666 /* tingra-app */,
@@ -130,6 +181,9 @@
 				46DA99193005000000B79666 /* TingraPlugInKit */,
 				46DA991A3005000000B79666 /* TingraRecordingPlugIns */,
 				46DA991B3005000000B79666 /* TingraMediaPlugIns */,
+				5B14E5020000000000000B30 /* TingraJSONRPC */,
+				5B14E5020000000000000B31 /* TingraMCP */,
+				5B14E5020000000000000B32 /* TingraAppPlugInKit */,
 			);
 			productName = "tingra-app";
 			productReference = 46DA986230048EE400B79666 /* Tingra.app */;
@@ -158,6 +212,29 @@
 			productReference = 46DA986F30048EE600B79666 /* tingra-appTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		5B14E5020000000000000B03 /* tingra-notes */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 5B14E5020000000000000B04 /* Build configuration list for PBXNativeTarget "tingra-notes" */;
+			buildPhases = (
+				5B14E5020000000000000B07 /* Sources */,
+				5B14E5020000000000000B08 /* Frameworks */,
+				5B14E5020000000000000B09 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				5B14E5020000000000000B02 /* tingra-notes */,
+			);
+			name = "tingra-notes";
+			packageProductDependencies = (
+				5B14E5020000000000000B33 /* TingraAppPlugInKit */,
+			);
+			productName = "tingra-notes";
+			productReference = 5B14E5020000000000000B01 /* TingraNotes.appex */;
+			productType = "com.apple.product-type.extensionkit-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -174,6 +251,9 @@
 					46DA986E30048EE600B79666 = {
 						CreatedOnToolsVersion = 26.6;
 						TestTargetID = 46DA986130048EE400B79666;
+					};
+					5B14E5020000000000000B03 = {
+						CreatedOnToolsVersion = 26.6;
 					};
 				};
 			};
@@ -200,6 +280,9 @@
 				46DA99093005000000B79666 /* XCLocalSwiftPackageReference "../../packages/TingraPlugInKit" */,
 				46DA990A3005000000B79666 /* XCLocalSwiftPackageReference "../../packages/TingraRecordingPlugIns" */,
 				46DA990B3005000000B79666 /* XCLocalSwiftPackageReference "../../packages/TingraMediaPlugIns" */,
+				5B14E5020000000000000B20 /* XCLocalSwiftPackageReference "../../packages/TingraJSONRPC" */,
+				5B14E5020000000000000B21 /* XCLocalSwiftPackageReference "../../packages/TingraMCP" */,
+				5B14E5020000000000000B22 /* XCLocalSwiftPackageReference "../../packages/TingraAppPlugInKit" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 46DA986330048EE400B79666 /* Products */;
@@ -208,6 +291,7 @@
 			targets = (
 				46DA986130048EE400B79666 /* tingra-app */,
 				46DA986E30048EE600B79666 /* tingra-appTests */,
+				5B14E5020000000000000B03 /* tingra-notes */,
 			);
 		};
 /* End PBXProject section */
@@ -221,6 +305,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		46DA986D30048EE600B79666 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5B14E5020000000000000B09 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -244,6 +335,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		5B14E5020000000000000B07 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -251,6 +349,11 @@
 			isa = PBXTargetDependency;
 			target = 46DA986130048EE400B79666 /* tingra-app */;
 			targetProxy = 46DA987030048EE600B79666 /* PBXContainerItemProxy */;
+		};
+		5B14E5020000000000000B0C /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 5B14E5020000000000000B03 /* tingra-notes */;
+			targetProxy = 5B14E5020000000000000B0B /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -499,6 +602,72 @@
 			};
 			name = Release;
 		};
+		5B14E5020000000000000B05 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = "tingra-notes/tingra-notes.entitlements";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "TingraNotes-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Tingra Notes";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2026 Larry Aasen.";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.moonwink.tingra.app.notes;
+				PRODUCT_MODULE_NAME = TingraNotes;
+				PRODUCT_NAME = TingraNotes;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		5B14E5020000000000000B06 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = "tingra-notes/tingra-notes.entitlements";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "TingraNotes-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Tingra Notes";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2026 Larry Aasen.";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.moonwink.tingra.app.notes;
+				PRODUCT_MODULE_NAME = TingraNotes;
+				PRODUCT_NAME = TingraNotes;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -525,6 +694,15 @@
 			buildConfigurations = (
 				46DA988730048EE600B79666 /* Debug */,
 				46DA988830048EE600B79666 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		5B14E5020000000000000B04 /* Build configuration list for PBXNativeTarget "tingra-notes" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5B14E5020000000000000B05 /* Debug */,
+				5B14E5020000000000000B06 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
@@ -576,6 +754,18 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = ../../packages/TingraMediaPlugIns;
 		};
+		5B14E5020000000000000B20 /* XCLocalSwiftPackageReference "../../packages/TingraJSONRPC" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../../packages/TingraJSONRPC;
+		};
+		5B14E5020000000000000B21 /* XCLocalSwiftPackageReference "../../packages/TingraMCP" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../../packages/TingraMCP;
+		};
+		5B14E5020000000000000B22 /* XCLocalSwiftPackageReference "../../packages/TingraAppPlugInKit" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../../packages/TingraAppPlugInKit;
+		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -622,6 +812,22 @@
 		46DA991B3005000000B79666 /* TingraMediaPlugIns */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = TingraMediaPlugIns;
+		};
+		5B14E5020000000000000B30 /* TingraJSONRPC */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = TingraJSONRPC;
+		};
+		5B14E5020000000000000B31 /* TingraMCP */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = TingraMCP;
+		};
+		5B14E5020000000000000B32 /* TingraAppPlugInKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = TingraAppPlugInKit;
+		};
+		5B14E5020000000000000B33 /* TingraAppPlugInKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = TingraAppPlugInKit;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

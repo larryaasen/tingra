@@ -21,11 +21,19 @@ public struct PlugInLoader: Sendable {
     /// activation needs.
     public init() {}
 
+    /// The `tier` param on every event this loader emits. The host tier is
+    /// the in-process engine; the app tier's loader reports `"app"`.
+    static let tier = "host"
+
     /// Activates each plug-in in order.
     ///
     /// A plug-in that throws is reported as an `error` event and skipped;
     /// the remaining plug-ins load normally — a plug-in must never take
     /// down the host or another plug-in (CLAUDE.md, never-crash rule).
+    ///
+    /// Both events carry `tier: "host"`: the app emits the same event names
+    /// with `tier: "app"` for its out-of-process app-tier plug-ins (see
+    /// PLUGINS.md, "Launch on demand"), so a log reader can tell them apart.
     ///
     /// - Returns: The plug-ins that activated successfully.
     @discardableResult
@@ -40,6 +48,7 @@ public struct PlugInLoader: Sendable {
                     params: [
                         "id": .string(plugIn.id.rawValue),
                         "name": .string(plugIn.name),
+                        "tier": .string(Self.tier),
                     ]
                 )
                 activated.append(plugIn)
@@ -51,6 +60,7 @@ public struct PlugInLoader: Sendable {
                         "id": .string(plugIn.id.rawValue),
                         "name": .string(plugIn.name),
                         "error": .string(String(describing: error)),
+                        "tier": .string(Self.tier),
                     ]
                 )
             }

@@ -180,7 +180,9 @@ internal surface a reader needs to navigate the target instead.
 - `InputSelectorError` — selector resolution failures (`notFound`,
   `ambiguous`), each mapped to its stable error identifier.
 - `PlugInLoader` — the host's plug-in lifecycle: activates plug-ins against a
-  `PlugInContext`, reporting each outcome on the event bus; a throwing plug-in
+  `PlugInContext`, reporting each outcome on the event bus (`plugin.activated`,
+  or the `plugin.activation` error, each with `tier: "host"` — the app tier
+  emits the same names with `tier: "app"`, see PLUGINS.md); a throwing plug-in
   is skipped, never fatal.
 - `AuthorizationPermission` — the three TCC grants capture depends on — `camera`,
   `microphone`, `screenRecording` — with raw values that are a stable contract.
@@ -457,8 +459,11 @@ internal surface a reader needs to navigate the target instead.
   projects had one; the app assigns and saves it), the presets, the stream
   `destination` (key excluded — it
   lives in secure storage), each shot's optional default transition, the
-  optional `programFormat` (absent meaning 1080p30), and the optional `media`
-  list. The
+  optional `programFormat` (absent meaning 1080p30), the optional `media`
+  list, and the optional `plugInData` — project-scoped storage for app-tier
+  plug-ins, keyed by plug-in id, each value opaque JSON the plug-in owns; an
+  entry for a plug-in the build does not have round-trips untouched
+  (PLUGINS.md, "Storage"). The
   format is version 1 until the first release ships (pre-release it grows
   within v1, optional fields decoding forgivingly); decoding a document newer
   than the build understands throws rather than silently loading it.
@@ -743,6 +748,59 @@ internal surface a reader needs to navigate the target instead.
   emphasis, code, and list items mapped onto a fixed ramp), delivered once
   per consumer and held.
 
+## `packages/TingraJSONRPC`
+
+- `JSONRPCID` — a JSON-RPC 2.0 request/response identifier, a string or an
+  integer, carried verbatim so a response echoes exactly the id it answers.
+- `JSONRPCErrorCode` — the five standard JSON-RPC error codes (parse error,
+  invalid request, method not found, invalid params, internal error); a tool
+  that runs and reports a failure is not one of these — it returns a normal
+  result with `isError` set.
+- `JSONRPCError` — the error object a response carries in its `error` member;
+  also a Swift `Error`, so a method handler throws the exact protocol error a
+  session should answer with.
+- `JSONRPCIncoming` — an incoming message as a peer receives it: a request
+  (method and id), a notification (method, no id), or a response to a request
+  this side sent (id, no method), decoded before dispatch decides which.
+- `JSONRPCResponse` — an outgoing response: exactly one of `result` or `error`,
+  and the request's id echoed (`success(id:result:)`, `failure(id:error:)`).
+- `JSONRPCNotification` — an outgoing method call with no id, so no response
+  follows; how the daemon's status changes reach connected sessions.
+- `MessageCoder` — the one encoder/decoder configuration every peer shares:
+  sorted keys, so a payload is stable for tests and logs, and unescaped
+  slashes, so `tools/call` reads as written.
+- `MessageTransport` — the seam under a session: a duplex, message-level
+  channel that owns its own framing (newline delimiting on a socket, one XPC
+  message per payload), so session logic never touches bytes. The daemon's
+  implementation is `SocketMessageTransport` in TingraMCP; the app tier's is
+  `XPCMessageTransport`.
+- `InMemoryMessageTransport` — the test transport: inbound payloads enqueued by
+  the test, everything the session writes collected, no socket and no process.
+- `LinkedMessageTransports` — two in-memory transports joined so what one
+  writes the other reads (`makePair()`): a client and a server run against
+  each other in one process, which is how an extension's `PlugInConnection` is
+  tested against the app's endpoint.
+- `AsyncQueue` — a single-consumer async FIFO bridging blocking producers (a
+  socket reader thread, an accept loop, an XPC delivery) into structured
+  concurrency, strict-concurrency clean: a lock-guarded buffer with one
+  suspended waiter, never an `AsyncStream` iterator smuggled across an
+  isolation boundary.
+- `XPCMessageChannel` — the one `@objc` protocol an `NSXPCConnection` carries
+  between the app and an extension process: `open()` to establish the link (a
+  connection exists only from its first message) and `deliver(_:)` for one
+  JSON-RPC payload per XPC message, in both directions. A byte channel, never a
+  second RPC protocol; `nonisolated` explicitly, because XPC calls it on the
+  connection's own queue.
+- `XPCMessageTransport` — the `MessageTransport` over an `NSXPCConnection`: the
+  app-tier link between Tingra.app and an ExtensionKit extension, carrying the
+  same MCP JSON-RPC the daemon speaks over its socket. The side that made the
+  connection passes `opening: true` and sends the establishing message; `End`
+  (`interrupted`, `invalidated`) tells the `onEnd` handler how the peer went
+  away.
+- `XPCMessageTransportError` — what a write can get wrong beyond what XPC
+  itself reports: the connection offered no channel proxy, so the peer is not
+  a Tingra app-tier endpoint.
+
 ## `packages/TingraMCP`
 
 - `Daemon` — the engine daemon (`tingra-cli serve`): accepts connections on a
@@ -750,9 +808,21 @@ internal surface a reader needs to navigate the target instead.
   `MCPSession` against the shared engine, and idle-exits when quiet but never
   mid-stream. `manual(socketPath:…)` binds its own socket; the launchd
   socket-activated path uses `init` with a supplied descriptor.
-- `MCPSession` — one per-connection MCP session: the `initialize` handshake
-  (carrying the daemon build version), `tools/list`, `tools/call` dispatch, and
-  status-change notifications fed by the status sink.
+- `MCPSession` — one per-connection MCP session (public since 2026-09-13, so
+  the app runs one over each extension's XPC link): the `initialize` handshake
+  (carrying the endpoint's build version), `tools/list`, `tools/call` dispatch,
+  and status-change notifications fed by the status sink; an optional
+  `SessionMethodHandler` answers the endpoint's own methods beyond MCP, and
+  `request(_:params:)` sends a server-initiated request to the peer — the app
+  asking an extension to perform a command — with `server-`-prefixed string
+  ids that never collide with the client's numeric ones.
+- `SessionMethodHandler` — the seam an endpoint plugs its own methods into —
+  the app tier's `tingra/*` storage and event methods — so `MCPSession` stays
+  one session type for the daemon's socket and the app's XPC link; returns nil
+  for a method it does not own, and the session answers method-not-found.
+- `SessionRequestError` — what a request the session sends to its peer can get
+  wrong: the session closed first, the transport refused the write, the peer
+  answered with a JSON-RPC error, or its response did not decode.
 - `StreamCoordinator` — owns the one active stream in v1 on behalf of the stream
   tools; reuses the host's `StreamSession`, confirms the stream went live before
   `stream_start` returns, resolves each leg's destination (a raw URL, or one
@@ -781,11 +851,83 @@ internal surface a reader needs to navigate the target instead.
   activation (wrapping the `CTingraLaunchd` C shim over `launch_activate_socket`);
   returns nil when not launchd-parented, so the daemon falls back to manual mode.
 - `JSONRPCID`, `JSONRPCError`, `JSONRPCErrorCode`, `JSONRPCResponse`,
-  `JSONRPCNotification`, `JSONRPCIncoming` — the documented JSON-RPC 2.0 wire
-  types, so direct socket clients can script the engine without the proxy.
+  `JSONRPCNotification`, `JSONRPCIncoming`, `MessageCoder`, `MessageTransport`,
+  and the transports — moved to `TingraJSONRPC` on 2026-09-13 so the app
+  tier's extension side can speak the protocol without linking the daemon or
+  the host, and re-exported here (`@_exported import TingraJSONRPC`) so
+  `import TingraMCP` sees them exactly as before; listed under that package.
 - `MCPProtocol` — the MCP method names, notification names, and the protocol
   version the daemon speaks.
 
+
+## `packages/TingraAppPlugInKit`
+
+- `PaneID` — the identifier of a pane an app-tier plug-in declares: the plug-in
+  id and a name joined with a dot (`com.moonwink.tingra.notes.pane`), so panes
+  from different plug-ins never collide.
+- `CommandID` — the identifier of a command, unique within its plug-in
+  (`show`); the app qualifies it with the plug-in id where a global name is
+  needed, as in the `tap` event's name.
+- `SidebarPosition` — which sidebar a pane would like: `leading`, `trailing`,
+  or `bottom` — a preference the app may override, and in Phase 1 every pane is
+  hosted in the trailing sidebar.
+- `PaneDescriptor` — a pane a plug-in contributes to a sidebar: id, title,
+  symbol, preferred sidebar, and the `sceneID` of the extension scene that
+  draws it; the app hosts it in shared chrome, the extension's process draws
+  it.
+- `ShortcutDescriptor` — a keyboard shortcut as a manifest declares it, one key
+  and named `Modifier`s (`command`, `option`, `shift`, `control`) — `Codable`,
+  which SwiftUI's `KeyboardShortcut` is not; the app turns it into one.
+- `CommandPlacement` — where a command appears; Phase 1's one case,
+  `plugInMenu`, is the plug-in's submenu of the app's Plug-ins menu.
+- `CommandDescriptor` — a command a plug-in contributes: id, title, optional
+  shortcut, placement, and the pane it reveals (`showsPane`); the app renders
+  the menu item before the extension has run and forwards the invocation after
+  emitting the `tap` itself.
+- `SettingsPaneDescriptor` — a settings pane a plug-in contributes to the
+  Settings window: a row in its source list, and a remote view like any pane.
+- `PlugInManifest` — what a plug-in declares about itself (id, name, panes,
+  commands, settings panes), read by the app from the extension's Info.plist
+  under `EXAppExtensionAttributes` → `TingraPlugIn` at discovery, before the
+  extension has ever run; `init(bundle:)` decodes it, and a manifest that does
+  not decode is a `PlugInManifestError`.
+- `PlugInManifestError` — what can be wrong with a manifest, each naming the
+  fix: a required key absent, or a dictionary that does not decode.
+- `AppTierMethod` — the JSON-RPC methods the app tier adds beside MCP's own,
+  spelled once for both sides: `tingra/event`, `tingra/storage.get`,
+  `tingra/storage.set` (extension → app) and `tingra/command.perform` (app →
+  extension), with their parameter keys as the nested `EventParam`,
+  `StorageParam`, and `CommandParam`.
+- `StorageScope` — where a plug-in's stored value lives: `project` (in the
+  document — travels and saves with it, dirties it like a layer edit) or
+  `application` (this Mac, under the app's Application Support folder); never
+  secrets.
+- `PlugInConnection` — the extension's end of one connection to the app: an
+  MCP client over a `MessageTransport` that runs `initialize`, calls the app's
+  tools (`call(_:arguments:)`) and lists them, files `event`s and `error`s on
+  the app's bus under the plug-in's domain, reads and writes project- and
+  application-scoped storage, and answers the one request the app makes of it,
+  a command to perform. One per `NSXPCConnection` the app opens; the kit
+  creates them, an author receives them.
+- `PlugInConnectionError` — what a connection call can get wrong: the
+  connection is closed, the transport reported an error, or the peer answered
+  with a protocol error.
+- `DebouncedWriter` — coalesces a stream of values into one write after the
+  stream pauses, so a text editor's keystrokes become one storage write per
+  pause rather than one per key; the last value wins, and `flush()` writes it
+  now, for a pane about to disappear.
+- `PlugInRuntime` — the extension process's `@Observable @MainActor` view of
+  its connections: one `PlugInConnection` per connection the app opens and the
+  most recent as `connection`, read by a pane through
+  `@Environment(PlugInRuntime.self)`; one `shared` runtime per process.
+- `TingraAppExtension` — what a plug-in's `@main` type adopts: ExtensionKit's
+  `AppExtension` with the boilerplate owned by the kit — the author supplies
+  `pane(for:)` and `perform(_:using:)`, and the default `configuration` turns
+  the manifest into one scene per pane and settings pane, accepts every
+  connection the app opens, and runs the MCP handshake on each.
+- `PlugInCommandHandler` — the `AppExtensionConfiguration` behind that default:
+  accepts the app's command connection and hands it, and each pane scene's
+  connection, to `PlugInRuntime`.
 
 ## `apps/tingra-cli`
 
@@ -1322,7 +1464,9 @@ surface is:
   hairline that resizes the Library within `LibraryPreferences`' clamp and
   persists the height when a drag ends. 280–440 points wide, each pane
   pinned to that width so one pane's content can never push the other
-  sideways.
+  sideways. Registered plug-in panes follow the Library as collapsible
+  sections (`PlugInPaneSection`, 2026-09-13), the two existing panes
+  unchanged above them.
 - `LayerInspectorColumn` — the trailing sidebar's upper pane
   (2026-09-09; ARCHITECTURE.md, "The inspector column and the sidebar's casting
   pickers"): a title naming the shot being edited ("Shot: Main Display",
@@ -1378,6 +1522,96 @@ surface is:
   `UserDefaults` on the `SidebarPreferences` pattern, with the pure clamp
   keeping the Library at or above its minimum and the inspector above its
   own; an unknown stored tab reads as Media.
+- **Plug-ins** (`PlugIns/`, 2026-09-13; PLUGINS.md, "The app side") — the app
+  as the host of the app tier: ExtensionKit extensions targeting the app's
+  extension point (`com.moonwink.tingra.app.plug-in`, declared by the
+  `.appextensionpoint` property list copied into `Contents/Extensions`), each
+  registered from its manifest before it runs, launched on demand, and spoken
+  to over MCP JSON-RPC on `XPCMessageTransport` — never a second RPC protocol.
+  `EngineModel` carries the engine-side pieces: `toolRegistry`, the host's
+  `ToolRegistry` the endpoint lists and dispatches against (filled by the
+  first-party control tools in Phase 2), and `plugInProjectData(for:)` /
+  `setPlugInProjectData(_:for:)`, the document's `plugInData` held opaque per
+  plug-in id and written back as read, a write dirtying and autosaving the
+  document like a layer edit (`project.plugInDataEdited`).
+  - `AppPlugInHost` — the `@Observable` host: discovers identities for the
+    extension point at launch and on the system's own change stream (never
+    polling), decodes each `PlugInManifest`, fills the pane and command
+    registries, starts a plug-in's process when a hosted pane activates or a
+    command is invoked, and re-hosts a pane one second after its process dies.
+    `DiscoveredPlugIn` is an identity with its manifest; `AppPlugInServices`
+    is what every link needs (the bus, the tool registry, the status sink and
+    identity the session serves, the storage); `AppPlugInStorage` is the
+    storage behind the method handler — project scope through `EngineModel`,
+    app scope through `PlugInApplicationStore`; `AppPlugInLink` is one
+    plug-in's process and connections — the command connection through
+    `AppExtensionProcess` and one per hosted pane, each carrying an
+    `MCPSession` with the plug-in's method handler, the plug-in "activated"
+    while any is open; `PlugInHostError` is the one refusal, an identity whose
+    bundle is not embedded (a third-party bundle is located in Phase 3).
+  - `PaneRegistry` — the app tier's pane registry: every sidebar pane and
+    settings pane plug-ins have declared, filled from manifests at discovery —
+    the app-side mirror of the host's registries. `RegisteredPane` and
+    `RegisteredSettingsPane` pair a descriptor with the plug-in it belongs to.
+  - `CommandRegistry` — the command registry, grouped by plug-in for the
+    Plug-ins menu's submenus; `RegisteredCommand` pairs a `CommandDescriptor`
+    with its plug-in and derives the `tap` name
+    (`<plugInID>.<commandID>.menuItem`).
+  - `PlugInRegistryError` — a registration refused because its id is taken,
+    reported as an `error` event naming the plug-in and the id; the next
+    plug-in registers normally.
+  - `PlugInMethodHandler` — the `SessionMethodHandler` serving the app tier's
+    `tingra/*` methods on one plug-in's connection: storage reads and writes
+    against the plug-in's own scopes (the plug-in id is the connection's, never
+    a param, so a plug-in cannot reach another's data) and events landed on
+    the bus under the plug-in's domain. `PlugInStoring` is the storage seam
+    behind it, so the handler is tested with an in-memory store.
+  - `PlugInApplicationStore` — the app-scoped storage on this Mac: one JSON
+    file per plug-in under `~/Library/Application Support/Tingra/Plug-ins/<id>/`;
+    never secrets.
+  - `PanePreferences` — which plug-in panes are open in the trailing sidebar,
+    keyed by pane id on the `SidebarPreferences` pattern: an open pane is the
+    absence of a value, so a fresh install shows every pane.
+  - `PlugInShortcut` — turns a manifest's `ShortcutDescriptor` into the SwiftUI
+    `KeyboardShortcut` a menu item carries; a descriptor without a single
+    character yields nil, so a malformed manifest loses its shortcut, not its
+    menu item.
+  - `PlugInPaneHost` — one pane's extension scene: `EXHostViewController`
+    under `NSViewControllerRepresentable`, reporting activation and
+    deactivation to the host so the pane's session opens and closes with the
+    scene, and recreated by generation after the extension process dies (the
+    host view controller never relaunches its scene itself).
+  - `PlugInPaneSection` — one plug-in pane in the trailing sidebar, following
+    the Library: the shared chrome — a disclosure header with the pane's title
+    and symbol, expansion persisted per pane — around the hosted remote view,
+    so uniformity comes from the container, not from each author.
+  - `PlugInCommands` — the **Plug-ins** menu: one submenu per plug-in with
+    commands, rendered before any extension has run and absent while no
+    plug-in has a command; each `PlugInCommandItem` emits its `tap` first,
+    then hands the command to the host, which reveals the pane the command
+    names and forwards it to the extension.
+- **Notes** (`tingra-notes`, 2026-09-13; PLUGINS.md, "The first-party proof:
+  Notes") — the first-party proof of the app tier: a second target in
+  `tingra-app.xcodeproj` (product `TingraNotes.appex`, module `TingraNotes`,
+  manifest in `TingraNotes-Info.plist`) embedded in Tingra.app under
+  `Contents/Extensions`, linking `TingraAppPlugInKit` alone — it cannot reach
+  the engine; it is not even in the engine's process. Its manifest declares
+  one pane (`com.moonwink.tingra.notes.pane`, trailing), one command ("Show
+  Notes", ⌥⌘N, revealing that pane), and one settings pane; its strings have
+  their own catalog (en/de/es).
+  - `NotesExtension` — the `@main` `TingraAppExtension`: the pane and settings
+    views by pane id, and the `show` command, whose own effect is the
+    `notes.shown` event (the app has already emitted the `tap`).
+  - `NotesModel` — the notes and the editor's font size, shared by the pane
+    and the settings scene (one process serves both): the text is
+    project-scoped storage, the font size app-scoped; edits reach the app
+    debounced — one `tingra/storage.set` and one `notes.edited` event per
+    pause in typing, never one per keystroke.
+  - `NotesPaneView` — the pane: a text editor over the project-scoped notes
+    and a Clear button (`notes.cleared`); the app supplies the chrome around
+    it, so the pane is the editor alone.
+  - `NotesSettingsView` — the settings pane: the editor's font size, kept on
+    this Mac (`notes.fontSize`).
 - `InspectorCommands` — the View menu's Show/Hide Inspector item, ⌥⌘I, beside
   the sidebar's; `InspectorButton` is the same toggle as the toolbar's
   trailing-most item, each under its own tap.
@@ -1595,6 +1829,11 @@ surface is:
 - `SettingsPane` — the closed list of panes — General, Streaming, Recording,
   Permissions, Shortcuts, Data, Logging, About — each deriving its own name and
   symbol, so the sidebar's label and the window's title cannot drift.
+- `SettingsSelection` — what the source list selects: `builtIn(SettingsPane)`,
+  or `plugIn(PaneID)` for a settings pane an app-tier plug-in registered, which
+  the list appends below the built-in eight — identifier-backed for plug-ins
+  while the built-in panes keep their closed enum (2026-09-13; PLUGINS.md,
+  "The app side").
 - `SettingsCommands` — the app-menu Settings… item that opens it, replacing the
   one the `Settings` scene would have contributed.
 - `GeneralSettingsView` — the General pane: the app's Appearance and a Show

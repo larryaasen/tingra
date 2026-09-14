@@ -1,6 +1,6 @@
 //
 //  JSONRPCTests.swift
-//  TingraMCP
+//  TingraJSONRPC
 //
 //  Created by Larry Aasen on 2026-07-05.
 //  Copyright © 2026 Larry Aasen.
@@ -11,7 +11,7 @@ import Foundation
 import Testing
 import TingraPlugInKit
 
-@testable import TingraMCP
+@testable import TingraJSONRPC
 
 /// The hand-rolled JSON-RPC 2.0 layer: decoding incoming requests and
 /// notifications, and encoding responses/errors the documented way.

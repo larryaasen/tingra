@@ -22,9 +22,21 @@ import TingraPlugInKit
 /// `tools/list`, and `tools/call` against the shared ``ToolRegistry``, and —
 /// once initialized — forwards status changes from the ``StatusSink`` as
 /// `notifications/message`. It never blocks the engine and never polls.
-actor MCPSession {
+public actor MCPSession {
     /// The message channel for this connection.
     private let transport: any MessageTransport
+
+    /// Answers the methods beyond MCP's own that this endpoint serves — the
+    /// app tier's `tingra/*` storage and event methods (PLUGINS.md, Decision
+    /// 14) — or nil for the daemon, which serves MCP alone.
+    private let methods: (any SessionMethodHandler)?
+
+    /// Requests this side sent and is awaiting responses to, by id. The
+    /// daemon sends none; the app sends `tingra/command.perform`.
+    private var pending: [String: CheckedContinuation<JSONValue, any Error>] = [:]
+
+    /// The next outgoing request id's number.
+    private var nextRequestNumber = 1
 
     /// The shared tool registry every session lists and dispatches against.
     private let tools: ToolRegistry
@@ -53,24 +65,52 @@ actor MCPSession {
     ///   - status: The status sink to forward as notifications.
     ///   - info: The daemon identity for the handshake.
     ///   - eventBus: The event bus for lifecycle events.
-    init(
+    ///   - methods: Answers the endpoint's own methods beyond MCP, or nil.
+    public init(
         transport: any MessageTransport,
         tools: ToolRegistry,
         status: StatusSink,
         info: DaemonInfo,
-        eventBus: EventBus
+        eventBus: EventBus,
+        methods: (any SessionMethodHandler)? = nil
     ) {
         self.transport = transport
         self.tools = tools
         self.status = status
         self.info = info
         self.eventBus = eventBus
+        self.methods = methods
+    }
+
+    /// Sends a request to the peer and awaits its result — the app asking
+    /// an extension to perform a command. Ids are strings prefixed
+    /// `server-`, so they never collide with the client's numeric ids.
+    ///
+    /// - Parameters:
+    ///   - method: The method name.
+    ///   - params: The params, if any.
+    /// - Returns: The peer's result.
+    /// - Throws: ``SessionRequestError``.
+    public func request(_ method: String, params: JSONValue?) async throws -> JSONValue {
+        let id = "server-\(nextRequestNumber)"
+        nextRequestNumber += 1
+        let payload = try MessageCoder.encode(OutgoingRequest(id: id, method: method, params: params))
+        return try await withCheckedThrowingContinuation { continuation in
+            pending[id] = continuation
+            Task {
+                do {
+                    try await transport.writeMessage(payload)
+                } catch {
+                    settle(id, with: .failure(SessionRequestError.transport(String(describing: error))))
+                }
+            }
+        }
     }
 
     /// Runs the session until the peer closes the connection (a read of nil)
     /// or a read error, then tears down: cancels the notifier and closes the
     /// transport.
-    func run() async {
+    public func run() async {
         eventBus.event("mcp.session.opened", domain: .control)
         while !Task.isCancelled {
             let payload: Data?
@@ -89,6 +129,7 @@ actor MCPSession {
         }
         notifierTask?.cancel()
         await transport.close()
+        endPending()
         eventBus.event("mcp.session.closed", domain: .control)
     }
 
@@ -109,22 +150,54 @@ actor MCPSession {
         }
 
         // A request carries both method and id; a notification carries a
-        // method and no id; a client response (id, no method) is ignored —
-        // the v1 daemon initiates no server-to-client requests.
-        guard let method = incoming.method else { return }
+        // method and no id; a response (id, no method) settles a request
+        // this side sent — none from the daemon, the app's command requests
+        // to an extension.
+        guard let method = incoming.method else {
+            if case .string(let id)? = incoming.id { settle(id, with: responseResult(payload)) }
+            return
+        }
         guard let id = incoming.id else {
-            handleNotification(method: method)
+            await handleNotification(method: method, params: incoming.params)
             return
         }
         let response = await respond(method: method, id: id, params: incoming.params)
         await send(response)
     }
 
+    /// The result or protocol error a response payload carries.
+    private func responseResult(_ payload: Data) -> Result<JSONValue, any Error> {
+        guard let response = try? JSONDecoder().decode(IncomingResponse.self, from: payload) else {
+            return .failure(SessionRequestError.undecodableResponse)
+        }
+        if let error = response.error { return .failure(SessionRequestError.peer(error)) }
+        return .success(response.result ?? .null)
+    }
+
+    /// Resumes the request `id` with `result`.
+    private func settle(_ id: String, with result: Result<JSONValue, any Error>) {
+        guard let continuation = pending.removeValue(forKey: id) else { return }
+        continuation.resume(with: result)
+    }
+
+    /// Ends every pending request as closed.
+    private func endPending() {
+        let waiting = pending
+        pending = [:]
+        for continuation in waiting.values {
+            continuation.resume(throwing: SessionRequestError.closed)
+        }
+    }
+
     /// Handles a client notification. Only `notifications/initialized`
     /// matters in v1; anything else is ignored.
-    private func handleNotification(method: String) {
-        // No action needed: the notifier already starts when the daemon
-        // answers `initialize`, so the client's `initialized` ack is a no-op.
+    private func handleNotification(method: String, params: JSONValue?) async {
+        // The notifier already starts when the daemon answers `initialize`,
+        // so the client's `initialized` ack needs nothing; every other
+        // notification is the endpoint's own to handle (the app tier's
+        // `tingra/event`).
+        guard method != MCPProtocol.initialized else { return }
+        await methods?.handleNotification(method: method, params: params)
     }
 
     /// Builds the response for a request method.
@@ -148,11 +221,24 @@ actor MCPSession {
             return await callTool(id: id, params: params)
 
         default:
-            return .failure(
-                id: id,
-                error: JSONRPCError(code: .methodNotFound, message: "Unknown method '\(method)'.")
-            )
+            guard let methods else { return unknownMethod(id, method) }
+            guard initialized else { return notInitialized(id) }
+            do {
+                guard let result = try await methods.respond(method: method, params: params) else {
+                    return unknownMethod(id, method)
+                }
+                return .success(id: id, result: result)
+            } catch let error as JSONRPCError {
+                return .failure(id: id, error: error)
+            } catch {
+                return .failure(id: id, error: JSONRPCError(code: .internalError, message: String(describing: error)))
+            }
         }
+    }
+
+    /// The response to a method nobody serves.
+    private func unknownMethod(_ id: JSONRPCID, _ method: String) -> JSONRPCResponse {
+        .failure(id: id, error: JSONRPCError(code: .methodNotFound, message: "Unknown method '\(method)'."))
     }
 
     /// Dispatches a `tools/call` against the registry, rendering the outcome
@@ -223,5 +309,86 @@ actor MCPSession {
     private func send(_ response: JSONRPCResponse) async {
         guard let payload = try? MessageCoder.encode(response) else { return }
         try? await transport.writeMessage(payload)
+    }
+}
+
+/// A request this side sends (the app asking an extension to perform a
+/// command).
+private struct OutgoingRequest: Encodable {
+    /// The protocol version tag.
+    let jsonrpc = "2.0"
+
+    /// The request id.
+    let id: String
+
+    /// The method.
+    let method: String
+
+    /// The params, if any.
+    let params: JSONValue?
+
+    /// The stable keys.
+    private enum CodingKeys: String, CodingKey {
+        case jsonrpc
+        case id
+        case method
+        case params
+    }
+}
+
+/// A response the peer sends to a request this side made.
+private struct IncomingResponse: Decodable {
+    /// The result, on success.
+    let result: JSONValue?
+
+    /// The error, on a protocol failure.
+    let error: JSONRPCError?
+}
+
+/// Answers the methods an endpoint serves beyond MCP's own — the app tier's
+/// `tingra/*` methods (storage and events; MCP.md, "The app tier") — so
+/// ``MCPSession`` stays one session type for the daemon's socket and the
+/// app's XPC link.
+public protocol SessionMethodHandler: Sendable {
+    /// Answers a request, or returns nil when the method is not one of this
+    /// handler's (the session then answers method-not-found).
+    ///
+    /// - Parameters:
+    ///   - method: The method name.
+    ///   - params: The params, if any.
+    /// - Returns: The result, or nil for an unknown method.
+    /// - Throws: A `JSONRPCError` to answer with that protocol error; any
+    ///   other error answers as an internal error.
+    func respond(method: String, params: JSONValue?) async throws -> JSONValue?
+
+    /// Handles a notification (no response is possible).
+    ///
+    /// - Parameters:
+    ///   - method: The method name.
+    ///   - params: The params, if any.
+    func handleNotification(method: String, params: JSONValue?) async
+}
+
+/// What a request the session sends to its peer can get wrong.
+public enum SessionRequestError: Error, Equatable, CustomStringConvertible {
+    /// The session ended before the peer answered.
+    case closed
+
+    /// The transport reported an error sending the request.
+    case transport(String)
+
+    /// The peer answered with a JSON-RPC error.
+    case peer(JSONRPCError)
+
+    /// The peer's response did not decode.
+    case undecodableResponse
+
+    public var description: String {
+        switch self {
+        case .closed: "The session closed before the peer answered."
+        case .transport(let detail): "The request could not be sent: \(detail)"
+        case .peer(let error): "The peer answered with JSON-RPC error \(error.code): \(error.message)"
+        case .undecodableResponse: "The peer's response does not decode."
+        }
     }
 }

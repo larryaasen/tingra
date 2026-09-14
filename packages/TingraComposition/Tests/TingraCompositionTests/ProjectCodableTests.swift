@@ -332,6 +332,83 @@ struct ProjectCodableTests {
         #expect(decoded.presets.first?.shots.first?.defaultTransition == .wipe(edge: .bottom, duration: 0.4))
     }
 
+    // MARK: Plug-in data
+
+    /// Project-scoped storage for two plug-ins — one with a nested object
+    /// value, and one under an id no plug-in in this build owns — for
+    /// round-trip coverage (PLUGINS.md, "Storage", Decision 7).
+    private var samplePlugInData: [String: JSONValue] {
+        [
+            "com.moonwink.tingra.notes": ["text": "Cue the intro at 19:58", "fontSize": 14],
+            "com.example.unknown": ["version": 3, "items": [true, 1.5, .null, "x"]],
+        ]
+    }
+
+    @Test("a document without a plugInData key decodes with plugInData nil")
+    func missingPlugInDataDecodesNil() throws {
+        let json = Data(#"{"version":1,"presets":[]}"#.utf8)
+        let decoded = try JSONDecoder().decode(Project.self, from: json)
+        #expect(decoded.version == 1)
+        #expect(decoded.plugInData == nil)
+    }
+
+    @Test("a project with plug-in data round-trips through JSON under a plugInData key")
+    func plugInDataRoundTrips() throws {
+        let project = Project(presets: sampleProject.presets, plugInData: samplePlugInData)
+        let data = try JSONEncoder().encode(project)
+        let object = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(Set(object.keys) == ["version", "presets", "plugInData"])
+        let decoded = try JSONDecoder().decode(Project.self, from: data)
+        #expect(decoded == project)
+        #expect(decoded.plugInData == samplePlugInData)
+        #expect(decoded.plugInData?["com.moonwink.tingra.notes"]?["text"]?.stringValue == "Cue the intro at 19:58")
+    }
+
+    @Test("data filed under an id no plug-in owns survives a decode and re-encode untouched")
+    func unknownPlugInDataIsPreserved() throws {
+        // A document written by a Tingra that had a plug-in this build does
+        // not: the entry is opaque JSON, so it must come back byte-for-byte
+        // equivalent rather than being dropped or reshaped on the next save.
+        let json = Data(
+            #"""
+            {"version":1,"presets":[],"plugInData":{"com.example.unknown":\#
+            {"version":3,"nested":{"flag":false,"list":[1,2.5,"three",null]}}}}
+            """#.utf8
+        )
+        let decoded = try JSONDecoder().decode(Project.self, from: json)
+        let expected: JSONValue = ["version": 3, "nested": ["flag": false, "list": [1, 2.5, "three", .null]]]
+        #expect(decoded.plugInData?["com.example.unknown"] == expected)
+
+        let reencoded = try JSONEncoder().encode(decoded)
+        let object = try #require(try JSONSerialization.jsonObject(with: reencoded) as? [String: Any])
+        let original = try #require(try JSONSerialization.jsonObject(with: json) as? [String: Any])
+        #expect(
+            object["plugInData"] as? NSDictionary == original["plugInData"] as? NSDictionary)
+        let redecoded = try JSONDecoder().decode(Project.self, from: reencoded)
+        #expect(redecoded == decoded)
+    }
+
+    @Test("a project without plug-in data encodes no plugInData key")
+    func projectWithoutPlugInDataOmitsKey() throws {
+        let data = try JSONEncoder().encode(Project(presets: []))
+        let object = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(object["plugInData"] == nil)
+        #expect(Set(object.keys) == ["version", "presets"])
+    }
+
+    @Test("projects are equal only when their plug-in data matches")
+    func plugInDataEquality() {
+        let base = Project(plugInData: samplePlugInData)
+        let same = Project(plugInData: samplePlugInData)
+        let otherValue = Project(plugInData: ["com.moonwink.tingra.notes": ["text": "Different"]])
+        let empty = Project(plugInData: [:])
+        #expect(base == same)
+        #expect(base != otherValue)
+        #expect(base != empty)
+        #expect(base != Project())
+        #expect(empty != Project())
+    }
+
     @Test("a ProjectDestination round-trips through JSON unchanged")
     func destinationRoundTrips() throws {
         let destination = ProjectDestination(url: try #require(URL(string: "rtmps://live.example:443/app")))

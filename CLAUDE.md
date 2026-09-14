@@ -56,6 +56,12 @@ packages/                       # Engine libraries
   TingraMCP/                    # The MCP/Control service (see MCP.md): the hand-rolled MCP JSON-RPC
                                 #   layer, the engine daemon, the stdio<->socket proxy, and the
                                 #   first-party control tools (no third-party dependency)
+  TingraJSONRPC/                # The JSON-RPC 2.0 layer on its own: the wire types, the message
+                                #   coder, the MessageTransport seam, and the XPC transport the app
+                                #   tier runs on; lifted out of TingraMCP, which re-exports it
+  TingraAppPlugInKit/           # The app tier's extension side (see PLUGINS.md): descriptors, the
+                                #   manifest, PlugInConnection, and TingraAppExtension; imports
+                                #   ExtensionKit and SwiftUI, linked only by extensions and the app
   (UI packages)                 # Phase 2 — arrive once the engine is proven
 docs/                           # The project documentation set (ARCHITECTURE.md, GLOSSARY.md, CLI.md,
                                 #   SIMULATOR.md, CLOCK.md, EVENTS.md, MCP.md, DESTINATIONS.md,
@@ -187,6 +193,7 @@ This repository is public, so **no app secret and nothing personal to one develo
 - **Follow the events model in [EVENTS.md](docs/EVENTS.md).** All observability flows as structured events on the host's event bus (group = kind, `app`/`error`/`event`/`network`/`tap`/`trace`; domain = emitting area); sinks (OSLog, CLI console/`--json`, file, status) subscribe and route — code never logs directly. Control plane only: never put per-frame events on the bus. Secrets never become event params.
 - **Follow the daemon/transport model in [MCP.md](docs/MCP.md).** The `serve` daemon is the one owner of the engine and speaks MCP JSON-RPC natively over a per-user Unix domain socket (launchd socket activated); `tingra-cli mcp` is a transparent byte proxy with no protocol logic. Never add a second internal RPC protocol, and never open a TCP listener.
 - **The plug-in protocol package is a stability contract** (see [ARCHITECTURE.md](docs/ARCHITECTURE.md) "Plug-in API stability and versioning"). SemVer from its first tag — 0.x during the CLI era, 1.0.0 when the external bundle loader ships, breaking changes only in majors thereafter. Never remove/rename public symbols, change signatures or semantics, add protocol requirements without default implementations, or tighten `Sendable`/isolation on existing API outside a major; deprecate (with a replacement named) at least one minor before removal. The same rules bind the event bus package it depends on. CI runs `swift package diagnose-api-breaking-changes` against the latest tag on both.
+- **App-tier plug-ins are ExtensionKit extensions** (see [PLUGINS.md](docs/PLUGINS.md)): they run out of process, always, and talk to the app over the existing MCP JSON-RPC layer carried by `XPCMessageTransport` — never a second RPC protocol. Their descriptors (panes, commands, settings panes) are read from the extension's Info.plist before it runs. Engine packages stay UI-free; `TingraAppPlugInKit` is the extension side and is never imported by the engine or the CLI.
 
 ### Package Dependency Graph
 
@@ -218,10 +225,20 @@ packages/  TingraMediaPlugIns     →  TingraPlugInKit + TingraEventBus (same se
                                      registers providers through the `MediaRegistering` seam,
                                      the host's `MediaRegistry` makes the inputs per file;
                                      ImageIO, AVFoundation, and Core Text, nothing third-party)
-packages/  TingraMCP              →  TingraHost + TingraPlugInKit + TingraEventBus (the MCP/Control
-                                     service: the daemon owns the engine, so it depends on the host;
-                                     the `ToolRegistering` seam itself lives in TingraPlugInKit. No
-                                     third-party dependency — the JSON-RPC layer is hand-rolled)
+packages/  TingraJSONRPC          →  TingraPlugInKit (for JSONValue only; the JSON-RPC 2.0 wire
+                                     types, the MessageTransport seam, and the XPC transport the app
+                                     tier runs on; no other dependency)
+packages/  TingraMCP              →  TingraHost + TingraPlugInKit + TingraEventBus + TingraJSONRPC
+                                     (re-exported) (the MCP/Control service: the daemon owns the
+                                     engine, so it depends on the host; the `ToolRegistering` seam
+                                     itself lives in TingraPlugInKit. No third-party dependency —
+                                     the JSON-RPC layer is hand-rolled)
+packages/  TingraAppPlugInKit     →  TingraPlugInKit + TingraEventBus + TingraJSONRPC (the extension
+                                     side of the app tier: descriptors, the manifest,
+                                     PlugInConnection, TingraAppExtension; imports ExtensionKit and
+                                     SwiftUI — the only engine-family package that imports SwiftUI,
+                                     because it IS the UI-side kit for extensions — never linked by
+                                     the engine or the CLI)
 apps/      tingra-cli             →  TingraHost + TingraCapturePlugIns + TingraGeneratorPlugIns
                                      + TingraOutputPlugIns + TingraRecordingPlugIns + TingraMCP
                                      (+ swift-argument-parser)
@@ -230,15 +247,21 @@ apps/      tingra-app (phase 3)   →  TingraHost + TingraComposition + TingraAu
                                      + TingraOutputPlugIns + TingraRecordingPlugIns
                                      + TingraEffectPlugIns + TingraMediaPlugIns
                                      + TingraPlugInKit + TingraEventBus
+                                     + TingraJSONRPC + TingraMCP + TingraAppPlugInKit
                                      (scaffolded at step 6; gained TingraOutputPlugIns at the
                                      step-7 streaming iteration, TingraAudio at the mixer
                                      iteration, TingraEffectPlugIns at the audio effect
                                      chain iteration, TingraRecordingPlugIns at the
-                                     recording-in-the-app iteration, and TingraMediaPlugIns
-                                     at the step-10 media iteration; more feature plug-ins +
-                                     UI packages later. An Xcode project, so these eleven
-                                     arrive as local package references on the app target,
-                                     not a Package.swift)
+                                     recording-in-the-app iteration, TingraMediaPlugIns
+                                     at the step-10 media iteration, and TingraJSONRPC +
+                                     TingraMCP + TingraAppPlugInKit at PLUGINS.md Phase 1,
+                                     when the app became the host of the app tier; more
+                                     feature plug-ins + UI packages later. An Xcode project,
+                                     so these fourteen arrive as local package references on
+                                     the app target, not a Package.swift. The same project's
+                                     embedded tingra-notes extension target — the first-party
+                                     Notes plug-in, TingraNotes.appex — links
+                                     TingraAppPlugInKit only)
 apps/      ingest-simulator       →  none of the above (wraps MediaMTX; see SIMULATOR.md)
 ```
 

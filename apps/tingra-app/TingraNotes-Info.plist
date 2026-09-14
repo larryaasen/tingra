@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>EXAppExtensionAttributes</key>
+	<dict>
+		<key>EXExtensionPointIdentifier</key>
+		<string>com.moonwink.tingra.app.plug-in</string>
+		<key>TingraPlugIn</key>
+		<dict>
+			<key>id</key>
+			<string>com.moonwink.tingra.notes</string>
+			<key>name</key>
+			<string>Notes</string>
+			<key>panes</key>
+			<array>
+				<dict>
+					<key>id</key>
+					<string>com.moonwink.tingra.notes.pane</string>
+					<key>title</key>
+					<string>Notes</string>
+					<key>systemImage</key>
+					<string>note.text</string>
+					<key>preferredSidebar</key>
+					<string>trailing</string>
+					<key>sceneID</key>
+					<string>pane</string>
+				</dict>
+			</array>
+			<key>commands</key>
+			<array>
+				<dict>
+					<key>id</key>
+					<string>show</string>
+					<key>title</key>
+					<string>Show Notes</string>
+					<key>shortcut</key>
+					<dict>
+						<key>key</key>
+						<string>n</string>
+						<key>modifiers</key>
+						<array>
+							<string>command</string>
+							<string>option</string>
+						</array>
+					</dict>
+					<key>showsPane</key>
+					<string>com.moonwink.tingra.notes.pane</string>
+				</dict>
+			</array>
+			<key>settingsPanes</key>
+			<array>
+				<dict>
+					<key>id</key>
+					<string>com.moonwink.tingra.notes.settings</string>
+					<key>title</key>
+					<string>Notes</string>
+					<key>systemImage</key>
+					<string>note.text</string>
+					<key>sceneID</key>
+					<string>settings</string>
+				</dict>
+			</array>
+		</dict>
+	</dict>
+</dict>
+</plist>
