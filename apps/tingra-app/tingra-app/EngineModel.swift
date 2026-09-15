@@ -176,18 +176,13 @@ final class EngineModel {
         case lost
     }
 
-    /// The discovered cameras, for the camera picker.
+    /// The discovered cameras, for the sidebar's Cameras section, the Add
+    /// Shot menu, and a fresh project's seed.
     private(set) var cameras: [InputChoice] = []
 
-    /// The discovered displays, for the display picker.
+    /// The discovered displays, for the sidebar's Displays section, the Add
+    /// Shot menu, and a fresh project's seed.
     private(set) var displays: [InputChoice] = []
-
-    /// The chosen camera, or nil for none. The display is the full-frame
-    /// background; the camera composites over it as a picture-in-picture.
-    var selectedCameraID: InputID?
-
-    /// The chosen display, or nil for none.
-    var selectedDisplayID: InputID?
 
     /// Every discovered input that produces **audio**, seeding the mixer's
     /// channel strips. Filtered on ``Input/media``, not on ``InputKind``:
@@ -1263,8 +1258,15 @@ final class EngineModel {
     /// The host's tool registry: what the MCP endpoint app-tier plug-ins
     /// call lists and dispatches against, and what host-tier plug-ins
     /// register tools into through the plug-in context (PLUGINS.md,
-    /// Decision 10). Filled by first-party control tools in Phase 2.
+    /// Decision 10). The first-party program tools (`ProgramToolsPlugIn`)
+    /// register into it at boot beside the capture and generator plug-ins.
     @ObservationIgnored let toolRegistry = ToolRegistry()
+
+    /// The host's resource registry: what the MCP endpoint lists, reads,
+    /// and subscribes plug-ins to — the session, the program, and the
+    /// inputs, rendered from this model's state (`EngineResources`;
+    /// PLUGINS.md, Phase 2). Filled once the engine is up.
+    @ObservationIgnored let resourceRegistry = ResourceRegistry()
 
     /// The projects opened, created, or saved as through the File menu, most
     /// recent first — the Open Recent submenu's rows. Kept by the system's
@@ -1331,17 +1333,6 @@ final class EngineModel {
     /// while the window is open — over the same ``logFile`` the file sink
     /// appends to (``LogWindowModel``).
     @ObservationIgnored private(set) lazy var logWindowModel = LogWindowModel(logFile: logFile, eventBus: eventBus)
-
-    /// The camera currently cast in the built-in camera role — the device the
-    /// preset's camera-bound layers were last bound to. A camera picker
-    /// change rebinds this device's layers to the new choice; picking "None"
-    /// parks it (the input stops, the layers keep their binding). Nil when no
-    /// camera has ever been cast (its layers are edited manually instead).
-    @ObservationIgnored private var boundCameraID: InputID?
-
-    /// The display currently cast in the built-in display role (see
-    /// ``boundCameraID``).
-    @ObservationIgnored private var boundDisplayID: InputID?
 
     /// The video effect providers the renderer resolves layer chains
     /// against — filled at boot from the effect registry, before the
@@ -1444,18 +1435,10 @@ final class EngineModel {
     /// Whether ``start()`` has run, so it boots the engine once.
     @ObservationIgnored private var started = false
 
-    /// The display selection the last ``applyConfiguration()`` pass applied,
-    /// so a pass can tell a selection change (rebind the built-in role's
-    /// layers) from a layer-tree edit (only sync inputs).
-    @ObservationIgnored private var appliedDisplayID: InputID?
-
-    /// The camera selection the last ``applyConfiguration()`` pass applied
-    /// (see ``appliedDisplayID``).
-    @ObservationIgnored private var appliedCameraID: InputID?
-
     /// Whether any ``applyConfiguration()`` pass has completed, so the first
-    /// pass always counts as a selection change and establishes the session
-    /// preset even when nothing is selected (a background-only program).
+    /// pass establishes the session preset — seeding a fresh project around
+    /// whichever of the first discovered display and camera started — and
+    /// later passes only sync inputs.
     @ObservationIgnored private var hasAppliedConfiguration = false
 
     /// Inputs whose last start attempt ended ``CaptureInputError/startedSilent(_:within:)``
@@ -1466,17 +1449,19 @@ final class EngineModel {
     /// for a device nothing has changed about, and the set is cleared by the
     /// things that can change it: any device connecting (a lid opening
     /// connects the built-in display, so that case rides on the same event),
-    /// a permission grant, or the operator selecting the input in a picker.
+    /// a permission grant, or the operator asking for the input — clicking
+    /// its sidebar row, or choosing it in the inspector's Input popup.
     @ObservationIgnored private var silentInputs: Set<InputID> = []
 
     /// Whether a ``reconfigure()`` pass is currently running. `reconfigure()`
-    /// suspends at `input.start()`/`stop()`, so without this guard the
-    /// startup selection changes (two `onChange` handlers) and the explicit
-    /// boot call would interleave and race the input start/stop.
+    /// suspends at `input.start()`/`stop()`, so without this guard requests
+    /// arriving together — the boot call, a device event, an edit that
+    /// references a new input — would interleave and race the input
+    /// start/stop.
     @ObservationIgnored private var reconfiguring = false
 
     /// Set whenever a reconfigure is requested while one is already running,
-    /// so the running pass loops once more and applies the latest selection —
+    /// so the running pass loops once more and applies the latest state —
     /// coalescing a burst of requests into the minimum number of passes.
     @ObservationIgnored private var reconfigureRequested = false
 
@@ -1584,9 +1569,19 @@ final class EngineModel {
             [
                 AVFoundationCapturePlugIn(), ScreenCaptureKitCapturePlugIn(), GeneratorPlugIn(),
                 HaishinKitOutputPlugIn(), EffectPlugIn(), RecordingPlugIn(), MediaPlugIn(),
+                ProgramToolsPlugIn(program: self),
             ],
             in: context
         )
+        for resource in EngineResources.all(for: self) {
+            do {
+                try await resourceRegistry.register(resource)
+            } catch {
+                eventBus.error(
+                    "resource.registration", domain: .control,
+                    params: ["uri": .string(resource.uri), "error": .string(String(describing: error))])
+            }
+        }
         mediaContentTypes = await mediaRegistry.acceptedContentTypes
         // The recordings folder's free space is read once the engine is up and
         // again whenever the folder, the container, or a finished recording
@@ -1799,12 +1794,14 @@ final class EngineModel {
         await reconfigureAudio()
     }
 
-    /// Applies the current camera and display selection to the engine.
+    /// Brings the running inputs in line with the show: starts what its shots
+    /// reference, stops what they no longer do.
     ///
-    /// Called from the view whenever a picker changes, and once at boot. It
+    /// Called once at boot and after anything that can change that set — an
+    /// edit binding a new input, a device event, a permission grant. It
     /// **coalesces**: only one pass runs at a time (the pass suspends at
     /// `input.start()`/`stop()`), and a request arriving mid-pass makes the
-    /// running pass loop once more with the latest selection — so a burst of
+    /// running pass loop once more with the latest state — so a burst of
     /// requests never overlaps and races the input start/stop.
     func reconfigure() async {
         reconfigureRequested = true
@@ -1817,15 +1814,10 @@ final class EngineModel {
         }
     }
 
-    /// One reconfigure pass: rebinds the built-in roles when the
-    /// camera/display **selection** changed since the last pass, then starts
-    /// newly needed inputs, stops no-longer-needed ones, and hands the active
-    /// set to the compositor. A selection change never rebuilds the shots —
-    /// layers bound to the previously cast device rebind to the new choice,
-    /// so layer-tree edits survive (see ARCHITECTURE.md, "Project
-    /// save/load"); on the first pass it instead establishes the session
-    /// preset (loading it into the compositor, seeding a fresh project when
-    /// no file supplied one).
+    /// One reconfigure pass: starts newly needed inputs, stops no-longer-needed
+    /// ones, and hands the active set to the compositor; on the first pass it
+    /// also establishes the session preset (loading it into the compositor,
+    /// seeding a fresh project when no file supplied one).
     ///
     /// An input that cannot start (authorization denied, device gone) is
     /// reported on the bus and left out — the program keeps showing whatever
@@ -1833,27 +1825,17 @@ final class EngineModel {
     /// time is skipped, with an `input.skipped` event, until something that
     /// could have changed it happens (``silentInputs``).
     ///
-    /// The running set is the union of two things: the devices cast in the
-    /// built-in camera and display roles, and every input the active preset's
-    /// shots reference — transient shots included, so the shot the operator
-    /// is looking at on preview has its input running — plus whatever the
-    /// program is holding. Nothing runs for monitoring alone: the shot bank's
+    /// The running set is every input the active preset's shots reference —
+    /// transient shots included, so the shot the operator is looking at on
+    /// preview has its input running — plus whatever the program is holding,
+    /// and on a fresh project's first pass the first discovered display and
+    /// camera the seed is laid out around. Nothing runs for monitoring alone:
+    /// the shot bank's
     /// thumbnails read inputs the show already references, and the multiview
     /// window tiles only what is running (ARCHITECTURE.md, "The shot bank").
     private func applyConfiguration() async {
-        let selectionChanged =
-            !hasAppliedConfiguration || selectedDisplayID != appliedDisplayID || selectedCameraID != appliedCameraID
+        let isFirstPass = !hasAppliedConfiguration
 
-        // A picker change recasts which device plays the built-in role,
-        // before the desired-input computation below so the new device starts
-        // and the old one stops in this same pass. Picking "None" parks the
-        // role's device: no rebind, the layers keep their binding.
-        // The operator picking an input is the one signal that can retry a
-        // silent one without a device event: the pick says "try this now".
-        if selectionChanged {
-            if let cameraID = selectedCameraID { silentInputs.remove(cameraID) }
-            if let displayID = selectedDisplayID { silentInputs.remove(displayID) }
-        }
         // A loaded project's preset goes into the compositor **before** any
         // input is waited on: the shots reference inputs by id and render
         // whatever of them is running, so nothing about the preset depends on
@@ -1862,41 +1844,27 @@ final class EngineModel {
         // — between launch and the first program frame (observed 2026-09-06,
         // lid closed: the preset loaded at 6.3 s while every available input
         // was live at 1.5 s). Only a fresh project's seed still waits, because
-        // its shots are laid out around which cast devices actually started.
-        let presetEstablishedEarly = !hasAppliedConfiguration && hasSessionPreset
+        // its shots are laid out around which of its devices actually started.
+        let presetEstablishedEarly = isFirstPass && hasSessionPreset
         if presetEstablishedEarly { establishSessionPreset() }
 
-        if selectionChanged, hasAppliedConfiguration {
-            var edited = false
-            if let camera = selectedCameraID, camera != boundCameraID {
-                edited = rebindLayers(from: boundCameraID, to: camera) || edited
-                boundCameraID = camera
-            }
-            if let display = selectedDisplayID, display != boundDisplayID {
-                edited = rebindLayers(from: boundDisplayID, to: display) || edited
-                boundDisplayID = display
-            }
-            if edited { scheduleAutosave() }
-        }
-
         var desired: [InputID: any Input] = [:]
-        if let displayID = selectedDisplayID, let input = await registry.input(withID: displayID) {
-            desired[displayID] = input
-        }
-        if let cameraID = selectedCameraID, let input = await registry.input(withID: cameraID) {
-            desired[cameraID] = input
+        // A fresh project has no shots yet to say what should run, so its
+        // first pass starts the first discovered display and camera — what
+        // the seed is laid out around, once it knows which of them started.
+        if isFirstPass, !hasSessionPreset {
+            for id in [displays.first?.id, cameras.first?.id].compactMap({ $0 }) {
+                if let input = await registry.input(withID: id) {
+                    desired[id] = input
+                }
+            }
         }
         // Keep every input the active preset's layer trees reference running
         // — plus whatever the program is actually rendering, which after a
         // preset switch can be a held snapshot from outside the loaded pool
-        // (see ``switchPreset(to:)``) — except a role's device parked by its
-        // picker's "None": a stopped input's layers keep their binding and
-        // simply contribute nothing (the same semantic as a disconnected
-        // device).
+        // (see ``switchPreset(to:)``).
         var referenced = Set(shots.flatMap { $0.layers.map(\.input) })
         referenced.formUnion(compositor.programShot.layers.map(\.input))
-        if selectedCameraID == nil, let boundCameraID { referenced.remove(boundCameraID) }
-        if selectedDisplayID == nil, let boundDisplayID { referenced.remove(boundDisplayID) }
         for id in referenced where desired[id] == nil {
             if let input = await registry.input(withID: id) {
                 desired[id] = input
@@ -1938,15 +1906,9 @@ final class EngineModel {
         }
         publishActiveInputs()
         reportActiveInputs()
-        // A rebind above can have changed which input a layer names.
-        syncTally()
-        if selectionChanged {
-            appliedDisplayID = selectedDisplayID
-            appliedCameraID = selectedCameraID
-            if !hasAppliedConfiguration {
-                hasAppliedConfiguration = true
-                if !presetEstablishedEarly { establishSessionPreset() }
-            }
+        if isFirstPass {
+            hasAppliedConfiguration = true
+            if !presetEstablishedEarly { establishSessionPreset() }
         }
     }
 
@@ -2870,9 +2832,13 @@ final class EngineModel {
     /// - Parameter input: The input to stage.
     func stagePreview(showing input: InputID) async {
         guard hasSessionPreset else { return }
+        // Clicking an input is the one signal that can retry a silent one
+        // without a device event: the click says "try this now".
+        let retrying = silentInputs.remove(input) != nil
         let frame = newLayerFrame(forInput: input)
         if let existing = ShotEdit.shot(in: shots, showingOnly: input, frame: frame) {
             setPreview(existing.id)
+            if retrying { await reconfigure() }
             return
         }
         let shot = ShotEdit.shot(showing: input, named: inputName(for: input), frame: frame)
@@ -3320,6 +3286,9 @@ final class EngineModel {
     ///   - input: The input the layer binds to from now on.
     func rebindLayer(at index: Int, to input: InputID) async {
         applyShotEdit(.changeInput) { LayerTreeEdit.rebindingLayer(at: index, to: input, in: $0) }
+        // Choosing an input is the operator asking for it now, so a silent
+        // one gets another attempt (``silentInputs``).
+        silentInputs.remove(input)
         await reconfigure()
     }
 
@@ -3502,11 +3471,11 @@ final class EngineModel {
     }
 
     /// The user-facing name of an input, for the editor's layer rows and for
-    /// a picker's entry for a device that has gone away.
+    /// the inspector's entry for a device that has gone away.
     ///
     /// Falls back through the name discovery last reported, then the raw
-    /// identifier — an edited layer, and a picker selection, can both outlive
-    /// their device (see ``lastKnownInputNames``).
+    /// identifier — an edited layer can outlive its device (see
+    /// ``lastKnownInputNames``).
     ///
     /// - Parameter id: The input's stable identifier.
     func inputName(for id: InputID) -> String {
@@ -3522,8 +3491,7 @@ final class EngineModel {
     /// A no-op edit (out-of-range index, no shot followed, no actual change)
     /// touches nothing. A real edit to a **transient** shot promotes it: the
     /// operator is composing in it, which is authorship (ARCHITECTURE.md,
-    /// "The shot bank" — the picker's rebind, the one layer edit that is not,
-    /// takes ``rebindLayers(from:to:)`` and never reaches a transient shot).
+    /// "The shot bank").
     ///
     /// Every real edit registers the shot it replaced as one undo step —
     /// unless a gesture is in progress, in which case the gesture's end
@@ -4623,11 +4591,10 @@ final class EngineModel {
     /// Loads the project document at boot — the project the app last had
     /// open when the file is still there and readable, else the default
     /// project — adopting the recorded preset (or the document's first) as
-    /// the active preset and pointing the pickers at the devices its layers
-    /// reference; with no file (or a file holding no presets), it leaves the
-    /// presets unseeded — ``establishSessionPreset()`` seeds them from the
-    /// built-in arrangement on the first configuration pass — and defaults
-    /// the pickers to the first discovered devices.
+    /// the active preset; with no file (or a file holding no presets), it
+    /// leaves the presets unseeded — ``establishSessionPreset()`` seeds them
+    /// from the built-in arrangement on the first configuration pass, around
+    /// the first discovered display and camera.
     ///
     /// A last project that is missing or unreadable is reported as
     /// `project.reopen` and left alone — it is the operator's file, moved or
@@ -4679,29 +4646,19 @@ final class EngineModel {
         }
         projectURL = store.fileURL
 
-        guard let project = loaded else {
-            // A fresh project: default to the first discovered devices; the
-            // first configuration pass seeds the built-in arrangement from
-            // whatever actually starts.
-            selectedDisplayID = displays.first?.id
-            selectedCameraID = cameras.first?.id
-            return
-        }
+        // A fresh project: the first configuration pass seeds the built-in
+        // arrangement from whichever of the first discovered devices start.
+        guard let project = loaded else { return }
         let recorded = adoptDocument(project)
 
         // The recorded preset when the document still holds it, else the
         // first — and the recorded shots wait for the compositor to have the
         // pool (``establishSessionPreset()``).
-        guard let loadedPreset = recorded.launchPreset(in: presets) else {
-            selectedDisplayID = displays.first?.id
-            selectedCameraID = cameras.first?.id
-            return
-        }
+        guard let loadedPreset = recorded.launchPreset(in: presets) else { return }
 
         restoredPosition = recorded
         activePresetID = loadedPreset.id
         shots = loadedPreset.shots
-        bindPickers()
         noteRecentProject(store.fileURL)
         eventBus.event(
             "project.loaded",
@@ -4820,19 +4777,6 @@ final class EngineModel {
         }
         sessionPreferences.lastProjectURL = store.fileURL
         return recorded
-    }
-
-    /// Points the pickers at the devices the active preset's layers
-    /// reference: the first referenced input of each kind that is currently
-    /// discovered plays that built-in role. A referenced input that is not
-    /// discovered stays bound — its layers contribute nothing until it
-    /// returns (or the operator rebinds the layer in the inspector).
-    private func bindPickers() {
-        let referenced = shots.flatMap { $0.layers.map(\.input) }
-        boundCameraID = referenced.first { id in cameras.contains { $0.id == id } }
-        boundDisplayID = referenced.first { id in displays.contains { $0.id == id } }
-        selectedCameraID = boundCameraID
-        selectedDisplayID = boundDisplayID
     }
 
     // MARK: Projects
@@ -5022,8 +4966,7 @@ final class EngineModel {
     /// Puts an adopted document's preset on the buses: the recorded preset
     /// when the document holds it, else its first — seeding the built-in
     /// arrangement into a document that has none, since a show cannot have
-    /// no preset — with the pickers bound to the devices its layers
-    /// reference, and the recorded program and staged shots restored where
+    /// no preset — with the recorded program and staged shots restored where
     /// they still exist (``restoreSessionPosition(in:)``). When nothing is
     /// recorded, the compositor's by-id rule holds a shot the new pool also
     /// has — a copy made by Save As switches seamlessly — and otherwise the
@@ -5041,7 +4984,6 @@ final class EngineModel {
         guard let preset = recorded.launchPreset(in: presets) else { return }
         activePresetID = preset.id
         shots = preset.shots
-        bindPickers()
         compositor.loadPreset(preset)
         restoredPosition = recorded
         restoreSessionPosition(in: preset)
@@ -5061,44 +5003,40 @@ final class EngineModel {
         await reconfigureAudio()
     }
 
-    /// The built-in arrangement seeded around whatever cast devices are
-    /// running, as a preset — a fresh install's first show, and a new
-    /// project's (``ProgramLayout``). The bars generator is discovered
-    /// rather than started: a generator needs no authorization, so the seed
-    /// can reference it before it runs.
+    /// The built-in arrangement seeded around whichever discovered display
+    /// and camera are running, as a preset — a fresh install's first show,
+    /// and a new project's (``ProgramLayout``). The bars generator is
+    /// discovered rather than started: a generator needs no authorization, so
+    /// the seed can reference it before it runs.
     private struct SeededShow {
         /// The seeded preset, named Default.
         let preset: Preset
-
-        /// The display cast in the built-in role, when one is running.
-        let displayID: InputID?
-
-        /// The camera cast in the built-in role, when one is running.
-        let cameraID: InputID?
 
         /// Whether the seed references the bars generator, which then needs
         /// a configuration pass to start it.
         let referencesBars: Bool
     }
 
-    /// Seeds the built-in arrangement around the running cast devices.
+    /// Seeds the built-in arrangement around the first discovered display
+    /// and camera that are running.
     ///
-    /// - Returns: The seeded preset and the devices it was laid out around.
+    /// - Returns: The seeded preset.
     private func seededShow() -> SeededShow {
-        let displayID = selectedDisplayID.flatMap { activeInputs[$0] != nil ? $0 : nil }
-        let cameraID = selectedCameraID.flatMap { activeInputs[$0] != nil ? $0 : nil }
+        let displayID = displays.first { activeInputs[$0.id] != nil }?.id
+        let cameraID = cameras.first { activeInputs[$0.id] != nil }?.id
         let barsID = videoInputs.first { $0.id == BarsGenerator.inputID }?.id
         let preset = Preset(
             id: PresetID(rawValue: "default"),
             name: String(localized: "Default", comment: "Name of a fresh project's seeded preset"),
             shots: ProgramLayout.shots(displayID: displayID, cameraID: cameraID, barsID: barsID)
         )
-        return SeededShow(preset: preset, displayID: displayID, cameraID: cameraID, referencesBars: barsID != nil)
+        return SeededShow(preset: preset, referencesBars: barsID != nil)
     }
 
     /// Completes the first configuration pass: when no project file supplied
     /// a preset, seeds one from the built-in ``ProgramLayout`` arrangement
-    /// (the cast devices that actually started, plus a bars shot when the
+    /// (the first discovered display and camera, where they actually
+    /// started, plus a bars shot when the
     /// bars generator is registered — which requests one more reconfigure
     /// pass to start it) and saves the fresh
     /// project immediately so the file exists from first launch; then loads
@@ -5111,8 +5049,6 @@ final class EngineModel {
             let seeded = seededShow()
             shots = seeded.preset.shots
             if seeded.referencesBars { reconfigureRequested = true }
-            boundDisplayID = seeded.displayID
-            boundCameraID = seeded.cameraID
             presets = [seeded.preset]
             // A fresh project is named before its position is first
             // recorded, so the record lands under its own scope.
@@ -5194,36 +5130,6 @@ final class EngineModel {
             shaderName: shaderName,
             transitionDuration: takeTransitionDuration
         )
-    }
-
-    /// Rebinds every layer bound to one device to another across all the
-    /// active preset's shots — how a picker change recasts which device
-    /// plays the built-in role — pushing each changed shot through the
-    /// compositor so the recast is on program at the next tick.
-    ///
-    /// - Parameters:
-    ///   - previous: The device the role's layers are currently bound to, or
-    ///     nil when the role was never cast (nothing to rebind).
-    ///   - input: The newly chosen device.
-    /// - Returns: Whether any shot changed.
-    private func rebindLayers(from previous: InputID?, to input: InputID) -> Bool {
-        guard let previous, previous != input else { return false }
-        var changed = false
-        for index in shots.indices {
-            let rebound = LayerTreeEdit.rebindingLayers(boundTo: previous, to: input, in: shots[index])
-            guard rebound != shots[index] else { continue }
-            shots[index] = rebound
-            compositor.updateShot(rebound)
-            changed = true
-        }
-        if changed {
-            eventBus.event(
-                "preset.rebound",
-                domain: .composition,
-                params: ["from": .string(previous.rawValue), "to": .string(input.rawValue)]
-            )
-        }
-        return changed
     }
 
     /// Saves the project document now — every preset in switcher order, the
@@ -5500,3 +5406,8 @@ private struct PassthroughAudioEffect: AudioEffect {
     /// Leaves the block unchanged.
     func process(_ channels: inout [[Float]], sampleRate: Double) {}
 }
+
+/// The model is the program the first-party program tools act on
+/// (`ProgramToolsPlugIn`); the conformance is declared here because the
+/// seam refines `Sendable`, which a class must adopt in its own file.
+extension EngineModel: ProgramControlling {}

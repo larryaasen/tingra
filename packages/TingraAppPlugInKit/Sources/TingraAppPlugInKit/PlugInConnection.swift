@@ -12,10 +12,11 @@ import TingraJSONRPC
 import TingraPlugInKit
 
 /// The extension's end of one connection to the app: an MCP client over a
-/// ``MessageTransport`` that calls the app's tools, files events on the
-/// app's bus, reads and writes the plug-in's storage, and answers the one
-/// request the app makes of it, a command to perform (PLUGINS.md, Phase 1,
-/// "`PlugInConnection`").
+/// ``MessageTransport`` that calls the app's tools, reads and follows the
+/// app's resources, files events on the app's bus, reads and writes the
+/// plug-in's storage, and answers the one request the app makes of it, a
+/// command to perform (PLUGINS.md, Phase 1, "`PlugInConnection`"; Phase 2,
+/// "seams into the engine").
 ///
 /// One instance per `NSXPCConnection` the app opens — one for each hosted
 /// pane and one for commands — all in the one extension process. The kit
@@ -47,6 +48,11 @@ public actor PlugInConnection {
 
     /// Whether the transport has ended.
     private var isClosed = false
+
+    /// The change signals of the resources being followed (``observe(_:)``),
+    /// by URI and then by follower: an updated notification for a URI
+    /// wakes every follower of it.
+    private var resourceSignals: [String: [UUID: AsyncStream<Void>.Continuation]] = [:]
 
     /// Creates a connection over `transport` and starts reading.
     ///
@@ -111,6 +117,51 @@ public actor PlugInConnection {
         try await request("tools/list", params: nil)["tools"]?.arrayValue ?? []
     }
 
+    /// Lists the app's resources (`resources/list`): what the plug-in can
+    /// observe of the engine — `tingra://session`, `tingra://program`,
+    /// `tingra://inputs` (PLUGINS.md, Phase 2).
+    ///
+    /// - Returns: The resource descriptors (`uri`, `name`, `title`,
+    ///   `description`, `mimeType`).
+    /// - Throws: ``PlugInConnectionError``.
+    public func resources() async throws -> [JSONValue] {
+        try await request("resources/list", params: nil)["resources"]?.arrayValue ?? []
+    }
+
+    /// Reads a resource's current contents (`resources/read`), decoded
+    /// from its JSON text.
+    ///
+    /// - Parameter uri: The resource's URI (`tingra://program`).
+    /// - Returns: The document.
+    /// - Throws: ``PlugInConnectionError/protocolError(_:)`` for a URI the
+    ///   app has no resource at, ``PlugInConnectionError/unexpectedMessage``
+    ///   for contents that are not JSON text, or another
+    ///   ``PlugInConnectionError``.
+    public func read(_ uri: String) async throws -> JSONValue {
+        let result = try await request("resources/read", params: .object(["uri": .string(uri)]))
+        guard let text = result["contents"]?.arrayValue?.first?["text"]?.stringValue,
+            let value = try? JSONDecoder().decode(JSONValue.self, from: Data(text.utf8))
+        else { throw PlugInConnectionError.unexpectedMessage }
+        return value
+    }
+
+    /// Follows a resource: the stream yields its contents now and again
+    /// after every change the app reports, until the consumer stops
+    /// iterating, which ends the subscription. A pane showing what is on
+    /// program iterates this in a `.task`; nothing polls.
+    ///
+    /// Changes coalesce — a burst arrives as one re-read — and a read that
+    /// cannot be made (the connection closed) ends the stream.
+    ///
+    /// - Parameter uri: The resource's URI.
+    /// - Returns: The contents, now and after each change.
+    public nonisolated func observe(_ uri: String) -> AsyncStream<JSONValue> {
+        AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
+            let task = Task { await self.follow(uri, into: continuation) }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
     /// Files an event on the app's bus under the plug-in's domain — the
     /// plug-in's logging, reaching the log file, OSLog, and the log window
     /// through the app's sinks (PLUGINS.md, "Logging needs no new seam").
@@ -170,6 +221,41 @@ public actor PlugInConnection {
         readTask?.cancel()
         await transport.close()
         endPending()
+    }
+
+    // MARK: - Resources
+
+    /// The body of ``observe(_:)``: subscribes, reads once, then reads
+    /// again on each updated notification until cancelled or the connection
+    /// ends, and unsubscribes on the way out.
+    private func follow(_ uri: String, into continuation: AsyncStream<JSONValue>.Continuation) async {
+        let follower = UUID()
+        let signals = AsyncStream<Void>(bufferingPolicy: .bufferingNewest(1)) { signal in
+            resourceSignals[uri, default: [:]][follower] = signal
+        }
+        defer {
+            resourceSignals[uri]?[follower] = nil
+            continuation.finish()
+        }
+        do {
+            _ = try await request("resources/subscribe", params: .object(["uri": .string(uri)]))
+            continuation.yield(try await read(uri))
+        } catch {
+            return
+        }
+        for await _ in signals {
+            guard !Task.isCancelled, let value = try? await read(uri) else { break }
+            continuation.yield(value)
+        }
+        _ = try? await request("resources/unsubscribe", params: .object(["uri": .string(uri)]))
+    }
+
+    /// Wakes every follower of `uri`: the app said it changed.
+    private func resourceUpdated(_ uri: String) {
+        guard let followers = resourceSignals[uri] else { return }
+        for signal in followers.values {
+            signal.yield(())
+        }
     }
 
     // MARK: - Wire
@@ -250,7 +336,8 @@ public actor PlugInConnection {
     }
 
     /// Routes one incoming message: a response settles its request, a
-    /// request is answered, a notification is ignored in Phase 1.
+    /// request is answered, a resource-updated notification wakes the
+    /// resource's followers, and any other notification is ignored.
     private func handle(_ payload: Data) async {
         guard let incoming = try? MessageCoder.decode(payload) else { return }
         switch (incoming.id, incoming.method) {
@@ -262,6 +349,8 @@ public actor PlugInConnection {
             if let data = try? MessageCoder.encode(response) {
                 try? await transport.writeMessage(data)
             }
+        case (.none, .some("notifications/resources/updated")):
+            if let uri = incoming.params?["uri"]?.stringValue { resourceUpdated(uri) }
         case (.none, _):
             break
         }
@@ -304,13 +393,19 @@ public actor PlugInConnection {
         continuation.resume(with: result)
     }
 
-    /// Ends every pending request as closed.
+    /// Ends every pending request as closed, and every followed resource's
+    /// signals with it.
     private func endPending() {
         isClosed = true
         let waiting = pending
         pending = [:]
         for continuation in waiting.values {
             continuation.resume(throwing: PlugInConnectionError.closed)
+        }
+        let followers = resourceSignals
+        resourceSignals = [:]
+        for signal in followers.values.flatMap(\.values) {
+            signal.finish()
         }
     }
 

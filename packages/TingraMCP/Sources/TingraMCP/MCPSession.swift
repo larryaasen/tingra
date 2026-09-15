@@ -19,9 +19,12 @@ import TingraPlugInKit
 /// (MCP.md, "Sessions and concurrency").
 ///
 /// The session reads framed messages, dispatches `initialize`, `ping`,
-/// `tools/list`, and `tools/call` against the shared ``ToolRegistry``, and —
-/// once initialized — forwards status changes from the ``StatusSink`` as
-/// `notifications/message`. It never blocks the engine and never polls.
+/// `tools/list`, and `tools/call` against the shared ``ToolRegistry`` and
+/// the `resources/*` methods against the ``ResourceRegistry``, and — once
+/// initialized — forwards status changes from the ``StatusSink`` as
+/// `notifications/message` and each subscribed resource's changes as
+/// `notifications/resources/updated`. It never blocks the engine and never
+/// polls.
 public actor MCPSession {
     /// The message channel for this connection.
     private let transport: any MessageTransport
@@ -40,6 +43,14 @@ public actor MCPSession {
 
     /// The shared tool registry every session lists and dispatches against.
     private let tools: ToolRegistry
+
+    /// The resources this endpoint lets a client read and subscribe to
+    /// (empty for the daemon today; the app fills its own).
+    private let resources: ResourceRegistry
+
+    /// The resource subscriptions this client holds, by URI: each a task
+    /// forwarding the resource's change signals as updated notifications.
+    private var subscriptions: [String: Task<Void, Never>] = [:]
 
     /// The status sink this session forwards as notifications.
     private let status: StatusSink
@@ -62,6 +73,7 @@ public actor MCPSession {
     /// - Parameters:
     ///   - transport: The message channel for the connection.
     ///   - tools: The shared tool registry.
+    ///   - resources: The resources the endpoint serves (default: none).
     ///   - status: The status sink to forward as notifications.
     ///   - info: The daemon identity for the handshake.
     ///   - eventBus: The event bus for lifecycle events.
@@ -69,6 +81,7 @@ public actor MCPSession {
     public init(
         transport: any MessageTransport,
         tools: ToolRegistry,
+        resources: ResourceRegistry = ResourceRegistry(),
         status: StatusSink,
         info: DaemonInfo,
         eventBus: EventBus,
@@ -76,6 +89,7 @@ public actor MCPSession {
     ) {
         self.transport = transport
         self.tools = tools
+        self.resources = resources
         self.status = status
         self.info = info
         self.eventBus = eventBus
@@ -108,8 +122,8 @@ public actor MCPSession {
     }
 
     /// Runs the session until the peer closes the connection (a read of nil)
-    /// or a read error, then tears down: cancels the notifier and closes the
-    /// transport.
+    /// or a read error, then tears down: cancels the notifier and every
+    /// resource subscription, and closes the transport.
     public func run() async {
         eventBus.event("mcp.session.opened", domain: .control)
         while !Task.isCancelled {
@@ -128,6 +142,8 @@ public actor MCPSession {
             await handle(payload)
         }
         notifierTask?.cancel()
+        for task in subscriptions.values { task.cancel() }
+        subscriptions = [:]
         await transport.close()
         endPending()
         eventBus.event("mcp.session.closed", domain: .control)
@@ -220,6 +236,23 @@ public actor MCPSession {
             guard initialized else { return notInitialized(id) }
             return await callTool(id: id, params: params)
 
+        case MCPProtocol.resourcesList:
+            guard initialized else { return notInitialized(id) }
+            let descriptors = await resources.allResources.map(MCPResourceDescriptor.descriptor(for:))
+            return .success(id: id, result: .object(["resources": .array(descriptors)]))
+
+        case MCPProtocol.resourcesRead:
+            guard initialized else { return notInitialized(id) }
+            return await readResource(id: id, params: params)
+
+        case MCPProtocol.resourcesSubscribe:
+            guard initialized else { return notInitialized(id) }
+            return await subscribe(id: id, params: params)
+
+        case MCPProtocol.resourcesUnsubscribe:
+            guard initialized else { return notInitialized(id) }
+            return await unsubscribe(id: id, params: params)
+
         default:
             guard let methods else { return unknownMethod(id, method) }
             guard initialized else { return notInitialized(id) }
@@ -270,6 +303,104 @@ public actor MCPSession {
             // result rather than taking anything down (CLAUDE.md never-crash).
             let toolError = ToolError(identifier: .pipelineError, message: String(describing: error))
             return .success(id: id, result: MCPToolResult.failure(toolError).resultValue)
+        }
+    }
+
+    // MARK: - Resources
+
+    /// What a `resources/*` request's `uri` resolved to: the resource, or
+    /// the error response to answer with.
+    private enum ResourceLookup {
+        /// The registered resource.
+        case found(any Resource)
+
+        /// The request named no string `uri`, or one nothing is registered
+        /// at.
+        case refused(JSONRPCResponse)
+    }
+
+    /// Resolves the `uri` a `resources/*` request names against the
+    /// registry: a missing or non-string `uri` is invalid params, an unknown
+    /// one is MCP's resource-not-found, whose `data` carries the URI.
+    private func lookUpResource(id: JSONRPCID, params: JSONValue?) async -> ResourceLookup {
+        guard let uri = params?["uri"]?.stringValue else {
+            return .refused(
+                .failure(
+                    id: id,
+                    error: JSONRPCError(code: .invalidParams, message: "A resources request requires a string 'uri'.")
+                ))
+        }
+        guard let resource = await resources.resource(at: uri) else {
+            return .refused(
+                .failure(
+                    id: id,
+                    error: JSONRPCError(
+                        code: .resourceNotFound,
+                        message:
+                            "No resource is registered at '\(uri)'. Call resources/list for the available resources.",
+                        data: .object(["uri": .string(uri)])
+                    )
+                ))
+        }
+        return .found(resource)
+    }
+
+    /// Answers a `resources/read`: the resource's current contents as one
+    /// JSON text block, or an internal error naming what the read threw.
+    private func readResource(id: JSONRPCID, params: JSONValue?) async -> JSONRPCResponse {
+        switch await lookUpResource(id: id, params: params) {
+        case .refused(let response):
+            return response
+        case .found(let resource):
+            do {
+                let value = try await resource.read()
+                return .success(id: id, result: MCPResourceDescriptor.contents(of: resource, value: value))
+            } catch {
+                return .failure(
+                    id: id,
+                    error: JSONRPCError(
+                        code: .internalError,
+                        message: "The resource at '\(resource.uri)' could not be read: \(String(describing: error))"
+                    )
+                )
+            }
+        }
+    }
+
+    /// Answers a `resources/subscribe`: from here until an unsubscribe or
+    /// the session's end, every change signal the resource emits reaches
+    /// this client as a `notifications/resources/updated`. Subscribing
+    /// twice to one URI is one subscription.
+    private func subscribe(id: JSONRPCID, params: JSONValue?) async -> JSONRPCResponse {
+        switch await lookUpResource(id: id, params: params) {
+        case .refused(let response):
+            return response
+        case .found(let resource):
+            if subscriptions[resource.uri] == nil {
+                let transport = self.transport
+                let uri = resource.uri
+                subscriptions[uri] = Task {
+                    for await _ in resource.changes() {
+                        guard !Task.isCancelled else { break }
+                        let notification = JSONRPCNotification(
+                            method: MCPProtocol.resourceUpdated, params: .object(["uri": .string(uri)]))
+                        guard let payload = try? MessageCoder.encode(notification) else { continue }
+                        try? await transport.writeMessage(payload)
+                    }
+                }
+            }
+            return .success(id: id, result: .object([:]))
+        }
+    }
+
+    /// Answers a `resources/unsubscribe`: ends the subscription, if any.
+    private func unsubscribe(id: JSONRPCID, params: JSONValue?) async -> JSONRPCResponse {
+        switch await lookUpResource(id: id, params: params) {
+        case .refused(let response):
+            return response
+        case .found(let resource):
+            subscriptions.removeValue(forKey: resource.uri)?.cancel()
+            return .success(id: id, result: .object([:]))
         }
     }
 

@@ -71,6 +71,11 @@ public enum JSONRPCErrorCode: Int, Sendable {
 
     /// An internal JSON-RPC error.
     case internalError = -32603
+
+    /// A `resources/*` request named a URI no resource is registered at —
+    /// MCP's own code for it, in the server-defined range JSON-RPC reserves
+    /// (MCP.md, "Resources").
+    case resourceNotFound = -32002
 }
 
 /// A JSON-RPC 2.0 error object, carried in a response's `error` member.

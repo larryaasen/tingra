@@ -405,6 +405,12 @@ or two in the doc that owns them — none need a rewrite.
         button) for the per-layer controls beside the monitors, and the
         Camera/Display casting pickers out of the layer editor into the
         sidebar's Cameras and Displays headings.
+      - [x] **The casting pickers removed** *(2026-09-13 — ARCHITECTURE.md,
+        "The casting pickers are removed")* — the Cameras/Displays heading
+        pickers and their whole-preset recast, reversing phase 3's move: the
+        inspector's Input popup and a row click cover what they did, the
+        fresh seed starts the first discovered display and camera itself, and
+        the silent-input retry rides the row click and the popup.
     - [x] **The Frame effect** *(built 2026-09-09 — ARCHITECTURE.md, "The
       Frame effect")* — rounded corners and an inside border on a layer as
       the third first-party video effect (`frame`: `cornerRadius` and
@@ -1431,11 +1437,26 @@ or two in the doc that owns them — none need a rewrite.
     (`EXAppExtensionBrowserViewController`), and `TingraAppPlugInKit` 1.0.0
     beside `TingraPlugInKit` 1.0.0. Larry's manual check: keyboard focus into
     the hosted Notes editor (automation had no assistive access).
-  - [ ] **Plug-ins Phase 2 — seams into the engine** (PLUGINS.md): resources
-    (`tingra://session`, `tingra://program`, `tingra://inputs`,
-    `tingra://meters`, frames), the control tools in the app, activation
-    conditions, declared parameters on every host-tier registration, the
-    narrowed secure-storage method.
+  - [x] **Plug-ins Phase 2, first slice — observe, then act** *(built
+    2026-09-14, PLUGINS.md "Phase 2 as built, first slice")*: MCP resources
+    hand-rolled beside the tools (`Resource` in `TingraPlugInKit`,
+    `ResourceRegistry` in `TingraHost`, `resources/list`/`read`/`subscribe`/
+    `unsubscribe` and `notifications/resources/updated` in `MCPSession`,
+    `-32002` for an unknown URI); the app's `tingra://session`,
+    `tingra://program`, and `tingra://inputs`, each a `ModelResource` whose
+    change signal comes from observation tracking of exactly what its
+    snapshot reads; the app-owned program tools `shot_take`, `preview_set`,
+    `fade_to_black` (`ProgramToolsPlugIn`, the `ProgramControlling` seam,
+    `shotNotFound`/`shotAmbiguous`); `PlugInConnection.resources()`,
+    `read(_:)`, `observe(_:)`. Tests: `TingraHost` 193 → 196, `TingraMCP`
+    128 → 137, `TingraAppPlugInKit` 21 → 25, app +12.
+  - [ ] **Plug-ins Phase 2, the rest** (PLUGINS.md, same section for the
+    sequencing): stream and recording control in the app (a contract
+    decision first — the daemon's `stream_start` takes destinations, the
+    app's stream is the program to the project's), `tingra://meters` (a
+    rate decision) and frames (spike row 4), activation conditions,
+    declared parameters on every host-tier registration, the narrowed
+    secure-storage method, windows and status bar items.
   - [ ] **The external bundle loader**, tagging `TingraPlugInKit` 1.0.0
     (ARCHITECTURE.md, "Plug-in API stability and versioning").
   - [ ] **NDI as an external plug-in bundle**, outside this repo, importing

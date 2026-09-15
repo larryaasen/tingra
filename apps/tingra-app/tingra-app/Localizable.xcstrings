@@ -2876,6 +2876,23 @@
         }
       }
     },
+    "Loading plug-in…" : {
+      "comment" : "Placeholder shown in a plug-in's pane until its extension draws",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Plug-in wird geladen …"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cargando el complemento…"
+          }
+        }
+      }
+    },
     "Location" : {
       "comment" : "Logging settings: label of the row naming where the log file is",
       "localizations" : {
@@ -4092,7 +4109,7 @@
       }
     },
     "None" : {
-      "comment" : "Data settings: the amount shown for a kind with nothing saved\nPicker option for no input selected",
+      "comment" : "Data settings: the amount shown for a kind with nothing saved",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -4530,6 +4547,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ubicación"
+          }
+        }
+      }
+    },
+    "Plug-ins" : {
+      "comment" : "Title of the Plug-ins menu (one submenu per plug-in with commands) and of the Settings source list's section over the plug-ins' settings panes\nTitle of the Plug-ins menu, one submenu per plug-in with commands",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Plug-ins"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Complementos"
           }
         }
       }
@@ -7274,40 +7308,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Y"
-          }
-        }
-      }
-    },
-    "Plug-ins" : {
-      "comment" : "Title of the Plug-ins menu, one submenu per plug-in with commands",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Plug-ins"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Complementos"
-          }
-        }
-      }
-    },
-    "Loading plug-in…" : {
-      "comment" : "Placeholder shown in a plug-in's pane until its extension draws",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Plug-in wird geladen …"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cargando el complemento…"
           }
         }
       }

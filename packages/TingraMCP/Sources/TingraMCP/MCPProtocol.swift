@@ -38,6 +38,25 @@ public enum MCPProtocol {
     /// daemon uses to push status changes to connected sessions (MCP.md,
     /// "Sessions and concurrency").
     public static let message = "notifications/message"
+
+    /// `resources/list` — enumerate the registered resources: URI, name,
+    /// title, description, and MIME type (MCP.md, "Resources").
+    public static let resourcesList = "resources/list"
+
+    /// `resources/read` — read one resource's current contents by `uri`.
+    public static let resourcesRead = "resources/read"
+
+    /// `resources/subscribe` — ask to be told, as
+    /// ``resourceUpdated`` notifications, whenever the resource at `uri`
+    /// changes.
+    public static let resourcesSubscribe = "resources/subscribe"
+
+    /// `resources/unsubscribe` — stop those notifications for `uri`.
+    public static let resourcesUnsubscribe = "resources/unsubscribe"
+
+    /// `notifications/resources/updated` — the endpoint telling a subscribed
+    /// client that the resource at `uri` changed and is worth reading again.
+    public static let resourceUpdated = "notifications/resources/updated"
 }
 
 /// The daemon's identity, reported in the `initialize` result so a client
@@ -71,6 +90,9 @@ public struct DaemonInfo: Sendable, Equatable {
                 "tools": .object(["listChanged": .bool(false)]),
                 // The daemon pushes status as logging notifications.
                 "logging": .object([:]),
+                // Resources may be subscribed to; the set is fixed for the
+                // life of a session, like the tools.
+                "resources": .object(["subscribe": .bool(true), "listChanged": .bool(false)]),
             ]),
             "serverInfo": .object([
                 "name": .string(name),
@@ -90,6 +112,37 @@ enum MCPToolDescriptor {
             "title": .string(tool.title),
             "description": .string(tool.description),
             "inputSchema": tool.inputSchema,
+        ])
+    }
+}
+
+/// One resource as it appears in a `resources/list` result, and the
+/// `resources/read` result carrying its contents (MCP.md, "Resources").
+enum MCPResourceDescriptor {
+    /// Builds the `resources/list` entry (a ``JSONValue`` object) for a
+    /// resource.
+    static func descriptor(for resource: any Resource) -> JSONValue {
+        .object([
+            "uri": .string(resource.uri),
+            "name": .string(resource.name),
+            "title": .string(resource.title),
+            "description": .string(resource.description),
+            "mimeType": .string(resource.mimeType),
+        ])
+    }
+
+    /// Builds the `resources/read` result: one text content block carrying
+    /// the document as compact JSON, tagged with the resource's URI and MIME
+    /// type.
+    static func contents(of resource: any Resource, value: JSONValue) -> JSONValue {
+        .object([
+            "contents": .array([
+                .object([
+                    "uri": .string(resource.uri),
+                    "mimeType": .string(resource.mimeType),
+                    "text": .string(JSONText.encode(value)),
+                ])
+            ])
         ])
     }
 }

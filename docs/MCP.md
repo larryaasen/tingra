@@ -55,7 +55,7 @@ The daemon speaks MCP JSON-RPC through a small, first-party protocol layer in `p
 - **The subset we need is tiny.** v1 speaks newline-delimited JSON-RPC 2.0 over a UDS — `initialize`, `tools/list`, `tools/call`, and one notification. That is a few hundred lines behind the MCP/Control seam, fully under our Swift 6 strict-concurrency and warning-clean rules, with no custom-transport impedance mismatch against a library built around its own async model.
 - **We owe direct socket clients a documented wire format regardless.** MCP.md commits to letting users script the engine over the raw socket without the proxy (see "The transport"). Owning the framing and message types makes that contract explicit and unit-testable rather than an emergent property of a third-party library.
 
-This is the flip side of ARCHITECTURE.md design principle 4: adopt the standardized *protocol* (MCP, verbatim on the wire), implement the *thin transport* ourselves rather than importing a heavy stack for it — the same reasoning that keeps HaishinKit (a genuinely large, differentiated body of work) as a dependency while the JSON-RPC framing is not. If the protocol layer ever grows past what is comfortable to maintain by hand (Streamable HTTP, resource subscriptions, sampling), revisit the SDK then, behind the same seam. The layer stays confined to `TingraMCP`; the rest of the engine sees only the tool registry and the MCP/Control service.
+This is the flip side of ARCHITECTURE.md design principle 4: adopt the standardized *protocol* (MCP, verbatim on the wire), implement the *thin transport* ourselves rather than importing a heavy stack for it — the same reasoning that keeps HaishinKit (a genuinely large, differentiated body of work) as a dependency while the JSON-RPC framing is not. If the protocol layer ever grows past what is comfortable to maintain by hand (Streamable HTTP, sampling — resource subscriptions turned out to be a page of code, added 2026-09-14), revisit the SDK then, behind the same seam. The layer stays confined to `TingraMCP`; the rest of the engine sees only the tool registry and the MCP/Control service.
 
 ## Lifecycle: launchd socket activation
 
@@ -112,12 +112,45 @@ The app's endpoint is `MCPSession` itself, now public, over the app's own `ToolR
 
 | Method | Direction | Purpose |
 |---|---|---|
-| `initialize`, `notifications/initialized`, `ping`, `tools/list`, `tools/call` | extension → app | MCP as documented above; the tools are the app's registry (first-party control tools follow in Phase 2) |
+| `initialize`, `notifications/initialized`, `ping`, `tools/list`, `tools/call` | extension → app | MCP as documented above; the tools are the app's registry — the program tools `shot_take`, `preview_set`, and `fade_to_black` since 2026-09-14 (see "Resources and the program tools") |
+| `resources/list`, `resources/read`, `resources/subscribe`, `resources/unsubscribe` | extension → app | MCP's resource primitive over the app's `ResourceRegistry`: `tingra://session`, `tingra://program`, `tingra://inputs` (see "Resources and the program tools") |
+| `notifications/resources/updated` | app → extension | A subscribed resource changed; the extension reads it again |
 | `tingra/event` (notification) | extension → app | An event for the app's bus: `name`, optional `params`, optional `group` (`event` or `error`). It lands under the plug-in's id as its domain, so the log file, OSLog, and the log window carry it with everything else (EVENTS.md) |
 | `tingra/storage.get`, `tingra/storage.set` | extension → app | The plug-in's stored value for a `scope` of `project` (in the document under `plugInData`, dirtied and autosaved like any edit) or `application` (a JSON file under `~/Library/Application Support/Tingra/Plug-ins/<id>/`). The plug-in id is the connection's, never a param: a plug-in cannot reach another's data |
 | `tingra/command.perform` | app → extension | The one request the app makes: perform a command the manifest declared, after the app emitted the `tap` and revealed the pane the command names |
 
 Identity is per connection: the app opened the connection for a known extension, so the handler is built with that plug-in's id. Secrets are not a storage scope; a plug-in needing a key gets a narrowed secure-storage method later, never a plaintext file.
+
+### Resources and the program tools
+
+**Resources are how a client sees what the engine is doing; tools are how it acts** (PLUGINS.md, "Phase 2 — seams into the engine", first slice built 2026-09-14). The layer implements MCP's resource primitive verbatim, the way it implements the tools:
+
+| Method | Purpose |
+|---|---|
+| `resources/list` | Every registered resource: `uri`, `name`, `title`, `description`, `mimeType` (always `application/json` today) |
+| `resources/read` | `{uri}` → `{contents: [{uri, mimeType, text}]}`, the document as compact JSON text |
+| `resources/subscribe`, `resources/unsubscribe` | `{uri}` → `{}`; from a subscribe until the matching unsubscribe or the session's end, every change to the resource reaches the client as a `notifications/resources/updated` carrying `{uri}`, and the client reads again. Changes coalesce: a burst arrives as one notification |
+| `initialize` | advertises `capabilities.resources: {subscribe: true, listChanged: false}` — the set is fixed for the life of a session, like the tools |
+
+A `uri` no resource is registered at answers with MCP's own code, `-32002`, with the URI in the error's `data`; a missing or non-string `uri` is invalid params; a read that throws is an internal error naming the resource. The registry is the host's `ResourceRegistry`, the `Resource` protocol lives in `TingraPlugInKit` beside `Tool`, and the daemon serves the same methods over an empty registry until the engine it owns has state worth observing beyond `stream_status`. Every document is a scripting contract on the tools' terms: camelCase keys, append-only.
+
+The app registers three, each rendered from `EngineModel` and each signalling a change only when its rendered document differs — value types and identifiers only, never the compositor, the mixer, or a registry:
+
+| Resource | Document |
+|---|---|
+| `tingra://session` | `stream` — `state` (`idle`, `starting`, `live`, `reconnecting` with `attempt`/`maxAttempts`, `stopped`, `error` with `message`), `bitrateKbps`/`fps` while live, and `destinations`, one per project destination (`id`, `name`, `url`, `enabled`, and while streaming its own `state` of `live`/`reconnecting`/`rejected`/`lost` with its counters); `recording` — `state` (`idle`, `starting`, `recording`, `finalizing`, `error` with `message`), `path`, `container`, and `startedAt` while a file is open. Never a stream key |
+| `tingra://program` | `presets` and `activePreset` (`id`, `name`), `shots` of the active preset (`id`, `name`, `origin` of `authored` or `automatic`, `inputs`), `programShot` and `previewShot` (`id`, `name`, or null), `programInputs` and `previewInputs` (the tally, as sorted input ids), `fadedToBlack` |
+| `tingra://inputs` | `inputs`, every input the engine knows: `id`, `name`, `kind` (`camera`, `microphone`, `display`, `generator`, `media`), `media` (`video`, `audio`), and a media input's `path` |
+
+**The program tools are the app's** — registered by `ProgramToolsPlugIn` in the app target through the same `ToolRegistering` seam, because only the app has a program (the daemon streams one input and has no compositor to take a shot on):
+
+| Tool | Arguments | Result | Notes |
+|---|---|---|---|
+| `shot_take` | `shot` | `{shot: {id, name}}` | Takes a shot of the active preset to program with the switcher's selected transition — the operator's own take, so the compositor's `program.take` reports it |
+| `preview_set` | `shot` | `{shot: {id, name}}` | Stages a shot on preview; program is untouched |
+| `fade_to_black` | `faded` (boolean), `duration` (seconds, optional, default 0.5) | `{fadedToBlack}` | Picture and sound together, as the app's own control does |
+
+The `shot` selector follows the rule the input and destination selectors teach: an exact id wins outright; otherwise a case-insensitive name that must match exactly one shot; there is no index form, because a switcher position is not stable across an edit. The failures are the append-only identifiers `shotNotFound` (the message points at `tingra://program`) and `shotAmbiguous` (the message lists the matches, so the caller can use an id) beside `invalidArgument` for a missing or empty selector.
 
 ## Product grade requirements
 

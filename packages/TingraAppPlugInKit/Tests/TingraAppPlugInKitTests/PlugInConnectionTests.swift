@@ -41,6 +41,12 @@ struct PlugInConnectionTests {
         /// Whether `tools/list` is answered with a method-not-found error.
         let rejectsToolsList = Mutex(false)
 
+        /// The document `tingra://program` reads as.
+        let program = Mutex<JSONValue>(.object(["programShot": .string("wide")]))
+
+        /// The URIs subscribed to and not yet unsubscribed from, in order.
+        let subscriptions = Mutex<[String]>([])
+
         /// The serving task.
         private let task = Mutex<Task<Void, Never>?>(nil)
 
@@ -101,6 +107,37 @@ struct PlugInConnectionTests {
                         "isError": .bool(false),
                         "structuredContent": .object(["took": params?["arguments"]?["shot"] ?? .null]),
                     ]))
+            case "resources/list":
+                return .success(
+                    id: id,
+                    result: .object([
+                        "resources": .array([
+                            .object(["uri": .string("tingra://program"), "name": .string("program")])
+                        ])
+                    ]))
+            case "resources/read", "resources/subscribe", "resources/unsubscribe":
+                guard params?["uri"]?.stringValue == "tingra://program" else {
+                    return .failure(
+                        id: id, error: JSONRPCError(code: .resourceNotFound, message: "No resource there."))
+                }
+                if method == "resources/subscribe" { subscriptions.withLock { $0.append("tingra://program") } }
+                if method == "resources/unsubscribe" {
+                    subscriptions.withLock { $0.removeAll { $0 == "tingra://program" } }
+                }
+                guard method == "resources/read" else { return .success(id: id, result: .object([:])) }
+                let encoder = JSONEncoder()
+                encoder.outputFormatting = [.sortedKeys]
+                let text = (try? encoder.encode(program.withLock { $0 })).map { String(decoding: $0, as: UTF8.self) }
+                return .success(
+                    id: id,
+                    result: .object([
+                        "contents": .array([
+                            .object([
+                                "uri": .string("tingra://program"), "mimeType": .string("application/json"),
+                                "text": .string(text ?? "{}"),
+                            ])
+                        ])
+                    ]))
             case AppTierMethod.storageGet:
                 let scope = params?["scope"]?.stringValue ?? ""
                 return .success(id: id, result: .object(["value": storage.withLock { $0[scope] } ?? .null]))
@@ -111,6 +148,13 @@ struct PlugInConnectionTests {
             default:
                 return .failure(id: id, error: JSONRPCError(code: .methodNotFound, message: "Unknown '\(method)'."))
             }
+        }
+
+        /// Tells the extension a resource changed.
+        func notifyUpdated(_ uri: String) async throws {
+            let payload = Data(
+                #"{"jsonrpc":"2.0","method":"notifications/resources/updated","params":{"uri":"\#(uri)"}}"#.utf8)
+            try await transport.writeMessage(payload)
         }
 
         /// Sends the app's one request: perform a command.
@@ -198,6 +242,59 @@ struct PlugInConnectionTests {
         #expect(received.first?.params?["params"]?["characters"]?.intValue == 12)
         #expect(received.last?.params?["group"]?.stringValue == "error")
         #expect(received.last?.params?["params"] == nil)
+        await connection.close()
+    }
+
+    @Test("resources/list returns the descriptors")
+    func listsResources() async throws {
+        let (connection, _) = makePair()
+        let resources = try await connection.resources()
+        #expect(resources.first?["uri"]?.stringValue == "tingra://program")
+        await connection.close()
+    }
+
+    @Test("a resource read decodes the document from its JSON text")
+    func readsResource() async throws {
+        let (connection, _) = makePair()
+        let program = try await connection.read("tingra://program")
+        #expect(program["programShot"]?.stringValue == "wide")
+        await connection.close()
+    }
+
+    @Test("a read of a URI the app has no resource at throws the protocol error")
+    func readUnknownThrows() async throws {
+        let (connection, _) = makePair()
+        await #expect(
+            throws: PlugInConnectionError.protocolError(
+                JSONRPCError(code: .resourceNotFound, message: "No resource there."))
+        ) {
+            _ = try await connection.read("tingra://nothing")
+        }
+        await connection.close()
+    }
+
+    @Test("observing a resource yields it now and after each update, and stopping unsubscribes")
+    func observesResource() async throws {
+        let (connection, app) = makePair()
+        var iterator = await connection.observe("tingra://program").makeAsyncIterator()
+        let first = await iterator.next()
+        #expect(first?["programShot"]?.stringValue == "wide")
+        #expect(app.subscriptions.withLock { $0 } == ["tingra://program"])
+
+        app.program.withLock { $0 = .object(["programShot": .string("close")]) }
+        try await app.notifyUpdated("tingra://program")
+        let second = await iterator.next()
+        #expect(second?["programShot"]?.stringValue == "close")
+
+        // A notification for another resource wakes nobody.
+        try await app.notifyUpdated("tingra://session")
+        let waiting = Task { await iterator.next() }
+        try await Task.sleep(for: .milliseconds(30))
+        #expect(app.requests.withLock { $0.filter { $0 == "resources/read" }.count } == 2)
+        waiting.cancel()
+        _ = await waiting.value
+        await eventually { app.subscriptions.withLock { $0.isEmpty } }
+        #expect(app.subscriptions.withLock { $0.isEmpty })
         await connection.close()
     }
 

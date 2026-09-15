@@ -317,9 +317,10 @@ changed.
 ### `packages/TingraMCP`
 
 The MCP/Control service (see [MCP.md](docs/MCP.md)): the hand-rolled MCP
-JSON-RPC layer, the engine daemon, the transparent stdio↔socket proxy, and the
-first-party control tools that mirror the CLI surface. Speaks MCP verbatim on
-the wire but takes no third-party dependency — the JSON-RPC framing is a few
+JSON-RPC layer — tools and, since 2026-09-14, resources with subscriptions —
+the engine daemon, the transparent stdio↔socket proxy, and the first-party
+control tools that mirror the CLI surface. Speaks MCP verbatim on the wire but
+takes no third-party dependency — the JSON-RPC framing is a few
 hundred lines behind this seam rather than the official swift-sdk's
 SwiftNIO/swift-log/eventsource stack.
 

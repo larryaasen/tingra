@@ -59,6 +59,11 @@ final class AppPlugInHost {
     /// sidebar and a command's `showsPane` share one observable answer.
     private(set) var expandedPanes: Set<PaneID> = []
 
+    /// Whether the Settings window's Plug-ins section — the collapsible
+    /// heading over the plug-ins' settings panes — is open, mirrored from
+    /// ``PanePreferences`` like ``expandedPanes``.
+    private(set) var isSettingsSectionExpanded: Bool
+
     /// A generation per pane, bumped to recreate the pane's host view
     /// controller after its extension process died: an
     /// `EXHostViewController` does not relaunch its scene on its own
@@ -97,6 +102,7 @@ final class AppPlugInHost {
     ) {
         self.extensionsDirectory = extensionsDirectory
         self.preferences = preferences
+        isSettingsSectionExpanded = preferences.isSettingsSectionExpanded
     }
 
     /// Begins discovery against the engine model's bus, tool registry, and
@@ -109,7 +115,7 @@ final class AppPlugInHost {
         statusTask = model.eventBus.attach(status)
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0"
         let services = AppPlugInServices(
-            eventBus: model.eventBus, tools: model.toolRegistry, status: status,
+            eventBus: model.eventBus, tools: model.toolRegistry, resources: model.resourceRegistry, status: status,
             info: DaemonInfo(name: "Tingra", version: version),
             storage: AppPlugInStorage(model: model, applicationStore: PlugInApplicationStore()))
         self.services = services
@@ -273,6 +279,15 @@ final class AppPlugInHost {
         preferences.setExpanded(isExpanded, for: pane)
     }
 
+    /// Opens or closes the Settings window's Plug-ins section, persisting
+    /// the choice.
+    ///
+    /// - Parameter isExpanded: Whether the section is open.
+    func setSettingsSectionExpanded(_ isExpanded: Bool) {
+        isSettingsSectionExpanded = isExpanded
+        preferences.setSettingsSectionExpanded(isExpanded)
+    }
+
     /// The pane's host view controller reported its scene active: open the
     /// pane's session over a connection to the scene.
     ///
@@ -353,14 +368,18 @@ extension RegisteredSettingsPane {
     }
 }
 
-/// What every link needs: the bus, the tool registry, the status sink and
-/// identity the MCP session serves, and the plug-ins' storage.
+/// What every link needs: the bus, the tool and resource registries, the
+/// status sink and identity the MCP session serves, and the plug-ins'
+/// storage.
 struct AppPlugInServices {
     /// The bus events land on.
     let eventBus: EventBus
 
     /// The tools the endpoint lists and calls.
     let tools: ToolRegistry
+
+    /// The resources the endpoint lists, reads, and subscribes to.
+    let resources: ResourceRegistry
 
     /// The status sink sessions forward as notifications.
     let status: StatusSink
@@ -489,8 +508,8 @@ final class AppPlugInLink {
         let transport = XPCMessageTransport(connection: connection, opening: true)
         let handler = PlugInMethodHandler(plugIn: plugIn.id, eventBus: services.eventBus, storage: services.storage)
         let session = MCPSession(
-            transport: transport, tools: services.tools, status: services.status, info: services.info,
-            eventBus: services.eventBus, methods: handler)
+            transport: transport, tools: services.tools, resources: services.resources, status: services.status,
+            info: services.info, eventBus: services.eventBus, methods: handler)
         let task = Task { [weak self] in
             await session.run()
             self?.sessionEnded(kind: kind, session: session)

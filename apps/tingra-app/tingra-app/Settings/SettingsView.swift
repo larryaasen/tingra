@@ -162,6 +162,23 @@ struct SettingsView: View {
     /// window with those buttons sitting on it.
     private static let minimumSize = CGSize(width: 700, height: 460)
 
+    /// The Plug-ins section's expansion, persisted through the plug-in
+    /// host. The `tap` rides the binding setter, the rule the main window's
+    /// sections follow: a setter runs only when the operator works the
+    /// disclosure, so restoring the persisted state records no tap nobody
+    /// made (EVENTS.md, "Where a picker's tap is reported").
+    ///
+    /// - Parameter host: The plug-in host holding the state.
+    /// - Returns: The binding.
+    private func plugInsExpansion(of host: AppPlugInHost) -> Binding<Bool> {
+        Binding {
+            host.isSettingsSectionExpanded
+        } set: { isExpanded in
+            model.eventBus.tap("settingsPlugIns.section", domain: .platform, params: ["expanded": .bool(isExpanded)])
+            host.setSettingsSectionExpanded(isExpanded)
+        }
+    }
+
     /// The panes, with the open one's name as the window's title.
     ///
     /// **The title lands on the leading edge, not centered**, which is Xcode
@@ -215,15 +232,27 @@ struct SettingsView: View {
                     }
                     .tag(SettingsSelection.builtIn(pane))
                 }
-                // Plug-in settings panes follow the built-in ones, each a
-                // remote view hosted like a sidebar pane.
-                ForEach(plugInHost?.panes.settingsPanes ?? []) { pane in
-                    Label {
-                        Text(verbatim: pane.descriptor.title)
-                    } icon: {
-                        Image(systemName: pane.descriptor.systemImage)
+                // Plug-in settings panes follow the built-in ones under a
+                // collapsible Plug-ins heading (absent while no plug-in has
+                // one, like the menu), each a remote view hosted like a
+                // sidebar pane.
+                if let plugInHost, !plugInHost.panes.settingsPanes.isEmpty {
+                    Section(isExpanded: plugInsExpansion(of: plugInHost)) {
+                        ForEach(plugInHost.panes.settingsPanes) { pane in
+                            Label {
+                                Text(verbatim: pane.descriptor.title)
+                            } icon: {
+                                Image(systemName: pane.descriptor.systemImage)
+                            }
+                            .tag(SettingsSelection.plugIn(pane.id))
+                        }
+                    } header: {
+                        Text(
+                            "Plug-ins",
+                            comment:
+                                "Title of the Plug-ins menu (one submenu per plug-in with commands) and of the Settings source list's section over the plug-ins' settings panes"
+                        )
                     }
-                    .tag(SettingsSelection.plugIn(pane.id))
                 }
             }
             // The source-list style, the same one ``LeadingSidebar`` uses. It is

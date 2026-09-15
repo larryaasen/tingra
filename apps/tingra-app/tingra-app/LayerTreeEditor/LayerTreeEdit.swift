@@ -119,25 +119,6 @@ enum LayerTreeEdit {
         return replacingLayers(of: shot, with: layers)
     }
 
-    /// Rebinds every layer bound to one input to another, keeping each
-    /// layer's frame and opacity — how a picker's selection change recasts
-    /// which device plays a role across the persisted shots without
-    /// discarding layer edits (see ARCHITECTURE.md, "Project save/load").
-    ///
-    /// - Parameters:
-    ///   - previous: The input the layers are currently bound to.
-    ///   - input: The input they rebind to.
-    ///   - shot: The shot to edit.
-    /// - Returns: The shot with every matching layer rebound, or unchanged
-    ///   when no layer is bound to `previous`.
-    static func rebindingLayers(boundTo previous: InputID, to input: InputID, in shot: Shot) -> Shot {
-        let layers = shot.layers.map { layer in
-            layer.input == previous
-                ? Layer(input: input, frame: layer.frame, opacity: layer.opacity, effects: layer.effects) : layer
-        }
-        return replacingLayers(of: shot, with: layers)
-    }
-
     /// Appends an effect to a layer's chain at its neutral settings (an
     /// empty payload — every parameter at its declared default), so a
     /// freshly added effect never changes the picture until it is
@@ -310,9 +291,9 @@ enum LayerTreeEdit {
 
     /// Rebinds the layer at the given bottom-to-top index to another input,
     /// keeping its frame, opacity, and effect chain — the inspector's Input
-    /// popup (ARCHITECTURE.md, "The layer inspector"). Unlike
-    /// ``rebindingLayers(boundTo:to:in:)``, which recasts every layer of a
-    /// device across the preset, this touches one layer of one shot.
+    /// popup (ARCHITECTURE.md, "The layer inspector"). It touches one layer of
+    /// one shot — the only rebind there is since the casting pickers' whole-
+    /// preset recast was removed (2026-09-13).
     ///
     /// - Parameters:
     ///   - index: The layer's index in the shot's `layers` array.

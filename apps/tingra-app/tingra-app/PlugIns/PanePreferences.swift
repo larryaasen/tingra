@@ -40,6 +40,21 @@ struct PanePreferences {
     func setExpanded(_ isExpanded: Bool, for pane: PaneID) {
         defaults.set(isExpanded, forKey: Self.expansionKey(for: pane))
     }
+
+    /// The defaults key the Settings window's Plug-ins section persists
+    /// under — the collapsible heading over the plug-ins' settings panes.
+    static let settingsSectionExpansionKey = "settings.plugIns.expanded"
+
+    /// Whether the Settings window's Plug-ins section is open; open unless
+    /// it was collapsed.
+    var isSettingsSectionExpanded: Bool {
+        defaults.object(forKey: Self.settingsSectionExpansionKey) as? Bool ?? true
+    }
+
+    /// Records whether the Settings window's Plug-ins section is open.
+    func setSettingsSectionExpanded(_ isExpanded: Bool) {
+        defaults.set(isExpanded, forKey: Self.settingsSectionExpansionKey)
+    }
 }
 
 /// Turns a manifest's shortcut into the SwiftUI shortcut a menu item

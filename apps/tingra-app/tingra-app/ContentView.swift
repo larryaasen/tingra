@@ -187,17 +187,6 @@ struct ContentView: View {
         .onChange(of: model.editedShot?.shot.id) { _, _ in
             model.selectedLayerIndex = nil
         }
-        // Only the *effect* of a casting change lives here — it must run
-        // however the value changed, including when the model assigns the
-        // default at boot. The `tap` rides the pickers' own bindings instead
-        // (``LeadingSidebar``'s camera and display headings), because only the
-        // control can say the operator acted.
-        .onChange(of: model.selectedCameraID) { _, _ in
-            Task { await model.reconfigure() }
-        }
-        .onChange(of: model.selectedDisplayID) { _, _ in
-            Task { await model.reconfigure() }
-        }
         // The actions that change what goes out to viewers are the window's
         // primary actions, and the toolbar is where those live: always on
         // screen, never scrolled away with the panels that configure them.

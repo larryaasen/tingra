@@ -138,6 +138,12 @@ internal surface a reader needs to navigate the target instead.
   JSON; plug-in contributed like inputs and outputs.
 - `ToolError` — a structured, actionable tool failure keyed off the append-only
   `ErrorIdentifier` registry (never message wording).
+- `Resource` — the MCP resource seam (2026-09-14): one thing the engine lets
+  a client observe — a JSON document at a stable `tingra://` URI with a name,
+  title, description, MIME type (default `application/json`), a `read()`, and
+  a `changes()` signal stream (default: never changes) that subscriptions
+  forward as updated notifications. Value types and identifiers only, never
+  an engine object; a document is a scripting contract like a tool's result.
 - `ToolRegistering` — the registration seam where tool plug-ins attach; the
   host's `ToolRegistry` conforms.
 - `JSONValue` — an arbitrary JSON value (the currency of the tool seam):
@@ -332,6 +338,13 @@ internal surface a reader needs to navigate the target instead.
   host's concrete `ToolRegistering`.
 - `ToolRegistryError` — errors thrown by the tool registry (a tool name already
   registered).
+- `ResourceRegistry` — the actor where the engine's observable state is
+  registered as MCP `Resource`s for the MCP/Control service to list, read, and
+  subscribe to (`register(_:)`, `resource(at:)`, `allResources`); host-owned
+  for now — the app fills it from its model — with the plug-in-contributed
+  seam deferred to PLUGINS.md Phase 4.
+- `ResourceRegistryError` — errors thrown by the resource registry (a URI
+  already registered).
 - `StatusSink` — the status sink: retains the latest control-plane status
   events for point reads (`stream_status`) and re-broadcasts them to
   subscribers (the MCP notifications), so status is reported without polling
@@ -753,9 +766,9 @@ internal surface a reader needs to navigate the target instead.
 - `JSONRPCID` — a JSON-RPC 2.0 request/response identifier, a string or an
   integer, carried verbatim so a response echoes exactly the id it answers.
 - `JSONRPCErrorCode` — the five standard JSON-RPC error codes (parse error,
-  invalid request, method not found, invalid params, internal error); a tool
-  that runs and reports a failure is not one of these — it returns a normal
-  result with `isError` set.
+  invalid request, method not found, invalid params, internal error) and MCP's
+  own `resourceNotFound` (`-32002`); a tool that runs and reports a failure is
+  not one of these — it returns a normal result with `isError` set.
 - `JSONRPCError` — the error object a response carries in its `error` member;
   also a Swift `Error`, so a method handler throws the exact protocol error a
   session should answer with.
@@ -811,6 +824,10 @@ internal surface a reader needs to navigate the target instead.
 - `MCPSession` — one per-connection MCP session (public since 2026-09-13, so
   the app runs one over each extension's XPC link): the `initialize` handshake
   (carrying the endpoint's build version), `tools/list`, `tools/call` dispatch,
+  the `resources/list`, `resources/read`, `resources/subscribe`, and
+  `resources/unsubscribe` methods over a `ResourceRegistry` (a subscription
+  forwards the resource's change signals as `notifications/resources/updated`
+  until unsubscribed or the session ends; an unknown URI is MCP's `-32002`),
   and status-change notifications fed by the status sink; an optional
   `SessionMethodHandler` answers the endpoint's own methods beyond MCP, and
   `request(_:params:)` sends a server-initiated request to the peer — the app
@@ -856,8 +873,8 @@ internal surface a reader needs to navigate the target instead.
   tier's extension side can speak the protocol without linking the daemon or
   the host, and re-exported here (`@_exported import TingraJSONRPC`) so
   `import TingraMCP` sees them exactly as before; listed under that package.
-- `MCPProtocol` — the MCP method names, notification names, and the protocol
-  version the daemon speaks.
+- `MCPProtocol` — the MCP method names (the tools' and the resources'),
+  notification names, and the protocol version the daemon speaks.
 
 
 ## `packages/TingraAppPlugInKit`
@@ -904,14 +921,18 @@ internal surface a reader needs to navigate the target instead.
   secrets.
 - `PlugInConnection` — the extension's end of one connection to the app: an
   MCP client over a `MessageTransport` that runs `initialize`, calls the app's
-  tools (`call(_:arguments:)`) and lists them, files `event`s and `error`s on
-  the app's bus under the plug-in's domain, reads and writes project- and
-  application-scoped storage, and answers the one request the app makes of it,
-  a command to perform. One per `NSXPCConnection` the app opens; the kit
-  creates them, an author receives them.
+  tools (`call(_:arguments:)`) and lists them, lists the app's resources
+  (`resources()`), reads one (`read(_:)`), and follows one (`observe(_:)`, an
+  `AsyncStream` yielding the document now and after each updated
+  notification, unsubscribing when its consumer stops), files `event`s and
+  `error`s on the app's bus under the plug-in's domain, reads and writes
+  project- and application-scoped storage, and answers the one request the
+  app makes of it, a command to perform. One per `NSXPCConnection` the app
+  opens; the kit creates them, an author receives them.
 - `PlugInConnectionError` — what a connection call can get wrong: the
-  connection is closed, the transport reported an error, or the peer answered
-  with a protocol error.
+  connection is closed, the transport reported an error, the peer answered
+  with a protocol error, a tool reported an error, or a response did not
+  decode.
 - `DebouncedWriter` — coalesces a stream of values into one write after the
   stream pauses, so a text editor's keystrokes become one storage write per
   pause rather than one per key; the last value wins, and `flush()` writes it
@@ -957,8 +978,7 @@ surface is:
   remove, and keep — stages a clicked input as a **transient** shot that is
   promoted when kept, edited, or aired and discarded when the operator stages
   something else (never written to the document), applies layer-tree edits to
-  the active shot, rebinds the built-in roles' layers when a picker's selection
-  changes, starts and stops each channel strip's device as it is unmuted and
+  the active shot, starts and stops each channel strip's device as it is unmuted and
   muted, and puts the program on air by feeding the compositor's frames and the
   mixer's blocks to a `StreamSession` program source fanned out to every enabled
   destination, each destination's stream key held in Keychain-backed secure
@@ -973,9 +993,8 @@ surface is:
   audio generators, every camera, display, audio input device, and audio
   output device this Mac can see, and the destinations the program streams
   to, in ten sections. The Cameras and
-  Displays headings carry the role's casting picker at their trailing end
-  (2026-09-09) — which device plays the camera or display role across the
-  preset — under the `camera.picker` / `display.picker` taps. It is a standard
+  Displays headings are plain headings: the casting pickers they carried from
+  2026-09-09 were removed on 2026-09-13. It is a standard
   `NavigationSplitView` sidebar, which is what makes it Liquid Glass on macOS 26
   — nothing applies a glass material by hand, and the deployment floor has none
   to apply. The order is the signal path: presets hold shots, a shot is what
@@ -1040,7 +1059,8 @@ surface is:
   the monitors and pushing the pickers off the bottom edge. The control section
   holds the `TransitionPanel`, the layer editor, and the mixer (the
   camera/display casting pickers moved to the sidebar's Cameras and Displays
-  headings on 2026-09-09, and the selected layer's controls to a trailing
+  headings on 2026-09-09 and were removed on 2026-09-13, and the selected
+  layer's controls to a trailing
   inspector column, `LayerInspectorColumn`, toggled by ⌥⌘I and the toolbar's
   trailing button); Start/Stop and Record are toolbar items, and the streaming
   and recording panels that closed the column became the Streaming and
@@ -1419,8 +1439,7 @@ surface is:
   the pool) and the tally its header shows, red winning when the same shot is on
   both buses.
 - `LayerTreeEdit` — the pure, unit-tested edit operations over a `Shot`,
-  including the rebind a picker change applies across a shot, the one-layer
-  rebind the inspector's Input popup makes, a move to any index, the
+  including the one-layer rebind the inspector's Input popup makes, a move to any index, the
   displayed-order move a drag-to-reorder makes, and a duplicate that lands
   directly above its source.
 - `LayerHandlesOverlay` — direct manipulation of the selected layer on the
@@ -1529,11 +1548,46 @@ surface is:
   registered from its manifest before it runs, launched on demand, and spoken
   to over MCP JSON-RPC on `XPCMessageTransport` — never a second RPC protocol.
   `EngineModel` carries the engine-side pieces: `toolRegistry`, the host's
-  `ToolRegistry` the endpoint lists and dispatches against (filled by the
-  first-party control tools in Phase 2), and `plugInProjectData(for:)` /
-  `setPlugInProjectData(_:for:)`, the document's `plugInData` held opaque per
-  plug-in id and written back as read, a write dirtying and autosaving the
-  document like a layer edit (`project.plugInDataEdited`).
+  `ToolRegistry` the endpoint lists and dispatches against (the program tools
+  register into it at boot), `resourceRegistry`, the host's `ResourceRegistry`
+  the endpoint serves (the three engine resources register into it once the
+  engine is up), and `plugInProjectData(for:)` / `setPlugInProjectData(_:for:)`,
+  the document's `plugInData` held opaque per plug-in id and written back as
+  read, a write dirtying and autosaving the document like a layer edit
+  (`project.plugInDataEdited`).
+  - `EngineResources` — the three resources the app serves (2026-09-14;
+    PLUGINS.md, "Phase 2 as built, first slice"), each rendered from the
+    model: `tingra://session` (`sessionValue(of:)` — stream state, counters,
+    each destination's state, recording state and file), `tingra://program`
+    (`programValue(of:)` — presets, the active preset's shots with ids and
+    inputs, program and preview shots, the tally, fade to black), and
+    `tingra://inputs` (`inputsValue(of:)` — every known input by kind and
+    media). Value types and identifiers only, never the compositor, the
+    mixer, or a registry; every key a scripting contract.
+  - `ModelResource` — a `Resource` over a main-actor snapshot closure of the
+    model: `read()` renders it, and `changes()` re-renders after each change
+    to anything the snapshot read (observation tracking, never a poll),
+    signalling only when the document differs, so a follower of the program
+    is woken by a take and never by a meter.
+  - `ObservedChange` — `withObservationTracking` turned into something a loop
+    can await: `next(of:)` returns once any observable property the read
+    touched changes, or the task is cancelled, so a follower that stops leaves
+    no task parked.
+  - `ProgramToolsPlugIn` — the first-party program tools plug-in, registered
+    at boot beside the capture and generator plug-ins through the same
+    `ToolRegistering` seam: `shot_take`, `preview_set`, `fade_to_black`.
+    App-owned rather than in `TingraMCP` because only the app has a program.
+  - `ProgramControlling` — the seam the program tools act through (shots, the
+    program and preview shots, fade to black, `take`, `setPreview`,
+    `setFadeToBlack`), which the model conforms to, so the tools are tested
+    against a fake with no engine booted.
+  - `ShotSelector` — the `shot` argument the two shot tools share: an exact id
+    wins, else a case-insensitive name that must match exactly one shot, no
+    index form; `shotNotFound` and `shotAmbiguous` otherwise.
+  - `ShotTakeTool`, `PreviewSetTool`, `FadeToBlackTool` — the three tools:
+    a take with the switcher's selected transition (the operator's own take,
+    so the compositor's `program.take` reports it), a stage on preview, and
+    a fade of picture and sound over an optional `duration`.
   - `AppPlugInHost` — the `@Observable` host: discovers identities for the
     extension point at launch and on the system's own change stream (never
     polling), decodes each `PlugInManifest`, fills the pane and command
@@ -1571,7 +1625,11 @@ surface is:
     never secrets.
   - `PanePreferences` — which plug-in panes are open in the trailing sidebar,
     keyed by pane id on the `SidebarPreferences` pattern: an open pane is the
-    absence of a value, so a fresh install shows every pane.
+    absence of a value, so a fresh install shows every pane; also whether the
+    Settings window's collapsible **Plug-ins** section — the heading over
+    the plug-ins' settings panes, named like the menu and absent while no
+    plug-in has one, its expansion mirrored on `AppPlugInHost` — is open
+    (`settings.plugIns.expanded`).
   - `PlugInShortcut` — turns a manifest's `ShortcutDescriptor` into the SwiftUI
     `KeyboardShortcut` a menu item carries; a descriptor without a single
     character yields nil, so a malformed manifest loses its shortcut, not its

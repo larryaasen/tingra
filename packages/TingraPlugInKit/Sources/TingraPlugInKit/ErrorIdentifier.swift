@@ -76,4 +76,15 @@ extension ErrorIdentifier {
     /// stream was active. MCP-only — no CLI command addresses a session by
     /// omission — so no exit code maps to it.
     public static let noActiveStream = ErrorIdentifier(rawValue: "noActiveStream")
+
+    /// No shot of the active preset matches a `shot` selector on a program
+    /// tool (`shot_take`, `preview_set`); the message points at the
+    /// `tingra://program` resource, which lists the shots and their ids.
+    /// MCP-only: no CLI command addresses a shot.
+    public static let shotNotFound = ErrorIdentifier(rawValue: "shotNotFound")
+
+    /// A `shot` name selector matches more than one shot of the active
+    /// preset; the message lists the matches so the caller can use an id.
+    /// MCP-only, like `shotNotFound`.
+    public static let shotAmbiguous = ErrorIdentifier(rawValue: "shotAmbiguous")
 }

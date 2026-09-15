@@ -102,7 +102,9 @@ A project is the saved file for an entire show. A project contains presets. A pr
 
 ## Control and automation
 
-**MCP tools** — the engine's controls exposed to AI agents through the built in MCP server (`tingra-cli serve` / `tingra-cli mcp`, see CLI.md and MCP.md). Every capability of the engine is reachable as a tool.
+**MCP tools** — the engine's controls exposed to AI agents through the built in MCP server (`tingra-cli serve` / `tingra-cli mcp`, see CLI.md and MCP.md). Every capability of the engine is reachable as a tool. App-tier plug-ins call the same tools over the app's own MCP endpoint (PLUGINS.md, Decision 10).
+
+**MCP resources** — what the engine lets an MCP client *observe*, as tools are what it lets a client *do*: JSON documents at stable `tingra://` URIs (`tingra://session`, `tingra://program`, `tingra://inputs`) that a client reads and subscribes to, told of each change and never polling (MCP.md, "Resources and the program tools"). A resource carries value types and identifiers only, never an engine object.
 
 **Daemon** — the persistent engine process run by `tingra-cli serve`: the one owner of the session, the pipeline, and the TCC identity. launchd managed and socket activated in the product path; every other process (the `mcp` proxy, scripts) is a client of its Unix domain socket. See MCP.md.
 

@@ -46,6 +46,18 @@ struct PanePreferencesTests {
         #expect(preferences.isExpanded(pane))
     }
 
+    @Test("the Settings window's Plug-ins section is open until collapsed, persisting under its own key")
+    func settingsSectionPersists() throws {
+        let (preferences, defaults, name) = try makePreferences()
+        defer { defaults.removePersistentDomain(forName: name) }
+        #expect(preferences.isSettingsSectionExpanded)
+        preferences.setSettingsSectionExpanded(false)
+        #expect(!PanePreferences(defaults: defaults).isSettingsSectionExpanded)
+        #expect(defaults.object(forKey: "settings.plugIns.expanded") as? Bool == false)
+        preferences.setSettingsSectionExpanded(true)
+        #expect(preferences.isSettingsSectionExpanded)
+    }
+
     @Test("a one-character key with modifiers becomes a keyboard shortcut")
     func shortcutConverts() throws {
         let shortcut = try #require(
