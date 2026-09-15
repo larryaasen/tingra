@@ -1450,13 +1450,24 @@ or two in the doc that owns them — none need a rewrite.
     `shotNotFound`/`shotAmbiguous`); `PlugInConnection.resources()`,
     `read(_:)`, `observe(_:)`. Tests: `TingraHost` 193 → 196, `TingraMCP`
     128 → 137, `TingraAppPlugInKit` 21 → 25, app +12.
+  - [x] **Plug-ins Phase 2, second slice — activation conditions** *(built
+    2026-09-15, PLUGINS.md "Phase 2 as built, second slice")*:
+    `ActivationCondition` in `TingraAppPlugInKit` (an event name, optionally
+    `:key=value`-qualified, as one manifest string), `PlugInManifest.activation`
+    with `duplicateActivation`, the app's `ActivationTable` and the one
+    bus-draining task in `AppPlugInHost` that launches a plug-in's process on
+    the first matching event and reports each match over `tingra/activation`
+    (`plugin.activated` names the `condition`; a throwing handler is a
+    `plugin.activation` error), `TingraAppExtension.activated(by:event:using:)`
+    with a do-nothing default, a public `EventBusEvent` initializer. Tests:
+    `TingraAppPlugInKit` 25 → 39, app +4.
   - [ ] **Plug-ins Phase 2, the rest** (PLUGINS.md, same section for the
     sequencing): stream and recording control in the app (a contract
     decision first — the daemon's `stream_start` takes destinations, the
     app's stream is the program to the project's), `tingra://meters` (a
-    rate decision) and frames (spike row 4), activation conditions,
-    declared parameters on every host-tier registration, the narrowed
-    secure-storage method, windows and status bar items.
+    rate decision) and frames (spike row 4), declared parameters on every
+    host-tier registration, the narrowed secure-storage method, windows and
+    status bar items.
   - [ ] **The external bundle loader**, tagging `TingraPlugInKit` 1.0.0
     (ARCHITECTURE.md, "Plug-in API stability and versioning").
   - [ ] **NDI as an external plug-in bundle**, outside this repo, importing

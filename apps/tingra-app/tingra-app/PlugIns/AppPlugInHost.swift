@@ -22,8 +22,9 @@ import TingraPlugInKit
 /// discovers the ExtensionKit extensions targeting the app's extension
 /// point, reads each one's manifest from its Info.plist, and fills the pane
 /// and command registries before any extension runs. An extension's process
-/// starts on demand — when a hosted pane activates or a command is invoked —
-/// and each connection carries an MCP session the plug-in talks to
+/// starts on demand — when a hosted pane activates, a command is invoked,
+/// or a bus event meets an activation condition the manifest declared — and
+/// each connection carries an MCP session the plug-in talks to
 /// (``AppPlugInLink``). The host-tier mirror is `TingraHost`'s loader and
 /// registries.
 ///
@@ -82,6 +83,14 @@ final class AppPlugInHost {
     /// The per-plug-in links, by id.
     @ObservationIgnored private var links: [PlugInID: AppPlugInLink] = [:]
 
+    /// The activation conditions the discovered plug-ins declared, by event
+    /// name.
+    @ObservationIgnored private var activations = ActivationTable()
+
+    /// The task draining the bus for events that meet an activation
+    /// condition.
+    @ObservationIgnored private var activationTask: Task<Void, Never>?
+
     /// The task following discovery.
     @ObservationIgnored private var discoveryTask: Task<Void, Never>?
 
@@ -120,6 +129,12 @@ final class AppPlugInHost {
             storage: AppPlugInStorage(model: model, applicationStore: PlugInApplicationStore()))
         self.services = services
         discoveryTask = Task { await discover(services: services) }
+        let busEvents = model.eventBus.events()
+        activationTask = Task {
+            for await event in busEvents {
+                wake(on: event)
+            }
+        }
         availabilityTask = Task {
             for await availability in AppExtensionIdentity.availabilityUpdates {
                 services.eventBus.event(
@@ -138,6 +153,7 @@ final class AppPlugInHost {
     func stop() {
         discoveryTask?.cancel()
         availabilityTask?.cancel()
+        activationTask?.cancel()
         statusTask?.cancel()
         for link in links.values { link.close() }
         links = [:]
@@ -212,12 +228,14 @@ final class AppPlugInHost {
             let registered = RegisteredCommand(plugIn: manifest.id, plugInName: manifest.name, descriptor: command)
             report(try commands.register(registered), plugIn: manifest.id, services: services)
         }
+        activations.add(manifest.activation, for: manifest.id)
         services.eventBus.event(
             "plugin.discovered", domain: .plugIn,
             params: [
                 "tier": .string("app"), "id": .string(manifest.id.rawValue), "name": .string(manifest.name),
                 "bundle": .string(identity.bundleIdentifier), "panes": .int(manifest.panes.count),
                 "commands": .int(manifest.commands.count), "settingsPanes": .int(manifest.settingsPanes.count),
+                "activation": .int(manifest.activation.count),
             ])
     }
 
@@ -227,6 +245,7 @@ final class AppPlugInHost {
         links[plugIn.id] = nil
         panes.removeAll(for: plugIn.id)
         commands.removeAll(for: plugIn.id)
+        activations.removeAll(for: plugIn.id)
         plugIns.removeAll { $0.id == plugIn.id }
         services.eventBus.event(
             "plugin.retired", domain: .plugIn, params: ["tier": .string("app"), "id": .string(plugIn.id.rawValue)])
@@ -341,6 +360,22 @@ final class AppPlugInHost {
         if let pane = command.descriptor.showsPane { setExpanded(true, for: pane) }
         guard let link = links[command.plugIn] else { return }
         await link.perform(command.descriptor.id)
+    }
+
+    // MARK: - Activation
+
+    /// Wakes every plug-in whose activation conditions a bus event meets:
+    /// its process is launched if it is not running, and the event is
+    /// reported to it (PLUGINS.md, Decision 6, "activation conditions").
+    /// One lookup per event; a bus with no conditions declared costs
+    /// nothing more.
+    ///
+    /// - Parameter event: An event drained from the bus.
+    private func wake(on event: EventBusEvent) {
+        for match in activations.matches(event) {
+            guard let link = links[match.plugIn] else { continue }
+            Task { await link.activate(match.condition, event: event) }
+        }
     }
 }
 
@@ -461,7 +496,7 @@ final class AppPlugInLink {
     /// - Parameter command: The command.
     func perform(_ command: CommandID) async {
         do {
-            let session = try await commandSession()
+            let session = try await commandSession(wokenBy: nil)
             _ = try await session.request(
                 AppTierMethod.commandPerform,
                 params: .object([AppTierMethod.CommandParam.command: .string(command.rawValue)]))
@@ -475,9 +510,42 @@ final class AppPlugInLink {
         }
     }
 
+    /// Reports an activation condition met, launching the process first if
+    /// needed — the launch on demand a plug-in with no pane relies on.
+    /// A handler that throws is a `plugin.activation` error naming the
+    /// plug-in, the condition, and the event, the host tier's own report of
+    /// a plug-in's activation going wrong.
+    ///
+    /// - Parameters:
+    ///   - condition: The condition the event met.
+    ///   - event: The event.
+    func activate(_ condition: ActivationCondition, event: EventBusEvent) async {
+        do {
+            let session = try await commandSession(wokenBy: condition)
+            let eventJSON = try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(event))
+            _ = try await session.request(
+                AppTierMethod.activation,
+                params: .object([
+                    AppTierMethod.ActivationParam.condition: .string(condition.rawValue),
+                    AppTierMethod.ActivationParam.event: eventJSON,
+                ]))
+        } catch {
+            services.eventBus.error(
+                "plugin.activation", domain: .plugIn,
+                params: [
+                    "tier": .string("app"), "id": .string(plugIn.id.rawValue),
+                    "condition": .string(condition.rawValue), "event": .string(event.name),
+                    "error": .string(String(describing: error)),
+                ])
+        }
+    }
+
     /// The command session, launching the process on first use and again
     /// after it died.
-    private func commandSession() async throws -> MCPSession {
+    ///
+    /// - Parameter wokenBy: The activation condition launching the process,
+    ///   if that is what asked for it; recorded on `plugin.activated`.
+    private func commandSession(wokenBy: ActivationCondition?) async throws -> MCPSession {
         if let existing = sessions["process"] { return existing.session }
         let interrupted: @Sendable () -> Void = { [weak self] in
             Task { @MainActor in self?.processInterrupted() }
@@ -486,7 +554,7 @@ final class AppPlugInLink {
             configuration: .init(appExtensionIdentity: plugIn.identity, onInterruption: interrupted))
         self.process = process
         let connection = try process.makeXPCConnection()
-        return openSession(kind: "process", connection: connection)
+        return openSession(kind: "process", connection: connection, wokenBy: wokenBy)
     }
 
     /// The system reported the process gone: the command session is over.
@@ -501,8 +569,10 @@ final class AppPlugInLink {
     /// - Parameters:
     ///   - kind: `process` or `pane:<id>`.
     ///   - connection: The connection, not yet resumed.
+    ///   - wokenBy: The activation condition that launched the process, if
+    ///     one did; `plugin.activated` names it.
     @discardableResult
-    func openSession(kind: String, connection: NSXPCConnection) -> MCPSession {
+    func openSession(kind: String, connection: NSXPCConnection, wokenBy: ActivationCondition? = nil) -> MCPSession {
         closeSession(kind: kind, reason: nil)
         let wasActive = !sessions.isEmpty
         let transport = XPCMessageTransport(connection: connection, opening: true)
@@ -516,12 +586,12 @@ final class AppPlugInLink {
         }
         sessions[kind] = (session, task)
         if !wasActive {
-            services.eventBus.event(
-                "plugin.activated", domain: .plugIn,
-                params: [
-                    "tier": .string("app"), "id": .string(plugIn.id.rawValue), "name": .string(plugIn.manifest.name),
-                    "kind": .string(kind),
-                ])
+            var params: [String: EventValue] = [
+                "tier": .string("app"), "id": .string(plugIn.id.rawValue), "name": .string(plugIn.manifest.name),
+                "kind": .string(kind),
+            ]
+            if let wokenBy { params["condition"] = .string(wokenBy.rawValue) }
+            services.eventBus.event("plugin.activated", domain: .plugIn, params: params)
         }
         return session
     }

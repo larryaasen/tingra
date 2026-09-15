@@ -11,6 +11,7 @@ import ExtensionFoundation
 import ExtensionKit
 import Foundation
 import SwiftUI
+import TingraEventBus
 import TingraPlugInKit
 
 /// What an app-tier plug-in's `@main` type adopts: ExtensionKit's
@@ -46,9 +47,27 @@ public protocol TingraAppExtension: AppExtension where Configuration == AppExten
     ///   - command: The command's identifier.
     ///   - connection: The connection the command arrived on.
     func perform(_ command: CommandID, using connection: PlugInConnection) async throws
+
+    /// A bus event met one of the activation conditions the manifest
+    /// declares (PLUGINS.md, Decision 6): the app launched this process for
+    /// it, if the process was not already running, and reports the event.
+    /// Does nothing by default — a plug-in woken only to follow a resource
+    /// starts doing so from its `init` or its first connection and needs no
+    /// handler.
+    ///
+    /// - Parameters:
+    ///   - condition: The condition the event met.
+    ///   - event: The event.
+    ///   - connection: The connection the report arrived on.
+    func activated(by condition: ActivationCondition, event: EventBusEvent, using connection: PlugInConnection)
+        async throws
 }
 
 extension TingraAppExtension {
+    public func activated(
+        by condition: ActivationCondition, event: EventBusEvent, using connection: PlugInConnection
+    ) async throws {}
+
     /// The manifest from the extension's own Info.plist. A manifest that
     /// does not decode is a programming error in the extension, reported
     /// once and replaced by an empty manifest so the process still starts.
@@ -65,9 +84,14 @@ extension TingraAppExtension {
     public var configuration: AppExtensionSceneConfiguration {
         let manifest = manifest
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0"
-        let handler = PlugInCommandHandler(manifest: manifest, version: version) { command, connection in
-            try await self.perform(command, using: connection)
-        }
+        let handler = PlugInCommandHandler(
+            manifest: manifest, version: version,
+            performCommand: { command, connection in
+                try await self.perform(command, using: connection)
+            },
+            performActivation: { condition, event, connection in
+                try await self.activated(by: condition, event: event, using: connection)
+            })
         let sceneIDs = manifest.panes.map { ($0.id, $0.sceneID) } + manifest.settingsPanes.map { ($0.id, $0.sceneID) }
         let scenes = sceneIDs.map { paneID, sceneID in
             PrimitiveAppExtensionScene(id: sceneID) {
@@ -94,16 +118,25 @@ public struct PlugInCommandHandler: AppExtensionConfiguration {
     /// Performs commands the app forwards.
     private let performCommand: PlugInConnection.CommandHandler
 
+    /// Handles activation conditions the app reports met.
+    private let performActivation: PlugInConnection.ActivationHandler
+
     /// Creates the handler.
     ///
     /// - Parameters:
     ///   - manifest: The plug-in's manifest.
     ///   - version: The plug-in's version.
     ///   - performCommand: Performs commands the app forwards.
-    public init(manifest: PlugInManifest, version: String, performCommand: @escaping PlugInConnection.CommandHandler) {
+    ///   - performActivation: Handles activation conditions the app reports
+    ///     met; nothing by default.
+    public init(
+        manifest: PlugInManifest, version: String, performCommand: @escaping PlugInConnection.CommandHandler,
+        performActivation: @escaping PlugInConnection.ActivationHandler = { _, _, _ in }
+    ) {
         clientName = manifest.id.rawValue
         clientVersion = version
         self.performCommand = performCommand
+        self.performActivation = performActivation
     }
 
     /// Accepts a connection the app opened.
@@ -118,6 +151,7 @@ public struct PlugInCommandHandler: AppExtensionConfiguration {
     /// Hands a connection to the runtime.
     nonisolated func accept(_ connection: NSXPCConnection) {
         PlugInRuntime.accept(
-            connection, clientName: clientName, clientVersion: clientVersion, performCommand: performCommand)
+            connection, clientName: clientName, clientVersion: clientVersion, performCommand: performCommand,
+            performActivation: performActivation)
     }
 }

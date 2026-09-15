@@ -51,6 +51,7 @@ struct ManifestTests {
                     "sceneID": "settings",
                 ]
             ],
+            "activation": ["stream.started", "device.connected:kind=camera"],
         ]
     }
 
@@ -69,6 +70,12 @@ struct ManifestTests {
         #expect(command.placement == .plugInMenu)
         #expect(command.showsPane == PaneID(rawValue: "com.moonwink.tingra.notes.pane"))
         #expect(manifest.settingsPanes.first?.sceneID == "settings")
+        #expect(
+            manifest.activation == [
+                ActivationCondition(event: "stream.started"),
+                ActivationCondition(
+                    event: "device.connected", qualifier: ActivationCondition.Qualifier(key: "kind", value: "camera")),
+            ])
     }
 
     @Test("the lists and the placement may be omitted")
@@ -79,6 +86,7 @@ struct ManifestTests {
             ]))
         #expect(manifest.panes.isEmpty)
         #expect(manifest.settingsPanes.isEmpty)
+        #expect(manifest.activation.isEmpty)
         let withPane = try PlugInManifest(
             infoDictionary: infoDictionary(manifest: [
                 "id": "com.example.minimal", "name": "Minimal",
@@ -131,6 +139,33 @@ struct ManifestTests {
         manifest["commands"] = [["id": "show", "title": "A"], ["id": "show", "title": "B"]]
         #expect(throws: PlugInManifestError.duplicateCommand(CommandID(rawValue: "show"))) {
             try PlugInManifest(infoDictionary: infoDictionary(manifest: manifest))
+        }
+    }
+
+    @Test("a repeated activation condition throws")
+    func throwsForDuplicateActivation() {
+        var manifest = notes
+        manifest["activation"] = ["stream.started", "stream.started"]
+        #expect(throws: PlugInManifestError.duplicateActivation(ActivationCondition(event: "stream.started"))) {
+            try PlugInManifest(infoDictionary: infoDictionary(manifest: manifest))
+        }
+    }
+
+    @Test("a malformed activation condition throws as malformed, naming it")
+    func throwsForMalformedActivation() {
+        var manifest = notes
+        manifest["activation"] = ["device.connected:camera"]
+        do {
+            _ = try PlugInManifest(infoDictionary: infoDictionary(manifest: manifest))
+            Issue.record("A malformed condition decoded.")
+        } catch let error as PlugInManifestError {
+            guard case .malformed(let detail) = error else {
+                Issue.record("Unexpected error \(error).")
+                return
+            }
+            #expect(detail.contains("device.connected:camera"))
+        } catch {
+            Issue.record("Unexpected error \(error).")
         }
     }
 

@@ -19,7 +19,9 @@ internal surface a reader needs to navigate the target instead.
 - `EventBus` — publishes structured events to subscribing sinks; includes
   per-group conveniences (`app`, `error`, `event`, `network`, `tap`, `trace`).
 - `EventBusEvent` — one structured event: date, group, domain, name, params,
-  and the emitting call site.
+  and the emitting call site; publicly initializable, for a host re-creating
+  one it received over a wire (the app tier handing an extension the event
+  that woke it) and for tests.
 - `EventGroup` — the closed routing axis: what kind of event it is (`app`,
   `error`, `event`, `network`, `tap`, `trace`).
 - `EventDomain` — the open attribution axis: which engine service or plug-in
@@ -903,18 +905,30 @@ internal surface a reader needs to navigate the target instead.
   emitting the `tap` itself.
 - `SettingsPaneDescriptor` — a settings pane a plug-in contributes to the
   Settings window: a row in its source list, and a remote view like any pane.
+- `ActivationCondition` — a bus event that wakes the plug-in, written in the
+  manifest's `activation` list as one string: the event's name, optionally
+  followed by `:key=value` naming one param the event must carry
+  (`stream.started`, `device.connected:kind=camera`); `init(parsing:)` reads
+  that form, `rawValue` writes it, `matches(_:)` tests an `EventBusEvent` by
+  name and by the param's string form, and `Codable` travels as the string.
+  The nested `Qualifier` is the key and value.
+- `ActivationConditionError` — what can be wrong with a condition's text, each
+  naming the fix: an empty or malformed event name, or a qualifier that is not
+  `key=value`.
 - `PlugInManifest` — what a plug-in declares about itself (id, name, panes,
-  commands, settings panes), read by the app from the extension's Info.plist
-  under `EXAppExtensionAttributes` → `TingraPlugIn` at discovery, before the
-  extension has ever run; `init(bundle:)` decodes it, and a manifest that does
-  not decode is a `PlugInManifestError`.
+  commands, settings panes, activation conditions), read by the app from the
+  extension's Info.plist under `EXAppExtensionAttributes` → `TingraPlugIn` at
+  discovery, before the extension has ever run; `init(bundle:)` decodes it,
+  and a manifest that does not decode is a `PlugInManifestError`.
 - `PlugInManifestError` — what can be wrong with a manifest, each naming the
-  fix: a required key absent, or a dictionary that does not decode.
+  fix: a required key absent, a dictionary that does not decode, a pane id
+  outside the plug-in's namespace, a repeated pane, command, or activation
+  condition.
 - `AppTierMethod` — the JSON-RPC methods the app tier adds beside MCP's own,
   spelled once for both sides: `tingra/event`, `tingra/storage.get`,
-  `tingra/storage.set` (extension → app) and `tingra/command.perform` (app →
-  extension), with their parameter keys as the nested `EventParam`,
-  `StorageParam`, and `CommandParam`.
+  `tingra/storage.set` (extension → app) and `tingra/command.perform`,
+  `tingra/activation` (app → extension), with their parameter keys as the
+  nested `EventParam`, `StorageParam`, `CommandParam`, and `ActivationParam`.
 - `StorageScope` — where a plug-in's stored value lives: `project` (in the
   document — travels and saves with it, dirties it like a layer edit) or
   `application` (this Mac, under the app's Application Support folder); never
@@ -926,9 +940,11 @@ internal surface a reader needs to navigate the target instead.
   `AsyncStream` yielding the document now and after each updated
   notification, unsubscribing when its consumer stops), files `event`s and
   `error`s on the app's bus under the plug-in's domain, reads and writes
-  project- and application-scoped storage, and answers the one request the
-  app makes of it, a command to perform. One per `NSXPCConnection` the app
-  opens; the kit creates them, an author receives them.
+  project- and application-scoped storage, and answers the two requests the
+  app makes of it, a command to perform and an activation condition met (the
+  `CommandHandler` and `ActivationHandler` it is created with). One per
+  `NSXPCConnection` the app opens; the kit creates them, an author receives
+  them.
 - `PlugInConnectionError` — what a connection call can get wrong: the
   connection is closed, the transport reported an error, the peer answered
   with a protocol error, a tool reported an error, or a response did not
@@ -943,12 +959,14 @@ internal surface a reader needs to navigate the target instead.
   `@Environment(PlugInRuntime.self)`; one `shared` runtime per process.
 - `TingraAppExtension` — what a plug-in's `@main` type adopts: ExtensionKit's
   `AppExtension` with the boilerplate owned by the kit — the author supplies
-  `pane(for:)` and `perform(_:using:)`, and the default `configuration` turns
-  the manifest into one scene per pane and settings pane, accepts every
-  connection the app opens, and runs the MCP handshake on each.
+  `pane(for:)` and `perform(_:using:)`, optionally `activated(by:event:using:)`
+  (a do-nothing default) for the activation conditions the manifest declares,
+  and the default `configuration` turns the manifest into one scene per pane
+  and settings pane, accepts every connection the app opens, and runs the MCP
+  handshake on each.
 - `PlugInCommandHandler` — the `AppExtensionConfiguration` behind that default:
   accepts the app's command connection and hands it, and each pane scene's
-  connection, to `PlugInRuntime`.
+  connection, to `PlugInRuntime` with the command and activation handlers.
 
 ## `apps/tingra-cli`
 
@@ -1591,8 +1609,12 @@ surface is:
   - `AppPlugInHost` — the `@Observable` host: discovers identities for the
     extension point at launch and on the system's own change stream (never
     polling), decodes each `PlugInManifest`, fills the pane and command
-    registries, starts a plug-in's process when a hosted pane activates or a
-    command is invoked, and re-hosts a pane one second after its process dies.
+    registries, starts a plug-in's process when a hosted pane activates, a
+    command is invoked, or a bus event meets an activation condition the
+    manifest declared (one task drains the bus and asks the
+    `ActivationTable`; `AppPlugInLink.activate` launches the process if
+    needed and sends `tingra/activation`), and re-hosts a pane one second
+    after its process dies.
     `DiscoveredPlugIn` is an identity with its manifest; `AppPlugInServices`
     is what every link needs (the bus, the tool registry, the status sink and
     identity the session serves, the storage); `AppPlugInStorage` is the
@@ -1603,6 +1625,11 @@ surface is:
     `MCPSession` with the plug-in's method handler, the plug-in "activated"
     while any is open; `PlugInHostError` is the one refusal, an identity whose
     bundle is not embedded (a third-party bundle is located in Phase 3).
+  - `ActivationTable` — the activation conditions every discovered plug-in
+    declared, indexed by event name so each bus event costs one lookup: `add`
+    and `removeAll(for:)` follow discovery, `matches(_:)` answers which
+    plug-ins an event wakes (each once, by its first matching condition, in
+    registration order) as `Match` values.
   - `PaneRegistry` — the app tier's pane registry: every sidebar pane and
     settings pane plug-ins have declared, filled from manifests at discovery —
     the app-side mirror of the host's registries. `RegisteredPane` and

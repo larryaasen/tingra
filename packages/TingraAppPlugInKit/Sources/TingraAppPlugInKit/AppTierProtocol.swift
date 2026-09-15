@@ -11,9 +11,10 @@
 /// same connection (PLUGINS.md, Decisions 10 and 14; MCP.md, "The app
 /// tier"). The extension is the MCP client: it sends `initialize`,
 /// `tools/list`, and `tools/call` exactly as an agent does, plus the
-/// `tingra/*` requests below. The app sends one request the other way,
+/// `tingra/*` requests below. The app sends two requests the other way:
 /// ``commandPerform``, when the operator invokes a command the plug-in
-/// declared.
+/// declared, and ``activation``, when a bus event meets an activation
+/// condition the plug-in declared.
 ///
 /// Shared by both sides so a method name is spelled once.
 public enum AppTierMethod {
@@ -34,6 +35,13 @@ public enum AppTierMethod {
     /// App → extension request: perform a declared command. Params:
     /// ``CommandParam/command``. Result: `{}`.
     public static let commandPerform = "tingra/command.perform"
+
+    /// App → extension request: a bus event met one of the plug-in's
+    /// declared activation conditions — the request that launched the
+    /// process, when it was not already running. Params:
+    /// ``ActivationParam/condition``, ``ActivationParam/event``. Result:
+    /// `{}`.
+    public static let activation = "tingra/activation"
 
     /// The parameter keys of ``event``.
     public enum EventParam {
@@ -60,6 +68,17 @@ public enum AppTierMethod {
     public enum CommandParam {
         /// The command id.
         public static let command = "command"
+    }
+
+    /// The parameter keys of ``activation``.
+    public enum ActivationParam {
+        /// The condition the event met, in its manifest form
+        /// (`device.connected:kind=camera`).
+        public static let condition = "condition"
+
+        /// The event itself, as `EventBusEvent` encodes to JSON: `date`,
+        /// `group`, `domain`, `name`, `params`, `from`.
+        public static let event = "event"
     }
 }
 

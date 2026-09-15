@@ -331,7 +331,8 @@ SwiftNIO/swift-log/eventsource stack.
 The extension side of the app tier (see [PLUGINS.md](docs/PLUGINS.md), "The
 model: two tiers, one plug-in"): what an app-tier plug-in links to add a pane,
 a command, or a settings pane to Tingra.app from its own sandboxed ExtensionKit
-process. It holds the `Codable` descriptors and the `PlugInManifest` the app
+process — or to be woken by a bus event it names. It holds the `Codable`
+descriptors, the activation conditions, and the `PlugInManifest` the app
 reads from an extension's Info.plist before the extension runs, the
 `TingraAppExtension` protocol an extension's `@main` type adopts (the kit owns
 the scenes, the connections, and the MCP handshake), and `PlugInConnection`,

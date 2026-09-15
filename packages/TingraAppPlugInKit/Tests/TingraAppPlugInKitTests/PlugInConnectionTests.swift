@@ -10,6 +10,7 @@
 import Foundation
 import Synchronization
 import Testing
+import TingraEventBus
 import TingraJSONRPC
 import TingraPlugInKit
 
@@ -17,7 +18,8 @@ import TingraPlugInKit
 
 /// The extension's connection to the app, run against a scripted app
 /// endpoint over a linked in-memory transport pair: the handshake, tool
-/// calls, events, storage, and the command the app forwards.
+/// calls, events, storage, the command the app forwards, and the
+/// activation the app reports.
 @Suite("Plug-in connection")
 struct PlugInConnectionTests {
     /// A scripted stand-in for the app's endpoint: answers each request by
@@ -164,18 +166,41 @@ struct PlugInConnectionTests {
                     .utf8)
             try await transport.writeMessage(payload)
         }
+
+        /// Sends the app's other request: an activation condition was met,
+        /// with the event that met it as the app encodes one.
+        func activate(_ condition: String, event: EventBusEvent?, id: Int = 200) async throws {
+            var params: [String: JSONValue] = ["condition": .string(condition)]
+            if let event {
+                params["event"] = try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(event))
+            }
+            let request = JSONValue.object([
+                "jsonrpc": .string("2.0"), "id": .int(id), "method": .string(AppTierMethod.activation),
+                "params": .object(params),
+            ])
+            try await transport.writeMessage(try JSONEncoder().encode(request))
+        }
     }
 
     /// A connection and its scripted app.
     private func makePair(
-        performCommand: @escaping PlugInConnection.CommandHandler = { _, _ in }
+        performCommand: @escaping PlugInConnection.CommandHandler = { _, _ in },
+        performActivation: @escaping PlugInConnection.ActivationHandler = { _, _, _ in }
     ) -> (PlugInConnection, FakeApp) {
         let (extensionSide, appSide) = LinkedMessageTransports.makePair()
         let app = FakeApp(transport: appSide)
         let connection = PlugInConnection(
             transport: extensionSide, clientName: "com.moonwink.tingra.notes", clientVersion: "1.0",
-            performCommand: performCommand)
+            performCommand: performCommand, performActivation: performActivation)
         return (connection, app)
+    }
+
+    /// The event that woke a plug-in, as the app would drain it from the bus.
+    private var cameraConnected: EventBusEvent {
+        EventBusEvent(
+            date: Date(timeIntervalSinceReferenceDate: 800_000_000), group: .event, domain: .capture,
+            name: "device.connected", params: ["kind": .string("camera"), "name": .string("FaceTime HD")],
+            from: "DeviceChange.swift:report")
     }
 
     @Test("initialize sends the handshake and the initialized notification")
@@ -337,6 +362,49 @@ struct PlugInConnectionTests {
         let answer = await app.answers.next()
         #expect(answer?["id"]?.intValue == 7)
         #expect(answer?["error"]?["code"]?.intValue == JSONRPCErrorCode.internalError.rawValue)
+        await connection.close()
+    }
+
+    @Test("an activation the app reports runs the handler with the condition and the event")
+    func performsActivation() async throws {
+        let received = Mutex<[(ActivationCondition, EventBusEvent)]>([])
+        let (connection, app) = makePair(performActivation: { condition, event, _ in
+            received.withLock { $0.append((condition, event)) }
+        })
+        try await app.activate("device.connected:kind=camera", event: cameraConnected)
+        let answer = await app.answers.next()
+        #expect(answer?["id"]?.intValue == 200)
+        #expect(answer?["result"] == .object([:]))
+        let (condition, event) = try #require(received.withLock { $0.first })
+        let expected = try ActivationCondition(parsing: "device.connected:kind=camera")
+        #expect(condition == expected)
+        #expect(event == cameraConnected)
+        await connection.close()
+    }
+
+    @Test("an activation handler that throws answers with an internal error")
+    func activationThrowsAnswersError() async throws {
+        let (connection, app) = makePair(performActivation: { _, _, _ in throw PlugInConnectionError.unexpectedMessage }
+        )
+        try await app.activate("stream.started", event: cameraConnected, id: 9)
+        let answer = await app.answers.next()
+        #expect(answer?["id"]?.intValue == 9)
+        #expect(answer?["error"]?["code"]?.intValue == JSONRPCErrorCode.internalError.rawValue)
+        await connection.close()
+    }
+
+    @Test("an activation without its event or with a malformed condition is invalid params")
+    func activationWithoutEventIsInvalid() async throws {
+        let handled = Mutex(0)
+        let (connection, app) = makePair(performActivation: { _, _, _ in handled.withLock { $0 += 1 } })
+        try await app.activate("stream.started", event: nil, id: 10)
+        let missing = await app.answers.next()
+        #expect(missing?["id"]?.intValue == 10)
+        #expect(missing?["error"]?["code"]?.intValue == JSONRPCErrorCode.invalidParams.rawValue)
+        try await app.activate("stream started", event: cameraConnected, id: 11)
+        let malformed = await app.answers.next()
+        #expect(malformed?["error"]?["code"]?.intValue == JSONRPCErrorCode.invalidParams.rawValue)
+        #expect(handled.withLock { $0 } == 0)
         await connection.close()
     }
 

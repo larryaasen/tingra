@@ -117,7 +117,8 @@ The app's endpoint is `MCPSession` itself, now public, over the app's own `ToolR
 | `notifications/resources/updated` | app → extension | A subscribed resource changed; the extension reads it again |
 | `tingra/event` (notification) | extension → app | An event for the app's bus: `name`, optional `params`, optional `group` (`event` or `error`). It lands under the plug-in's id as its domain, so the log file, OSLog, and the log window carry it with everything else (EVENTS.md) |
 | `tingra/storage.get`, `tingra/storage.set` | extension → app | The plug-in's stored value for a `scope` of `project` (in the document under `plugInData`, dirtied and autosaved like any edit) or `application` (a JSON file under `~/Library/Application Support/Tingra/Plug-ins/<id>/`). The plug-in id is the connection's, never a param: a plug-in cannot reach another's data |
-| `tingra/command.perform` | app → extension | The one request the app makes: perform a command the manifest declared, after the app emitted the `tap` and revealed the pane the command names |
+| `tingra/command.perform` | app → extension | One of the two requests the app makes: perform a command the manifest declared, after the app emitted the `tap` and revealed the pane the command names |
+| `tingra/activation` | app → extension | The other: a bus event met an activation condition the manifest declared — `condition` in its manifest form (`device.connected:kind=camera`) and the `event` itself as `EventBusEvent` encodes to JSON. The first such request is what launched the process, when no pane or command had (PLUGINS.md, "Phase 2 as built, second slice") |
 
 Identity is per connection: the app opened the connection for a known extension, so the handler is built with that plug-in's id. Secrets are not a storage scope; a plug-in needing a key gets a narrowed secure-storage method later, never a plaintext file.
 

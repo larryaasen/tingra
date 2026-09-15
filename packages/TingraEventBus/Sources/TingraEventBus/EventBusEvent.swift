@@ -37,6 +37,28 @@ public struct EventBusEvent: Sendable, Codable, Equatable {
     /// arguments on `EventBus.send`.
     public let from: String
 
+    /// Creates an event. The bus builds them in `send`; a host that
+    /// re-creates one it received over a wire — the app tier handing an
+    /// extension the event that woke it — and tests build them here.
+    ///
+    /// - Parameters:
+    ///   - date: When the event was emitted.
+    ///   - group: The routing axis.
+    ///   - domain: The attribution axis.
+    ///   - name: The dotted event name.
+    ///   - params: The structured payload, if any.
+    ///   - from: The emitting call site.
+    public init(
+        date: Date, group: EventGroup, domain: EventDomain, name: String, params: [String: EventValue]?, from: String
+    ) {
+        self.date = date
+        self.group = group
+        self.domain = domain
+        self.name = name
+        self.params = params
+        self.from = from
+    }
+
     /// The stable JSON key for each property. JSON keys are a scripting
     /// contract (CLAUDE.md, Data Models): mapped explicitly, never via a
     /// key-conversion strategy.

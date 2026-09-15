@@ -8,15 +8,16 @@
 //
 
 import Foundation
+import TingraEventBus
 import TingraJSONRPC
 import TingraPlugInKit
 
 /// The extension's end of one connection to the app: an MCP client over a
 /// ``MessageTransport`` that calls the app's tools, reads and follows the
 /// app's resources, files events on the app's bus, reads and writes the
-/// plug-in's storage, and answers the one request the app makes of it, a
-/// command to perform (PLUGINS.md, Phase 1, "`PlugInConnection`"; Phase 2,
-/// "seams into the engine").
+/// plug-in's storage, and answers the two requests the app makes of it, a
+/// command to perform and an activation condition met (PLUGINS.md, Phase 1,
+/// "`PlugInConnection`"; Phase 2, "seams into the engine").
 ///
 /// One instance per `NSXPCConnection` the app opens — one for each hosted
 /// pane and one for commands — all in the one extension process. The kit
@@ -28,11 +29,20 @@ public actor PlugInConnection {
     /// be sendable.
     public typealias CommandHandler = @MainActor @Sendable (CommandID, PlugInConnection) async throws -> Void
 
+    /// Handles an activation condition the app reports met, with the bus
+    /// event that met it. Main-actor isolated like ``CommandHandler``, for
+    /// the same reason.
+    public typealias ActivationHandler =
+        @MainActor @Sendable (ActivationCondition, EventBusEvent, PlugInConnection) async throws -> Void
+
     /// The transport to the app.
     private let transport: any MessageTransport
 
     /// Performs commands the app forwards.
     private let performCommand: CommandHandler
+
+    /// Handles activation conditions the app reports met.
+    private let performActivation: ActivationHandler
 
     /// The MCP client identity sent in `initialize`.
     private let client: (name: String, version: String)
@@ -61,13 +71,17 @@ public actor PlugInConnection {
     ///   - clientName: The plug-in id, reported to the app in `initialize`.
     ///   - clientVersion: The plug-in's version, likewise.
     ///   - performCommand: Performs commands the app forwards.
+    ///   - performActivation: Handles activation conditions the app reports
+    ///     met; by default, nothing — a plug-in woken only to observe a
+    ///     resource needs no handler.
     public init(
         transport: any MessageTransport, clientName: String, clientVersion: String,
-        performCommand: @escaping CommandHandler
+        performCommand: @escaping CommandHandler, performActivation: @escaping ActivationHandler = { _, _, _ in }
     ) {
         self.transport = transport
         self.client = (clientName, clientVersion)
         self.performCommand = performCommand
+        self.performActivation = performActivation
         Task { await self.startReading() }
     }
 
@@ -380,11 +394,35 @@ public actor PlugInConnection {
                 return .failure(
                     id: id, error: JSONRPCError(code: .internalError, message: String(describing: error)))
             }
+        case AppTierMethod.activation:
+            guard let text = params?[AppTierMethod.ActivationParam.condition]?.stringValue,
+                let condition = try? ActivationCondition(parsing: text),
+                let eventJSON = params?[AppTierMethod.ActivationParam.event],
+                let event = try? Self.event(from: eventJSON)
+            else {
+                return .failure(
+                    id: id,
+                    error: JSONRPCError(
+                        code: .invalidParams, message: "An activation needs a 'condition' and an 'event'."))
+            }
+            do {
+                try await performActivation(condition, event, self)
+                return .success(id: id, result: .object([:]))
+            } catch {
+                return .failure(
+                    id: id, error: JSONRPCError(code: .internalError, message: String(describing: error)))
+            }
         case "ping":
             return .success(id: id, result: .object([:]))
         default:
             return .failure(id: id, error: JSONRPCError(code: .methodNotFound, message: "Unknown method '\(method)'."))
         }
+    }
+
+    /// The bus event an activation carries, decoded from the JSON the app
+    /// encoded it to.
+    private static func event(from json: JSONValue) throws -> EventBusEvent {
+        try JSONDecoder().decode(EventBusEvent.self, from: JSONEncoder().encode(json))
     }
 
     /// Resumes the request `id` with `result`.

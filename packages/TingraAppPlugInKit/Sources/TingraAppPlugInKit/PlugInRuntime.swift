@@ -10,6 +10,7 @@
 import Foundation
 import Observation
 import SwiftUI
+import TingraEventBus
 import TingraJSONRPC
 
 /// The extension process's view of its connections to the app: one
@@ -51,9 +52,12 @@ public final class PlugInRuntime {
     ///   - clientName: The plug-in id.
     ///   - clientVersion: The plug-in's version.
     ///   - performCommand: Performs commands the app forwards.
+    ///   - performActivation: Handles activation conditions the app reports
+    ///     met; nothing by default.
     nonisolated public static func accept(
         _ xpcConnection: NSXPCConnection, clientName: String, clientVersion: String,
-        performCommand: @escaping PlugInConnection.CommandHandler
+        performCommand: @escaping PlugInConnection.CommandHandler,
+        performActivation: @escaping PlugInConnection.ActivationHandler = { _, _, _ in }
     ) {
         let box = ConnectionBox()
         let transport = XPCMessageTransport(connection: xpcConnection, opening: false) { _ in
@@ -63,7 +67,7 @@ public final class PlugInRuntime {
         }
         let connection = PlugInConnection(
             transport: transport, clientName: clientName, clientVersion: clientVersion,
-            performCommand: performCommand)
+            performCommand: performCommand, performActivation: performActivation)
         box.connection = connection
         Task { @MainActor in
             shared.add(connection)

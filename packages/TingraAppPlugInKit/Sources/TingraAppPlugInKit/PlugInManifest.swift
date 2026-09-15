@@ -43,6 +43,11 @@ public struct PlugInManifest: Hashable, Sendable, Codable {
     /// The settings panes the plug-in contributes.
     public let settingsPanes: [SettingsPaneDescriptor]
 
+    /// The bus events that wake the plug-in (PLUGINS.md, Decision 6): the
+    /// app launches its process on the first event meeting one of these,
+    /// pane or no pane, and tells it which.
+    public let activation: [ActivationCondition]
+
     /// Creates a manifest.
     ///
     /// - Parameters:
@@ -51,24 +56,27 @@ public struct PlugInManifest: Hashable, Sendable, Codable {
     ///   - panes: The panes the plug-in contributes.
     ///   - commands: The commands the plug-in contributes.
     ///   - settingsPanes: The settings panes the plug-in contributes.
+    ///   - activation: The bus events that wake the plug-in.
     public init(
         id: PlugInID, name: String, panes: [PaneDescriptor] = [], commands: [CommandDescriptor] = [],
-        settingsPanes: [SettingsPaneDescriptor] = []
+        settingsPanes: [SettingsPaneDescriptor] = [], activation: [ActivationCondition] = []
     ) {
         self.id = id
         self.name = name
         self.panes = panes
         self.commands = commands
         self.settingsPanes = settingsPanes
+        self.activation = activation
     }
 
-    /// The stable manifest keys; the three lists may be omitted.
+    /// The stable manifest keys; the four lists may be omitted.
     private enum CodingKeys: String, CodingKey {
         case id
         case name
         case panes
         case commands
         case settingsPanes
+        case activation
     }
 
     public init(from decoder: any Decoder) throws {
@@ -78,6 +86,7 @@ public struct PlugInManifest: Hashable, Sendable, Codable {
         panes = try container.decodeIfPresent([PaneDescriptor].self, forKey: .panes) ?? []
         commands = try container.decodeIfPresent([CommandDescriptor].self, forKey: .commands) ?? []
         settingsPanes = try container.decodeIfPresent([SettingsPaneDescriptor].self, forKey: .settingsPanes) ?? []
+        activation = try container.decodeIfPresent([ActivationCondition].self, forKey: .activation) ?? []
     }
 
     /// Reads the manifest out of an Info.plist dictionary.
@@ -117,9 +126,11 @@ public struct PlugInManifest: Hashable, Sendable, Codable {
     }
 
     /// Checks the ids: every pane and settings pane id must start with the
-    /// plug-in id (the namespacing rule), and no id may repeat.
+    /// plug-in id (the namespacing rule), no id may repeat, and no
+    /// activation condition may be listed twice.
     ///
-    /// - Throws: ``PlugInManifestError`` naming the offending id.
+    /// - Throws: ``PlugInManifestError`` naming the offending id or
+    ///   condition.
     private func validate() throws {
         let prefix = id.rawValue + "."
         var paneIDs = Set<PaneID>()
@@ -132,6 +143,12 @@ public struct PlugInManifest: Hashable, Sendable, Codable {
         var commandIDs = Set<CommandID>()
         for command in commands.map(\.id) {
             guard commandIDs.insert(command).inserted else { throw PlugInManifestError.duplicateCommand(command) }
+        }
+        var conditions = Set<ActivationCondition>()
+        for condition in activation {
+            guard conditions.insert(condition).inserted else {
+                throw PlugInManifestError.duplicateActivation(condition)
+            }
         }
     }
 }
@@ -153,6 +170,9 @@ public enum PlugInManifestError: Error, Equatable, CustomStringConvertible {
     /// Two commands share an id.
     case duplicateCommand(CommandID)
 
+    /// An activation condition is listed twice.
+    case duplicateActivation(ActivationCondition)
+
     public var description: String {
         switch self {
         case .missingKey(let key):
@@ -165,6 +185,8 @@ public enum PlugInManifestError: Error, Equatable, CustomStringConvertible {
             "Pane id '\(pane.rawValue)' is declared more than once."
         case .duplicateCommand(let command):
             "Command id '\(command.rawValue)' is declared more than once."
+        case .duplicateActivation(let condition):
+            "Activation condition '\(condition.rawValue)' is declared more than once."
         }
     }
 }
