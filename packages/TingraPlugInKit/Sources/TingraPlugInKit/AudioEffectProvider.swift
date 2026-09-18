@@ -15,18 +15,17 @@
 ///
 /// An effect instance carries per-slot processing state (filter memory,
 /// envelopes), so the registry holds providers and the engine asks the
-/// provider for a new instance wherever a chain names its ``id``.
-public protocol AudioEffectProvider: Sendable {
+/// provider for a new instance wherever a chain names its ``id``. The
+/// parameters the effect declares come from ``ParameterDescribing`` — the
+/// declaration every registration shares since 2026-09-15 — and the chain
+/// slot's payload carries their values.
+public protocol AudioEffectProvider: ParameterDescribing {
     /// The effect's stable identifier — what a persisted chain names
     /// (``EffectConfiguration/effect``).
     var id: EffectID { get }
 
     /// A short user-facing name, e.g. "Gain".
     var name: String { get }
-
-    /// The parameters the effect declares, in display order — what a host
-    /// UI draws controls from and what the persisted payload's keys mean.
-    var parameters: [EffectParameter] { get }
 
     /// Creates one chain slot's effect instance, configured with the
     /// slot's persisted parameter payload (keys the payload omits take

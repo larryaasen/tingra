@@ -15,14 +15,14 @@ import TingraPlugInKit
 @Suite("EffectParameterFormat")
 struct EffectParameterFormatTests {
     /// A Crop-like inset: a stored fraction declared as percent.
-    private let inset = EffectParameter(key: "left", name: "Left", range: 0...0.9, defaultValue: 0, unit: "%")
+    private let inset = Parameter(key: "left", name: "Left", range: 0...0.9, defaultValue: 0, unit: "%")
 
     /// A Blur-like pixel radius.
-    private let radius = EffectParameter(
+    private let radius = Parameter(
         key: "radiusPixels", name: "Radius", range: 0...100, defaultValue: 0, unit: "px")
 
     /// A unitless amount.
-    private let amount = EffectParameter(key: "amount", name: "Amount", range: -1...1, defaultValue: 0)
+    private let amount = Parameter(key: "amount", name: "Amount", range: -1...1, defaultValue: 0)
 
     @Test("a percent parameter displays its stored fraction times a hundred and stores a typed percent back")
     func percentRoundTrip() {

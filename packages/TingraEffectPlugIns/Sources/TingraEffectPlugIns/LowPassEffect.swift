@@ -25,9 +25,9 @@ public struct LowPassEffectProvider: AudioEffectProvider {
 
     /// The one parameter: the cutoff frequency, on a logarithmic control
     /// (equal travel is equal ratios, the way frequency is heard).
-    public var parameters: [EffectParameter] {
+    public var parameters: [Parameter] {
         [
-            EffectParameter(
+            Parameter(
                 key: LowPassEffect.cutoffKey,
                 name: "Cutoff",
                 range: LowPassEffect.cutoffRange,

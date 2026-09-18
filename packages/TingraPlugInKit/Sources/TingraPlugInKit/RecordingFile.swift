@@ -36,13 +36,21 @@ public struct RecordingFile: Sendable, Equatable {
     /// The container format, resolved from the path's extension.
     public let container: Container
 
+    /// The values of the parameters the recording's provider declares
+    /// (``RecordingServiceProvider`` through ``ParameterDescribing``), keyed
+    /// by ``Parameter/key``; empty (the default) for a provider that
+    /// declares none. Added 2026-09-15 (PLUGINS.md, Decision 15).
+    public let parameters: [String: JSONValue]
+
     /// Creates a recording file target.
     ///
     /// - Parameters:
     ///   - url: The local file URL to write to.
     ///   - container: The container format to mux into.
-    public init(url: URL, container: Container) {
+    ///   - parameters: The provider's parameter values (default: none).
+    public init(url: URL, container: Container, parameters: [String: JSONValue] = [:]) {
         self.url = url
         self.container = container
+        self.parameters = parameters
     }
 }

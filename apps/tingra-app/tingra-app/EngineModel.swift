@@ -78,7 +78,7 @@ final class EngineModel {
 
         /// The parameters the effect declares, in display order — what
         /// the chain editor draws sliders from.
-        let parameters: [EffectParameter]
+        let parameters: [Parameter]
     }
 
     /// One registered video effect as the layer editor's Add Effect menu
@@ -91,7 +91,7 @@ final class EngineModel {
         let name: String
 
         /// The parameters the effect declares, in display order.
-        let parameters: [EffectParameter]
+        let parameters: [Parameter]
     }
 
     /// The live state of the app's one stream (v1's one-active-session rule),
@@ -207,6 +207,27 @@ final class EngineModel {
     /// behaviour, though, so keeping the selection requires being able to draw
     /// it — which is what this name is for (see ``inputName(for:)``).
     private(set) var lastKnownInputNames: [InputID: String] = [:]
+
+    /// The parameters each registered input declares, keyed by id, for the
+    /// inputs that declare any (PLUGINS.md, Decision 15) — snapshotted from
+    /// the registry with every device-list rebuild, so a strip's Input
+    /// Settings button knows to appear without awaiting the actor per draw.
+    /// An input that declares nothing has no entry and gets no button.
+    private(set) var declaredInputParameters: [InputID: [Parameter]] = [:]
+
+    /// The inputs' parameter values, by input id — the document's
+    /// `inputParameters` key (`Project.inputParameters`), applied to each
+    /// input through `Input.setParameters` when the project loads and
+    /// whenever the input registers, and edited by an input's settings
+    /// popover (``setInputParameter(_:forKey:ofInput:)``). An entry for an
+    /// input this Mac does not have is kept and written back untouched.
+    private(set) var inputParameters: [InputID: [String: JSONValue]] = [:]
+
+    /// The last application of an edited input payload, chained so edits
+    /// made at gesture rate reach the input in the order they were made —
+    /// two tasks racing to the registry could otherwise leave a stale
+    /// value applied last.
+    @ObservationIgnored private var inputParameterApplyTask: Task<Void, Never>?
 
     /// The mixer's channel strips — the level, pan, and mute the mixer panel
     /// edits (GLOSSARY.md, "Channel strip"): the active preset's authored
@@ -1600,6 +1621,9 @@ final class EngineModel {
 
         await readDeviceLists()
         loadProject()
+        // The device lists were built before the document was read, so the
+        // inputs it tunes are handed their stored settings now.
+        await applyStoredInputParameters()
         // The project's media registers after the document is read and
         // before the lists are used: each item becomes an input the
         // sidebar, the layer editor, and the strips then see.
@@ -1728,6 +1752,58 @@ final class EngineModel {
         videoInputs = Self.mediaChoices(from: inputs, producing: .video)
         audioInputs = Self.mediaChoices(from: inputs, producing: .audio)
         rememberInputNames(from: inputs)
+        await applyInputParameters(to: inputs)
+    }
+
+    /// Records which inputs declare parameters and hands each of them the
+    /// project's stored values — or an empty payload, which restores its
+    /// declared defaults, so an input tuned by the previous project is not
+    /// left tuned when a project without an entry for it opens. Runs with
+    /// every device-list rebuild, because a device that reconnects is a
+    /// fresh input instance that knows nothing of the project's settings.
+    ///
+    /// - Parameter inputs: The inputs currently in the registry.
+    private func applyInputParameters(to inputs: [any Input]) async {
+        var declared: [InputID: [Parameter]] = [:]
+        for input in inputs {
+            let parameters = input.parameters
+            guard !parameters.isEmpty else { continue }
+            declared[input.id] = parameters
+            await input.setParameters(inputParameters[input.id] ?? [:])
+        }
+        declaredInputParameters = declared
+    }
+
+    /// Applies the open project's stored input settings to every registered
+    /// input — what a project load calls once the document is read, since
+    /// the device lists were built before it was.
+    private func applyStoredInputParameters() async {
+        await applyInputParameters(to: registry.allInputs)
+    }
+
+    /// Sets one declared parameter of one input — the settings popover's
+    /// slider, field, or color well — storing the value with the project
+    /// and applying the whole payload to the input, live. A gesture-rate
+    /// control like the effect parameters: the value reaches the input at
+    /// once, no event is reported (the control reports its own `tap`), and
+    /// the autosave is debounced.
+    ///
+    /// - Parameters:
+    ///   - value: The parameter's new payload value.
+    ///   - key: The parameter's persisted key.
+    ///   - id: The input whose parameter changes.
+    func setInputParameter(_ value: JSONValue, forKey key: String, ofInput id: InputID) {
+        var payload = inputParameters[id] ?? [:]
+        guard payload[key] != value else { return }
+        payload[key] = value
+        inputParameters[id] = payload
+        let previous = inputParameterApplyTask
+        inputParameterApplyTask = Task { [registry] in
+            await previous?.value
+            guard let input = await registry.input(withID: id) else { return }
+            await input.setParameters(payload)
+        }
+        scheduleAutosave()
     }
 
     /// Records every discovered input's current name, so a picker can still
@@ -2580,7 +2656,7 @@ final class EngineModel {
     /// settings persist but cannot be edited until the provider returns).
     ///
     /// - Parameter id: The effect's stable identifier.
-    func effectParameters(for id: EffectID) -> [EffectParameter] {
+    func effectParameters(for id: EffectID) -> [Parameter] {
         audioEffectChoices.first { $0.id == id }?.parameters ?? []
     }
 
@@ -3466,7 +3542,7 @@ final class EngineModel {
     /// chain editor's sliders — empty for an effect with no provider.
     ///
     /// - Parameter id: The effect's stable identifier.
-    func videoEffectParameters(for id: EffectID) -> [EffectParameter] {
+    func videoEffectParameters(for id: EffectID) -> [Parameter] {
         videoEffectChoices.first { $0.id == id }?.parameters ?? []
     }
 
@@ -4762,6 +4838,10 @@ final class EngineModel {
         mediaSizes = [:]
         // Plug-in data is the document's, opaque to the app.
         plugInData = project.plugInData ?? [:]
+        // The inputs' settings are the document's too; they reach the
+        // inputs with the next device-list rebuild.
+        inputParameters = Dictionary(
+            uniqueKeysWithValues: (project.inputParameters ?? [:]).map { (InputID(rawValue: $0.key), $0.value) })
 
         let recorded: SessionPosition
         if let id = project.id {
@@ -5191,7 +5271,9 @@ final class EngineModel {
             destinations: DestinationEdit.references(from: destinations),
             programFormat: format == ProgramFormat() ? nil : format,
             media: media.isEmpty ? nil : media,
-            plugInData: plugInData.isEmpty ? nil : plugInData
+            plugInData: plugInData.isEmpty ? nil : plugInData,
+            inputParameters: inputParameters.isEmpty
+                ? nil : Dictionary(uniqueKeysWithValues: inputParameters.map { ($0.key.rawValue, $0.value) })
         )
         do {
             try target.save(project)

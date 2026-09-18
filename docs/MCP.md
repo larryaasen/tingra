@@ -120,6 +120,8 @@ The app's endpoint is `MCPSession` itself, now public, over the app's own `ToolR
 | `tingra/command.perform` | app → extension | One of the two requests the app makes: perform a command the manifest declared, after the app emitted the `tap` and revealed the pane the command names |
 | `tingra/activation` | app → extension | The other: a bus event met an activation condition the manifest declared — `condition` in its manifest form (`device.connected:kind=camera`) and the `event` itself as `EventBusEvent` encodes to JSON. The first such request is what launched the process, when no pane or command had (PLUGINS.md, "Phase 2 as built, second slice") |
 
+Two more rows are decided and not yet built (2026-09-15, PLUGINS.md Decisions 17 and 18): the app-owned stream and recording tools `program_stream_start`, `program_stream_stop`, `program_record_start`, and `program_record_stop`, with no destination or input arguments because the project decides both, so the daemon's `stream_*` schemas stay untouched; and an opt-in `tingra/meters` notification (app → extension) carrying the per-strip and master levels inline at no more than 10 Hz, rather than a resource whose every tick would cost an updated notification and a re-read.
+
 Identity is per connection: the app opened the connection for a known extension, so the handler is built with that plug-in's id. Secrets are not a storage scope; a plug-in needing a key gets a narrowed secure-storage method later, never a plaintext file.
 
 ### Resources and the program tools

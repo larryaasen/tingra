@@ -36,6 +36,8 @@ A project is the saved file for an entire show. A project contains presets. A pr
 
 **Fader** — a channel strip's or the monitor's level control: a vertical slider read in decibels, with silence at its bottom stop and unity (0 dB) three quarters of the way up its travel, where a double-click returns it. A strip's fader reaches +6 dB; the monitor's tops out at unity, since it only scales what the operator hears. The stored value is the linear gain the fader stands for, never the decibel figure.
 
+**Parameter** — one adjustable setting a plug-in declares for something it registers — an effect's gain, a generator's frequency, an output's stream name — as a descriptor (key, name, range, default, unit, scale, or a color) the host draws a control from without knowing the plug-in. Every host-tier registration may declare parameters; the values persist with the thing they belong to (the effect's chain slot, the project's entry for the input, the destination, the recording file), never in the plug-in.
+
 **Effect chain** — the ordered effects applied to one thing: a channel strip's audio chain, a layer's video chain. Order is signal order — each effect processes what the one before it produced — and the chain persists with the thing that owns it. An audio chain sits post-intake and pre-fader, so it shapes what the strip's meter reads and what its fader rides.
 
 **Title** — a text graphic rendered by the engine: lower thirds, headings, tickers, credits.

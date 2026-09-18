@@ -1,5 +1,5 @@
 //
-//  EffectColor.swift
+//  ParameterColor.swift
 //  TingraPlugInKit
 //
 //  Created by Larry Aasen on 2026-09-09.
@@ -7,17 +7,21 @@
 //  SPDX-License-Identifier: MIT
 //
 
-/// The value of a color effect parameter (``EffectParameter/Kind/color``):
-/// sRGB red, green, blue, and alpha, each `0`…`1` — the working format's
-/// BT.709 primaries, so an effect can hand the components to Core Image
+/// The value of a color parameter (``Parameter/Kind/color``): sRGB red,
+/// green, blue, and alpha, each `0`…`1` — the working format's BT.709
+/// primaries, so an effect can hand the components to Core Image
 /// unconverted (ARCHITECTURE.md, "The Frame effect").
 ///
-/// In a persisted ``EffectConfiguration/parameters`` payload a color is
-/// the object `{"red": r, "green": g, "blue": b, "alpha": a}` under the
+/// In a persisted parameter payload (an effect's
+/// ``EffectConfiguration/parameters``, an input's stored settings) a color
+/// is the object `{"red": r, "green": g, "blue": b, "alpha": a}` under the
 /// parameter's key — plain JSON on the project/scripting contract, never a
 /// packed integer or a hex string. Components outside `0`…`1` are clamped
 /// on creation, so a payload can never produce an out-of-gamut value.
-public struct EffectColor: Sendable, Equatable, Codable {
+///
+/// Named `EffectColor` until 2026-09-15, when parameters widened past
+/// effects; the old name remains as a deprecated alias.
+public struct ParameterColor: Sendable, Equatable, Codable {
     /// The red component, `0`…`1`.
     public let red: Double
 
@@ -31,10 +35,10 @@ public struct EffectColor: Sendable, Equatable, Codable {
     public let alpha: Double
 
     /// Opaque white — the default of a border.
-    public static let white = EffectColor(red: 1, green: 1, blue: 1)
+    public static let white = ParameterColor(red: 1, green: 1, blue: 1)
 
     /// Opaque black.
-    public static let black = EffectColor(red: 0, green: 0, blue: 0)
+    public static let black = ParameterColor(red: 0, green: 0, blue: 0)
 
     /// Creates a color, clamping every component to `0`…`1`.
     ///
@@ -84,3 +88,8 @@ public struct EffectColor: Sendable, Equatable, Codable {
         return min(1, max(0, component))
     }
 }
+
+/// The name ``ParameterColor`` carried while only effects declared
+/// parameters.
+@available(*, deprecated, renamed: "ParameterColor")
+public typealias EffectColor = ParameterColor

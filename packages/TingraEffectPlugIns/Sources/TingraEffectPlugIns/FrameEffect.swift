@@ -32,23 +32,23 @@ public struct FrameEffectProvider: VideoEffectProvider {
     /// a full-frame layer and a small inset one — and the border color.
     /// The sizes are `0` by default, so a fresh Frame draws nothing, and
     /// declare the `%` unit: a stored fraction a host shows as percent.
-    public var parameters: [EffectParameter] {
+    public var parameters: [Parameter] {
         [
-            EffectParameter(
+            Parameter(
                 key: FrameEffect.cornerRadiusKey,
                 name: "Corners",
                 range: FrameEffect.cornerRadiusRange,
                 defaultValue: 0,
                 unit: "%"
             ),
-            EffectParameter(
+            Parameter(
                 key: FrameEffect.borderWidthKey,
                 name: "Border",
                 range: FrameEffect.borderWidthRange,
                 defaultValue: 0,
                 unit: "%"
             ),
-            EffectParameter(
+            Parameter(
                 key: FrameEffect.borderColorKey,
                 name: "Color",
                 defaultColor: FrameEffect.defaultBorderColor
@@ -94,7 +94,7 @@ public struct FrameEffect: VideoEffect {
     static let borderWidthRange: ClosedRange<Double> = 0...0.1
 
     /// The border color when the payload names none: opaque white.
-    static let defaultBorderColor = EffectColor.white
+    static let defaultBorderColor = ParameterColor.white
 
     /// The current corner radius as a fraction of the shorter side (`0` is
     /// square corners).
@@ -120,7 +120,7 @@ public struct FrameEffect: VideoEffect {
         if let value = parameters[Self.borderWidthKey]?.doubleValue {
             borderWidth = Self.borderWidthRange.clamping(value)
         }
-        if let value = parameters[Self.borderColorKey], let color = EffectColor(value) {
+        if let value = parameters[Self.borderColorKey], let color = ParameterColor(value) {
             borderColor = color
         }
     }
@@ -163,7 +163,7 @@ public struct FrameEffect: VideoEffect {
     }
 
     /// The border color as Core Image's sRGB color.
-    private static func ciColor(_ color: EffectColor) -> CIColor {
+    private static func ciColor(_ color: ParameterColor) -> CIColor {
         CIColor(red: color.red, green: color.green, blue: color.blue, alpha: color.alpha)
     }
 }

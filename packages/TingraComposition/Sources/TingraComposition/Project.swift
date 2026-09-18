@@ -110,6 +110,20 @@ public struct Project: Sendable, Equatable, Codable {
     /// within v1** — the pre-release rule, no version bump.
     public let plugInData: [String: JSONValue]?
 
+    /// The values of the parameters the project's inputs declare, by input
+    /// id, or `nil` when none has been set (PLUGINS.md, Decision 15). Each
+    /// key is the raw value of the plug-in kit's `InputID` — kept a plain
+    /// `String` here, like ``plugInData``'s keys — and each value is that
+    /// input's payload, keyed by its parameters' keys (a generator's
+    /// `frequencyHertz`, say), which the app hands the input through
+    /// `Input.setParameters` when the project loads and the input registers.
+    /// Per project, not per preset: an input's settings describe the input,
+    /// the way its media list does, where a strip's level describes its
+    /// place in one preset's mix. An entry for an input this Mac does not
+    /// have round-trips untouched. An **optional key within v1** — the
+    /// pre-release rule, no version bump.
+    public let inputParameters: [String: [String: JSONValue]]?
+
     /// Creates a project.
     ///
     /// - Parameters:
@@ -123,6 +137,8 @@ public struct Project: Sendable, Equatable, Codable {
     ///   - media: The files added as media (default: none).
     ///   - plugInData: The app-tier plug-ins' project-scoped storage, keyed
     ///     by plug-in id (default: none).
+    ///   - inputParameters: The inputs' parameter values, keyed by input id
+    ///     (default: none).
     public init(
         version: Int = Project.currentVersion,
         id: ProjectID? = nil,
@@ -130,7 +146,8 @@ public struct Project: Sendable, Equatable, Codable {
         destinations: [DestinationReference]? = nil,
         programFormat: ProgramFormat? = nil,
         media: [ProjectMedia]? = nil,
-        plugInData: [String: JSONValue]? = nil
+        plugInData: [String: JSONValue]? = nil,
+        inputParameters: [String: [String: JSONValue]]? = nil
     ) {
         self.version = version
         self.id = id
@@ -139,6 +156,7 @@ public struct Project: Sendable, Equatable, Codable {
         self.programFormat = programFormat
         self.media = media
         self.plugInData = plugInData
+        self.inputParameters = inputParameters
     }
 
     /// The coding keys — stable camelCase names for the project document.
@@ -150,6 +168,7 @@ public struct Project: Sendable, Equatable, Codable {
         case programFormat
         case media
         case plugInData
+        case inputParameters
         /// Read-only: the single destination key written before a project
         /// could hold several. Decoded and folded into ``destinations``,
         /// never written again (see ``init(from:)``).
@@ -159,8 +178,9 @@ public struct Project: Sendable, Equatable, Codable {
     /// Decodes a project. `version` is required (a document must declare its
     /// format so future versions can migrate it) and must not exceed
     /// ``currentVersion``; `id`, `presets`, `destinations`, `programFormat`,
-    /// `media`, `plugInData`, and the older single `destination` are optional
-    /// (a minimal document decodes forgivingly with them absent).
+    /// `media`, `plugInData`, `inputParameters`, and the older single
+    /// `destination` are optional (a minimal document decodes forgivingly
+    /// with them absent).
     ///
     /// A document written with the single `destination` key folds it in as
     /// the only element of ``destinations`` — an **optional key within v1**
@@ -211,14 +231,16 @@ public struct Project: Sendable, Equatable, Codable {
         programFormat = try container.decodeIfPresent(ProgramFormat.self, forKey: .programFormat)
         media = try container.decodeIfPresent([ProjectMedia].self, forKey: .media)
         plugInData = try container.decodeIfPresent([String: JSONValue].self, forKey: .plugInData)
+        inputParameters = try container.decodeIfPresent([String: [String: JSONValue]].self, forKey: .inputParameters)
     }
 
     /// Encodes a project, writing `version` and `presets` always and `id`,
-    /// `destinations`, `programFormat`, `media`, and `plugInData` only when
-    /// set, so a project with no id, no destination, the default format, no
-    /// media, or no plug-in data round-trips to a document without those
-    /// keys (and reads them back as nil). The superseded single `destination`
-    /// key is never written.
+    /// `destinations`, `programFormat`, `media`, `plugInData`, and
+    /// `inputParameters` only when set, so a project with no id, no
+    /// destination, the default format, no media, no plug-in data, or no
+    /// input settings round-trips to a document without those keys (and
+    /// reads them back as nil). The superseded single `destination` key is
+    /// never written.
     public func encode(to encoder: any Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(version, forKey: .version)
@@ -228,5 +250,6 @@ public struct Project: Sendable, Equatable, Codable {
         try container.encodeIfPresent(programFormat, forKey: .programFormat)
         try container.encodeIfPresent(media, forKey: .media)
         try container.encodeIfPresent(plugInData, forKey: .plugInData)
+        try container.encodeIfPresent(inputParameters, forKey: .inputParameters)
     }
 }

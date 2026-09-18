@@ -364,6 +364,29 @@ struct ProjectCodableTests {
         #expect(decoded.plugInData?["com.moonwink.tingra.notes"]?["text"]?.stringValue == "Cue the intro at 19:58")
     }
 
+    @Test("a document without an inputParameters key decodes with inputParameters nil")
+    func missingInputParametersDecodesNil() throws {
+        let json = Data(#"{"version":1,"presets":[]}"#.utf8)
+        let decoded = try JSONDecoder().decode(Project.self, from: json)
+        #expect(decoded.inputParameters == nil)
+    }
+
+    @Test("a project with input settings round-trips through JSON under an inputParameters key")
+    func inputParametersRoundTrip() throws {
+        let settings: [String: [String: JSONValue]] = [
+            "tone": ["frequencyHertz": .double(987.5), "levelDecibels": .int(-12)],
+            "com.example.ndi.source": ["bufferFrames": .int(3)],
+        ]
+        let project = Project(presets: sampleProject.presets, inputParameters: settings)
+        let data = try JSONEncoder().encode(project)
+        let object = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(Set(object.keys) == ["version", "presets", "inputParameters"])
+        let decoded = try JSONDecoder().decode(Project.self, from: data)
+        #expect(decoded == project)
+        #expect(decoded.inputParameters == settings)
+        #expect(decoded.inputParameters?["tone"]?["frequencyHertz"]?.doubleValue == 987.5)
+    }
+
     @Test("data filed under an id no plug-in owns survives a decode and re-encode untouched")
     func unknownPlugInDataIsPreserved() throws {
         // A document written by a Tingra that had a plug-in this build does

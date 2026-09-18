@@ -32,7 +32,13 @@ public struct InputID: RawRepresentable, Hashable, Sendable, Codable {
 /// clock and apply the per input sync offset (see CLOCK.md); frames are
 /// delivered already tagged and in the working pixel format (see
 /// ARCHITECTURE.md, "Color and pixel format conventions").
-public protocol Input: Sendable {
+///
+/// An input may declare adjustable settings — a generator's frequency, a
+/// network feed's buffer depth — as ``ParameterDescribing/parameters``, and
+/// a host then draws a settings pane for it and hands the values back
+/// through ``setParameters(_:)``; the app stores them with the project.
+/// Both default to nothing, so an input with no settings declares none.
+public protocol Input: ParameterDescribing {
     /// The input's stable identifier.
     var id: InputID { get }
 
@@ -86,6 +92,18 @@ public protocol Input: Sendable {
     /// Stops producing frames and releases the underlying device or
     /// resources. Safe to call more than once.
     func stop() async
+
+    /// Applies the values of the parameters the input declares — the
+    /// host's stored payload, keyed by ``Parameter/key`` — at any time,
+    /// before or after ``start()``, and live: a running generator retunes
+    /// without a stop. Keys the payload omits take their declared defaults
+    /// (``Parameter/value(in:)``); a key the input does not declare is
+    /// ignored, never an error, so a payload written by a newer build
+    /// still applies what this one knows. The default does nothing, for an
+    /// input that declares no parameters.
+    ///
+    /// - Parameter parameters: The parameter payload.
+    func setParameters(_ parameters: [String: JSONValue]) async
 }
 
 extension Input {
@@ -93,6 +111,10 @@ extension Input {
     /// and ``audio()`` defaults below actually deliver. Every input that
     /// produces something overrides this; see ``InputMedia``.
     public var media: InputMedia { [] }
+
+    /// By default an input has no settings to take, matching the empty
+    /// ``ParameterDescribing/parameters`` it declares.
+    public func setParameters(_ parameters: [String: JSONValue]) async {}
 
     /// By default an input produces no video: an already-finished stream.
     /// Video inputs (cameras, displays, video generators) override this.

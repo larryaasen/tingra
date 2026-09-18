@@ -39,7 +39,9 @@ internal surface a reader needs to navigate the target instead.
   displays, microphones, media, generators; carries the stable identifier,
   user-facing name, kind, and declared media that discovery lists, with
   `frames()` and `audio()` streams (each defaulting to an already-finished
-  stream for the media the input does not produce).
+  stream for the media the input does not produce). A `ParameterDescribing`
+  since 2026-09-15: an input may declare settings, and `setParameters(_:)`
+  (defaulted to nothing) hands it their values live, before or after `start()`.
 - `InputID` — the stable identifier for an input, as surfaced by input
   discovery.
 - `InputKind` — the kind of input (camera, microphone, display, generator,
@@ -67,7 +69,8 @@ internal surface a reader needs to navigate the target instead.
   lives behind this protocol).
 - `StreamingServiceProvider` — what an output plug-in registers: a factory
   keyed by destination URL scheme that creates a configured
-  `StreamingService` per stream.
+  `StreamingService` per stream; a `ParameterDescribing`, whose declared
+  per-destination settings arrive on `Destination.parameters`.
 - `StreamingServiceEvent` — a connection event reported after a successful
   start (`connectionLost`); the session drives reconnect policy from it.
 - `StreamingServiceError` — the error currency of `StreamingService.start(to:)`
@@ -87,14 +90,17 @@ internal surface a reader needs to navigate the target instead.
   both streaming (by URL scheme) and recording (by file extension) providers;
   the host's `OutputRegistry` conforms.
 - `Destination` — a configured streaming target: URL plus optional stream key
-  (deliberately not `Codable` — the key is a secret).
+  (deliberately not `Codable` — the key is a secret), plus since 2026-09-15
+  the `parameters` its provider declared, keyed by `Parameter.key` (default
+  empty).
 - `RecordingService` — the recording seam: opens a local file, appends the same
   program media the stream gets, reports a terminal write failure, and
   finalizes (`AVAssetWriter` lives behind this protocol). A narrower sibling
   of `StreamingService` — no destination, no reconnect.
 - `RecordingServiceProvider` — what a recording plug-in registers: a factory
   keyed by file extension (`mov`/`mp4`) that creates a configured
-  `RecordingService` per recording.
+  `RecordingService` per recording; a `ParameterDescribing`, whose declared
+  settings arrive on `RecordingFile.parameters`.
 - `RecordingServiceEvent` — a recording event reported after a successful start
   (`failed`); a file has no reconnect, so a write failure is terminal.
 - `RecordingServiceError` — the error currency of `RecordingService.start(to:)`
@@ -102,21 +108,34 @@ internal surface a reader needs to navigate the target instead.
   `recordingFailed` identifier.
 - `RecordingFile` — where a recording is written: a local file URL plus its
   container format (`mov`/`mp4`); the recording counterpart to `Destination`,
-  carrying no secret.
+  carrying no secret, and since 2026-09-15 the provider's `parameters`
+  (default empty).
 - `EffectID` — the stable identifier for a registered effect, shared by the
   audio and video sides; what a persisted chain entry names.
 - `EffectConfiguration` — one effect as a document persists it: its `EffectID`
   plus its parameter payload. A chain persists as an ordered list of these
   (order is signal order); an entry naming an effect this build has no
   provider for survives the round trip untouched.
-- `EffectParameter` — one adjustable parameter an effect declares (key, name,
-  range, default, unit, linear/logarithmic scale), so a host draws a control
-  for a third-party effect without knowing it exists. Its `Kind` is `.number`
-  (a slider) or, since 2026-09-09, `.color` (a color well, with a
-  `defaultColor`) — added additively, every numeric conformer unchanged.
-- `EffectColor` — the value of a color parameter: sRGB red, green, blue, and
+- `ParameterDescribing` — what every host-tier registration shares since
+  2026-09-15 (PLUGINS.md, Decision 15): the one requirement `parameters`,
+  defaulted to empty, refined by `Input`, `StreamingServiceProvider`,
+  `RecordingServiceProvider`, `AudioEffectProvider`, and
+  `VideoEffectProvider`, so a host draws a settings pane for any of them from
+  the descriptors alone. Where the values live differs per seam and each
+  names its place (the chain slot, `Input.setParameters`,
+  `Destination.parameters`, `RecordingFile.parameters`).
+- `Parameter` — one adjustable parameter a plug-in declares for something it
+  registers (key, name, range, default, unit, linear/logarithmic scale), so a
+  host draws a control for a third-party effect, input, or output without
+  knowing it exists. Its `Kind` is `.number` (a slider) or, since 2026-09-09,
+  `.color` (a color well, with a `defaultColor`) — added additively, every
+  numeric conformer unchanged. `value(in:)`, `color(in:)`, and `clamped(_:)`
+  are the reading rules every control and conformer share. Named
+  `EffectParameter` until 2026-09-15; the old name is a deprecated alias.
+- `ParameterColor` — the value of a color parameter: sRGB red, green, blue, and
   alpha in 0…1, clamped on creation, carried in a persisted payload as the
-  plain object `{red, green, blue, alpha}` (`jsonValue` / `init(_:)`).
+  plain object `{red, green, blue, alpha}` (`jsonValue` / `init(_:)`). Named
+  `EffectColor` until 2026-09-15; the old name is a deprecated alias.
 - `AudioEffect` — one audio processing step in a channel strip's chain,
   processing the mixer's native currency (deinterleaved float32 blocks at the
   mix rate) in place at the mix tick.
@@ -418,7 +437,12 @@ internal surface a reader needs to navigate the target instead.
   colour would need a new persisted document key, and a shot's own `background`
   already provides an arbitrary solid — what it cannot be is stacked as a layer.
 - `ToneGenerator` — the 440 Hz test tone (`--audio-generator tone`): mono
-  float32 buffers with phase continuity, one per clock tick.
+  float32 buffers with phase continuity, one per clock tick. The first input
+  to declare parameters (2026-09-15): `frequencyParameter` (`frequencyHertz`,
+  20 Hz–20 kHz, logarithmic) and `levelParameter` (`levelDecibels`, −60…0 dB,
+  defaulting to half amplitude), applied live and phase-continuously through
+  `setParameters(_:)` — a running phase accumulator, not a sample counter,
+  so a retune bends the wave rather than breaking it.
 
 ## `packages/TingraComposition`
 
@@ -478,7 +502,10 @@ internal surface a reader needs to navigate the target instead.
   list, and the optional `plugInData` — project-scoped storage for app-tier
   plug-ins, keyed by plug-in id, each value opaque JSON the plug-in owns; an
   entry for a plug-in the build does not have round-trips untouched
-  (PLUGINS.md, "Storage"). The
+  (PLUGINS.md, "Storage"), and the optional `inputParameters` — the values of
+  the parameters the project's inputs declare, keyed by input id then by
+  parameter key (PLUGINS.md, Decision 15), per project because an input's
+  settings describe the input, not one preset's mix. The
   format is version 1 until the first release ships (pre-release it grows
   within v1, optional fields decoding forgivingly); decoding a document newer
   than the build understands throws rather than silently loading it.
@@ -1170,8 +1197,25 @@ surface is:
   signal order with Move Up / Move Down / Remove, an Add Effect menu over every
   registered audio effect, and a slider paired with an `EffectParameterField`
   (or, for a color parameter, an `EffectColorWell`) per parameter the effect
-  declares — drawn generically from its `EffectParameter` descriptors, so a
-  third-party effect gets parameter UI without the app knowing it exists.
+  declares — drawn generically from its `Parameter` descriptors, so a
+  third-party effect gets parameter UI without the app knowing it exists;
+  the slider's travel runs through `ParameterScale` since 2026-09-15.
+- `InputParametersView` — one input's declared settings, in a popover off its
+  channel strip's Input Settings button (2026-09-15; PLUGINS.md, Decision 15):
+  a slider paired with an `EffectParameterField` per number parameter and an
+  `EffectColorWell` per color parameter, drawn from the input's `Parameter`
+  descriptors alone, applying live through `EngineModel.setInputParameter`
+  (which stores the value in the project's `inputParameters`, hands the whole
+  payload to the input in order through one chained task, and autosaves
+  debounced). The strip shows the button only for an input in
+  `EngineModel.declaredInputParameters` — the tone today — so a microphone's
+  strip is unchanged.
+- `ParameterScale` — the pure, unit-tested mapping between a declared
+  parameter's value and a slider's `0…1` travel, honoring `Parameter.Scale`:
+  linear spans, or equal ratios for a logarithmic parameter whose range is
+  strictly positive (falling back to linear otherwise, never a NaN). Every
+  generic parameter slider — both chain editors and the input settings — goes
+  through it, so 440 Hz sits near the middle of a 20 Hz–20 kHz slider.
 - `CommittingNumberField` — the numeric field every inspector and chain-editor
   number goes through (2026-09-10): commits once, on Return or focus loss,
   never per keystroke; keeps its own text while focused, parses in the

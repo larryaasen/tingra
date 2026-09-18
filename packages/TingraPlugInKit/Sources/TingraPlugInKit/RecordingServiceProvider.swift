@@ -20,7 +20,12 @@
 /// one timeline — so the registry holds providers and asks the provider
 /// matching the target's extension for a fresh, configured service each time
 /// a recording starts. Reuses the shared ``OutputID`` identifier type.
-public protocol RecordingServiceProvider: Sendable {
+///
+/// A provider may declare per-recording settings as
+/// ``ParameterDescribing/parameters``, mirroring the streaming side; the
+/// values reach the service on the ``RecordingFile`` it is started with
+/// (``RecordingFile/parameters``).
+public protocol RecordingServiceProvider: ParameterDescribing {
     /// The provider's stable identifier.
     var id: OutputID { get }
 

@@ -31,15 +31,15 @@ public struct CropEffectProvider: VideoEffectProvider {
     /// and a third off each side means the same thing for a 4K camera
     /// and a 720p display. Each declares the `%` unit: a stored fraction a
     /// host shows as percent.
-    public var parameters: [EffectParameter] {
+    public var parameters: [Parameter] {
         [
-            EffectParameter(
+            Parameter(
                 key: CropEffect.leftKey, name: "Left", range: CropEffect.insetRange, defaultValue: 0, unit: "%"),
-            EffectParameter(
+            Parameter(
                 key: CropEffect.topKey, name: "Top", range: CropEffect.insetRange, defaultValue: 0, unit: "%"),
-            EffectParameter(
+            Parameter(
                 key: CropEffect.rightKey, name: "Right", range: CropEffect.insetRange, defaultValue: 0, unit: "%"),
-            EffectParameter(
+            Parameter(
                 key: CropEffect.bottomKey, name: "Bottom", range: CropEffect.insetRange, defaultValue: 0, unit: "%"),
         ]
     }

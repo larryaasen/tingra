@@ -206,6 +206,10 @@ engine and every plug-in reports through (see [EVENTS.md](docs/EVENTS.md)).
 The plug-in protocol package: the stability contract first- and third-party
 plug-ins build against, importable without the engine (see
 [ARCHITECTURE.md](docs/ARCHITECTURE.md), "Plug-in API stability and versioning").
+Every registration — input, effect, streaming or recording output — declares
+its adjustable settings as `Parameter`s through one `ParameterDescribing`
+protocol, so the app draws a native settings pane for a plug-in that shipped
+no UI ([PLUGINS.md](docs/PLUGINS.md), Decision 15).
 
 **Types:** [`TingraPlugInKit` in TYPES.md](docs/TYPES.md#packagestingrapluginkit)
 

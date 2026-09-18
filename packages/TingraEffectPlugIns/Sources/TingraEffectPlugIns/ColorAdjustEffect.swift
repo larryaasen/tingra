@@ -27,13 +27,13 @@ public struct ColorAdjustEffectProvider: VideoEffectProvider {
     public let name = "Color Adjustment"
 
     /// The three parameters, each neutral at its Core Image identity value.
-    public var parameters: [EffectParameter] {
+    public var parameters: [Parameter] {
         [
-            EffectParameter(
+            Parameter(
                 key: ColorAdjustEffect.brightnessKey, name: "Brightness", range: -1...1, defaultValue: 0),
-            EffectParameter(
+            Parameter(
                 key: ColorAdjustEffect.contrastKey, name: "Contrast", range: 0.25...4, defaultValue: 1),
-            EffectParameter(
+            Parameter(
                 key: ColorAdjustEffect.saturationKey, name: "Saturation", range: 0...2, defaultValue: 1),
         ]
     }

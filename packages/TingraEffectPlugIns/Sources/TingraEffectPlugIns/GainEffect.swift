@@ -24,9 +24,9 @@ public struct GainEffectProvider: AudioEffectProvider {
     public let name = "Gain"
 
     /// The one parameter: the trim in decibels, `0` (unity) by default.
-    public var parameters: [EffectParameter] {
+    public var parameters: [Parameter] {
         [
-            EffectParameter(
+            Parameter(
                 key: GainEffect.gainKey,
                 name: "Gain",
                 range: GainEffect.gainRange,

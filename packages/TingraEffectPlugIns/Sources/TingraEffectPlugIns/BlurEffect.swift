@@ -27,9 +27,9 @@ public struct BlurEffectProvider: VideoEffectProvider {
 
     /// The one parameter: the blur radius in pixels of the layer's own
     /// image, `0` (no blur) by default.
-    public var parameters: [EffectParameter] {
+    public var parameters: [Parameter] {
         [
-            EffectParameter(
+            Parameter(
                 key: BlurEffect.radiusKey,
                 name: "Radius",
                 range: BlurEffect.radiusRange,

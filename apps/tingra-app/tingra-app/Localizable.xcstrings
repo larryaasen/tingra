@@ -2536,6 +2536,23 @@
         }
       }
     },
+    "Input Settings" : {
+      "comment" : "Heading of an input's settings popover, over the parameters it declares",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eingangseinstellungen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ajustes de entrada"
+          }
+        }
+      }
+    },
     "Inset" : {
       "comment" : "Layer placement size: the picture-in-picture inset",
       "localizations" : {

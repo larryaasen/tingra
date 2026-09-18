@@ -43,6 +43,10 @@ struct MixerView: View {
     /// session state, like any other popover presentation.
     @State private var chainStripID: InputID?
 
+    /// The strip whose Input Settings popover is open, if any — the same
+    /// view-local presentation state, one popover at a time.
+    @State private var settingsStripID: InputID?
+
     /// A strip column's width in points: enough for a fader beside a meter,
     /// a short pan slider, and a truncating name.
     static let stripWidth: CGFloat = 92
@@ -298,7 +302,10 @@ struct MixerView: View {
             }
             .help(Text(strip.name))
 
-            effectsButton(for: strip)
+            HStack(spacing: 4) {
+                effectsButton(for: strip)
+                settingsButton(for: strip)
+            }
 
             panSlider(for: strip)
 
@@ -380,6 +387,49 @@ struct MixerView: View {
             chainStripID == id
         } set: { isPresented in
             chainStripID = isPresented ? id : nil
+        }
+    }
+
+    /// One strip's Input Settings button — present only when the strip's
+    /// input declares parameters (PLUGINS.md, Decision 15): the 440 Hz
+    /// tone's frequency and level today, a third-party input's settings
+    /// tomorrow, drawn by the same popover with no app code for either. A
+    /// microphone declares nothing and shows no button.
+    @ViewBuilder private func settingsButton(for strip: MixerStrip) -> some View {
+        if model.declaredInputParameters[strip.id]?.isEmpty == false {
+            Button {
+                model.eventBus.tap(
+                    "inputSettings.button",
+                    domain: .audio,
+                    params: ["id": .string(strip.id.rawValue)]
+                )
+                settingsStripID = strip.id
+            } label: {
+                Image(systemName: "gearshape")
+            }
+            .help(
+                Text(
+                    "Input Settings", comment: "Heading of an input's settings popover, over the parameters it declares"
+                )
+            )
+            .accessibilityLabel(
+                Text(
+                    "Input Settings", comment: "Heading of an input's settings popover, over the parameters it declares"
+                )
+            )
+            .popover(isPresented: settingsPopoverBinding(for: strip.id)) {
+                InputParametersView(model: model, inputID: strip.id)
+            }
+        }
+    }
+
+    /// A binding presenting the Input Settings popover for one strip — the
+    /// shared ``settingsStripID`` expressed per strip.
+    private func settingsPopoverBinding(for id: InputID) -> Binding<Bool> {
+        Binding {
+            settingsStripID == id
+        } set: { isPresented in
+            settingsStripID = isPresented ? id : nil
         }
     }
 

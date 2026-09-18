@@ -26,7 +26,13 @@ public struct OutputID: RawRepresentable, Hashable, Sendable, Codable {
 /// timeline — so the registry holds providers, and the engine asks the
 /// provider matching the destination's URL scheme for a fresh, configured
 /// service each time a stream starts.
-public protocol StreamingServiceProvider: Sendable {
+///
+/// A provider may declare per-destination settings — a stream name, a
+/// latency — as ``ParameterDescribing/parameters``; a host draws them into
+/// its destination editor for every destination on one of the provider's
+/// ``schemes``, and the values reach the service on the ``Destination`` it
+/// is started with (``Destination/parameters``).
+public protocol StreamingServiceProvider: ParameterDescribing {
     /// The provider's stable identifier.
     var id: OutputID { get }
 

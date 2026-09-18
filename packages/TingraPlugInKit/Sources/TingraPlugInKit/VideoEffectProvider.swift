@@ -11,18 +11,15 @@
 /// declaring the effect's identity and parameters and creating a fresh
 /// ``VideoEffect`` instance per chain slot — the audio side's
 /// ``AudioEffectProvider``, for the video media protocol
-/// (ARCHITECTURE.md, "The effect seam").
-public protocol VideoEffectProvider: Sendable {
+/// (ARCHITECTURE.md, "The effect seam"). Its declared parameters come from
+/// ``ParameterDescribing``, like every registration's.
+public protocol VideoEffectProvider: ParameterDescribing {
     /// The effect's stable identifier — what a persisted chain names
     /// (``EffectConfiguration/effect``).
     var id: EffectID { get }
 
     /// A short user-facing name, e.g. "Blur".
     var name: String { get }
-
-    /// The parameters the effect declares, in display order — what a host
-    /// UI draws controls from and what the persisted payload's keys mean.
-    var parameters: [EffectParameter] { get }
 
     /// Creates one chain slot's effect instance, configured with the
     /// slot's persisted parameter payload (keys the payload omits take

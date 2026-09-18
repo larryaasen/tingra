@@ -12,7 +12,7 @@ import SwiftUI
 import TingraPlugInKit
 
 /// The control a chain editor draws for a color effect parameter
-/// (`EffectParameter.Kind.color`; ARCHITECTURE.md, "The Frame effect"): the
+/// (`Parameter.Kind.color`; ARCHITECTURE.md, "The Frame effect"): the
 /// parameter's name beside a color well, shared by the layer chain and the
 /// audio chain so the two cannot drift.
 ///
@@ -32,16 +32,16 @@ import TingraPlugInKit
 /// operator's own gesture, the autosave's mechanism, not a poll.
 struct EffectColorWell: View {
     /// The parameter the well edits, for its name.
-    let parameter: EffectParameter
+    let parameter: Parameter
 
     /// The parameter's current color.
-    let value: EffectColor
+    let value: ParameterColor
 
     /// Called once at the first change of a burst.
     let onBegin: () -> Void
 
     /// Called with every new color, at gesture rate.
-    let onChange: (EffectColor) -> Void
+    let onChange: (ParameterColor) -> Void
 
     /// Called once after the burst has been quiet for ``settleDelay``.
     let onEnd: () -> Void
@@ -71,7 +71,7 @@ struct EffectColorWell: View {
     }
 
     /// Folds one change from the well into the burst.
-    private func changed(_ color: EffectColor) {
+    private func changed(_ color: ParameterColor) {
         guard color != value else { return }
         if settling == nil {
             onBegin()
@@ -102,13 +102,13 @@ struct EffectColorWell: View {
 /// (CLAUDE.md) — SwiftUI's `ColorPicker` cannot choose the well's style.
 struct ColorWellRepresentable: NSViewRepresentable {
     /// The color the well shows.
-    let color: EffectColor
+    let color: ParameterColor
 
     /// The well's accessibility label — the parameter's name.
     let accessibilityLabel: String
 
     /// Called with every color the well delivers, at gesture rate.
-    let onChange: (EffectColor) -> Void
+    let onChange: (ParameterColor) -> Void
 
     /// Creates the well, wired to the coordinator for its changes.
     func makeNSView(context: Context) -> NSColorWell {
@@ -126,7 +126,7 @@ struct ColorWellRepresentable: NSViewRepresentable {
     /// and unsettle an open popover.
     func updateNSView(_ well: NSColorWell, context: Context) {
         context.coordinator.onChange = onChange
-        guard EffectColor(well.color) != color else { return }
+        guard ParameterColor(well.color) != color else { return }
         well.color = NSColor(color)
     }
 
@@ -135,31 +135,31 @@ struct ColorWellRepresentable: NSViewRepresentable {
         Coordinator(onChange: onChange)
     }
 
-    /// The well's target: forwards each change as an `EffectColor`.
+    /// The well's target: forwards each change as an `ParameterColor`.
     final class Coordinator: NSObject {
         /// The current change handler (refreshed on every update).
-        var onChange: (EffectColor) -> Void
+        var onChange: (ParameterColor) -> Void
 
         /// Creates the coordinator with its first handler.
-        init(onChange: @escaping (EffectColor) -> Void) {
+        init(onChange: @escaping (ParameterColor) -> Void) {
             self.onChange = onChange
         }
 
         /// The well's action: the operator picked or dragged a color.
         @objc func colorChanged(_ sender: NSColorWell) {
-            onChange(EffectColor(sender.color))
+            onChange(ParameterColor(sender.color))
         }
     }
 }
 
 extension NSColor {
     /// The AppKit color of an effect color: sRGB components as they are.
-    convenience init(_ color: EffectColor) {
+    convenience init(_ color: ParameterColor) {
         self.init(srgbRed: color.red, green: color.green, blue: color.blue, alpha: color.alpha)
     }
 }
 
-extension EffectColor {
+extension ParameterColor {
     /// The effect color of an AppKit color, converted to sRGB — what the
     /// well hands back. A color that cannot be expressed in sRGB (a pattern)
     /// falls back to opaque black rather than a guess.

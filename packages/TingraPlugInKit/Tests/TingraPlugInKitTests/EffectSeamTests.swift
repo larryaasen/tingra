@@ -86,13 +86,13 @@ struct EffectSeamTests {
 
     @Test("effect parameters compare equal only when every field matches")
     func parameterEquality() {
-        let cutoff = EffectParameter(
+        let cutoff = Parameter(
             key: "cutoffHertz", name: "Cutoff", range: 20...1000, defaultValue: 80, unit: "Hz",
             scale: .logarithmic)
-        let same = EffectParameter(
+        let same = Parameter(
             key: "cutoffHertz", name: "Cutoff", range: 20...1000, defaultValue: 80, unit: "Hz",
             scale: .logarithmic)
-        let linear = EffectParameter(
+        let linear = Parameter(
             key: "cutoffHertz", name: "Cutoff", range: 20...1000, defaultValue: 80, unit: "Hz")
         #expect(cutoff == same)
         #expect(cutoff != linear)
@@ -100,25 +100,25 @@ struct EffectSeamTests {
 
     @Test("a numeric parameter is the number kind and a color parameter the color kind")
     func parameterKinds() {
-        let number = EffectParameter(key: "radiusPixels", name: "Radius", range: 0...100, defaultValue: 0)
+        let number = Parameter(key: "radiusPixels", name: "Radius", range: 0...100, defaultValue: 0)
         #expect(number.kind == .number)
         #expect(number.defaultColor == nil)
 
-        let color = EffectParameter(key: "borderColor", name: "Color", defaultColor: .white)
+        let color = Parameter(key: "borderColor", name: "Color", defaultColor: .white)
         #expect(color.kind == .color)
         #expect(color.defaultColor == .white)
         #expect(color.key == "borderColor")
         #expect(color.name == "Color")
         #expect(color.unit == nil)
         #expect(color != number)
-        #expect(color == EffectParameter(key: "borderColor", name: "Color", defaultColor: .white))
-        #expect(color != EffectParameter(key: "borderColor", name: "Color", defaultColor: .black))
+        #expect(color == Parameter(key: "borderColor", name: "Color", defaultColor: .white))
+        #expect(color != Parameter(key: "borderColor", name: "Color", defaultColor: .black))
     }
 
     @Test("an effect color round-trips through its payload object and JSON")
     func colorRoundTrip() throws {
-        let color = EffectColor(red: 0.25, green: 0.5, blue: 0.75, alpha: 0.5)
-        #expect(EffectColor(color.jsonValue) == color)
+        let color = ParameterColor(red: 0.25, green: 0.5, blue: 0.75, alpha: 0.5)
+        #expect(ParameterColor(color.jsonValue) == color)
         #expect(
             color.jsonValue
                 == .object([
@@ -126,25 +126,25 @@ struct EffectSeamTests {
                 ]))
 
         let data = try JSONEncoder().encode(color)
-        #expect(try JSONDecoder().decode(EffectColor.self, from: data) == color)
+        #expect(try JSONDecoder().decode(ParameterColor.self, from: data) == color)
         let members = try #require(JSONSerialization.jsonObject(with: data) as? [String: Double])
         #expect(members == ["red": 0.25, "green": 0.5, "blue": 0.75, "alpha": 0.5])
     }
 
     @Test("an effect color read from a payload treats a missing alpha as opaque and rejects other shapes")
     func colorPayloadShapes() {
-        let opaque = EffectColor(.object(["red": .int(1), "green": .double(0), "blue": .double(0)]))
-        #expect(opaque == EffectColor(red: 1, green: 0, blue: 0))
-        #expect(EffectColor(.double(1)) == nil)
-        #expect(EffectColor(.string("#ffffff")) == nil)
-        #expect(EffectColor(.object(["red": .double(1), "green": .double(1)])) == nil)
+        let opaque = ParameterColor(.object(["red": .int(1), "green": .double(0), "blue": .double(0)]))
+        #expect(opaque == ParameterColor(red: 1, green: 0, blue: 0))
+        #expect(ParameterColor(.double(1)) == nil)
+        #expect(ParameterColor(.string("#ffffff")) == nil)
+        #expect(ParameterColor(.object(["red": .double(1), "green": .double(1)])) == nil)
     }
 
     @Test("effect color components are clamped into the unit range on creation")
     func colorClamps() {
-        let color = EffectColor(red: 2, green: -1, blue: 0.5, alpha: .nan)
-        #expect(color == EffectColor(red: 1, green: 0, blue: 0.5, alpha: 0))
-        #expect(EffectColor.white != EffectColor.black)
+        let color = ParameterColor(red: 2, green: -1, blue: 0.5, alpha: .nan)
+        #expect(color == ParameterColor(red: 1, green: 0, blue: 0.5, alpha: 0))
+        #expect(ParameterColor.white != ParameterColor.black)
     }
 
     @Test("a video effect's output extent defaults to its input extent")

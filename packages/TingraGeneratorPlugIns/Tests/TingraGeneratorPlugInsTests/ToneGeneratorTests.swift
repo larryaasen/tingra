@@ -22,13 +22,22 @@ struct ToneGeneratorTests {
 
     /// Collects every buffer the generator produces for the scripted ticks.
     private func collectAudio(tickTimes: [CMTime]) async -> [CapturedAudio] {
-        let generator = ToneGenerator(clock: SyntheticClock(tickTimes: tickTimes))
+        await collectAudio(from: ToneGenerator(clock: SyntheticClock(tickTimes: tickTimes)))
+    }
+
+    /// Collects every buffer a given generator produces until its clock's
+    /// ticks run out.
+    private func collectAudio(from generator: ToneGenerator) async -> [CapturedAudio] {
         var buffers: [CapturedAudio] = []
         for await audio in generator.audio() {
             buffers.append(audio)
         }
         return buffers
     }
+
+    /// The peak amplitude the generator's default level stands for: half
+    /// amplitude, the tone's level since it was written.
+    private static let defaultAmplitude: Float = 0.5
 
     /// The scripted tick timeline: one tick per buffer duration.
     private static func ticks(count: Int) -> [CMTime] {
@@ -122,6 +131,53 @@ struct ToneGeneratorTests {
         await generator.stop()
 
         #expect(await consumer.value == 0)
+    }
+
+    @Test(
+        "the tone declares a frequency and a level, in that order, with the CLI's 440 Hz at half amplitude as defaults")
+    func declaresFrequencyAndLevel() {
+        let generator = ToneGenerator(clock: SyntheticClock())
+        #expect(generator.parameters.map(\.key) == ["frequencyHertz", "levelDecibels"])
+        #expect(ToneGenerator.frequencyParameter.defaultValue == 440)
+        #expect(ToneGenerator.frequencyParameter.unit == "Hz")
+        #expect(ToneGenerator.frequencyParameter.scale == .logarithmic)
+        #expect(ToneGenerator.levelParameter.unit == "dB")
+        #expect(abs(ToneGenerator.levelParameter.defaultValue - -6.02) < 0.01)
+        #expect(generator.currentTuning == .init(frequency: 440, amplitude: Self.defaultAmplitude))
+    }
+
+    @Test("setParameters retunes the frequency and level the next buffer is synthesized with")
+    func setParametersRetunes() async throws {
+        let generator = ToneGenerator(clock: SyntheticClock(tickTimes: Self.ticks(count: 1)))
+        await generator.setParameters(["frequencyHertz": .int(1000), "levelDecibels": .double(-20)])
+
+        let buffers = await collectAudio(from: generator)
+
+        let samples = try Self.samples(of: try #require(buffers.first))
+        let amplitude = Float(pow(10, -20.0 / 20))
+        let peak = try #require(samples.map(abs).max())
+        #expect(abs(peak - amplitude) < 0.002)
+        for (offset, sample) in samples.prefix(64).enumerated() {
+            let expected = Float(sin(2 * .pi * 1000 * Double(offset) / Double(Self.sampleRate))) * amplitude
+            #expect(abs(sample - expected) < 0.0001)
+        }
+    }
+
+    @Test("setParameters clamps values into the declared ranges and restores the defaults for omitted keys")
+    func setParametersClampsAndDefaults() async {
+        let generator = ToneGenerator(clock: SyntheticClock(), frequency: 880)
+        await generator.setParameters(["frequencyHertz": .double(50_000), "levelDecibels": .double(12)])
+        #expect(generator.currentTuning == .init(frequency: 20_000, amplitude: 1))
+
+        await generator.setParameters([:])
+        #expect(generator.currentTuning == .init(frequency: 440, amplitude: Self.defaultAmplitude))
+    }
+
+    @Test("a key the tone does not declare is ignored")
+    func setParametersIgnoresForeignKeys() async {
+        let generator = ToneGenerator(clock: SyntheticClock())
+        await generator.setParameters(["waveform": .string("square"), "frequencyHertz": .double(660)])
+        #expect(generator.currentTuning.frequency == 660)
     }
 
     @Test("the generator carries its stable identifier, name, and kind")

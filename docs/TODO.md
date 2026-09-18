@@ -1462,12 +1462,18 @@ or two in the doc that owns them — none need a rewrite.
     with a do-nothing default, a public `EventBusEvent` initializer. Tests:
     `TingraAppPlugInKit` 25 → 39, app +4.
   - [ ] **Plug-ins Phase 2, the rest** (PLUGINS.md, same section for the
-    sequencing): stream and recording control in the app (a contract
-    decision first — the daemon's `stream_start` takes destinations, the
-    app's stream is the program to the project's), `tingra://meters` (a
-    rate decision) and frames (spike row 4), declared parameters on every
-    host-tier registration, the narrowed secure-storage method, windows and
-    status bar items.
+    sequencing): declared parameters on every host-tier registration
+    (Decision 15) — *built 2026-09-15 as the third slice: `Parameter` and
+    `ParameterDescribing` on every registration, `Input.setParameters`,
+    `Destination`/`RecordingFile.parameters`, `Project.inputParameters`, the
+    tone's frequency and level behind the strip's Input Settings button;
+    the destination editor and video-input hook wait for a provider that
+    declares something* — then the narrowed secure-storage method, windows
+    and status bar items; then the two rows decided 2026-09-15 — the app-owned
+    `program_stream_start`/`program_stream_stop`/`program_record_start`/
+    `program_record_stop` tools (Decision 17) and the opt-in `tingra/meters`
+    notification at ≤ 10 Hz (Decision 18) — and frames (spike row 4), still
+    open.
   - [ ] **The external bundle loader**, tagging `TingraPlugInKit` 1.0.0
     (ARCHITECTURE.md, "Plug-in API stability and versioning").
   - [ ] **NDI as an external plug-in bundle**, outside this repo, importing

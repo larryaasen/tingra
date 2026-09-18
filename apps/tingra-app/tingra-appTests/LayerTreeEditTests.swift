@@ -300,12 +300,12 @@ struct LayerTreeEditEffectTests {
                 )
             ]
         )
-        let red = EffectColor(red: 1, green: 0, blue: 0)
+        let red = ParameterColor(red: 1, green: 0, blue: 0)
         let edited = LayerTreeEdit.settingEffectParameter(
             red.jsonValue, forKey: "borderColor", ofEffectAt: 0, ofLayerAt: 0, in: chained)
         let parameters = edited.layers[0].effects?[0].parameters
         #expect(parameters?["borderWidth"]?.doubleValue == 0.05)
-        #expect(parameters?["borderColor"].flatMap(EffectColor.init) == red)
+        #expect(parameters?["borderColor"].flatMap(ParameterColor.init) == red)
     }
 
     @Test("setting a parameter on an out-of-range slot or layer leaves the shot unchanged")

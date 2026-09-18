@@ -26,9 +26,23 @@ public struct Destination: Sendable {
     /// an event param, never returned by a tool.
     public let streamKey: String?
 
-    /// Creates a destination from its URL and optional stream key.
-    public init(url: URL, streamKey: String? = nil) {
+    /// The values of the parameters the destination's provider declares
+    /// (``StreamingServiceProvider`` through ``ParameterDescribing``), keyed
+    /// by ``Parameter/key``; empty (the default) for a provider that
+    /// declares none. Never a secret — the key above is the one secret a
+    /// destination carries. Added 2026-09-15 (PLUGINS.md, Decision 15).
+    public let parameters: [String: JSONValue]
+
+    /// Creates a destination from its URL, optional stream key, and the
+    /// provider's parameter values.
+    ///
+    /// - Parameters:
+    ///   - url: The destination URL.
+    ///   - streamKey: The stream key, if the destination requires one.
+    ///   - parameters: The provider's parameter values (default: none).
+    public init(url: URL, streamKey: String? = nil, parameters: [String: JSONValue] = [:]) {
         self.url = url
         self.streamKey = streamKey
+        self.parameters = parameters
     }
 }

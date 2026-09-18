@@ -19,7 +19,7 @@ import TingraPlugInKit
 /// order** with per-slot Move Up / Move Down and Remove commands, an Add
 /// Effect menu over every registered video effect, and a slider — or, for a
 /// color parameter, a color well — per parameter the effect declares, drawn
-/// generically from its `EffectParameter` descriptors, so a third-party
+/// generically from its `Parameter` descriptors, so a third-party
 /// effect gets parameter UI without the app knowing it exists.
 ///
 /// Parameter edits apply live, tick by tick, like the frame and opacity
@@ -110,7 +110,7 @@ struct LayerEffectChainView: View {
     /// read and typed (ARCHITECTURE.md, "Effect parameters show and take
     /// their value"). A typed value is one undo step and one tap.
     private func parameterSlider(
-        _ parameter: EffectParameter,
+        _ parameter: Parameter,
         at index: Int,
         in configuration: EffectConfiguration
     ) -> some View {
@@ -123,12 +123,13 @@ struct LayerEffectChainView: View {
 
             Slider(
                 value: Binding {
-                    value
-                } set: { newValue in
+                    ParameterScale.position(of: value, for: parameter)
+                } set: { position in
+                    let newValue = ParameterScale.value(at: position, for: parameter)
                     model.setLayerEffectParameter(
                         newValue, forKey: parameter.key, ofEffectAt: index, atLayer: layerIndex)
                 },
-                in: parameter.range
+                in: 0...1
             ) { editing in
                 // One undo step and one tap per drag, like the frame sliders.
                 if editing {
@@ -171,12 +172,12 @@ struct LayerEffectChainView: View {
     /// descriptor. The well coalesces a color panel's continuous changes
     /// into one gesture: one undo step and one `tap`, like a slider drag.
     private func parameterColorWell(
-        _ parameter: EffectParameter,
+        _ parameter: Parameter,
         at index: Int,
         in configuration: EffectConfiguration
     ) -> some View {
         let value =
-            configuration.parameters[parameter.key].flatMap(EffectColor.init) ?? parameter.defaultColor ?? .white
+            configuration.parameters[parameter.key].flatMap(ParameterColor.init) ?? parameter.defaultColor ?? .white
         return EffectColorWell(parameter: parameter, value: value) {
             model.beginLayerGesture()
         } onChange: { color in

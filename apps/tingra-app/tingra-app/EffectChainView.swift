@@ -20,7 +20,7 @@ import TingraPlugInKit
 /// Effect menu over every registered audio effect, per-slot Move Up / Move
 /// Down and Remove commands, and a slider per parameter the effect
 /// declares. The sliders are **generic**: they are drawn from the
-/// provider's `EffectParameter` descriptors, so a third-party effect gets
+/// provider's `Parameter` descriptors, so a third-party effect gets
 /// parameter UI without the app knowing it exists.
 ///
 /// Parameter edits apply live, tick by tick, like the level and pan
@@ -117,12 +117,12 @@ struct EffectChainView: View {
     /// third-party effect that does gets its control. The well coalesces a
     /// color panel's continuous changes into one gesture and one `tap`.
     private func parameterColorWell(
-        _ parameter: EffectParameter,
+        _ parameter: Parameter,
         at index: Int,
         in configuration: EffectConfiguration
     ) -> some View {
         let value =
-            configuration.parameters[parameter.key].flatMap(EffectColor.init) ?? parameter.defaultColor ?? .white
+            configuration.parameters[parameter.key].flatMap(ParameterColor.init) ?? parameter.defaultColor ?? .white
         return EffectColorWell(parameter: parameter, value: value) {
         } onChange: { color in
             model.setEffectParameter(color.jsonValue, forKey: parameter.key, ofEffectAt: index, onStrip: stripID)
@@ -146,7 +146,7 @@ struct EffectChainView: View {
     /// read and typed (ARCHITECTURE.md, "Effect parameters show and take
     /// their value").
     private func parameterSlider(
-        _ parameter: EffectParameter,
+        _ parameter: Parameter,
         at index: Int,
         in configuration: EffectConfiguration
     ) -> some View {
@@ -159,12 +159,13 @@ struct EffectChainView: View {
 
             Slider(
                 value: Binding {
-                    value
-                } set: { newValue in
+                    ParameterScale.position(of: value, for: parameter)
+                } set: { position in
+                    let newValue = ParameterScale.value(at: position, for: parameter)
                     model.setEffectParameter(
                         newValue, forKey: parameter.key, ofEffectAt: index, onStrip: stripID)
                 },
-                in: parameter.range
+                in: 0...1
             ) { editing in
                 guard !editing else { return }
                 model.eventBus.tap(

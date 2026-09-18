@@ -21,7 +21,7 @@ import TingraPlugInKit
 /// (one undo step, one `tap`).
 struct EffectParameterField: View {
     /// The parameter the field edits: its range, unit, and name.
-    let parameter: EffectParameter
+    let parameter: Parameter
 
     /// The parameter's current stored value.
     let value: Double
@@ -69,7 +69,7 @@ enum EffectParameterFormat {
     /// Whether the parameter stores a fraction that displays as percent.
     ///
     /// - Parameter parameter: The parameter.
-    static func isPercent(_ parameter: EffectParameter) -> Bool {
+    static func isPercent(_ parameter: Parameter) -> Bool {
         parameter.unit == percentUnit
     }
 
@@ -79,7 +79,7 @@ enum EffectParameterFormat {
     /// - Parameters:
     ///   - stored: The stored value.
     ///   - parameter: The parameter it belongs to.
-    static func displayValue(_ stored: Double, for parameter: EffectParameter) -> Double {
+    static func displayValue(_ stored: Double, for parameter: Parameter) -> Double {
         isPercent(parameter) ? stored * 100 : stored
     }
 
@@ -91,7 +91,7 @@ enum EffectParameterFormat {
     /// - Parameters:
     ///   - typed: The typed value.
     ///   - parameter: The parameter it belongs to.
-    static func storedValue(_ typed: Double, for parameter: EffectParameter) -> Double {
+    static func storedValue(_ typed: Double, for parameter: Parameter) -> Double {
         let stored = isPercent(parameter) ? typed / 100 : typed
         return min(parameter.range.upperBound, max(parameter.range.lowerBound, stored))
     }
@@ -100,7 +100,7 @@ enum EffectParameterFormat {
     /// a pixel, a decibel, a hertz), one without.
     ///
     /// - Parameter parameter: The parameter.
-    static func fractionDigits(for parameter: EffectParameter) -> Int {
+    static func fractionDigits(for parameter: Parameter) -> Int {
         parameter.unit == nil ? 1 : 0
     }
 }

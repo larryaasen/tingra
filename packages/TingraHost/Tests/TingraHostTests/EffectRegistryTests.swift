@@ -28,7 +28,7 @@ private struct StubAudioProvider: AudioEffectProvider {
     let name: String
 
     /// Declares no parameters.
-    var parameters: [EffectParameter] { [] }
+    var parameters: [Parameter] { [] }
 
     /// Creates a pass-through instance.
     func makeEffect(parameters: [String: JSONValue]) -> any AudioEffect {
@@ -51,7 +51,7 @@ private struct StubVideoProvider: VideoEffectProvider {
     let name: String
 
     /// Declares no parameters.
-    var parameters: [EffectParameter] { [] }
+    var parameters: [Parameter] { [] }
 
     /// Creates a pass-through instance.
     func makeEffect(parameters: [String: JSONValue]) -> any VideoEffect {
