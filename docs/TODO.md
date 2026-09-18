@@ -1468,8 +1468,12 @@ or two in the doc that owns them — none need a rewrite.
     `Destination`/`RecordingFile.parameters`, `Project.inputParameters`, the
     tone's frequency and level behind the strip's Input Settings button;
     the destination editor and video-input hook wait for a provider that
-    declares something* — then the narrowed secure-storage method, windows
-    and status bar items; then the two rows decided 2026-09-15 — the app-owned
+    declares something*; the narrowed secure-storage method — *built
+    2026-09-17 as the fourth slice: `tingra/secrets.get`/`set`,
+    `PlugInConnection.secret(named:)`/`setSecret(_:named:)`,
+    `PlugInSecretStore` filing `plugin:<id>.<name>` in the engine's Keychain
+    store, the Data pane's Plug-in Secrets and Plug-in Data kinds* — then
+    windows and status bar items; then the two rows decided 2026-09-15 — the app-owned
     `program_stream_start`/`program_stream_stop`/`program_record_start`/
     `program_record_stop` tools (Decision 17) and the opt-in `tingra/meters`
     notification at ≤ 10 Hz (Decision 18) — and frames (spike row 4), still

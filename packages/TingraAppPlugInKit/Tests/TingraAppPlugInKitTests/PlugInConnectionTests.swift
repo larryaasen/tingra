@@ -34,6 +34,11 @@ struct PlugInConnectionTests {
         /// The stored values by scope.
         let storage = Mutex<[String: JSONValue]>([:])
 
+        /// The stored secrets by name; a name of `refused` is answered with
+        /// an internal error, the way a Keychain that rejects the binary
+        /// is.
+        let secrets = Mutex<[String: String]>([:])
+
         /// Every request received, by method.
         let requests = Mutex<[String]>([])
 
@@ -146,6 +151,21 @@ struct PlugInConnectionTests {
             case AppTierMethod.storageSet:
                 let scope = params?["scope"]?.stringValue ?? ""
                 storage.withLock { $0[scope] = params?["value"] }
+                return .success(id: id, result: .object([:]))
+            case AppTierMethod.secretsGet, AppTierMethod.secretsSet:
+                let name = params?["name"]?.stringValue ?? ""
+                guard name != "refused" else {
+                    return .failure(
+                        id: id,
+                        error: JSONRPCError(
+                            code: .internalError, message: "The secure store rejected the operation (OSStatus -34018)."
+                        ))
+                }
+                if method == AppTierMethod.secretsGet {
+                    let value = secrets.withLock { $0[name] }.map(JSONValue.string) ?? .null
+                    return .success(id: id, result: .object(["value": value]))
+                }
+                secrets.withLock { $0[name] = params?["value"]?.stringValue }
                 return .success(id: id, result: .object([:]))
             default:
                 return .failure(id: id, error: JSONRPCError(code: .methodNotFound, message: "Unknown '\(method)'."))
@@ -338,6 +358,37 @@ struct PlugInConnectionTests {
         try await connection.setProjectData(nil)
         let cleared = try await connection.projectData()
         #expect(cleared == nil)
+        await connection.close()
+    }
+
+    @Test("a secret round-trips by name, nil removes it, and a refused store throws the app's error")
+    func storesSecrets() async throws {
+        let (connection, app) = makePair()
+        let before = try await connection.secret(named: "token")
+        #expect(before == nil)
+        try await connection.setSecret("live_abc", named: "token")
+        let stored = try await connection.secret(named: "token")
+        #expect(stored == "live_abc")
+        #expect(app.secrets.withLock { $0["token"] } == "live_abc")
+        #expect(app.requests.withLock { $0 }.contains(AppTierMethod.secretsSet))
+        try await connection.setSecret(nil, named: "token")
+        let removed = try await connection.secret(named: "token")
+        #expect(removed == nil)
+        #expect(app.secrets.withLock { $0["token"] } == nil)
+        await #expect(throws: PlugInConnectionError.self) {
+            try await connection.setSecret("x", named: "refused")
+        }
+        do {
+            _ = try await connection.secret(named: "refused")
+            Issue.record("a refused read should throw")
+        } catch let error as PlugInConnectionError {
+            guard case .protocolError(let protocolError) = error else {
+                Issue.record("expected the app's protocol error, got \(error)")
+                return
+            }
+            #expect(protocolError.code == JSONRPCErrorCode.internalError.rawValue)
+            #expect(protocolError.message.contains("-34018"))
+        }
         await connection.close()
     }
 

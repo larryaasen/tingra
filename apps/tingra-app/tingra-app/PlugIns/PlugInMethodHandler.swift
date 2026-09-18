@@ -23,13 +23,28 @@ protocol PlugInStoring: Sendable {
 
     /// Replaces the value a plug-in stores in `scope`; nil clears it.
     func setValue(_ value: JSONValue?, scope: StorageScope, plugIn: PlugInID) async
+
+    /// One of the plug-in's own secrets from the app's secure storage, or
+    /// nil when none is stored under `name` (PLUGINS.md, Decision 7: never
+    /// a storage scope).
+    ///
+    /// - Throws: The secure store's error when it refuses the read.
+    func secret(named name: String, plugIn: PlugInID) async throws -> String?
+
+    /// Stores one of the plug-in's own secrets; nil removes it.
+    ///
+    /// - Throws: The secure store's error when it refuses the write, so the
+    ///   plug-in learns its secret was not kept.
+    func setSecret(_ secret: String?, named name: String, plugIn: PlugInID) async throws
 }
 
 /// Serves the app tier's `tingra/*` methods for one plug-in's connection
 /// (PLUGINS.md, Decision 14; `AppTierMethod`): storage reads and writes
-/// against the plug-in's own scopes — the plug-in id is the connection's,
-/// never a param, so a plug-in cannot reach another's data — and events,
-/// landed on the bus under the plug-in's domain.
+/// against the plug-in's own scopes and secret reads and writes against the
+/// plug-in's own Keychain items — the plug-in id is the connection's, never
+/// a param, so a plug-in cannot reach another's data — and events, landed
+/// on the bus under the plug-in's domain. A secret's value passes through
+/// here and nowhere else: never into an event, an error message, or a log.
 final class PlugInMethodHandler: SessionMethodHandler {
     /// The plug-in this connection belongs to.
     private let plugIn: PlugInID
@@ -62,6 +77,33 @@ final class PlugInMethodHandler: SessionMethodHandler {
             let scope = try scope(in: params)
             let value = params?[AppTierMethod.StorageParam.value]
             await storage.setValue(value == .null ? nil : value, scope: scope, plugIn: plugIn)
+            return .object([:])
+        case AppTierMethod.secretsGet:
+            let name = try secretName(in: params)
+            do {
+                let secret = try await storage.secret(named: name, plugIn: plugIn)
+                return .object([AppTierMethod.SecretParam.value: secret.map(JSONValue.string) ?? .null])
+            } catch {
+                throw refusedSecret(error, operation: "read", name: name)
+            }
+        case AppTierMethod.secretsSet:
+            let name = try secretName(in: params)
+            let secret: String?
+            switch params?[AppTierMethod.SecretParam.value] {
+            case .none, .some(.null):
+                secret = nil
+            case .some(.string(let string)):
+                secret = string
+            default:
+                throw JSONRPCError(
+                    code: .invalidParams,
+                    message: "A secrets.set 'value' must be a string, or null to remove the secret.")
+            }
+            do {
+                try await storage.setSecret(secret, named: name, plugIn: plugIn)
+            } catch {
+                throw refusedSecret(error, operation: secret == nil ? "remove" : "write", name: name)
+            }
             return .object([:])
         default:
             return nil
@@ -98,6 +140,40 @@ final class PlugInMethodHandler: SessionMethodHandler {
             )
         }
         return scope
+    }
+
+    /// The secret name a request carries: a non-empty string, which is not
+    /// itself a secret.
+    ///
+    /// - Throws: A `JSONRPCError` when the name is missing or empty.
+    private func secretName(in params: JSONValue?) throws -> String {
+        guard let name = params?[AppTierMethod.SecretParam.name]?.stringValue, !name.isEmpty else {
+            throw JSONRPCError(code: .invalidParams, message: "A secrets call needs a non-empty 'name'.")
+        }
+        return name
+    }
+
+    /// A secure store's refusal, reported on the bus as a `plugin.secrets`
+    /// error naming the plug-in, the secret's name, and the operation, and
+    /// returned as the JSON-RPC error the plug-in is answered with — both
+    /// carrying the store's own description, which names no value.
+    ///
+    /// - Parameters:
+    ///   - error: What the store threw.
+    ///   - operation: `read`, `write`, or `remove`.
+    ///   - name: The secret's name.
+    /// - Returns: The error to throw to the session.
+    private func refusedSecret(_ error: any Error, operation: String, name: String) -> JSONRPCError {
+        let description = String(describing: error)
+        eventBus.error(
+            "plugin.secrets", domain: .plugIn,
+            params: [
+                "tier": .string("app"), "id": .string(plugIn.rawValue), "name": .string(name),
+                "operation": .string(operation), "error": .string(description),
+            ])
+        return JSONRPCError(
+            code: .internalError,
+            message: "The secure store refused to \(operation) the secret '\(name)': \(description)")
     }
 
     /// Turns an event's JSON params into bus params: scalars as themselves,

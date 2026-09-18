@@ -205,7 +205,7 @@ The rule: **observation exposes value types and identifiers, never `Compositor`,
 
 **Declared parameters for every host-tier registration** *(Decision 15)* — `EffectParameter` today gives an effect a settings UI the app renders without the effect knowing SwiftUI exists. The same declaration extends to inputs, outputs, and destination kinds (`ParameterDescribing` on the registered provider), so a host-only plug-in gets a native settings pane with no app half at all — the OBS property pane and the AUv3 generic editor, done once in the app. Most third-party plug-ins will need nothing more than this, which is the point. *(Built 2026-09-15 as the third slice, below.)*
 
-**Secrets:** `tingra/secrets.*` narrowed to the plug-in's own keys (`<PlugInID>.<name>`), Keychain-backed like everything else.
+**Secrets:** `tingra/secrets.*` narrowed to the plug-in's own keys (`<PlugInID>.<name>`), Keychain-backed like everything else. *(Built 2026-09-17 as the fourth slice, below.)*
 
 **More app-tier registries:** windows (a plug-in-owned window, for a rundown or a multiview-style surface, one scene each), status bar items, and the leading-sidebar section hosting deferred from phase 1.
 
@@ -222,7 +222,7 @@ What is *not* in this slice, and why, so the rest of Phase 2 can be sequenced wi
 
 - **Stream and recording control in the app** — the app's own `stream_start`/`stream_stop`/`record_start`/`record_stop`. The daemon's `stream_start` takes destinations as arguments and a single input; the app's stream is the program to the project's enabled destinations, so the same tool name would carry different arguments and semantics in the two endpoints. That is a contract decision (one name with an endpoint-dependent schema, or app-specific names such as `program_stream_start`), taken with Larry before any code. The `tingra://session` resource already shows both states, so a plug-in can *observe* the stream today. **Decided 2026-09-15 (Decision 17): app-specific names.** The app registers `program_stream_start`, `program_stream_stop`, `program_record_start`, and `program_record_stop`, taking no destination or input arguments because the project's enabled destinations and the program are what they act on; the daemon's `stream_*` names keep their schemas untouched. One tool name never carries two schemas, so an agent that talks to both endpoints is never surprised. `destinations_list` in the app follows the same rule.
 - **`devices_list` and `destinations_list` in the app.** Both are `internal` to `TingraMCP` and built over the daemon's registries; the app's `tingra://inputs` resource answers the first, and the second waits on the stream-control decision above (the app's destinations are the project's, not only the operator-global store's).
-- **Declared parameters on every host-tier registration (Decision 15), the narrowed secrets method, windows and status bar items** — each its own slice, in that order. Activation conditions were the second slice and declared parameters the third, both below.
+- **Declared parameters on every host-tier registration (Decision 15), the narrowed secrets method, windows and status bar items** — each its own slice, in that order. Activation conditions were the second slice, declared parameters the third, and the secrets method the fourth, all below.
 
 ### Phase 2 as built, second slice: activation conditions (2026-09-15)
 
@@ -250,6 +250,19 @@ Decision 15 landed: the declaration effects have made since roadmap step 7 is no
 Not in this slice, and why: the **destination editor and the recording preferences drawing provider parameters** — HaishinKit and the recorder declare none, so there is nothing to draw until the NDI output declares a stream name, and where the values go (`Destination.parameters`, `RecordingFile.parameters`) is already fixed, so that is UI work with no seam question left; and a **settings hook for video inputs** — no first-party video input declares a parameter, and the layer inspector is where the same popover goes when one does. The `tingra://inputs` resource does not yet list an input's parameters; it joins them when an agent has a reason to read them.
 
 Tests: `TingraPlugInKit` 47 → 57, `TingraGeneratorPlugIns` 77 → 81, `TingraComposition` 222 → 224, the app 616 → 622.
+
+### Phase 2 as built, fourth slice: secrets (2026-09-17)
+
+Decision 7's deferred half landed: a plug-in that needs a key — a chat service's token — has the narrowed secure-storage method, and still no plaintext file. What is in:
+
+- **Two methods, one namespace.** `tingra/secrets.get` and `tingra/secrets.set` join the `tingra/*` methods (`AppTierMethod.secretsGet`/`secretsSet`, with `SecretParam.name`/`value`): a `name` (`token` — not itself a secret, free to appear in events) and, on a set, a string `value` or `null` to remove. `PlugInConnection.secret(named:)` and `setSecret(_:named:)` are the extension's calls. The plug-in id is the connection's, never a param — the storage rule — so the app files each secret in the engine's own `SecureStorage` (the Keychain, the same access group as the stream keys) under `plugin:<PlugInID>.<name>` (`PlugInSecretStore`), the plug-in's namespace the way a pane id is `<plugInID>.<name>`. A plug-in reads and writes its own secrets and nothing else: never another plug-in's, never a stream key, whose items carry `DestinationStore`'s `destination:` prefix.
+- **A refusal is an answer, not a drop.** The storage scopes swallow a failed app-scope write and report it, because a lost preference is recoverable; a secret the Keychain refused is not, so `secrets.set` (and a refused `get`) answers with a JSON-RPC internal error naming the operation, the name, and the store's own reason — `OSStatus -34018` on an unsigned build, the refusal the stream keys meet — and the app reports `plugin.secrets` under the plug-in domain with the same fields. Neither carries the value: the handler is the one place a value passes through, and it goes into no event, error, or log, EVENTS.md's rule for stream keys applied once more. A missing or empty name, or a value that is not a string, is invalid params.
+- **The Data settings pane tells them apart.** Plug-in secrets share the Keychain service with the stream keys, so the pane gained two kinds beside **Stream Keys**, which now counts only the keys: **Plug-in Secrets** (the `plugin:` items, in the Keychain) and **Plug-in Data** (the app-scoped files under `~/Library/Application Support/Tingra/Plug-ins`, which Remove All Data had until now left behind — it removes the folder, so a first run finds no folder again). Remove All Data clears both.
+- **Notes stores no secret.** It has nothing to keep secret, and a token stored for no one is a token to leak. The seam is proved by the kit's tests over the in-memory transport pair (a round trip by name, a removal, a refused store surfacing as the app's error) and the app's over the handler (the round trip, the narrowing to the connection's plug-in, the invalid params, the refusal and its event without the value) and the store; the real Keychain path is the one `KeychainSecureStorage` already runs for the stream keys, with no new query shape.
+
+Not in this slice: a listing of a plug-in's secret names — a plug-in knows the names it chose, and a listing would be the first method to say anything about a secret not asked for by name; it joins when a plug-in with dynamic names (one token per channel) needs it. The host tier's `PlugInContext` still has no secure-storage seam: no host-only first-party plug-in needs a secret, and the NDI output that first might is a Phase 3 bundle.
+
+Tests: `TingraAppPlugInKit` 39 → 40, the app 622 → 632.
 
 ## Phase 3 — bundles, extensions, and versions
 
@@ -298,7 +311,7 @@ Each follows the established pattern exactly: capability protocol plus registeri
 4. Vocabulary: registries, tiers, panes, commands, descriptors. No "contribution point"; "extension point" only where it names Apple's API. "Tool" stays MCP.
 5. Panes, commands, and settings panes are declared as Codable descriptors in the extension's manifest; the app supplies uniform chrome; placement is a preference, the operator's layout wins.
 6. Plug-in commands live under a "Plug-ins" menu in per-plug-in submenus; the app emits the tap; extensions launch on demand (pane shown, command invoked, declared activation condition).
-7. Storage is project-scoped JSON in the document plus an app-scoped blob, both served by the app; secrets wait for a narrowed Keychain method.
+7. Storage is project-scoped JSON in the document plus an app-scoped blob, both served by the app; secrets wait for a narrowed Keychain method. *(The method landed 2026-09-17: `tingra/secrets.get`/`set`, narrowed to the connection's plug-in under `plugin:<PlugInID>.<name>` in the engine's Keychain-backed store.)*
 8. App-tier registries, the extension host model, and the MCP endpoint live in the app target until a second front end needs them.
 9. Notes, an extension target embedded in Tingra.app, is the first-party proof.
 10. Plug-ins control the engine through the MCP tools (`tools/call`), never a parallel API.

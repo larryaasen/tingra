@@ -126,7 +126,9 @@ final class AppPlugInHost {
         let services = AppPlugInServices(
             eventBus: model.eventBus, tools: model.toolRegistry, resources: model.resourceRegistry, status: status,
             info: DaemonInfo(name: "Tingra", version: version),
-            storage: AppPlugInStorage(model: model, applicationStore: PlugInApplicationStore()))
+            storage: AppPlugInStorage(
+                model: model, applicationStore: PlugInApplicationStore(),
+                secrets: PlugInSecretStore(secureStorage: model.secureStorage)))
         self.services = services
         discoveryTask = Task { await discover(services: services) }
         let busEvents = model.eventBus.events()
@@ -427,7 +429,9 @@ struct AppPlugInServices {
 }
 
 /// The plug-ins' storage behind the method handler: project scope through
-/// the engine model (the document), app scope through the file store.
+/// the engine model (the document), app scope through the file store, and
+/// secrets through the engine's own secure storage, narrowed to the
+/// plug-in's accounts.
 final class AppPlugInStorage: PlugInStoring {
     /// The engine model holding the open project.
     private let model: EngineModel
@@ -435,10 +439,22 @@ final class AppPlugInStorage: PlugInStoring {
     /// The app-scoped file store.
     private let applicationStore: PlugInApplicationStore
 
+    /// The plug-ins' secrets, in the app's Keychain-backed secure storage.
+    private let secrets: PlugInSecretStore
+
     /// Creates the storage.
-    init(model: EngineModel, applicationStore: PlugInApplicationStore) {
+    init(model: EngineModel, applicationStore: PlugInApplicationStore, secrets: PlugInSecretStore) {
         self.model = model
         self.applicationStore = applicationStore
+        self.secrets = secrets
+    }
+
+    func secret(named name: String, plugIn: PlugInID) async throws -> String? {
+        try secrets.secret(named: name, for: plugIn)
+    }
+
+    func setSecret(_ secret: String?, named name: String, plugIn: PlugInID) async throws {
+        try secrets.setSecret(secret, named: name, for: plugIn)
     }
 
     func value(scope: StorageScope, plugIn: PlugInID) async -> JSONValue? {

@@ -953,13 +953,14 @@ internal surface a reader needs to navigate the target instead.
   condition.
 - `AppTierMethod` — the JSON-RPC methods the app tier adds beside MCP's own,
   spelled once for both sides: `tingra/event`, `tingra/storage.get`,
-  `tingra/storage.set` (extension → app) and `tingra/command.perform`,
-  `tingra/activation` (app → extension), with their parameter keys as the
-  nested `EventParam`, `StorageParam`, `CommandParam`, and `ActivationParam`.
+  `tingra/storage.set`, `tingra/secrets.get`, `tingra/secrets.set`
+  (extension → app) and `tingra/command.perform`, `tingra/activation`
+  (app → extension), with their parameter keys as the nested `EventParam`,
+  `StorageParam`, `SecretParam`, `CommandParam`, and `ActivationParam`.
 - `StorageScope` — where a plug-in's stored value lives: `project` (in the
   document — travels and saves with it, dirties it like a layer edit) or
   `application` (this Mac, under the app's Application Support folder); never
-  secrets.
+  secrets, which go through `tingra/secrets.*` to the Keychain.
 - `PlugInConnection` — the extension's end of one connection to the app: an
   MCP client over a `MessageTransport` that runs `initialize`, calls the app's
   tools (`call(_:arguments:)`) and lists them, lists the app's resources
@@ -967,7 +968,10 @@ internal surface a reader needs to navigate the target instead.
   `AsyncStream` yielding the document now and after each updated
   notification, unsubscribing when its consumer stops), files `event`s and
   `error`s on the app's bus under the plug-in's domain, reads and writes
-  project- and application-scoped storage, and answers the two requests the
+  project- and application-scoped storage and the plug-in's own secrets
+  (`secret(named:)`, `setSecret(_:named:)` — Keychain items the app files
+  under the plug-in's id, a refused write thrown rather than dropped), and
+  answers the two requests the
   app makes of it, a command to perform and an activation condition met (the
   `CommandHandler` and `ActivationHandler` it is created with). One per
   `NSXPCConnection` the app opens; the kit creates them, an author receives
@@ -1663,7 +1667,8 @@ surface is:
     is what every link needs (the bus, the tool registry, the status sink and
     identity the session serves, the storage); `AppPlugInStorage` is the
     storage behind the method handler — project scope through `EngineModel`,
-    app scope through `PlugInApplicationStore`; `AppPlugInLink` is one
+    app scope through `PlugInApplicationStore`, secrets through
+    `PlugInSecretStore`; `AppPlugInLink` is one
     plug-in's process and connections — the command connection through
     `AppExtensionProcess` and one per hosted pane, each carrying an
     `MCPSession` with the plug-in's method handler, the plug-in "activated"
@@ -1687,13 +1692,22 @@ surface is:
     plug-in registers normally.
   - `PlugInMethodHandler` — the `SessionMethodHandler` serving the app tier's
     `tingra/*` methods on one plug-in's connection: storage reads and writes
-    against the plug-in's own scopes (the plug-in id is the connection's, never
-    a param, so a plug-in cannot reach another's data) and events landed on
-    the bus under the plug-in's domain. `PlugInStoring` is the storage seam
-    behind it, so the handler is tested with an in-memory store.
+    against the plug-in's own scopes, secret reads and writes against the
+    plug-in's own Keychain items (the plug-in id is the connection's, never
+    a param, so a plug-in cannot reach another's data; a refused secret is
+    answered with an internal error and reported as `plugin.secrets`, neither
+    carrying the value) and events landed on the bus under the plug-in's
+    domain. `PlugInStoring` is the storage-and-secrets seam behind it, so the
+    handler is tested with an in-memory store.
   - `PlugInApplicationStore` — the app-scoped storage on this Mac: one JSON
-    file per plug-in under `~/Library/Application Support/Tingra/Plug-ins/<id>/`;
-    never secrets.
+    file per plug-in under `~/Library/Application Support/Tingra/Plug-ins/<id>/`
+    (`defaultDirectory`); never secrets.
+  - `PlugInSecretStore` — the plug-ins' secrets in the engine's own
+    Keychain-backed `SecureStorage`, each under `plugin:<PlugInID>.<name>`
+    (`account(named:for:)`): read, stored, or removed by name for one
+    plug-in, and counted or cleared as a group (`accounts()`, `removeAll()`)
+    by the `plugin:` prefix (`isPlugInAccount(_:)`), never touching a stream
+    key's `destination:` item.
   - `PanePreferences` — which plug-in panes are open in the trailing sidebar,
     keyed by pane id on the `SidebarPreferences` pattern: an open pane is the
     absence of a value, so a fresh install shows every pane; also whether the
@@ -2028,7 +2042,9 @@ surface is:
   so tests run the real inventory and removal against a temporary directory
   and a throwaway defaults suite. The kinds are a closed list — the project
   document (with its `.unreadable` sibling), the destinations document, the
-  stream keys in the Keychain, the preferences domain, the log session
+  stream keys in the Keychain, the plug-ins' app-scoped files and their
+  Keychain secrets (counted apart from the keys by their `plugin:` accounts),
+  the preferences domain, the log session
   counter, the log file, the recordings, and the snapshots — and every place
   the app persists has an entry or the pane cannot list it. Recordings,
   snapshots, and the log file are inventoried and never removed: the

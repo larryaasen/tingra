@@ -104,6 +104,7 @@ struct AppDataFixture {
             defaults: defaults,
             defaultsDomain: domain,
             secureStorage: secureStorage,
+            plugInDirectory: supportDirectory.appending(path: "Plug-ins"),
             recordingFolder: { folder },
             snapshotFolder: { snapshots }
         )
@@ -288,8 +289,48 @@ struct AppDataStoreTests {
         #expect(!AppDataKind.logFile.isRemovable)
         #expect(
             AppDataKind.allCases.filter(\.isRemovable) == [
-                .project, .destinations, .streamKeys, .preferences, .logSession,
+                .project, .destinations, .streamKeys, .plugInData, .plugInSecrets, .preferences, .logSession,
             ])
+    }
+
+    @Test("plug-in data counts the files under the plug-ins' folder and remove all removes the folder")
+    func plugInDataIsCountedAndRemoved() throws {
+        let fixture = try AppDataFixture()
+        defer { fixture.tearDown() }
+        let empty = try #require(fixture.store.inventory().first { $0.kind == .plugInData })
+        #expect(empty.count == 0)
+        #expect(empty.folderURL == nil)
+        let applicationStore = PlugInApplicationStore(directory: fixture.store.plugInDirectory)
+        try applicationStore.setValue(.object(["fontSize": .int(14)]), for: PlugInID(rawValue: "com.example.a"))
+        try applicationStore.setValue(.int(1), for: PlugInID(rawValue: "com.example.b"))
+
+        let item = try #require(fixture.store.inventory().first { $0.kind == .plugInData })
+        #expect(item.count == 2)
+        #expect((item.byteCount ?? 0) > 0)
+        #expect(item.folderURL == fixture.store.plugInDirectory)
+        #expect(fixture.store.removeAll().isEmpty)
+        #expect(!fixture.exists(fixture.store.plugInDirectory))
+        #expect(!fixture.exists(fixture.supportDirectory))
+    }
+
+    @Test("plug-in secrets are counted apart from the stream keys, and remove all clears both")
+    func plugInSecretsAreCountedApart() throws {
+        let fixture = try AppDataFixture()
+        defer { fixture.tearDown() }
+        try fixture.secureStorage.setSecret("live_a", forAccount: "destination:a")
+        let secrets = PlugInSecretStore(secureStorage: fixture.secureStorage)
+        try secrets.setSecret("t1", named: "token", for: PlugInID(rawValue: "com.example.a"))
+        try secrets.setSecret("t2", named: "token", for: PlugInID(rawValue: "com.example.b"))
+
+        let inventory = fixture.store.inventory()
+        let keys = try #require(inventory.first { $0.kind == .streamKeys })
+        let plugInSecrets = try #require(inventory.first { $0.kind == .plugInSecrets })
+        #expect(keys.count == 1)
+        #expect(plugInSecrets.count == 2)
+        #expect(plugInSecrets.byteCount == nil)
+        #expect(plugInSecrets.folderURL == nil)
+        #expect(fixture.store.removeAll().isEmpty)
+        #expect(try fixture.secureStorage.accounts().isEmpty)
     }
 
     @Test("snapshots count the images in their folder, whatever their names, and are kept by remove all")

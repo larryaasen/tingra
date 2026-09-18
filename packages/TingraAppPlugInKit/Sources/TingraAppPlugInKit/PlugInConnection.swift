@@ -15,7 +15,7 @@ import TingraPlugInKit
 /// The extension's end of one connection to the app: an MCP client over a
 /// ``MessageTransport`` that calls the app's tools, reads and follows the
 /// app's resources, files events on the app's bus, reads and writes the
-/// plug-in's storage, and answers the two requests the app makes of it, a
+/// plug-in's storage and its secrets, and answers the two requests the app makes of it, a
 /// command to perform and an activation condition met (PLUGINS.md, Phase 1,
 /// "`PlugInConnection`"; Phase 2, "seams into the engine").
 ///
@@ -227,6 +227,45 @@ public actor PlugInConnection {
     /// - Throws: ``PlugInConnectionError``.
     public func setApplicationData(_ value: JSONValue?) async throws {
         try await store(value, scope: .application)
+    }
+
+    /// One of the plug-in's own secrets — a service token, a password — or
+    /// nil when none is stored under that name. Secrets live in the app's
+    /// Keychain-backed secure storage, never in either storage scope
+    /// (PLUGINS.md, Decision 7), and the app files each under the plug-in's
+    /// own id, so a plug-in cannot read another's. The value crosses the
+    /// connection and nothing else: neither the kit nor the app writes it to
+    /// a file, an event, or a log.
+    ///
+    /// - Parameter name: The secret's name within the plug-in (`token`);
+    ///   not itself a secret, and free to appear in events.
+    /// - Returns: The secret, or nil.
+    /// - Throws: ``PlugInConnectionError/protocolError(_:)`` when the app's
+    ///   secure store refuses the read — the message names the cause, never
+    ///   a value — or another ``PlugInConnectionError``.
+    public func secret(named name: String) async throws -> String? {
+        let result = try await request(
+            AppTierMethod.secretsGet, params: .object([AppTierMethod.SecretParam.name: .string(name)]))
+        return result[AppTierMethod.SecretParam.value]?.stringValue
+    }
+
+    /// Stores one of the plug-in's own secrets in the app's secure storage;
+    /// nil removes it. A refused write throws rather than dropping the
+    /// value, so a plug-in knows its token was not kept.
+    ///
+    /// - Parameters:
+    ///   - secret: The secret to store, or nil to remove the stored one.
+    ///   - name: The secret's name within the plug-in.
+    /// - Throws: ``PlugInConnectionError/protocolError(_:)`` when the app's
+    ///   secure store refuses the write, or another
+    ///   ``PlugInConnectionError``.
+    public func setSecret(_ secret: String?, named name: String) async throws {
+        _ = try await request(
+            AppTierMethod.secretsSet,
+            params: .object([
+                AppTierMethod.SecretParam.name: .string(name),
+                AppTierMethod.SecretParam.value: secret.map(JSONValue.string) ?? .null,
+            ]))
     }
 
     /// Closes the connection; pending requests end with

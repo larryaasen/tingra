@@ -12,15 +12,31 @@ import Synchronization
 import Testing
 import TingraAppPlugInKit
 import TingraEventBus
+import TingraHost
 import TingraJSONRPC
 import TingraPlugInKit
 
 @testable import TingraApp
 
-/// An in-memory plug-in store, keyed by scope and plug-in.
+/// An in-memory plug-in store, keyed by scope and plug-in, with secrets
+/// keyed by plug-in and name, and a switch that makes the secret store
+/// refuse — the stand-in for a Keychain that rejects the binary.
 private final class MemoryStore: PlugInStoring {
     /// The values.
     let values = Mutex<[String: JSONValue]>([:])
+
+    /// The secrets.
+    let secrets = Mutex<[String: String]>([:])
+
+    /// The error every secret read and write throws, or nil.
+    let secretFailure: SecureStorageError?
+
+    /// Creates a store.
+    ///
+    /// - Parameter secretFailure: An error every secret call throws, or nil.
+    init(secretFailure: SecureStorageError? = nil) {
+        self.secretFailure = secretFailure
+    }
 
     func value(scope: StorageScope, plugIn: PlugInID) async -> JSONValue? {
         values.withLock { $0["\(scope.rawValue):\(plugIn.rawValue)"] }
@@ -28,6 +44,16 @@ private final class MemoryStore: PlugInStoring {
 
     func setValue(_ value: JSONValue?, scope: StorageScope, plugIn: PlugInID) async {
         values.withLock { $0["\(scope.rawValue):\(plugIn.rawValue)"] = value }
+    }
+
+    func secret(named name: String, plugIn: PlugInID) async throws -> String? {
+        if let secretFailure { throw secretFailure }
+        return secrets.withLock { $0["\(plugIn.rawValue).\(name)"] }
+    }
+
+    func setSecret(_ secret: String?, named name: String, plugIn: PlugInID) async throws {
+        if let secretFailure { throw secretFailure }
+        secrets.withLock { $0["\(plugIn.rawValue).\(name)"] = secret }
     }
 }
 
@@ -78,6 +104,95 @@ struct PlugInMethodHandlerTests {
         await #expect(throws: JSONRPCError.self) {
             try await handler.respond(method: AppTierMethod.storageSet, params: nil)
         }
+    }
+
+    @Test("secrets.get answers null before a set, then the secret, and null removes it")
+    func secretRoundTrip() async throws {
+        let store = MemoryStore()
+        let handler = PlugInMethodHandler(plugIn: notes, eventBus: EventBus(), storage: store)
+        let empty = try await handler.respond(method: AppTierMethod.secretsGet, params: .object(["name": "token"]))
+        #expect(empty?["value"] == .null)
+        let set = try await handler.respond(
+            method: AppTierMethod.secretsSet, params: .object(["name": "token", "value": "live_abc"]))
+        #expect(set == .object([:]))
+        let read = try await handler.respond(method: AppTierMethod.secretsGet, params: .object(["name": "token"]))
+        #expect(read?["value"] == .string("live_abc"))
+        #expect(store.secrets.withLock { $0["com.moonwink.tingra.notes.token"] } == "live_abc")
+        _ = try await handler.respond(
+            method: AppTierMethod.secretsSet, params: .object(["name": "token", "value": .null]))
+        let removed = try await handler.respond(method: AppTierMethod.secretsGet, params: .object(["name": "token"]))
+        #expect(removed?["value"] == .null)
+        #expect(store.secrets.withLock { $0.isEmpty })
+    }
+
+    @Test("a secret is filed under the connection's plug-in, so another plug-in's handler cannot read it")
+    func secretsAreNarrowedToThePlugIn() async throws {
+        let store = MemoryStore()
+        let bus = EventBus()
+        let notesHandler = PlugInMethodHandler(plugIn: notes, eventBus: bus, storage: store)
+        let otherHandler = PlugInMethodHandler(
+            plugIn: PlugInID(rawValue: "com.example.tally"), eventBus: bus, storage: store)
+        _ = try await notesHandler.respond(
+            method: AppTierMethod.secretsSet, params: .object(["name": "token", "value": "notes-token"]))
+        let other = try await otherHandler.respond(
+            method: AppTierMethod.secretsGet, params: .object(["name": "token"]))
+        #expect(other?["value"] == .null)
+        let own = try await notesHandler.respond(method: AppTierMethod.secretsGet, params: .object(["name": "token"]))
+        #expect(own?["value"] == .string("notes-token"))
+    }
+
+    @Test("a missing or empty name, or a value that is not a string, throws an invalid-params error")
+    func badSecretParamsThrow() async {
+        let handler = PlugInMethodHandler(plugIn: notes, eventBus: EventBus(), storage: MemoryStore())
+        for params: JSONValue? in [nil, .object([:]), .object(["name": ""]), .object(["name": .int(3)])] {
+            do {
+                _ = try await handler.respond(method: AppTierMethod.secretsGet, params: params)
+                Issue.record("expected an error for \(String(describing: params))")
+            } catch let error as JSONRPCError {
+                #expect(error.code == JSONRPCErrorCode.invalidParams.rawValue)
+            } catch {
+                Issue.record("expected a JSON-RPC error, got \(error)")
+            }
+        }
+        do {
+            _ = try await handler.respond(
+                method: AppTierMethod.secretsSet, params: .object(["name": "token", "value": .int(42)]))
+            Issue.record("expected an error for a non-string value")
+        } catch let error as JSONRPCError {
+            #expect(error.code == JSONRPCErrorCode.invalidParams.rawValue)
+        } catch {
+            Issue.record("expected a JSON-RPC error, got \(error)")
+        }
+    }
+
+    @Test("a refused store answers an internal error and reports plugin.secrets, neither carrying the value")
+    func refusedSecretIsReported() async throws {
+        let bus = EventBus()
+        let handler = PlugInMethodHandler(
+            plugIn: notes, eventBus: bus, storage: MemoryStore(secretFailure: .keychain(-34018)))
+        let events = bus.events()
+        do {
+            _ = try await handler.respond(
+                method: AppTierMethod.secretsSet, params: .object(["name": "token", "value": "live_abc"]))
+            Issue.record("expected the store's refusal to throw")
+        } catch let error as JSONRPCError {
+            #expect(error.code == JSONRPCErrorCode.internalError.rawValue)
+            #expect(error.message.contains("write"))
+            #expect(error.message.contains("token"))
+            #expect(error.message.contains("-34018"))
+            #expect(!error.message.contains("live_abc"))
+        }
+        bus.shutdown()
+        var received: [EventBusEvent] = []
+        for await event in events { received.append(event) }
+        let reported = try #require(received.first { $0.name == "plugin.secrets" })
+        #expect(reported.group == .error)
+        #expect(reported.domain == .plugIn)
+        #expect(reported.params?["id"] == .string("com.moonwink.tingra.notes"))
+        #expect(reported.params?["name"] == .string("token"))
+        #expect(reported.params?["operation"] == .string("write"))
+        let values = reported.params?.values.map { "\($0)" } ?? []
+        #expect(!values.contains { $0.contains("live_abc") })
     }
 
     @Test("a method that is not the handler's returns nil")

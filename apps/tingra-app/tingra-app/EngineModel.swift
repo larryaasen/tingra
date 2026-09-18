@@ -1127,7 +1127,11 @@ final class EngineModel {
     /// be decided by the order of an XML array — the way the two would drift
     /// the moment a second group is ever added. ``DestinationStore`` takes
     /// the same group by default, so both writers agree.
-    @ObservationIgnored private let secureStorage: any SecureStorage = KeychainSecureStorage(
+    ///
+    /// Internal rather than private since 2026-09-17, so the app tier's
+    /// plug-in secrets (`PlugInSecretStore`) are filed in the same store and
+    /// the same access group as the keys, from one construction.
+    @ObservationIgnored let secureStorage: any SecureStorage = KeychainSecureStorage(
         accessGroup: KeychainSecureStorage.sharedAccessGroup())
 
     /// The operator's saved destinations (DESTINATIONS.md). Operator-global,
@@ -1339,6 +1343,7 @@ final class EngineModel {
             defaults: .standard,
             defaultsDomain: Bundle.main.bundleIdentifier ?? ProcessInfo.processInfo.processName,
             secureStorage: secureStorage,
+            plugInDirectory: PlugInApplicationStore.defaultDirectory,
             recordingFolder: { [recordingPreferences] in recordingPreferences.folder },
             snapshotFolder: { [snapshotPreferences] in snapshotPreferences.folder }
         ),

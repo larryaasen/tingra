@@ -32,8 +32,17 @@ enum AppDataKind: String, CaseIterable, Identifiable, Sendable {
     case destinations
 
     /// The stream keys, one Keychain item per destination that has one
-    /// (`SecureStorage`).
+    /// (`SecureStorage`) — the items that are not a plug-in's.
     case streamKeys
+
+    /// The app-scoped files app-tier plug-ins keep on this Mac, one folder
+    /// per plug-in under Application Support (``PlugInApplicationStore``).
+    case plugInData
+
+    /// The secrets app-tier plug-ins keep in the Keychain, one item per
+    /// secret under the plug-in's own account (``PlugInSecretStore``),
+    /// counted apart from the stream keys they share the store with.
+    case plugInSecrets
 
     /// Machine-local preferences in the app's `UserDefaults` domain:
     /// appearance, the status bar, the monitor output, the recording folder
@@ -78,7 +87,7 @@ enum AppDataKind: String, CaseIterable, Identifiable, Sendable {
     var isRemovable: Bool {
         switch self {
         case .recordings, .snapshots, .logFile: false
-        case .project, .destinations, .streamKeys, .preferences, .logSession: true
+        case .project, .destinations, .streamKeys, .plugInData, .plugInSecrets, .preferences, .logSession: true
         }
     }
 }
@@ -170,8 +179,12 @@ struct AppDataStore {
     /// bundle identifier in production, a throwaway suite name in tests.
     let defaultsDomain: String
 
-    /// The secret store holding the stream keys.
+    /// The secret store holding the stream keys and the plug-ins' secrets.
     let secureStorage: any SecureStorage
+
+    /// The folder app-tier plug-ins' app-scoped files live in, one subfolder
+    /// per plug-in.
+    let plugInDirectory: URL
 
     /// The recordings folder, read at inventory time because the operator can
     /// change it in the recording panel.
@@ -189,7 +202,9 @@ struct AppDataStore {
     ///   - logFileURL: The log file.
     ///   - defaults: The preferences.
     ///   - defaultsDomain: The domain those preferences persist under.
-    ///   - secureStorage: The secret store holding the stream keys.
+    ///   - secureStorage: The secret store holding the stream keys and the
+    ///     plug-ins' secrets.
+    ///   - plugInDirectory: The folder plug-ins' app-scoped files live in.
     ///   - recordingFolder: The recordings folder, read at inventory time.
     ///   - snapshotFolder: The snapshots folder, read at inventory time.
     init(
@@ -200,6 +215,7 @@ struct AppDataStore {
         defaults: UserDefaults,
         defaultsDomain: String,
         secureStorage: any SecureStorage,
+        plugInDirectory: URL,
         recordingFolder: @escaping () -> URL,
         snapshotFolder: @escaping () -> URL
     ) {
@@ -210,6 +226,7 @@ struct AppDataStore {
         self.defaults = defaults
         self.defaultsDomain = defaultsDomain
         self.secureStorage = secureStorage
+        self.plugInDirectory = plugInDirectory
         self.recordingFolder = recordingFolder
         self.snapshotFolder = snapshotFolder
     }
@@ -242,9 +259,20 @@ struct AppDataStore {
             case .streamKeys:
                 // A store that refuses the read counts as holding nothing
                 // here; the removal path is the one that reports a refusal.
+                let accounts = (try? secureStorage.accounts()) ?? []
                 return AppDataItem(
                     kind: kind,
-                    count: (try? secureStorage.accounts())?.count ?? 0,
+                    count: accounts.filter { !PlugInSecretStore.isPlugInAccount($0) }.count,
+                    byteCount: nil,
+                    location: String(localized: "Keychain", comment: "Data settings: where the stream keys are stored"),
+                    folderURL: nil
+                )
+            case .plugInData:
+                return fileItem(kind, files: Self.regularFiles(under: plugInDirectory), folder: plugInDirectory)
+            case .plugInSecrets:
+                return AppDataItem(
+                    kind: kind,
+                    count: (try? PlugInSecretStore(secureStorage: secureStorage).accounts())?.count ?? 0,
                     byteCount: nil,
                     location: String(localized: "Keychain", comment: "Data settings: where the stream keys are stored"),
                     folderURL: nil
@@ -305,7 +333,14 @@ struct AppDataStore {
         case .destinations:
             try Self.removeIfPresent(destinationsFileURL)
         case .streamKeys:
+            // The whole of Tingra's items in one call, orphans included — so
+            // the plug-ins' secrets go with the keys here, and their own
+            // kind below finds nothing left to remove when both run.
             try secureStorage.removeAllSecrets()
+        case .plugInData:
+            try Self.removeIfPresent(plugInDirectory)
+        case .plugInSecrets:
+            try PlugInSecretStore(secureStorage: secureStorage).removeAll()
         case .preferences:
             defaults.removePersistentDomain(forName: defaultsDomain)
         case .logSession:
@@ -350,6 +385,25 @@ struct AppDataStore {
             location: Self.abbreviatedPath(of: folder),
             folderURL: folderExists ? folder : nil
         )
+    }
+
+    /// Every regular file under a folder, at any depth — the plug-ins'
+    /// folder holds one subfolder per plug-in. A folder not on disk lists
+    /// nothing.
+    ///
+    /// - Parameter folder: The folder to walk.
+    /// - Returns: The files, in the walk's order.
+    static func regularFiles(under folder: URL) -> [URL] {
+        guard
+            let enumerator = FileManager.default.enumerator(
+                at: folder, includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles])
+        else { return [] }
+        var files: [URL] = []
+        for case let url as URL in enumerator {
+            let values = try? url.resourceValues(forKeys: [.isRegularFileKey])
+            if values?.isRegularFile == true { files.append(url) }
+        }
+        return files
     }
 
     /// A file's size in bytes, or `nil` when there is no such file.

@@ -32,6 +32,21 @@ public enum AppTierMethod {
     /// (JSON `null` clears). Result: `{}`.
     public static let storageSet = "tingra/storage.set"
 
+    /// Extension → app request: read one of the plug-in's own secrets from
+    /// the app's Keychain-backed secure storage — the narrowed method
+    /// PLUGINS.md's Decision 7 deferred, keyed by the connection's plug-in
+    /// so a plug-in reads its own secrets and no other's. Params:
+    /// ``SecretParam/name``. Result: `{"value": …}`, the secret as a string,
+    /// or JSON `null` when none is stored under that name.
+    public static let secretsGet = "tingra/secrets.get"
+
+    /// Extension → app request: store or remove one of the plug-in's own
+    /// secrets. Params: ``SecretParam/name``, ``SecretParam/value`` (a
+    /// string; JSON `null` removes). Result: `{}`. A store that refuses the
+    /// write answers with an error, never a silent drop — a plug-in must
+    /// know its token was not kept.
+    public static let secretsSet = "tingra/secrets.set"
+
     /// App → extension request: perform a declared command. Params:
     /// ``CommandParam/command``. Result: `{}`.
     public static let commandPerform = "tingra/command.perform"
@@ -61,6 +76,17 @@ public enum AppTierMethod {
         public static let scope = "scope"
 
         /// The value to store, or the value read.
+        public static let value = "value"
+    }
+
+    /// The parameter keys of ``secretsGet`` and ``secretsSet``.
+    public enum SecretParam {
+        /// The secret's name within the plug-in (`token`): not itself a
+        /// secret, and free to appear in events.
+        public static let name = "name"
+
+        /// The secret to store (a string; `null` removes), or the secret
+        /// read.
         public static let value = "value"
     }
 
