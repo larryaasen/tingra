@@ -8,6 +8,7 @@
 //
 
 import Foundation
+import IOSurface
 import TingraEventBus
 import TingraHost
 import TingraPlugInKit
@@ -126,6 +127,21 @@ public actor MCPSession {
     /// resource subscription, and closes the transport.
     public func run() async {
         eventBus.event("mcp.session.opened", domain: .control)
+        let transport = self.transport
+        await methods?.sessionOpened(
+            notifier: SessionNotifier { method, params, surface in
+                let notification = JSONRPCNotification(method: method, params: params)
+                guard let payload = try? MessageCoder.encode(notification) else { return }
+                guard let surface else {
+                    try? await transport.writeMessage(payload)
+                    return
+                }
+                // A surface crosses only a transport that can carry one; on
+                // any other the notification would describe pixels the peer
+                // never received, so nothing is sent at all.
+                guard let carrier = transport as? any SurfaceMessageTransport else { return }
+                try? await carrier.writeMessage(payload, surface: surface)
+            })
         while !Task.isCancelled {
             let payload: Data?
             do {
@@ -144,6 +160,7 @@ public actor MCPSession {
         notifierTask?.cancel()
         for task in subscriptions.values { task.cancel() }
         subscriptions = [:]
+        await methods?.sessionClosed()
         await transport.close()
         endPending()
         eventBus.event("mcp.session.closed", domain: .control)
@@ -498,6 +515,68 @@ public protocol SessionMethodHandler: Sendable {
     ///   - method: The method name.
     ///   - params: The params, if any.
     func handleNotification(method: String, params: JSONValue?) async
+
+    /// The session's run began: `notifier` is how the handler sends the
+    /// peer a notification of its own from here on — the app tier's
+    /// `tingra/meters` and `tingra/frame` (PLUGINS.md, Decision 18 and
+    /// "Frames across the boundary"). By default, nothing: a
+    /// handler that only answers needs no notifier.
+    ///
+    /// - Parameter notifier: Sends a notification over this session.
+    func sessionOpened(notifier: SessionNotifier) async
+
+    /// The session's run ended — the peer closed, the read threw, or the
+    /// task was cancelled: whatever the handler started for this session
+    /// ends here. By default, nothing.
+    func sessionClosed() async
+}
+
+extension SessionMethodHandler {
+    public func sessionOpened(notifier: SessionNotifier) async {}
+
+    public func sessionClosed() async {}
+}
+
+/// How a ``SessionMethodHandler`` sends its session's peer a notification:
+/// handed over by ``SessionMethodHandler/sessionOpened(notifier:)``, good
+/// until the session closes, after which a send is dropped like any write
+/// to a peer that went away. It holds the session's transport and nothing
+/// else, so a handler keeping it does not keep the session alive.
+public struct SessionNotifier: Sendable {
+    /// Writes one notification, with the surface attached to it, if any.
+    private let send: @Sendable (String, JSONValue?, IOSurface?) async -> Void
+
+    /// Creates a notifier over a sending closure — the session's own, or a
+    /// test's recorder.
+    ///
+    /// - Parameter send: Writes one notification: the method, its params,
+    ///   and the surface to attach, if any.
+    public init(send: @escaping @Sendable (String, JSONValue?, IOSurface?) async -> Void) {
+        self.send = send
+    }
+
+    /// Sends the peer one notification. A write the transport refuses is
+    /// dropped: the session ends on its next read.
+    ///
+    /// - Parameters:
+    ///   - method: The method name.
+    ///   - params: The params, if any.
+    public func notify(_ method: String, params: JSONValue?) async {
+        await send(method, params, nil)
+    }
+
+    /// Sends the peer one notification with a surface attached — pixels in
+    /// shared memory, handed over beside the JSON that describes them
+    /// (`SurfaceMessageTransport`). Over a transport that cannot carry a
+    /// surface — the daemon's socket — nothing is sent.
+    ///
+    /// - Parameters:
+    ///   - method: The method name.
+    ///   - params: The params describing the surface.
+    ///   - surface: The surface to hand the peer.
+    public func notify(_ method: String, params: JSONValue?, surface: IOSurface) async {
+        await send(method, params, surface)
+    }
 }
 
 /// What a request the session sends to its peer can get wrong.

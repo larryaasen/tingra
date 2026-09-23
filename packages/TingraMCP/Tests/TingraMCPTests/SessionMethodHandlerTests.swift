@@ -8,6 +8,7 @@
 //
 
 import Foundation
+import IOSurface
 import Synchronization
 import Testing
 import TingraEventBus
@@ -33,6 +34,20 @@ private final class RecordingHandler: SessionMethodHandler {
 
     func handleNotification(method: String, params: JSONValue?) async {
         notifications.withLock { $0.append(method) }
+    }
+
+    /// The notifier the session handed over, once its run began.
+    let notifier = Mutex<SessionNotifier?>(nil)
+
+    /// Whether the session reported its run ended.
+    let isClosed = Mutex(false)
+
+    func sessionOpened(notifier: SessionNotifier) async {
+        self.notifier.withLock { $0 = notifier }
+    }
+
+    func sessionClosed() async {
+        isClosed.withLock { $0 = true }
     }
 }
 
@@ -128,6 +143,39 @@ struct SessionMethodHandlerTests {
         transport.finishInbound()
         await session.run()
         #expect(handler.notifications.withLock { $0 } == ["tingra/event"])
+        bus.shutdown()
+        await statusTask.value
+    }
+
+    @Test("the handler is handed a notifier that writes to the peer, and is told when the session closes")
+    func handlerNotifies() async throws {
+        let handler = RecordingHandler()
+        let (transport, session, bus, statusSink) = makeSession(handler: handler)
+        let statusTask = bus.attach(statusSink)
+        let running = Task { await session.run() }
+        var notifier = handler.notifier.withLock { $0 }
+        for _ in 0..<200 where notifier == nil {
+            try await Task.sleep(for: .milliseconds(5))
+            notifier = handler.notifier.withLock { $0 }
+        }
+        #expect(!handler.isClosed.withLock { $0 })
+        let handed = try #require(notifier)
+        await handed.notify("tingra/meters", params: .object(["time": .double(1.5)]))
+        let notification = try decode(try #require(transport.writtenLines.first))
+        #expect(notification["method"] == .string("tingra/meters"))
+        #expect(notification["id"] == nil)
+        #expect(notification["params"]?["time"] == .double(1.5))
+
+        // A surface rides beside its notification on a transport that
+        // carries one.
+        let surface = try #require(
+            IOSurface(properties: [.width: 16, .height: 9, .bytesPerElement: 4, .pixelFormat: 0x4247_5241]))
+        await handed.notify("tingra/frame", params: .object(["bus": "program"]), surface: surface)
+        #expect(transport.writtenLines.count == 2)
+        #expect(try decode(try #require(transport.writtenLines.last))["method"] == .string("tingra/frame"))
+        transport.finishInbound()
+        await running.value
+        #expect(handler.isClosed.withLock { $0 })
         bus.shutdown()
         await statusTask.value
     }

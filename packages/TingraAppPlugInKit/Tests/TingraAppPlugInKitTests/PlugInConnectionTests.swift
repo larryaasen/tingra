@@ -8,6 +8,7 @@
 //
 
 import Foundation
+import IOSurface
 import Synchronization
 import Testing
 import TingraEventBus
@@ -39,8 +40,26 @@ struct PlugInConnectionTests {
         /// is.
         let secrets = Mutex<[String: String]>([:])
 
+        /// The status items' texts by item id; an item of `undeclared` is
+        /// answered with invalid params, the way the app answers an item
+        /// the manifest does not declare.
+        let statusTexts = Mutex<[String: String]>([:])
+
         /// Every request received, by method.
         let requests = Mutex<[String]>([])
+
+        /// Whether this connection is subscribed to the meters.
+        let isMeterSubscribed = Mutex(false)
+
+        /// The buses a frame was demanded of, in order; a bus of `refused`
+        /// cannot be spelled by the kit, so ``refusesFrames`` stands in.
+        let frameDemands = Mutex<[String]>([])
+
+        /// Whether a frame demand is answered with an error.
+        let refusesFrames = Mutex(false)
+
+        /// Whether a meters subscription is answered with an error.
+        let refusesMeters = Mutex(false)
 
         /// Responses to the app's own requests, by id.
         let answers = AsyncQueue<JSONValue>()
@@ -167,9 +186,54 @@ struct PlugInConnectionTests {
                 }
                 secrets.withLock { $0[name] = params?["value"]?.stringValue }
                 return .success(id: id, result: .object([:]))
+            case AppTierMethod.frameNext:
+                if refusesFrames.withLock({ $0 }) {
+                    return .failure(id: id, error: JSONRPCError(code: .invalidParams, message: "No such bus."))
+                }
+                frameDemands.withLock { $0.append(params?["bus"]?.stringValue ?? "") }
+                return .success(id: id, result: .object([:]))
+            case AppTierMethod.metersSubscribe:
+                if refusesMeters.withLock({ $0 }) {
+                    return .failure(id: id, error: JSONRPCError(code: .internalError, message: "No mixer."))
+                }
+                isMeterSubscribed.withLock { $0 = true }
+                return .success(id: id, result: .object([:]))
+            case AppTierMethod.metersUnsubscribe:
+                isMeterSubscribed.withLock { $0 = false }
+                return .success(id: id, result: .object([:]))
+            case AppTierMethod.statusItemSet:
+                let item = params?["item"]?.stringValue ?? ""
+                guard item != "undeclared" else {
+                    return .failure(
+                        id: id,
+                        error: JSONRPCError(code: .invalidParams, message: "No status item 'undeclared' is declared."))
+                }
+                statusTexts.withLock { $0[item] = params?["text"]?.stringValue }
+                return .success(id: id, result: .object([:]))
             default:
                 return .failure(id: id, error: JSONRPCError(code: .methodNotFound, message: "Unknown '\(method)'."))
             }
+        }
+
+        /// Sends the extension one frame, its surface beside the JSON.
+        func sendFrame(_ frame: BusFrame) async throws {
+            let notification = JSONValue.object([
+                "jsonrpc": .string("2.0"), "method": .string(AppTierMethod.frame), "params": frame.jsonValue,
+            ])
+            let payload = try JSONEncoder().encode(notification)
+            if let surface = frame.surface {
+                try await transport.writeMessage(payload, surface: surface)
+            } else {
+                try await transport.writeMessage(payload)
+            }
+        }
+
+        /// Sends the extension one window of meter levels.
+        func sendMeters(_ levels: MeterLevels) async throws {
+            let notification = JSONValue.object([
+                "jsonrpc": .string("2.0"), "method": .string(AppTierMethod.meters), "params": levels.jsonValue,
+            ])
+            try await transport.writeMessage(try JSONEncoder().encode(notification))
         }
 
         /// Tells the extension a resource changed.
@@ -343,6 +407,162 @@ struct PlugInConnectionTests {
         await connection.close()
     }
 
+    /// A small BGRA surface, the kind a program frame is backed by.
+    private func makeSurface() throws -> IOSurface {
+        try #require(
+            IOSurface(properties: [.width: 16, .height: 9, .bytesPerElement: 4, .pixelFormat: 0x4247_5241]))
+    }
+
+    @Test("following a bus demands a frame, yields the app's own surface, and each arrival demands the next")
+    func followsFrames() async throws {
+        let (connection, app) = makePair()
+        var iterator = connection.frames(.program).makeAsyncIterator()
+        await eventually { app.frameDemands.withLock { $0 } == ["program"] }
+
+        let surface = try makeSurface()
+        try await app.sendFrame(BusFrame(bus: .program, surface: surface, time: 3.5))
+        let frame = await iterator.next()
+        #expect(frame?.surface === surface)
+        #expect(frame?.bus == .program)
+        #expect(frame?.time == 3.5)
+        await eventually { app.frameDemands.withLock { $0.count } == 2 }
+
+        // An emptied bus arrives as a frame without pixels.
+        try await app.sendFrame(BusFrame(bus: .program, surface: nil, time: 0))
+        let empty = await iterator.next()
+        #expect(empty != nil)
+        #expect(empty?.surface == nil)
+        await connection.close()
+    }
+
+    @Test("a frame that arrives after the last follower stopped demands no other")
+    func frameDemandLapses() async throws {
+        let (connection, app) = makePair()
+        let following = Task {
+            for await _ in connection.frames(.preview) {}
+        }
+        await eventually { app.frameDemands.withLock { $0 } == ["preview"] }
+        following.cancel()
+        await following.value
+        try await Task.sleep(for: .milliseconds(20))
+        try await app.sendFrame(BusFrame(bus: .preview, surface: try makeSurface(), time: 1))
+        try await Task.sleep(for: .milliseconds(30))
+        #expect(app.frameDemands.withLock { $0 } == ["preview"])
+        await connection.close()
+    }
+
+    @Test("a frame of another bus, or one claiming pixels it did not bring, reaches no follower")
+    func strayFramesIgnored() async throws {
+        let (connection, app) = makePair()
+        var iterator = connection.frames(.program).makeAsyncIterator()
+        await eventually { app.frameDemands.withLock { $0 } == ["program"] }
+        try await app.sendFrame(BusFrame(bus: .preview, surface: try makeSurface(), time: 1))
+        try await app.transport.writeMessage(
+            Data(#"{"jsonrpc":"2.0","method":"tingra/frame","params":{"bus":"program","time":2,"empty":false}}"#.utf8))
+        let surface = try makeSurface()
+        try await app.sendFrame(BusFrame(bus: .program, surface: surface, time: 3))
+        let frame = await iterator.next()
+        #expect(frame?.time == 3)
+        #expect(frame?.surface === surface)
+        await connection.close()
+    }
+
+    @Test("a frame demand the app answers with an error ends the stream")
+    func frameDemandRefused() async throws {
+        let (connection, app) = makePair()
+        app.refusesFrames.withLock { $0 = true }
+        var iterator = connection.frames(.program).makeAsyncIterator()
+        #expect(await iterator.next() == nil)
+        await connection.close()
+    }
+
+    @Test("a frame's JSON names the bus, the time, and whether it is empty, and reads back with its surface")
+    func frameJSON() throws {
+        let surface = try makeSurface()
+        let frame = BusFrame(bus: .preview, surface: surface, time: 9.25)
+        #expect(
+            frame.jsonValue == .object(["bus": .string("preview"), "time": .double(9.25), "empty": .bool(false)]))
+        let read = try #require(BusFrame(jsonValue: frame.jsonValue, surface: surface))
+        #expect(read.bus == .preview)
+        #expect(read.time == 9.25)
+        #expect(read.surface === surface)
+        let empty = BusFrame(bus: .preview, surface: nil, time: 0)
+        #expect(empty.jsonValue["empty"] == .bool(true))
+        #expect(BusFrame(jsonValue: empty.jsonValue, surface: nil)?.surface == nil)
+        // Marked empty yet carrying pixels, an unknown bus, no bus at all.
+        #expect(BusFrame(jsonValue: empty.jsonValue, surface: surface) == nil)
+        #expect(BusFrame(jsonValue: .object(["bus": "multiview"]), surface: surface) == nil)
+        #expect(BusFrame(jsonValue: nil, surface: surface) == nil)
+    }
+
+    /// One window of levels: a hot microphone and a quieter master.
+    private var levels: MeterLevels {
+        MeterLevels(
+            time: 12.5, strips: [InputID(rawValue: "mic"): MeterLevel(peak: 0.9, rms: 0.25)],
+            masterLeft: MeterLevel(peak: 0.5, rms: 0.125), masterRight: .floor)
+    }
+
+    @Test("following the meters subscribes, yields each window's levels, and stopping unsubscribes")
+    func followsMeters() async throws {
+        let (connection, app) = makePair()
+        var iterator = connection.meters().makeAsyncIterator()
+        await eventually { app.isMeterSubscribed.withLock { $0 } }
+        #expect(app.requests.withLock { $0 } == [AppTierMethod.metersSubscribe])
+
+        try await app.sendMeters(levels)
+        #expect(await iterator.next() == levels)
+
+        let waiting = Task { await iterator.next() }
+        try await Task.sleep(for: .milliseconds(20))
+        waiting.cancel()
+        _ = await waiting.value
+        await eventually { !app.isMeterSubscribed.withLock { $0 } }
+        #expect(app.requests.withLock { $0 }.last == AppTierMethod.metersUnsubscribe)
+        await connection.close()
+    }
+
+    @Test("two followers of the meters share one subscription, which ends with the last of them")
+    func metersFollowersShareSubscription() async throws {
+        let (connection, app) = makePair()
+        var first = connection.meters().makeAsyncIterator()
+        var second = connection.meters().makeAsyncIterator()
+        await eventually { app.isMeterSubscribed.withLock { $0 } }
+        try await Task.sleep(for: .milliseconds(20))
+        try await app.sendMeters(levels)
+        #expect(await first.next() == levels)
+        #expect(await second.next() == levels)
+        #expect(app.requests.withLock { $0 } == [AppTierMethod.metersSubscribe])
+
+        let stopping = Task { await first.next() }
+        try await Task.sleep(for: .milliseconds(20))
+        stopping.cancel()
+        _ = await stopping.value
+        try await Task.sleep(for: .milliseconds(20))
+        #expect(app.isMeterSubscribed.withLock { $0 })
+        await connection.close()
+    }
+
+    @Test("a meters subscription the app answers with an error ends the stream")
+    func metersSubscriptionRefused() async throws {
+        let (connection, app) = makePair()
+        app.refusesMeters.withLock { $0 = true }
+        var iterator = connection.meters().makeAsyncIterator()
+        #expect(await iterator.next() == nil)
+        await connection.close()
+    }
+
+    @Test("a malformed meters notification is dropped and the next window still arrives")
+    func malformedMetersDropped() async throws {
+        let (connection, app) = makePair()
+        var iterator = connection.meters().makeAsyncIterator()
+        await eventually { app.isMeterSubscribed.withLock { $0 } }
+        try await app.transport.writeMessage(
+            Data(#"{"jsonrpc":"2.0","method":"tingra/meters","params":{"time":1}}"#.utf8))
+        try await app.sendMeters(levels)
+        #expect(await iterator.next() == levels)
+        await connection.close()
+    }
+
     @Test("project and application storage round-trip, and nil clears")
     func storesValues() async throws {
         let (connection, app) = makePair()
@@ -388,6 +608,27 @@ struct PlugInConnectionTests {
             }
             #expect(protocolError.code == JSONRPCErrorCode.internalError.rawValue)
             #expect(protocolError.message.contains("-34018"))
+        }
+        await connection.close()
+    }
+
+    @Test("a status item takes a text, nil removes it, and an undeclared item throws the app's error")
+    func setsStatusText() async throws {
+        let (connection, app) = makePair()
+        let link = StatusItemID(rawValue: "link")
+        try await connection.setStatusText("Connected", for: link)
+        #expect(app.statusTexts.withLock { $0["link"] } == "Connected")
+        try await connection.setStatusText(nil, for: link)
+        #expect(app.statusTexts.withLock { $0["link"] } == nil)
+        do {
+            try await connection.setStatusText("x", for: StatusItemID(rawValue: "undeclared"))
+            Issue.record("an undeclared item should throw")
+        } catch let error as PlugInConnectionError {
+            guard case .protocolError(let protocolError) = error else {
+                Issue.record("expected the app's protocol error, got \(error)")
+                return
+            }
+            #expect(protocolError.code == JSONRPCErrorCode.invalidParams.rawValue)
         }
         await connection.close()
     }

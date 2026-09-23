@@ -9,6 +9,7 @@
 
 import CoreMedia
 import CoreVideo
+import Foundation
 import Synchronization
 import TingraPlugInKit
 
@@ -25,7 +26,25 @@ import TingraPlugInKit
 /// the buffer travels inside a ``CapturedFrame`` — the codebase's one
 /// sanctioned carrier — and the class is `Sendable` by virtue of the lock,
 /// the same reasoning as the frame itself.
+///
+/// The app's own monitors *sample* the relay; a plug-in's monitor cannot —
+/// it is in another process — so the relay also **numbers every change**
+/// and lets a caller wait for the one after a number it has seen
+/// (``next(after:)``): how a frame reaches an app-tier plug-in the moment
+/// it exists, with nobody polling (PLUGINS.md, "Frames across the
+/// boundary"). With nobody waiting, a stored frame costs one empty
+/// dictionary more than it did.
 nonisolated final class ProgramFrameRelay: MonitorFrameSource, Sendable {
+    /// One numbered state of the relay: what ``next(after:)`` returns.
+    struct Update: Sendable {
+        /// The change's number; pass it back to wait for the next.
+        let sequence: UInt64
+
+        /// The frame held after the change, or nil when the change emptied
+        /// the relay.
+        let frame: CapturedFrame?
+    }
+
     /// What the lock guards: the held frame, and whether the relay is
     /// taking frames at all.
     private struct State {
@@ -38,6 +57,24 @@ nonisolated final class ProgramFrameRelay: MonitorFrameSource, Sendable {
         /// rendered just before preview was cleared cannot repaint the
         /// monitor the clear just emptied.
         var isAccepting = true
+
+        /// How many times ``frame`` has changed — stored, replaced, or
+        /// emptied. `0` until the first.
+        var sequence: UInt64 = 0
+
+        /// The callers suspended in ``next(after:)``, each woken by the
+        /// next change.
+        var waiters: [UUID: AsyncStream<Void>.Continuation] = [:]
+
+        /// Replaces the held frame, numbering the change, and hands back
+        /// the waiters to wake — outside the lock.
+        mutating func change(to frame: CapturedFrame?) -> [AsyncStream<Void>.Continuation] {
+            self.frame = frame
+            sequence += 1
+            guard !waiters.isEmpty else { return [] }
+            defer { waiters = [:] }
+            return Array(waiters.values)
+        }
     }
 
     /// The guarded state.
@@ -53,17 +90,21 @@ nonisolated final class ProgramFrameRelay: MonitorFrameSource, Sendable {
     /// clearing and for tests, the drain uses ``store(_:)``.
     var latest: CVPixelBuffer? {
         get { state.withLock { $0.frame?.pixelBuffer } }
-        set { state.withLock { $0.frame = newValue.map { CapturedFrame(pixelBuffer: $0, presentationTime: .zero) } } }
+        set {
+            let frame = newValue.map { CapturedFrame(pixelBuffer: $0, presentationTime: .zero) }
+            wake(state.withLock { $0.change(to: frame) })
+        }
     }
 
     /// Keeps `frame` as the latest, unless the relay is not accepting.
     ///
     /// - Parameter frame: The frame the bus just yielded.
     func store(_ frame: CapturedFrame) {
-        state.withLock { state in
-            guard state.isAccepting else { return }
-            state.frame = frame
-        }
+        wake(
+            state.withLock { state in
+                guard state.isAccepting else { return [] }
+                return state.change(to: frame)
+            })
     }
 
     /// Turns frame intake on or off; turning it off also empties the relay.
@@ -72,9 +113,44 @@ nonisolated final class ProgramFrameRelay: MonitorFrameSource, Sendable {
     /// - Parameter isAccepting: Whether frames handed to ``store(_:)`` are
     ///   kept.
     func setAccepting(_ isAccepting: Bool) {
-        state.withLock { state in
-            state.isAccepting = isAccepting
-            if !isAccepting { state.frame = nil }
+        wake(
+            state.withLock { state in
+                state.isAccepting = isAccepting
+                guard !isAccepting, state.frame != nil else { return [] }
+                return state.change(to: nil)
+            })
+    }
+
+    /// The relay's state once it has changed past `sequence`: at once when
+    /// it already has, otherwise as soon as the next frame is stored or the
+    /// relay is emptied. Whatever changed in between is skipped — the
+    /// newest wins, the monitors' rule.
+    ///
+    /// - Parameter sequence: The last change the caller saw; `0` for none.
+    /// - Returns: The update, or nil when the calling task was cancelled
+    ///   while waiting.
+    func next(after sequence: UInt64) async -> Update? {
+        while !Task.isCancelled {
+            let waiter = UUID()
+            let (signal, continuation) = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
+            let ready = state.withLock { state -> Update? in
+                guard state.sequence <= sequence else { return Update(sequence: state.sequence, frame: state.frame) }
+                state.waiters[waiter] = continuation
+                return nil
+            }
+            if let ready { return ready }
+            // Ends on the wake-up, or on cancellation.
+            for await _ in signal { break }
+            state.withLock { $0.waiters[waiter] = nil }
+        }
+        return nil
+    }
+
+    /// Wakes the callers a change found waiting.
+    private func wake(_ waiters: [AsyncStream<Void>.Continuation]) {
+        for waiter in waiters {
+            waiter.yield(())
+            waiter.finish()
         }
     }
 }

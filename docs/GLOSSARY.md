@@ -64,7 +64,7 @@ A project is the saved file for an entire show. A project contains presets. A pr
 
 **Sidebar** — one of the main window's side containers, named for where it sits: the **leading sidebar** on the left (presets, shots, inputs, media, destinations) and the **trailing sidebar** on the right (the inspector over the Library). A sidebar is a generic container; the **panes** inside it are whatever the window puts there, and a pane may move from one sidebar to another — or to a bottom sidebar, should one arrive — without changing what it is (Larry, 2026-09-10).
 
-**Status bar** — the strip across the bottom of the main window and the multiview window saying whether the program is being **recorded** and whether it is being **streamed**, with the recording's elapsed time and the stream's delivery rate. It reports and never acts: every control that starts or stops either one lives in its own panel. Shown by default; the View menu (⌘/) and General settings both hide it.
+**Status bar** — the strip across the bottom of the main window and the multiview window saying whether the program is being **recorded** and whether it is being **streamed**, with the recording's elapsed time and the stream's delivery rate. It reports and never acts: every control that starts or stops either one lives in its own panel. Shown by default; the View menu (⌘/) and General settings both hide it. A plug-in's **status items** ride at its trailing end.
 
 **Master** — the program mix's final stage: what leaves the mixer once every channel strip has contributed. V1 has one bus, so the master *is* the program mix; the master meter reads it post-fader.
 
@@ -148,7 +148,13 @@ A project is the saved file for an entire show. A project contains presets. A pr
 
 **Command** — a menu item an app-tier plug-in contributes: always under the **Plug-ins** menu, in a submenu named for its plug-in, rendered from its descriptor before the plug-in has run. Invoking it launches the plug-in if it is not running; the app emits the `tap` for the click, then forwards the command, and the command's own effect is the plug-in's event.
 
-**Descriptor** — the static, `Codable` declaration of a pane, a command, a keyboard shortcut, or a settings pane in a plug-in's manifest: what the app reads to register the thing and draw its menu item or header before the plug-in runs. A descriptor says what a plug-in offers; the plug-in's process supplies the behavior when asked.
+**Plug-in window** — a window an app-tier plug-in contributes: a pane hosted in a window of its own instead of a sidebar, for a surface that wants room or a second display (a rundown). The app supplies the window — title, Window-menu entry, restored frame — and the plug-in's process draws inside it. Opened by a command of the same plug-in that names it; one window per declaration, so opening it again brings it forward.
+
+**Bus monitor** — a monitor an app-tier plug-in puts in its own pane or window: the program or the preview drawn from the app's own frames, handed to the plug-in's process without a copy. Like every monitor it shows a bus and changes nothing; it follows the bus only while it is on screen. Program and preview are the buses offered — not an input, not multiview.
+
+**Status item** — one reading an app-tier plug-in contributes to the status bar: a symbol the manifest declares and a short text the plug-in sets while it has something to report. The app draws it, in the bar's own style at the trailing end, so no plug-in's reading competes with *Recording* or *Live*. Like the rest of the bar it reports and never acts, and it leaves the bar when its plug-in stops running.
+
+**Descriptor** — the static, `Codable` declaration of a pane, a command, a keyboard shortcut, a settings pane, a window, or a status item in a plug-in's manifest: what the app reads to register the thing and draw its menu item or header before the plug-in runs. A descriptor says what a plug-in offers; the plug-in's process supplies the behavior when asked.
 
 **Manifest** — what an app-tier plug-in declares about itself, as one dictionary: its identifier, its name, its pane, command, and settings pane descriptors, and its activation conditions. It lives in the extension's Info.plist as the `TingraPlugIn` dictionary under `EXAppExtensionAttributes`, beside the extension point identifier ExtensionKit reads, so the app registers a plug-in at discovery with no process launched — and a manifest that does not decode is reported as an error naming the extension and the key, never a silently missing menu.
 

@@ -19,7 +19,9 @@ import TingraPlugInKit
 ///
 /// Every item emits its `tap` first — named for the plug-in and command,
 /// under the plug-in's domain — then hands the command to the host, which
-/// reveals the pane the command names and forwards it to the extension. The
+/// reveals the pane the command names and forwards it to the extension; a
+/// window the command names is opened here, before the hand-off, because
+/// `openWindow` is an environment action only the menu can reach. The
 /// command's own effect is the plug-in's event, so the convention from
 /// EVENTS.md holds for authors who have never read EVENTS.md.
 struct PlugInCommands: Commands {
@@ -29,6 +31,9 @@ struct PlugInCommands: Commands {
     /// The host whose commands are listed.
     let host: AppPlugInHost
 
+    /// Opens a plug-in's window.
+    @Environment(\.openWindow) private var openWindow
+
     /// The menu.
     var body: some Commands {
         if !host.commands.commands.isEmpty {
@@ -37,7 +42,9 @@ struct PlugInCommands: Commands {
                 ForEach(host.commands.plugIns, id: \.id) { plugIn in
                     Menu {
                         ForEach(host.commands.commands(for: plugIn.id)) { command in
-                            PlugInCommandItem(command: command, model: model, host: host)
+                            PlugInCommandItem(command: command, model: model, host: host) { window in
+                                openWindow(id: TingraApp.plugInWindowID, value: window)
+                            }
                         }
                     } label: {
                         Text(verbatim: plugIn.name)
@@ -60,10 +67,18 @@ struct PlugInCommandItem: View {
     /// The host the command is handed to.
     let host: AppPlugInHost
 
+    /// Opens the window a command names, or brings it forward.
+    let openWindow: (PaneID) -> Void
+
     /// The item.
     var body: some View {
         let button = Button {
             model.eventBus.tap(command.tapName, domain: EventDomain(command.plugIn.rawValue))
+            // Only a window the plug-in itself declared: a command cannot
+            // open another plug-in's window by naming its id.
+            if let window = command.descriptor.showsWindow, host.panes.window(window)?.plugIn == command.plugIn {
+                openWindow(window)
+            }
             Task { await host.invoke(command) }
         } label: {
             Text(verbatim: command.descriptor.title)

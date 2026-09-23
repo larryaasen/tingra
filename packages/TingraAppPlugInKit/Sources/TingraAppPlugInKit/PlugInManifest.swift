@@ -43,6 +43,12 @@ public struct PlugInManifest: Hashable, Sendable, Codable {
     /// The settings panes the plug-in contributes.
     public let settingsPanes: [SettingsPaneDescriptor]
 
+    /// The windows the plug-in contributes.
+    public let windows: [WindowDescriptor]
+
+    /// The status items the plug-in contributes.
+    public let statusItems: [StatusItemDescriptor]
+
     /// The bus events that wake the plug-in (PLUGINS.md, Decision 6): the
     /// app launches its process on the first event meeting one of these,
     /// pane or no pane, and tells it which.
@@ -56,26 +62,33 @@ public struct PlugInManifest: Hashable, Sendable, Codable {
     ///   - panes: The panes the plug-in contributes.
     ///   - commands: The commands the plug-in contributes.
     ///   - settingsPanes: The settings panes the plug-in contributes.
+    ///   - windows: The windows the plug-in contributes.
+    ///   - statusItems: The status items the plug-in contributes.
     ///   - activation: The bus events that wake the plug-in.
     public init(
         id: PlugInID, name: String, panes: [PaneDescriptor] = [], commands: [CommandDescriptor] = [],
-        settingsPanes: [SettingsPaneDescriptor] = [], activation: [ActivationCondition] = []
+        settingsPanes: [SettingsPaneDescriptor] = [], windows: [WindowDescriptor] = [],
+        statusItems: [StatusItemDescriptor] = [], activation: [ActivationCondition] = []
     ) {
         self.id = id
         self.name = name
         self.panes = panes
         self.commands = commands
         self.settingsPanes = settingsPanes
+        self.windows = windows
+        self.statusItems = statusItems
         self.activation = activation
     }
 
-    /// The stable manifest keys; the four lists may be omitted.
+    /// The stable manifest keys; the six lists may be omitted.
     private enum CodingKeys: String, CodingKey {
         case id
         case name
         case panes
         case commands
         case settingsPanes
+        case windows
+        case statusItems
         case activation
     }
 
@@ -86,6 +99,8 @@ public struct PlugInManifest: Hashable, Sendable, Codable {
         panes = try container.decodeIfPresent([PaneDescriptor].self, forKey: .panes) ?? []
         commands = try container.decodeIfPresent([CommandDescriptor].self, forKey: .commands) ?? []
         settingsPanes = try container.decodeIfPresent([SettingsPaneDescriptor].self, forKey: .settingsPanes) ?? []
+        windows = try container.decodeIfPresent([WindowDescriptor].self, forKey: .windows) ?? []
+        statusItems = try container.decodeIfPresent([StatusItemDescriptor].self, forKey: .statusItems) ?? []
         activation = try container.decodeIfPresent([ActivationCondition].self, forKey: .activation) ?? []
     }
 
@@ -125,8 +140,8 @@ public struct PlugInManifest: Hashable, Sendable, Codable {
         try self.init(infoDictionary: bundle.infoDictionary ?? [:])
     }
 
-    /// Checks the ids: every pane and settings pane id must start with the
-    /// plug-in id (the namespacing rule), no id may repeat, and no
+    /// Checks the ids: every pane, settings pane, and window id must start
+    /// with the plug-in id (the namespacing rule), no id may repeat, and no
     /// activation condition may be listed twice.
     ///
     /// - Throws: ``PlugInManifestError`` naming the offending id or
@@ -134,7 +149,7 @@ public struct PlugInManifest: Hashable, Sendable, Codable {
     private func validate() throws {
         let prefix = id.rawValue + "."
         var paneIDs = Set<PaneID>()
-        for pane in panes.map(\.id) + settingsPanes.map(\.id) {
+        for pane in panes.map(\.id) + settingsPanes.map(\.id) + windows.map(\.id) {
             guard pane.rawValue.hasPrefix(prefix) else {
                 throw PlugInManifestError.paneOutsidePlugIn(pane, plugIn: id)
             }
@@ -143,6 +158,10 @@ public struct PlugInManifest: Hashable, Sendable, Codable {
         var commandIDs = Set<CommandID>()
         for command in commands.map(\.id) {
             guard commandIDs.insert(command).inserted else { throw PlugInManifestError.duplicateCommand(command) }
+        }
+        var statusItemIDs = Set<StatusItemID>()
+        for item in statusItems.map(\.id) {
+            guard statusItemIDs.insert(item).inserted else { throw PlugInManifestError.duplicateStatusItem(item) }
         }
         var conditions = Set<ActivationCondition>()
         for condition in activation {
@@ -170,6 +189,9 @@ public enum PlugInManifestError: Error, Equatable, CustomStringConvertible {
     /// Two commands share an id.
     case duplicateCommand(CommandID)
 
+    /// Two status items share an id.
+    case duplicateStatusItem(StatusItemID)
+
     /// An activation condition is listed twice.
     case duplicateActivation(ActivationCondition)
 
@@ -185,6 +207,8 @@ public enum PlugInManifestError: Error, Equatable, CustomStringConvertible {
             "Pane id '\(pane.rawValue)' is declared more than once."
         case .duplicateCommand(let command):
             "Command id '\(command.rawValue)' is declared more than once."
+        case .duplicateStatusItem(let item):
+            "Status item id '\(item.rawValue)' is declared more than once."
         case .duplicateActivation(let condition):
             "Activation condition '\(condition.rawValue)' is declared more than once."
         }

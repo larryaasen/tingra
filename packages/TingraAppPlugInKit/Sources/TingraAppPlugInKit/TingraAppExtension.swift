@@ -18,7 +18,7 @@ import TingraPlugInKit
 /// `AppExtension` with the boilerplate owned by the kit. An author declares
 /// panes and commands in the Info.plist manifest (``PlugInManifest``),
 /// returns a view per pane, and performs commands; the kit turns the
-/// manifest into one extension scene per pane and settings pane, accepts
+/// manifest into one extension scene per pane, settings pane, and window, accepts
 /// every connection the app opens, and runs the MCP handshake on each
 /// (PLUGINS.md, Phase 1, "`TingraAppExtension`").
 ///
@@ -35,7 +35,7 @@ public protocol TingraAppExtension: AppExtension where Configuration == AppExten
     /// The manifest, read from the extension's Info.plist by default.
     var manifest: PlugInManifest { get }
 
-    /// The view for a pane or settings pane the manifest declares.
+    /// The view for a pane, settings pane, or window the manifest declares.
     ///
     /// - Parameter id: The pane's identifier.
     @ViewBuilder func pane(for id: PaneID) -> PaneBody
@@ -79,7 +79,7 @@ extension TingraAppExtension {
         }
     }
 
-    /// One scene per pane and settings pane, each accepting the app's
+    /// One scene per pane, settings pane, and window, each accepting the app's
     /// connection, plus the handler for the app's command connection.
     public var configuration: AppExtensionSceneConfiguration {
         let manifest = manifest
@@ -92,7 +92,9 @@ extension TingraAppExtension {
             performActivation: { condition, event, connection in
                 try await self.activated(by: condition, event: event, using: connection)
             })
-        let sceneIDs = manifest.panes.map { ($0.id, $0.sceneID) } + manifest.settingsPanes.map { ($0.id, $0.sceneID) }
+        let sceneIDs =
+            manifest.panes.map { ($0.id, $0.sceneID) } + manifest.settingsPanes.map { ($0.id, $0.sceneID) }
+            + manifest.windows.map { ($0.id, $0.sceneID) }
         let scenes = sceneIDs.map { paneID, sceneID in
             PrimitiveAppExtensionScene(id: sceneID) {
                 pane(for: paneID).environment(PlugInRuntime.shared)

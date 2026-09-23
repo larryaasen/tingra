@@ -192,22 +192,36 @@ enum EngineResources {
 
     // MARK: - Documents
 
+    /// A stream status as the `state` members `tingra://session` and the
+    /// stream tools' results share: `state`, with a reconnect's `attempt`
+    /// and `maxAttempts` or an error's `message`.
+    nonisolated static func streamState(_ status: EngineModel.StreamStatus) -> [String: JSONValue] {
+        switch status {
+        case .idle: ["state": .string("idle")]
+        case .starting: ["state": .string("starting")]
+        case .live: ["state": .string("live")]
+        case .reconnecting(let attempt, let maxAttempts):
+            ["state": .string("reconnecting"), "attempt": .int(attempt), "maxAttempts": .int(maxAttempts)]
+        case .stopped: ["state": .string("stopped")]
+        case .error(let message): ["state": .string("error"), "message": .string(message)]
+        }
+    }
+
+    /// A recording status as the `state` members `tingra://session` and the
+    /// recording tools' results share: `state`, with an error's `message`.
+    nonisolated static func recordingState(_ status: EngineModel.RecordingStatus) -> [String: JSONValue] {
+        switch status {
+        case .idle: ["state": .string("idle")]
+        case .starting: ["state": .string("starting")]
+        case .recording: ["state": .string("recording")]
+        case .finalizing: ["state": .string("finalizing")]
+        case .error(let message): ["state": .string("error"), "message": .string(message)]
+        }
+    }
+
     /// The `tingra://session` document.
     static func sessionValue(of model: EngineModel) -> JSONValue {
-        var stream: [String: JSONValue] = [:]
-        switch model.streamStatus {
-        case .idle: stream["state"] = .string("idle")
-        case .starting: stream["state"] = .string("starting")
-        case .live: stream["state"] = .string("live")
-        case .reconnecting(let attempt, let maxAttempts):
-            stream["state"] = .string("reconnecting")
-            stream["attempt"] = .int(attempt)
-            stream["maxAttempts"] = .int(maxAttempts)
-        case .stopped: stream["state"] = .string("stopped")
-        case .error(let message):
-            stream["state"] = .string("error")
-            stream["message"] = .string(message)
-        }
+        var stream = streamState(model.streamStatus)
         if let stats = model.streamStats {
             stream["bitrateKbps"] = .int(stats.bitrateKbps)
             stream["fps"] = .int(stats.fps)
@@ -237,16 +251,7 @@ enum EngineResources {
                 return .object(leg)
             })
 
-        var recording: [String: JSONValue] = [:]
-        switch model.recordingStatus {
-        case .idle: recording["state"] = .string("idle")
-        case .starting: recording["state"] = .string("starting")
-        case .recording: recording["state"] = .string("recording")
-        case .finalizing: recording["state"] = .string("finalizing")
-        case .error(let message):
-            recording["state"] = .string("error")
-            recording["message"] = .string(message)
-        }
+        var recording = recordingState(model.recordingStatus)
         if let url = model.recordingURL {
             recording["path"] = .string(url.path(percentEncoded: false))
             recording["container"] = .string(url.pathExtension)

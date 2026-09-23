@@ -67,7 +67,12 @@ struct EngineResourcesTests {
         #expect(received.withLock { $0 } == 0)
 
         counter.count = 1
-        try await Task.sleep(for: .milliseconds(30))
+        // The signal crosses two main-actor hops (the tracking task, then
+        // the collector); with the whole suite running beside it a fixed
+        // wait is a guess, so wait for the signal itself, bounded.
+        for _ in 0..<400 where received.withLock({ $0 }) < 1 {
+            try await Task.sleep(for: .milliseconds(5))
+        }
         #expect(received.withLock { $0 } == 1)
 
         counter.count = 1

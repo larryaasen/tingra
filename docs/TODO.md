@@ -1472,12 +1472,29 @@ or two in the doc that owns them — none need a rewrite.
     2026-09-17 as the fourth slice: `tingra/secrets.get`/`set`,
     `PlugInConnection.secret(named:)`/`setSecret(_:named:)`,
     `PlugInSecretStore` filing `plugin:<id>.<name>` in the engine's Keychain
-    store, the Data pane's Plug-in Secrets and Plug-in Data kinds* — then
-    windows and status bar items; then the two rows decided 2026-09-15 — the app-owned
+    store, the Data pane's Plug-in Secrets and Plug-in Data kinds*; windows
+    and status bar items — *built 2026-09-18 as the fifth slice:
+    `WindowDescriptor` (a pane in a window of its own, opened by a command's
+    `showsWindow`, one `WindowGroup(for: PaneID.self)` scene) and
+    `StatusItemDescriptor` with `tingra/statusItem.set` /
+    `PlugInConnection.setStatusText(_:for:)`, drawn by the app at the status
+    bar's trailing end and dropped when the plug-in stops; verified in the
+    running app; leading-sidebar hosting still deferred*; the app-owned
     `program_stream_start`/`program_stream_stop`/`program_record_start`/
-    `program_record_stop` tools (Decision 17) and the opt-in `tingra/meters`
-    notification at ≤ 10 Hz (Decision 18) — and frames (spike row 4), still
-    open.
+    `program_record_stop` tools (Decision 17) — *built 2026-09-18 as the
+    sixth slice: argument-free, each naming a state rather than a toggle
+    (`changed`), results in `tingra://session`'s shape, through the
+    `ProgramOutputControlling` seam; not yet called against a live stream*;
+    the opt-in `tingra/meters` notification at ≤ 10 Hz (Decision 18) —
+    *built 2026-09-18 as the seventh slice: `tingra/meters.subscribe`,
+    linear levels inline, `MeterFeed` folding mix blocks into windows,
+    `PlugInConnection.meters()`*; and frames (spike row 4) — *built
+    2026-09-18 as the eighth slice: the bus's own `IOSurface` attached to a
+    `tingra/frame` notification (`SurfaceMessageTransport`), one per
+    `tingra/frame.next` demand, `PlugInConnection.frames(_:)` and
+    `BusMonitorView`; Decision 21 and the shared-memory trust question await
+    Larry's veto; neither slice yet watched in the running app (his debug
+    instance was up)*. Phase 2's seams are all built.
   - [ ] **The external bundle loader**, tagging `TingraPlugInKit` 1.0.0
     (ARCHITECTURE.md, "Plug-in API stability and versioning").
   - [ ] **NDI as an external plug-in bundle**, outside this repo, importing

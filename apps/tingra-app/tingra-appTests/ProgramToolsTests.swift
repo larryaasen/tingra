@@ -52,16 +52,21 @@ struct ProgramToolsTests {
         Shot(id: ShotID(rawValue: "shot-close-2"), name: "close"),
     ]
 
-    @Test("the plug-in registers the three tools")
+    @Test("the plug-in registers the switcher's tools, then the stream and recording tools")
     func registers() async throws {
         let program = await FakeProgram(shots: shots)
         let tools = ToolRegistry()
         let context = PlugInContext(
             eventBus: EventBus(), clock: HostClock(), inputs: InputRegistry(), outputs: OutputRegistry(),
             effects: EffectRegistry(), tools: tools)
-        try await ProgramToolsPlugIn(program: program).activate(in: context)
-        #expect(await tools.allTools.map(\.name) == ["shot_take", "preview_set", "fade_to_black"])
-        #expect(ProgramToolsPlugIn(program: program).id.rawValue == "com.moonwink.tingra.program")
+        let outputs = FakeProgramOutputs()
+        try await ProgramToolsPlugIn(program: program, outputs: outputs).activate(in: context)
+        #expect(
+            await tools.allTools.map(\.name) == [
+                "shot_take", "preview_set", "fade_to_black", "program_stream_start", "program_stream_stop",
+                "program_record_start", "program_record_stop",
+            ])
+        #expect(ProgramToolsPlugIn(program: program, outputs: outputs).id.rawValue == "com.moonwink.tingra.program")
     }
 
     @Test("shot_take by id takes the shot and returns it")

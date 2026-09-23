@@ -51,6 +51,8 @@ struct ManifestTests {
                     "sceneID": "settings",
                 ]
             ],
+            "windows": [["id": "com.moonwink.tingra.notes.window", "title": "Notes", "sceneID": "window"]],
+            "statusItems": [["id": "words", "title": "Word Count", "systemImage": "textformat.123"]],
             "activation": ["stream.started", "device.connected:kind=camera"],
         ]
     }
@@ -71,6 +73,16 @@ struct ManifestTests {
         #expect(command.showsPane == PaneID(rawValue: "com.moonwink.tingra.notes.pane"))
         #expect(manifest.settingsPanes.first?.sceneID == "settings")
         #expect(
+            manifest.windows == [
+                WindowDescriptor(
+                    id: PaneID(rawValue: "com.moonwink.tingra.notes.window"), title: "Notes", sceneID: "window")
+            ])
+        #expect(
+            manifest.statusItems == [
+                StatusItemDescriptor(
+                    id: StatusItemID(rawValue: "words"), title: "Word Count", systemImage: "textformat.123")
+            ])
+        #expect(
             manifest.activation == [
                 ActivationCondition(event: "stream.started"),
                 ActivationCondition(
@@ -86,6 +98,8 @@ struct ManifestTests {
             ]))
         #expect(manifest.panes.isEmpty)
         #expect(manifest.settingsPanes.isEmpty)
+        #expect(manifest.windows.isEmpty)
+        #expect(manifest.statusItems.isEmpty)
         #expect(manifest.activation.isEmpty)
         let withPane = try PlugInManifest(
             infoDictionary: infoDictionary(manifest: [
@@ -96,6 +110,57 @@ struct ManifestTests {
         #expect(manifest.commands.first?.shortcut == nil)
         #expect(manifest.commands.first?.placement == .plugInMenu)
         #expect(manifest.commands.first?.showsPane == nil)
+        #expect(manifest.commands.first?.showsWindow == nil)
+    }
+
+    @Test("a command may name the window it opens")
+    func decodesShowsWindow() throws {
+        var manifest = notes
+        manifest["commands"] = [["id": "open", "title": "Open", "showsWindow": "com.moonwink.tingra.notes.window"]]
+        let decoded = try PlugInManifest(infoDictionary: infoDictionary(manifest: manifest))
+        #expect(decoded.commands.first?.showsWindow == PaneID(rawValue: "com.moonwink.tingra.notes.window"))
+        #expect(decoded.commands.first?.showsPane == nil)
+    }
+
+    @Test("a window id outside the plug-in's namespace throws")
+    func throwsForWindowOutsidePlugIn() {
+        var manifest = notes
+        manifest["windows"] = [["id": "com.other.window", "title": "T", "sceneID": "w"]]
+        #expect(
+            throws: PlugInManifestError.paneOutsidePlugIn(
+                PaneID(rawValue: "com.other.window"), plugIn: PlugInID(rawValue: "com.moonwink.tingra.notes"))
+        ) {
+            try PlugInManifest(infoDictionary: infoDictionary(manifest: manifest))
+        }
+    }
+
+    @Test("a window sharing a pane's id throws")
+    func throwsForWindowSharingPaneID() {
+        var manifest = notes
+        manifest["windows"] = [["id": "com.moonwink.tingra.notes.pane", "title": "T", "sceneID": "w"]]
+        #expect(throws: PlugInManifestError.duplicatePane(PaneID(rawValue: "com.moonwink.tingra.notes.pane"))) {
+            try PlugInManifest(infoDictionary: infoDictionary(manifest: manifest))
+        }
+    }
+
+    @Test("a repeated status item id throws")
+    func throwsForDuplicateStatusItem() {
+        var manifest = notes
+        manifest["statusItems"] = [
+            ["id": "words", "title": "A", "systemImage": "a"], ["id": "words", "title": "B", "systemImage": "b"],
+        ]
+        #expect(throws: PlugInManifestError.duplicateStatusItem(StatusItemID(rawValue: "words"))) {
+            try PlugInManifest(infoDictionary: infoDictionary(manifest: manifest))
+        }
+    }
+
+    @Test("a status item without a symbol throws as malformed")
+    func throwsForStatusItemWithoutSymbol() {
+        var manifest = notes
+        manifest["statusItems"] = [["id": "words", "title": "A"]]
+        #expect(throws: PlugInManifestError.self) {
+            try PlugInManifest(infoDictionary: infoDictionary(manifest: manifest))
+        }
     }
 
     @Test("a missing attributes dictionary throws naming the key")

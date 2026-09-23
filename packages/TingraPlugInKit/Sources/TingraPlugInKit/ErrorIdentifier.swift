@@ -44,7 +44,9 @@ extension ErrorIdentifier {
 
     /// No saved destination matches the `destination` selector. MCP-only —
     /// no CLI command resolves a destination by name in v1 — so no exit code
-    /// maps to it; a CLI selector would exit 69, beside `inputNotFound`.
+    /// maps to it; a CLI selector would exit 69, beside `inputNotFound`. Also
+    /// the app's `program_stream_start` when the open project has no enabled
+    /// destination with a usable URL: no destination to stream to.
     public static let destinationNotFound = ErrorIdentifier(rawValue: "destinationNotFound")
 
     /// A `destination` name selector matches more than one saved destination.

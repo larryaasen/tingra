@@ -8,6 +8,7 @@
 //
 
 import SwiftUI
+import TingraAppPlugInKit
 
 /// The window's status bar: whether the program is being **recorded**,
 /// whether it is being **streamed**, and what **format** it is, across the
@@ -40,6 +41,10 @@ struct StatusBarView: View {
 
     /// Whether the bar is shown.
     let statusBar: StatusBarModel
+
+    /// The app-tier plug-in host, whose status items ride at the bar's
+    /// trailing end; absent in a window that was handed none.
+    @Environment(AppPlugInHost.self) private var plugInHost: AppPlugInHost?
 
     /// The bar's height — the standard macOS status bar's, near enough that it
     /// reads as one rather than as a row of controls.
@@ -86,6 +91,16 @@ struct StatusBarView: View {
                     formatReading
 
                     Spacer()
+
+                    // Plug-ins' readings at the trailing end, apart from the
+                    // app's own: the three an operator must never misread
+                    // keep the leading edge to themselves, whatever a
+                    // plug-in reports.
+                    if let plugInHost {
+                        ForEach(plugInHost.statusItems.readings, id: \.item.id) { reading in
+                            plugInReading(reading.item, text: reading.text)
+                        }
+                    }
                 }
                 .font(.caption)
                 .padding(.horizontal, Self.horizontalPadding)
@@ -168,6 +183,28 @@ struct StatusBarView: View {
             StatusBarItem.programFormat,
             label: Text(verbatim: ProgramFormatChoice.label(for: model.format))
         )
+    }
+
+    /// One plug-in's reading: the declared symbol and the text the plug-in
+    /// reported, drawn by the app in the bar's own style so a plug-in's
+    /// reading cannot shout over the app's (PLUGINS.md, Decision 5: the app
+    /// supplies uniform chrome). Secondary, since no plug-in's reading
+    /// outranks on air or recording.
+    ///
+    /// - Parameters:
+    ///   - item: The status item as registered.
+    ///   - text: What the plug-in reported.
+    /// - Returns: The reading.
+    private func plugInReading(_ item: RegisteredStatusItem, text: String) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: item.descriptor.systemImage)
+            Text(verbatim: text)
+                .lineLimit(1)
+        }
+        .foregroundStyle(.secondary)
+        .help(Text(verbatim: "\(item.plugInName): \(item.descriptor.title)"))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(verbatim: "\(item.descriptor.title), \(text)"))
     }
 
     /// How long the current recording has been rolling.

@@ -1069,6 +1069,12 @@ final class EngineModel {
     /// meters").
     @ObservationIgnored let meterRelay = MeterRelay()
 
+    /// The same mix ticks as app-tier plug-ins follow them: the meter drain
+    /// folds each block in, and a connection that subscribed is sent its
+    /// window of them at most ten times a second (`tingra/meters`;
+    /// PLUGINS.md, Decision 18). With no follower a block costs it one lock.
+    @ObservationIgnored let meterFeed = MeterFeed()
+
     /// The host event bus. Three sinks drain it (``start()``): the
     /// ``ConsoleEventSink`` printing to stdout for the Xcode console, the
     /// host's `OSLogSink` as the system of record, and the host's `FileSink`
@@ -1595,7 +1601,7 @@ final class EngineModel {
             [
                 AVFoundationCapturePlugIn(), ScreenCaptureKitCapturePlugIn(), GeneratorPlugIn(),
                 HaishinKitOutputPlugIn(), EffectPlugIn(), RecordingPlugIn(), MediaPlugIn(),
-                ProgramToolsPlugIn(program: self),
+                ProgramToolsPlugIn(program: self, outputs: self),
             ],
             in: context
         )
@@ -1712,9 +1718,11 @@ final class EngineModel {
         // bus (EVENTS.md).
         let meters = mixer.meterReadings()
         let meterRelay = self.meterRelay
+        let meterFeed = self.meterFeed
         meterTask = Task.detached {
             for await block in meters {
                 meterRelay.fold(block)
+                meterFeed.fold(block)
             }
         }
 
@@ -5498,3 +5506,8 @@ private struct PassthroughAudioEffect: AudioEffect {
 /// (`ProgramToolsPlugIn`); the conformance is declared here because the
 /// seam refines `Sendable`, which a class must adopt in its own file.
 extension EngineModel: ProgramControlling {}
+
+/// The model is also the stream and the recording the program's output
+/// tools act on (`ProgramStreamStartTool` and its three siblings), declared
+/// here for the same reason.
+extension EngineModel: ProgramOutputControlling {}

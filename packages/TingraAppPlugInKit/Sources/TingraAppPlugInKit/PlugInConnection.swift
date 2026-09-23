@@ -8,16 +8,18 @@
 //
 
 import Foundation
+import IOSurface
 import TingraEventBus
 import TingraJSONRPC
 import TingraPlugInKit
 
 /// The extension's end of one connection to the app: an MCP client over a
 /// ``MessageTransport`` that calls the app's tools, reads and follows the
-/// app's resources, files events on the app's bus, reads and writes the
-/// plug-in's storage and its secrets, and answers the two requests the app makes of it, a
-/// command to perform and an activation condition met (PLUGINS.md, Phase 1,
-/// "`PlugInConnection`"; Phase 2, "seams into the engine").
+/// app's resources, its meters, and its video buses, files events on the
+/// app's bus, reads and writes the plug-in's storage and its secrets, and
+/// answers the two requests the app makes of it, a command to perform and
+/// an activation condition met (PLUGINS.md, Phase 1, "`PlugInConnection`";
+/// Phase 2, "seams into the engine").
 ///
 /// One instance per `NSXPCConnection` the app opens — one for each hosted
 /// pane and one for commands — all in the one extension process. The kit
@@ -63,6 +65,14 @@ public actor PlugInConnection {
     /// by URI and then by follower: an updated notification for a URI
     /// wakes every follower of it.
     private var resourceSignals: [String: [UUID: AsyncStream<Void>.Continuation]] = [:]
+
+    /// The followers of the app's meter levels (``meters()``): the first
+    /// subscribes this connection, the last to stop unsubscribes it.
+    private var meterFollowers: [UUID: AsyncStream<MeterLevels>.Continuation] = [:]
+
+    /// The followers of each bus's frames (``frames(_:)``). While a bus has
+    /// any, one demand for its next frame is outstanding with the app.
+    private var frameFollowers: [FrameBus: [UUID: AsyncStream<BusFrame>.Continuation]] = [:]
 
     /// Creates a connection over `transport` and starts reading.
     ///
@@ -268,6 +278,74 @@ public actor PlugInConnection {
             ]))
     }
 
+    /// Gives one of the plug-in's declared status items its text — the
+    /// reading the app draws on the windows' status bar beside the item's
+    /// symbol — or takes the item off the bar. The app clears every item
+    /// when the plug-in's last connection closes, so a reading never
+    /// outlives the process that reported it.
+    ///
+    /// - Parameters:
+    ///   - text: The reading, short enough for a status bar; nil or empty
+    ///     removes it.
+    ///   - item: The status item, as the manifest declares it.
+    /// - Throws: ``PlugInConnectionError`` when the manifest declares no
+    ///   such item, or the connection is closed.
+    public func setStatusText(_ text: String?, for item: StatusItemID) async throws {
+        _ = try await request(
+            AppTierMethod.statusItemSet,
+            params: .object([
+                AppTierMethod.StatusItemParam.item: .string(item.rawValue),
+                AppTierMethod.StatusItemParam.text: text.map(JSONValue.string) ?? .null,
+            ]))
+    }
+
+    /// Follows the app's meters: every channel strip's level and the
+    /// master's, at most ten times a second, until the consumer stops
+    /// iterating (PLUGINS.md, Decision 18). The levels arrive inline in the
+    /// app's `tingra/meters` notification — nothing is re-read and nothing
+    /// polls — and the newest wins: a consumer slower than the app's rate
+    /// skips windows rather than queueing them.
+    ///
+    /// The first follower opts the connection in and the last to stop opts
+    /// it out, so a pane whose meter is off screen costs the app nothing.
+    /// The stream is silent while the app's mixer is not running, and ends
+    /// when the connection closes or the app refuses the subscription.
+    ///
+    /// - Returns: The levels, window after window.
+    public nonisolated func meters() -> AsyncStream<MeterLevels> {
+        AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
+            let follower = UUID()
+            continuation.onTermination = { _ in
+                Task { await self.stopFollowingMeters(follower) }
+            }
+            Task { await self.followMeters(follower, into: continuation) }
+        }
+    }
+
+    /// Follows a bus's video: each frame the app composites, as the app's
+    /// own `IOSurface` handed across with no copy, until the consumer stops
+    /// iterating (PLUGINS.md, "Frames across the boundary"). ``BusMonitorView``
+    /// is the ready-made consumer; iterate this for anything else.
+    ///
+    /// Delivery is driven by demand, one frame at a time: the connection
+    /// asks for the next frame, the app sends it when the bus has one, and
+    /// only its arrival asks for another — so the newest frame wins and
+    /// none queue, however slow the consumer, and nothing polls. An element
+    /// with no surface means the bus emptied (preview with nothing staged).
+    /// The stream ends when the connection closes.
+    ///
+    /// - Parameter bus: The bus to follow.
+    /// - Returns: The bus's frames, newest wins.
+    public nonisolated func frames(_ bus: FrameBus) -> AsyncStream<BusFrame> {
+        AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
+            let follower = UUID()
+            continuation.onTermination = { _ in
+                Task { await self.stopFollowingFrames(of: bus, follower) }
+            }
+            Task { await self.followFrames(of: bus, follower, into: continuation) }
+        }
+    }
+
     /// Closes the connection; pending requests end with
     /// ``PlugInConnectionError/closed``.
     public func close() async {
@@ -309,6 +387,99 @@ public actor PlugInConnection {
         for signal in followers.values {
             signal.yield(())
         }
+    }
+
+    // MARK: - Meters
+
+    /// Registers a meter follower, subscribing the connection when it is
+    /// the first; a subscription the app refuses ends the follower's
+    /// stream.
+    private func followMeters(_ follower: UUID, into continuation: AsyncStream<MeterLevels>.Continuation) async {
+        guard !isClosed else {
+            continuation.finish()
+            return
+        }
+        meterFollowers[follower] = continuation
+        guard meterFollowers.count == 1 else { return }
+        do {
+            _ = try await request(AppTierMethod.metersSubscribe, params: nil)
+        } catch {
+            let followers = meterFollowers
+            meterFollowers = [:]
+            for follower in followers.values {
+                follower.finish()
+            }
+        }
+    }
+
+    /// Forgets a meter follower whose consumer stopped, unsubscribing the
+    /// connection when it was the last.
+    private func stopFollowingMeters(_ follower: UUID) async {
+        guard meterFollowers.removeValue(forKey: follower) != nil, meterFollowers.isEmpty, !isClosed else { return }
+        _ = try? await request(AppTierMethod.metersUnsubscribe, params: nil)
+    }
+
+    /// Hands a `tingra/meters` notification's levels to every follower; one
+    /// that does not read is dropped — the next is a tenth of a second
+    /// away.
+    private func metersArrived(_ params: JSONValue?) {
+        guard !meterFollowers.isEmpty, let levels = MeterLevels(jsonValue: params) else { return }
+        for follower in meterFollowers.values {
+            follower.yield(levels)
+        }
+    }
+
+    // MARK: - Frames
+
+    /// Registers a follower of a bus's frames, asking the app for the next
+    /// frame when it is the bus's first: later followers share the demand
+    /// already outstanding.
+    private func followFrames(
+        of bus: FrameBus, _ follower: UUID, into continuation: AsyncStream<BusFrame>.Continuation
+    ) async {
+        guard !isClosed else {
+            continuation.finish()
+            return
+        }
+        frameFollowers[bus, default: [:]][follower] = continuation
+        guard frameFollowers[bus]?.count == 1 else { return }
+        await demandFrame(of: bus)
+    }
+
+    /// Forgets a follower whose consumer stopped. Nothing is sent: with no
+    /// follower left, the frame the outstanding demand brings asks for no
+    /// other, and the demand lapses.
+    private func stopFollowingFrames(of bus: FrameBus, _ follower: UUID) {
+        frameFollowers[bus]?[follower] = nil
+    }
+
+    /// Asks the app for the bus's next frame; an app that refuses ends the
+    /// bus's followers' streams.
+    private func demandFrame(of bus: FrameBus) async {
+        do {
+            _ = try await request(
+                AppTierMethod.frameNext, params: .object([AppTierMethod.FrameParam.bus: .string(bus.rawValue)]))
+        } catch {
+            let followers = frameFollowers.removeValue(forKey: bus) ?? [:]
+            for follower in followers.values {
+                follower.finish()
+            }
+        }
+    }
+
+    /// Hands a `tingra/frame` notification's frame to the bus's followers
+    /// and asks for the next; with no follower left, or a notification that
+    /// does not read, asks for nothing.
+    private func frameArrived(_ params: JSONValue?, surface: IOSurface?) {
+        guard let frame = BusFrame(jsonValue: params, surface: surface),
+            let followers = frameFollowers[frame.bus], !followers.isEmpty
+        else { return }
+        for follower in followers.values {
+            follower.yield(frame)
+        }
+        // Not awaited: the demand's answer is read by the very loop this
+        // runs in.
+        Task { await self.demandFrame(of: frame.bus) }
     }
 
     // MARK: - Wire
@@ -375,23 +546,33 @@ public actor PlugInConnection {
         guard readTask == nil else { return }
         readTask = Task { [weak self] in
             while let self, !Task.isCancelled {
-                let payload: Data?
+                let message: SurfaceMessage?
                 do {
-                    payload = try await self.transport.readMessage()
+                    message = try await self.readMessage()
                 } catch {
                     break
                 }
-                guard let payload else { break }
-                await self.handle(payload)
+                guard let message else { break }
+                await self.handle(message.payload, surface: message.surface)
             }
             await self?.endPending()
         }
     }
 
+    /// Reads the next message with whatever surface rides beside it — a
+    /// frame's, over a transport that carries one.
+    private func readMessage() async throws -> SurfaceMessage? {
+        if let carrier = transport as? any SurfaceMessageTransport {
+            return try await carrier.readSurfaceMessage()
+        }
+        return try await transport.readMessage().map { SurfaceMessage(payload: $0) }
+    }
+
     /// Routes one incoming message: a response settles its request, a
     /// request is answered, a resource-updated notification wakes the
-    /// resource's followers, and any other notification is ignored.
-    private func handle(_ payload: Data) async {
+    /// resource's followers, a meters or a frame notification reaches its
+    /// followers, and any other notification is ignored.
+    private func handle(_ payload: Data, surface: IOSurface?) async {
         guard let incoming = try? MessageCoder.decode(payload) else { return }
         switch (incoming.id, incoming.method) {
         case (.some(let id), .none):
@@ -404,6 +585,10 @@ public actor PlugInConnection {
             }
         case (.none, .some("notifications/resources/updated")):
             if let uri = incoming.params?["uri"]?.stringValue { resourceUpdated(uri) }
+        case (.none, .some(AppTierMethod.meters)):
+            metersArrived(incoming.params)
+        case (.none, .some(AppTierMethod.frame)):
+            frameArrived(incoming.params, surface: surface)
         case (.none, _):
             break
         }
@@ -471,7 +656,7 @@ public actor PlugInConnection {
     }
 
     /// Ends every pending request as closed, and every followed resource's
-    /// signals with it.
+    /// signals and every meter and frame follower's stream with it.
     private func endPending() {
         isClosed = true
         let waiting = pending
@@ -483,6 +668,16 @@ public actor PlugInConnection {
         resourceSignals = [:]
         for signal in followers.values.flatMap(\.values) {
             signal.finish()
+        }
+        let meters = meterFollowers
+        meterFollowers = [:]
+        for follower in meters.values {
+            follower.finish()
+        }
+        let frames = frameFollowers
+        frameFollowers = [:]
+        for follower in frames.values.flatMap(\.values) {
+            follower.finish()
         }
     }
 

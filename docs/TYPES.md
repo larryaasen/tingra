@@ -816,8 +816,16 @@ internal surface a reader needs to navigate the target instead.
   message per payload), so session logic never touches bytes. The daemon's
   implementation is `SocketMessageTransport` in TingraMCP; the app tier's is
   `XPCMessageTransport`.
+- `SurfaceMessage` — one message with what rode beside it: the JSON payload
+  and the `IOSurface` the sender attached, if any — pixels in shared memory
+  (a program frame for an app-tier plug-in), the one value JSON cannot carry.
+- `SurfaceMessageTransport` — the `MessageTransport` refinement that can carry
+  an `IOSurface` beside a message (`readSurfaceMessage()`,
+  `writeMessage(_:surface:)`): the XPC and in-memory transports; a socket
+  cannot, so the daemon's does not conform.
 - `InMemoryMessageTransport` — the test transport: inbound payloads enqueued by
-  the test, everything the session writes collected, no socket and no process.
+  the test, everything the session writes collected, no socket and no process;
+  a `SurfaceMessageTransport`, so a linked pair hands a surface across too.
 - `LinkedMessageTransports` — two in-memory transports joined so what one
   writes the other reads (`makePair()`): a client and a server run against
   each other in one process, which is how an extension's `PlugInConnection` is
@@ -830,12 +838,15 @@ internal surface a reader needs to navigate the target instead.
 - `XPCMessageChannel` — the one `@objc` protocol an `NSXPCConnection` carries
   between the app and an extension process: `open()` to establish the link (a
   connection exists only from its first message) and `deliver(_:)` for one
-  JSON-RPC payload per XPC message, in both directions. A byte channel, never a
+  JSON-RPC payload per XPC message, in both directions — or
+  `deliver(_:surface:)`, the payload with an `IOSurface` attached. A byte channel, never a
   second RPC protocol; `nonisolated` explicitly, because XPC calls it on the
   connection's own queue.
 - `XPCMessageTransport` — the `MessageTransport` over an `NSXPCConnection`: the
   app-tier link between Tingra.app and an ExtensionKit extension, carrying the
-  same MCP JSON-RPC the daemon speaks over its socket. The side that made the
+  same MCP JSON-RPC the daemon speaks over its socket — a
+  `SurfaceMessageTransport`, so a frame's surface rides beside its
+  notification. The side that made the
   connection passes `opening: true` and sends the establishing message; `End`
   (`interrupted`, `invalidated`) tells the `onEnd` handler how the peer went
   away.
@@ -866,6 +877,13 @@ internal surface a reader needs to navigate the target instead.
   the app tier's `tingra/*` storage and event methods — so `MCPSession` stays
   one session type for the daemon's socket and the app's XPC link; returns nil
   for a method it does not own, and the session answers method-not-found.
+  `sessionOpened(notifier:)` and `sessionClosed()` (both defaulted to nothing)
+  bracket the session's run, so a handler can send notifications of its own
+  and end what it started.
+- `SessionNotifier` — how a `SessionMethodHandler` sends its session's peer a
+  notification (`notify(_:params:)`), optionally with an `IOSurface` attached
+  (`notify(_:params:surface:)`, sent only over a transport that can carry
+  one); holds the transport, never the session.
 - `SessionRequestError` — what a request the session sends to its peer can get
   wrong: the session closed first, the transport refused the write, the peer
   answered with a JSON-RPC error, or its response did not decode.
@@ -914,6 +932,8 @@ internal surface a reader needs to navigate the target instead.
 - `CommandID` — the identifier of a command, unique within its plug-in
   (`show`); the app qualifies it with the plug-in id where a global name is
   needed, as in the `tap` event's name.
+- `StatusItemID` — the identifier of a status item, unique within its plug-in
+  (`link`), like a `CommandID`.
 - `SidebarPosition` — which sidebar a pane would like: `leading`, `trailing`,
   or `bottom` — a preference the app may override, and in Phase 1 every pane is
   hosted in the trailing sidebar.
@@ -927,11 +947,36 @@ internal surface a reader needs to navigate the target instead.
 - `CommandPlacement` — where a command appears; Phase 1's one case,
   `plugInMenu`, is the plug-in's submenu of the app's Plug-ins menu.
 - `CommandDescriptor` — a command a plug-in contributes: id, title, optional
-  shortcut, placement, and the pane it reveals (`showsPane`); the app renders
+  shortcut, placement, and the pane it reveals (`showsPane`) or the window it
+  opens (`showsWindow`); the app renders
   the menu item before the extension has run and forwards the invocation after
   emitting the `tap` itself.
 - `SettingsPaneDescriptor` — a settings pane a plug-in contributes to the
   Settings window: a row in its source list, and a remote view like any pane.
+- `WindowDescriptor` — a window a plug-in contributes: a pane hosted in a
+  window of its own rather than a sidebar — id (a `PaneID`, so
+  `pane(for:)` answers for it), title, and the `sceneID` of the scene that
+  draws it; opened by a command naming it (`showsWindow`).
+- `StatusItemDescriptor` — a status item a plug-in contributes to the windows'
+  status bar: id, title (the tooltip and VoiceOver's name for the reading),
+  and symbol. The app draws the reading from a text the plug-in sets
+  (`PlugInConnection.setStatusText(_:for:)`); no scene is hosted for it, and
+  it reports and never acts.
+- `MeterLevel` — one meter's level over a window of the mix: `peak` and `rms`
+  as linear sample magnitudes (`1` is full scale), `floor` for silence,
+  `decibels(_:)` for display, and the `{"peak", "rms"}` JSON it travels as.
+- `MeterLevels` — one `tingra/meters` notification: the window's `time`, every
+  live strip's pre-fader level by `InputID`, and the master's post-fader left
+  and right; `jsonValue` and `init?(jsonValue:)` are the wire shape.
+- `FrameBus` — a video bus whose frames a plug-in can follow: `program` or
+  `preview`.
+- `BusFrame` — one frame of a bus as it reaches a plug-in: the app's own
+  `IOSurface` (nil when the bus is empty), the bus, and the time; shared
+  memory, to draw and never to write or keep. `jsonValue` is the JSON half of
+  `tingra/frame`; `init?(jsonValue:surface:)` reads it with its attachment.
+- `BusMonitorView` — the ready-made bus monitor for a plug-in's pane: each
+  frame's surface becomes a layer's contents, aspect kept, over black,
+  following the bus only while on screen.
 - `ActivationCondition` — a bus event that wakes the plug-in, written in the
   manifest's `activation` list as one string: the event's name, optionally
   followed by `:key=value` naming one param the event must carry
@@ -943,20 +988,22 @@ internal surface a reader needs to navigate the target instead.
   naming the fix: an empty or malformed event name, or a qualifier that is not
   `key=value`.
 - `PlugInManifest` — what a plug-in declares about itself (id, name, panes,
-  commands, settings panes, activation conditions), read by the app from the
+  commands, settings panes, windows, status items, activation conditions),
+  read by the app from the
   extension's Info.plist under `EXAppExtensionAttributes` → `TingraPlugIn` at
   discovery, before the extension has ever run; `init(bundle:)` decodes it,
   and a manifest that does not decode is a `PlugInManifestError`.
 - `PlugInManifestError` — what can be wrong with a manifest, each naming the
   fix: a required key absent, a dictionary that does not decode, a pane id
-  outside the plug-in's namespace, a repeated pane, command, or activation
-  condition.
+  or window id outside the plug-in's namespace, a repeated pane, command,
+  status item, or activation condition.
 - `AppTierMethod` — the JSON-RPC methods the app tier adds beside MCP's own,
   spelled once for both sides: `tingra/event`, `tingra/storage.get`,
-  `tingra/storage.set`, `tingra/secrets.get`, `tingra/secrets.set`
-  (extension → app) and `tingra/command.perform`, `tingra/activation`
+  `tingra/storage.set`, `tingra/secrets.get`, `tingra/secrets.set`,
+  `tingra/statusItem.set` (extension → app) and `tingra/command.perform`, `tingra/activation`
   (app → extension), with their parameter keys as the nested `EventParam`,
-  `StorageParam`, `SecretParam`, `CommandParam`, and `ActivationParam`.
+  `StorageParam`, `SecretParam`, `StatusItemParam`, `CommandParam`, and
+  `ActivationParam`.
 - `StorageScope` — where a plug-in's stored value lives: `project` (in the
   document — travels and saves with it, dirties it like a layer edit) or
   `application` (this Mac, under the app's Application Support folder); never
@@ -970,8 +1017,12 @@ internal surface a reader needs to navigate the target instead.
   `error`s on the app's bus under the plug-in's domain, reads and writes
   project- and application-scoped storage and the plug-in's own secrets
   (`secret(named:)`, `setSecret(_:named:)` — Keychain items the app files
-  under the plug-in's id, a refused write thrown rather than dropped), and
-  answers the two requests the
+  under the plug-in's id, a refused write thrown rather than dropped), gives
+  a declared status item its text (`setStatusText(_:for:)`, nil removing
+  the reading), follows the app's meters (`meters()`, an `AsyncStream` of
+  `MeterLevels` that subscribes with its first consumer and unsubscribes with
+  its last) and a bus's video (`frames(_:)`, an `AsyncStream` of `BusFrame`
+  circulating one demand at a time, newest wins), and answers the two requests the
   app makes of it, a command to perform and an activation condition met (the
   `CommandHandler` and `ActivationHandler` it is created with). One per
   `NSXPCConnection` the app opens; the kit creates them, an author receives
@@ -1287,7 +1338,10 @@ surface is:
   streams"; a `@MainActor` class before that): the program drain stores off
   the main actor, the `MTKView` coordinator reads `latest` at display cadence,
   and the preview relay stops accepting — emptying itself — while nothing is
-  staged. A `MonitorFrameSource`. Unit-tested.
+  staged. A `MonitorFrameSource`. It also numbers every change (a store, an
+  emptying), and `next(after:)` answers with the `Update` past a number — at
+  once, or as soon as there is one — which is how a frame reaches an app-tier
+  plug-in with nobody polling. Unit-tested.
 - `ProgramTee` — the lock-guarded, nonisolated tee the program and
   program-audio drains yield every frame and block into (2026-09-12): the
   stream session's and the recording session's leaves attach and detach on
@@ -1402,7 +1456,9 @@ surface is:
   from whatever it holds, and the two actions it would hold are the two that go
   out to viewers. Its leading inset matches the production column's padding, so
   the readings line up with the panel headings above them — which is what the
-  collapsed sidebar makes visible.
+  collapsed sidebar makes visible. App-tier plug-ins' status items ride at the
+  trailing end, drawn by the app from `StatusItemRegistry.readings` in the
+  bar's secondary style, so the app's three readings keep the leading edge.
 - `StatusBarCommands` — the View-menu item that shows and hides it, ⌘/ — the
   Finder's and Safari's assignment. The title flips, Show to Hide, the macOS
   convention for this item, where the settings row is a checkbox because a
@@ -1641,8 +1697,9 @@ surface is:
     no task parked.
   - `ProgramToolsPlugIn` — the first-party program tools plug-in, registered
     at boot beside the capture and generator plug-ins through the same
-    `ToolRegistering` seam: `shot_take`, `preview_set`, `fade_to_black`.
-    App-owned rather than in `TingraMCP` because only the app has a program.
+    `ToolRegistering` seam: `shot_take`, `preview_set`, `fade_to_black`, and
+    the stream and recording tools below. App-owned rather than in
+    `TingraMCP` because only the app has a program.
   - `ProgramControlling` — the seam the program tools act through (shots, the
     program and preview shots, fade to black, `take`, `setPreview`,
     `setFadeToBlack`), which the model conforms to, so the tools are tested
@@ -1654,10 +1711,26 @@ surface is:
     a take with the switcher's selected transition (the operator's own take,
     so the compositor's `program.take` reports it), a stage on preview, and
     a fade of picture and sound over an optional `duration`.
+  - `ProgramOutputControlling` — the seam the stream and recording tools act
+    through (the two statuses, `isStreaming`, `isRecording`,
+    `hasStreamableDestination`, `recordingURL`, and the four start and stop
+    methods the toolbar's buttons call), which the model conforms to — the
+    twin of `ProgramControlling`.
+  - `ProgramOutputTool` — what the four tools share: the no-arguments schema
+    and the two results, `tingra://session`'s own `stream` and `recording`
+    state members plus `changed`.
+  - `ProgramStreamStartTool`, `ProgramStreamStopTool`,
+    `ProgramRecordStartTool`, `ProgramRecordStopTool` — `program_stream_start`,
+    `program_stream_stop`, `program_record_start`, `program_record_stop`
+    (PLUGINS.md, Decision 17): argument-free, each naming a state rather
+    than a toggle (already there answers `changed: false`, never an error),
+    returning once the session is starting; `destinationNotFound` with
+    nothing to stream to, `pipelineError` or `recordingFailed` when a start
+    settles on an error at once.
   - `AppPlugInHost` — the `@Observable` host: discovers identities for the
     extension point at launch and on the system's own change stream (never
-    polling), decodes each `PlugInManifest`, fills the pane and command
-    registries, starts a plug-in's process when a hosted pane activates, a
+    polling), decodes each `PlugInManifest`, fills the pane, command, and
+    status item registries, starts a plug-in's process when a hosted pane activates, a
     command is invoked, or a bus event meets an activation condition the
     manifest declared (one task drains the bus and asks the
     `ActivationTable`; `AppPlugInLink.activate` launches the process if
@@ -1665,7 +1738,8 @@ surface is:
     after its process dies.
     `DiscoveredPlugIn` is an identity with its manifest; `AppPlugInServices`
     is what every link needs (the bus, the tool registry, the status sink and
-    identity the session serves, the storage); `AppPlugInStorage` is the
+    identity the session serves, the storage, the status items — whose texts
+    the link drops when the plug-in's last connection closes); `AppPlugInStorage` is the
     storage behind the method handler — project scope through `EngineModel`,
     app scope through `PlugInApplicationStore`, secrets through
     `PlugInSecretStore`; `AppPlugInLink` is one
@@ -1679,10 +1753,38 @@ surface is:
     and `removeAll(for:)` follow discovery, `matches(_:)` answers which
     plug-ins an event wakes (each once, by its first matching condition, in
     registration order) as `Match` values.
-  - `PaneRegistry` — the app tier's pane registry: every sidebar pane and
-    settings pane plug-ins have declared, filled from manifests at discovery —
-    the app-side mirror of the host's registries. `RegisteredPane` and
-    `RegisteredSettingsPane` pair a descriptor with the plug-in it belongs to.
+  - `PaneRegistry` — the app tier's pane registry: every sidebar pane,
+    settings pane, and window plug-ins have declared — every scene the app
+    hosts, in one id space — filled from manifests at discovery, the app-side
+    mirror of the host's registries; `plugIn(hosting:)` names the plug-in
+    behind a hosted scene of any kind. `RegisteredPane`,
+    `RegisteredSettingsPane`, and `RegisteredWindow` pair a descriptor with
+    the plug-in it belongs to.
+  - `StatusItemRegistry` — the status items plug-ins declared and the text
+    each currently reports: `readings` is what the bar draws (an item only
+    while it has a text, in registration order), `setText(_:for:plugIn:)`
+    refuses an undeclared item and cuts a text at `maximumTextLength`,
+    `clearTexts(for:)` drops a plug-in's readings when it stops running.
+    `RegisteredStatusItem` pairs a descriptor with its plug-in;
+    `PlugInStatusReporting` is the seam the method handler sets a text
+    through.
+  - `MeterFeed` — the mix's meter blocks as plug-ins follow them
+    (`tingra/meters`): the meter drain folds each block into every follower's
+    `MeterWindow`, and `levels(every:)` sends a follower its window no more
+    often than the interval, driven by the blocks and never a timer.
+    `MeterWindow` is the fold — the largest peak, the blocks' own RMS, the
+    latest block's strips; `PlugInMeterFeeding` is the seam the method
+    handler subscribes through.
+  - `RelayFrameFeed` — the program and preview relays as plug-ins follow them
+    (`tingra/frame`): `next(of:after:)` surfaces the `IOSurface` behind the
+    relay's next frame, or an empty bus, as a `PlugInFrameUpdate`;
+    `PlugInFrameFeeding` is the seam the method handler demands through.
+  - `PlugInWindowView` — the content of a plug-in's window: the hosted scene
+    its descriptor names, titled from the manifest, looked up in the registry
+    on every draw so a window restored before discovery fills in when its
+    plug-in appears, and says Plug-in Unavailable when it is gone. One
+    `WindowGroup(for: PaneID.self)` scene (`TingraApp.plugInWindowID`) serves
+    every plug-in's windows, one window per id.
   - `CommandRegistry` — the command registry, grouped by plug-in for the
     Plug-ins menu's submenus; `RegisteredCommand` pairs a `CommandDescriptor`
     with its plug-in and derives the `tap` name
@@ -1696,8 +1798,13 @@ surface is:
     plug-in's own Keychain items (the plug-in id is the connection's, never
     a param, so a plug-in cannot reach another's data; a refused secret is
     answered with an internal error and reported as `plugin.secrets`, neither
-    carrying the value) and events landed on the bus under the plug-in's
-    domain. `PlugInStoring` is the storage-and-secrets seam behind it, so the
+    carrying the value), status item texts against the items the plug-in
+    declared (`tingra/statusItem.set`; an undeclared item is invalid params),
+    the meters subscription (`tingra/meters.subscribe` → `tingra/meters`, at
+    most ten a second) and the frame demands (`tingra/frame.next` →
+    `tingra/frame` with the surface attached, one outstanding per bus), both
+    sent through the session's `SessionNotifier` and ended with the session,
+    and events landed on the bus under the plug-in's domain. `PlugInStoring` is the storage-and-secrets seam behind it, so the
     handler is tested with an in-memory store.
   - `PlugInApplicationStore` — the app-scoped storage on this Mac: one JSON
     file per plug-in under `~/Library/Application Support/Tingra/Plug-ins/<id>/`
@@ -1731,8 +1838,10 @@ surface is:
   - `PlugInCommands` — the **Plug-ins** menu: one submenu per plug-in with
     commands, rendered before any extension has run and absent while no
     plug-in has a command; each `PlugInCommandItem` emits its `tap` first,
-    then hands the command to the host, which reveals the pane the command
-    names and forwards it to the extension.
+    opens the window the command names (`showsWindow` — here, since
+    `openWindow` is an environment action, and only a window the same plug-in
+    declared), then hands the command to the host, which reveals the pane the
+    command names and forwards it to the extension.
 - **Notes** (`tingra-notes`, 2026-09-13; PLUGINS.md, "The first-party proof:
   Notes") — the first-party proof of the app tier: a second target in
   `tingra-app.xcodeproj` (product `TingraNotes.appex`, module `TingraNotes`,

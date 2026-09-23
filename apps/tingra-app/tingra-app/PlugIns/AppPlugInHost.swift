@@ -53,6 +53,9 @@ final class AppPlugInHost {
     /// The commands plug-ins declared.
     let commands = CommandRegistry()
 
+    /// The status items plug-ins declared, and the texts they report.
+    let statusItems = StatusItemRegistry()
+
     /// The discovered plug-ins, in discovery order.
     private(set) var plugIns: [DiscoveredPlugIn] = []
 
@@ -128,7 +131,9 @@ final class AppPlugInHost {
             info: DaemonInfo(name: "Tingra", version: version),
             storage: AppPlugInStorage(
                 model: model, applicationStore: PlugInApplicationStore(),
-                secrets: PlugInSecretStore(secureStorage: model.secureStorage)))
+                secrets: PlugInSecretStore(secureStorage: model.secureStorage)),
+            statusItems: statusItems, meters: model.meterFeed,
+            frames: RelayFrameFeed(program: model.programRelay, preview: model.previewRelay))
         self.services = services
         discoveryTask = Task { await discover(services: services) }
         let busEvents = model.eventBus.events()
@@ -226,9 +231,17 @@ final class AppPlugInHost {
                 try panes.register(RegisteredSettingsPane(plugIn: manifest.id, descriptor: pane)), plugIn: manifest.id,
                 services: services)
         }
+        for window in manifest.windows {
+            let registered = RegisteredWindow(plugIn: manifest.id, plugInName: manifest.name, descriptor: window)
+            report(try panes.register(registered), plugIn: manifest.id, services: services)
+        }
         for command in manifest.commands {
             let registered = RegisteredCommand(plugIn: manifest.id, plugInName: manifest.name, descriptor: command)
             report(try commands.register(registered), plugIn: manifest.id, services: services)
+        }
+        for item in manifest.statusItems {
+            let registered = RegisteredStatusItem(plugIn: manifest.id, plugInName: manifest.name, descriptor: item)
+            report(try statusItems.register(registered), plugIn: manifest.id, services: services)
         }
         activations.add(manifest.activation, for: manifest.id)
         services.eventBus.event(
@@ -237,6 +250,7 @@ final class AppPlugInHost {
                 "tier": .string("app"), "id": .string(manifest.id.rawValue), "name": .string(manifest.name),
                 "bundle": .string(identity.bundleIdentifier), "panes": .int(manifest.panes.count),
                 "commands": .int(manifest.commands.count), "settingsPanes": .int(manifest.settingsPanes.count),
+                "windows": .int(manifest.windows.count), "statusItems": .int(manifest.statusItems.count),
                 "activation": .int(manifest.activation.count),
             ])
     }
@@ -247,6 +261,7 @@ final class AppPlugInHost {
         links[plugIn.id] = nil
         panes.removeAll(for: plugIn.id)
         commands.removeAll(for: plugIn.id)
+        statusItems.removeAll(for: plugIn.id)
         activations.removeAll(for: plugIn.id)
         plugIns.removeAll { $0.id == plugIn.id }
         services.eventBus.event(
@@ -316,9 +331,7 @@ final class AppPlugInHost {
     ///   - pane: The pane.
     ///   - controller: The activated host view controller.
     func paneActivated(_ pane: PaneID, controller: EXHostViewController) {
-        guard let registered = panes.pane(pane) ?? panes.settingsPanes.first(where: { $0.id == pane }).map(\.asPane),
-            let link = links[registered.plugIn]
-        else { return }
+        guard let plugIn = panes.plugIn(hosting: pane), let link = links[plugIn] else { return }
         do {
             let connection = try controller.makeXPCConnection()
             link.openSession(kind: "pane:\(pane.rawValue)", connection: connection)
@@ -326,7 +339,7 @@ final class AppPlugInHost {
             services?.eventBus.error(
                 "plugin.paneConnection", domain: .plugIn,
                 params: [
-                    "tier": .string("app"), "id": .string(registered.plugIn.rawValue), "pane": .string(pane.rawValue),
+                    "tier": .string("app"), "id": .string(plugIn.rawValue), "pane": .string(pane.rawValue),
                     "error": .string(String(describing: error)),
                 ])
         }
@@ -340,9 +353,7 @@ final class AppPlugInHost {
     ///   - pane: The pane.
     ///   - error: The system's reason, if it gave one.
     func paneDeactivated(_ pane: PaneID, error: (any Error)?) {
-        guard let registered = panes.pane(pane) ?? panes.settingsPanes.first(where: { $0.id == pane }).map(\.asPane),
-            let link = links[registered.plugIn]
-        else { return }
+        guard let plugIn = panes.plugIn(hosting: pane), let link = links[plugIn] else { return }
         link.closeSession(kind: "pane:\(pane.rawValue)", reason: error.map { String(describing: $0) })
         guard error != nil else { return }
         Task {
@@ -355,7 +366,9 @@ final class AppPlugInHost {
 
     /// Invokes a command: reveals the pane it names, then forwards it to
     /// the extension, launching the process if needed. The caller has
-    /// already emitted the `tap`.
+    /// already emitted the `tap`, and opened the window the command names —
+    /// opening a window is an environment action only a view can take
+    /// (``PlugInCommands``).
     ///
     /// - Parameter command: The command.
     func invoke(_ command: RegisteredCommand) async {
@@ -394,20 +407,9 @@ enum PlugInHostError: Error, CustomStringConvertible {
     }
 }
 
-extension RegisteredSettingsPane {
-    /// The settings pane as a sidebar pane record, for the hosting path the
-    /// two share.
-    fileprivate var asPane: RegisteredPane {
-        RegisteredPane(
-            plugIn: plugIn, plugInName: "",
-            descriptor: PaneDescriptor(
-                id: id, title: descriptor.title, systemImage: descriptor.systemImage, sceneID: descriptor.sceneID))
-    }
-}
-
 /// What every link needs: the bus, the tool and resource registries, the
-/// status sink and identity the MCP session serves, and the plug-ins'
-/// storage.
+/// status sink and identity the MCP session serves, the plug-ins' storage,
+/// the status items, the meters, and the bus frames.
 struct AppPlugInServices {
     /// The bus events land on.
     let eventBus: EventBus
@@ -426,6 +428,16 @@ struct AppPlugInServices {
 
     /// Where plug-ins' values live.
     let storage: any PlugInStoring
+
+    /// The status items, whose texts a plug-in sets and the link clears
+    /// when the plug-in's last connection closes.
+    let statusItems: StatusItemRegistry
+
+    /// The meters a connection subscribes to (`tingra/meters`).
+    let meters: any PlugInMeterFeeding
+
+    /// The bus frames a connection asks for (`tingra/frame.next`).
+    let frames: any PlugInFrameFeeding
 }
 
 /// The plug-ins' storage behind the method handler: project scope through
@@ -592,7 +604,9 @@ final class AppPlugInLink {
         closeSession(kind: kind, reason: nil)
         let wasActive = !sessions.isEmpty
         let transport = XPCMessageTransport(connection: connection, opening: true)
-        let handler = PlugInMethodHandler(plugIn: plugIn.id, eventBus: services.eventBus, storage: services.storage)
+        let handler = PlugInMethodHandler(
+            plugIn: plugIn.id, eventBus: services.eventBus, storage: services.storage,
+            statusItems: services.statusItems, meters: services.meters, frames: services.frames)
         let session = MCPSession(
             transport: transport, tools: services.tools, resources: services.resources, status: services.status,
             info: services.info, eventBus: services.eventBus, methods: handler)
@@ -630,9 +644,12 @@ final class AppPlugInLink {
         noteDeactivatedIfIdle(reason: "ended")
     }
 
-    /// Emits `plugin.deactivated` when the last session is gone.
+    /// Emits `plugin.deactivated` when the last session is gone, and takes
+    /// the plug-in's readings off the status bar: nothing is left to keep
+    /// them true.
     private func noteDeactivatedIfIdle(reason: String) {
         guard sessions.isEmpty else { return }
+        services.statusItems.clearTexts(for: plugIn.id)
         services.eventBus.event(
             "plugin.deactivated", domain: .plugIn,
             params: ["tier": .string("app"), "id": .string(plugIn.id.rawValue), "reason": .string(reason)])

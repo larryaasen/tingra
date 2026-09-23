@@ -310,7 +310,8 @@ Decision 14): the wire types (`JSONRPCID`, `JSONRPCError`, `JSONRPCResponse`,
 …), the shared message coder, the `MessageTransport` seam a session reads and
 writes through, the in-memory transports tests run against, and
 `XPCMessageTransport` — the transport an app-tier plug-in's ExtensionKit
-connection carries. Lifted out of `TingraMCP` on 2026-09-13 so an extension
+connection carries, which can hand an `IOSurface` across beside a message
+(`SurfaceMessageTransport`), the one value JSON cannot carry. Lifted out of `TingraMCP` on 2026-09-13 so an extension
 can speak the same protocol the daemon does without linking the daemon or the
 host; it depends on `TingraPlugInKit` for `JSONValue` alone and on nothing
 third-party. `TingraMCP` re-exports it, so nothing that imports `TingraMCP`
@@ -334,14 +335,17 @@ SwiftNIO/swift-log/eventsource stack.
 
 The extension side of the app tier (see [PLUGINS.md](docs/PLUGINS.md), "The
 model: two tiers, one plug-in"): what an app-tier plug-in links to add a pane,
-a command, or a settings pane to Tingra.app from its own sandboxed ExtensionKit
-process — or to be woken by a bus event it names. It holds the `Codable`
+a command, a settings pane, a window, or a status bar reading to Tingra.app
+from its own sandboxed ExtensionKit process — or to be woken by a bus event it
+names. It holds the `Codable`
 descriptors, the activation conditions, and the `PlugInManifest` the app
 reads from an extension's Info.plist before the extension runs, the
 `TingraAppExtension` protocol an extension's `@main` type adopts (the kit owns
 the scenes, the connections, and the MCP handshake), and `PlugInConnection`,
 the extension's MCP client for calling the app's tools, filing events on the
-app's bus, and reading and writing its project- and app-scoped storage. It
+app's bus, reading and writing its project- and app-scoped storage, and
+following the app's meters and its program and preview video — the last as
+the app's own `IOSurface`s, which `BusMonitorView` draws with no copy. It
 imports ExtensionKit and SwiftUI — the one package in the engine family that
 does, because it *is* the UI-side kit for extensions — and is linked only by
 extensions and the app, never by the engine or the CLI. Deliberately no default

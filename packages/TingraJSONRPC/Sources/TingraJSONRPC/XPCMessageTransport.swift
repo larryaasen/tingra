@@ -8,6 +8,7 @@
 //
 
 import Foundation
+import IOSurface
 import Synchronization
 
 /// The one Objective-C protocol an `NSXPCConnection` carries between the app
@@ -16,7 +17,9 @@ import Synchronization
 /// implementing it and call the other's through the remote proxy. It is a
 /// byte channel, not a second RPC protocol — every method name on the wire
 /// is JSON-RPC inside the payload (CLAUDE.md, "Never add a second internal
-/// RPC protocol"; PLUGINS.md, Decision 14).
+/// RPC protocol"; PLUGINS.md, Decision 14). A payload may have an
+/// `IOSurface` attached, the one value JSON cannot carry: the payload still
+/// names the method and describes the surface.
 ///
 /// `nonisolated` explicitly: XPC calls an exported object on the
 /// connection's own queue, and a module whose default isolation is the main
@@ -35,6 +38,15 @@ public nonisolated protocol XPCMessageChannel {
     ///
     /// - Parameter payload: The message, without framing.
     func deliver(_ payload: Data)
+
+    /// Delivers one JSON-RPC payload with a surface attached — XPC hands
+    /// the peer the surface itself, shared memory, not a copy of its
+    /// pixels.
+    ///
+    /// - Parameters:
+    ///   - payload: The message, without framing.
+    ///   - surface: The surface the message is about.
+    func deliver(_ payload: Data, surface: IOSurface)
 }
 
 /// A ``MessageTransport`` over an `NSXPCConnection`: the app-tier link
@@ -51,12 +63,12 @@ public nonisolated protocol XPCMessageChannel {
 /// `@unchecked Sendable`: `NSXPCConnection` is not marked `Sendable` but is
 /// documented thread-safe, and the transport touches it only through its
 /// own methods; the inbound queue and the failure slot are lock-guarded.
-public final class XPCMessageTransport: MessageTransport, @unchecked Sendable {
+public final class XPCMessageTransport: SurfaceMessageTransport, @unchecked Sendable {
     /// The connection.
     private let connection: NSXPCConnection
 
-    /// The payloads the peer has delivered, in order.
-    private let inbound = AsyncQueue<Data>()
+    /// The messages the peer has delivered, in order.
+    private let inbound = AsyncQueue<SurfaceMessage>()
 
     /// The first error a write's error handler reported, thrown by the next
     /// write: XPC reports send failures asynchronously. A reference box, so
@@ -119,6 +131,10 @@ public final class XPCMessageTransport: MessageTransport, @unchecked Sendable {
     }
 
     public func readMessage() async throws -> Data? {
+        await inbound.next()?.payload
+    }
+
+    public func readSurfaceMessage() async throws -> SurfaceMessage? {
         await inbound.next()
     }
 
@@ -126,6 +142,12 @@ public final class XPCMessageTransport: MessageTransport, @unchecked Sendable {
         if let error = failure.first { throw error }
         guard let channel = channel() else { throw XPCMessageTransportError.channelUnavailable }
         channel.deliver(payload)
+    }
+
+    public func writeMessage(_ payload: Data, surface: IOSurface) async throws {
+        if let error = failure.first { throw error }
+        guard let channel = channel() else { throw XPCMessageTransportError.channelUnavailable }
+        channel.deliver(payload, surface: surface)
     }
 
     public func close() async {
@@ -152,13 +174,13 @@ public final class XPCMessageTransport: MessageTransport, @unchecked Sendable {
         var first: (any Error)? { value.withLock { $0 } }
     }
 
-    /// What the peer calls: queues each payload for ``readMessage()``.
+    /// What the peer calls: queues each message for ``readMessage()``.
     private final class Receiver: NSObject, XPCMessageChannel {
-        /// Where delivered payloads go.
-        private let inbound: AsyncQueue<Data>
+        /// Where delivered messages go.
+        private let inbound: AsyncQueue<SurfaceMessage>
 
         /// Creates the receiver.
-        init(inbound: AsyncQueue<Data>) {
+        init(inbound: AsyncQueue<SurfaceMessage>) {
             self.inbound = inbound
         }
 
@@ -166,7 +188,11 @@ public final class XPCMessageTransport: MessageTransport, @unchecked Sendable {
         func open() {}
 
         func deliver(_ payload: Data) {
-            inbound.enqueue(payload)
+            inbound.enqueue(SurfaceMessage(payload: payload))
+        }
+
+        func deliver(_ payload: Data, surface: IOSurface) {
+            inbound.enqueue(SurfaceMessage(payload: payload, surface: surface))
         }
     }
 }

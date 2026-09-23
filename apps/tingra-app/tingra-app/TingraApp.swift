@@ -8,6 +8,7 @@
 //
 
 import SwiftUI
+import TingraAppPlugInKit
 import TingraEventBus
 
 /// The Tingra app entry point (phase 3, scaffolded at roadmap step 6).
@@ -71,6 +72,10 @@ struct TingraApp: App {
 
     /// The identifier Window ▸ Log and the Logging pane's Show Log open.
     static let logWindowID = "log"
+
+    /// The identifier a plug-in's window opens under, one window per
+    /// `PaneID` value (``PlugInWindowView``).
+    static let plugInWindowID = "plugInWindow"
 
     /// The scenes: the main production window, the multiview monitoring
     /// window it can open, and the settings window (``SettingsView``).
@@ -158,6 +163,7 @@ struct TingraApp: App {
         ) {
             MultiviewView(model: model, statusBar: statusBar)
                 .frame(minWidth: 640, minHeight: 400)
+                .environment(plugInHost)
         }
 
         // Settings is a `Window` rather than the `Settings` scene, for one
@@ -204,6 +210,20 @@ struct TingraApp: App {
                 .frame(minWidth: 560, minHeight: 320)
         }
         .defaultSize(width: 1000, height: 640)
+        .commandsRemoved()
+
+        // A plug-in's windows: one scene for all of them, a window per
+        // `PaneID` value, so opening a window that is already open brings
+        // it forward instead of making a second — a plug-in's window is a
+        // single surface, like Multiview and the log. Opened by the
+        // plug-in's command that names it (``PlugInCommands``), which is
+        // where the `tap` is; the scene's own commands are dropped for the
+        // reason the log's are.
+        WindowGroup(id: Self.plugInWindowID, for: PaneID.self) { $window in
+            PlugInWindowView(window: window, host: plugInHost)
+                .frame(minWidth: 320, minHeight: 240)
+        }
+        .defaultSize(width: 640, height: 480)
         .commandsRemoved()
     }
 }

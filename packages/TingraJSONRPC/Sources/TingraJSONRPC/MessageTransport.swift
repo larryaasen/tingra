@@ -8,6 +8,7 @@
 //
 
 import Foundation
+import IOSurface
 import Synchronization
 
 /// A duplex, message-level channel carrying one JSON-RPC session's traffic.
@@ -40,12 +41,65 @@ public protocol MessageTransport: Sendable {
     func close() async
 }
 
+/// One message with what rode beside it: the JSON payload, and the
+/// `IOSurface` the sender attached, if it attached one.
+///
+/// A surface is pixels in shared memory — a program frame handed to an
+/// app-tier plug-in's process with no copy (PLUGINS.md, "Frames across the
+/// boundary") — and cannot be written into JSON, so it travels *beside* the
+/// payload in the same message. The payload still says everything about it
+/// (the JSON-RPC method, the bus, the time): the attachment is the one
+/// value JSON cannot carry, never a second protocol.
+public struct SurfaceMessage: Sendable {
+    /// The message's JSON payload, without framing.
+    public let payload: Data
+
+    /// The surface attached to the message, or nil for a plain message.
+    public let surface: IOSurface?
+
+    /// Creates a message.
+    ///
+    /// - Parameters:
+    ///   - payload: The JSON payload.
+    ///   - surface: The surface riding beside it, if any.
+    public init(payload: Data, surface: IOSurface? = nil) {
+        self.payload = payload
+        self.surface = surface
+    }
+}
+
+/// A ``MessageTransport`` that can carry an `IOSurface` beside a message:
+/// the XPC transport, whose connection passes a surface between processes
+/// as a kernel handle, and the in-memory one that stands in for it in
+/// tests. A socket cannot, so the daemon's transport does not conform, and
+/// code that wants to send a surface asks whether its transport does.
+public protocol SurfaceMessageTransport: MessageTransport {
+    /// Reads the next message with its attachment, or nil when the peer
+    /// has closed the channel. The surface-aware form of
+    /// ``MessageTransport/readMessage()``: a reader calls one or the other,
+    /// never both, and ``MessageTransport/readMessage()`` drops any
+    /// attachment.
+    ///
+    /// - Throws: An I/O error if the read fails for a reason other than a
+    ///   clean close.
+    func readSurfaceMessage() async throws -> SurfaceMessage?
+
+    /// Writes `payload` to the peer with `surface` attached, in order with
+    /// every other write.
+    ///
+    /// - Parameters:
+    ///   - payload: The JSON payload.
+    ///   - surface: The surface to hand the peer.
+    /// - Throws: An I/O error if the write fails.
+    func writeMessage(_ payload: Data, surface: IOSurface) async throws
+}
+
 /// An in-memory ``MessageTransport`` for tests: the test enqueues inbound
 /// payloads the session will read and collects everything the session
 /// writes, with no socket, no file descriptors, and no framing on the wire.
-public final class InMemoryMessageTransport: MessageTransport {
-    /// The inbound payloads the session reads, in order.
-    private let inbound = AsyncQueue<Data>()
+public final class InMemoryMessageTransport: SurfaceMessageTransport {
+    /// The inbound messages the session reads, in order.
+    private let inbound = AsyncQueue<SurfaceMessage>()
 
     /// Everything the session has written, in order (lock-protected: the
     /// test reads it while the session writes).
@@ -54,10 +108,10 @@ public final class InMemoryMessageTransport: MessageTransport {
     /// Whether ``close()`` has run.
     private let closed = Mutex(false)
 
-    /// Called with every payload written, when a peer wants them live (see
+    /// Called with every message written, when a peer wants them live (see
     /// ``LinkedMessageTransports``); nil collects them for ``writtenLines``
     /// alone.
-    private let onWrite: (@Sendable (Data) -> Void)?
+    private let onWrite: (@Sendable (SurfaceMessage) -> Void)?
 
     /// Creates an empty transport. Enqueue inbound payloads with
     /// ``enqueue(_:)`` and finish them with ``finishInbound()``.
@@ -65,12 +119,29 @@ public final class InMemoryMessageTransport: MessageTransport {
     /// - Parameter onWrite: Called with every written payload, in addition
     ///   to it being collected.
     public init(onWrite: (@Sendable (Data) -> Void)? = nil) {
-        self.onWrite = onWrite
+        guard let onWrite else {
+            self.onWrite = nil
+            return
+        }
+        self.onWrite = { message in onWrite(message.payload) }
+    }
+
+    /// Creates an empty transport whose peer wants every written message
+    /// with its attachment: one side of a linked pair.
+    ///
+    /// - Parameter onWriteMessage: Called with every written message.
+    init(onWriteMessage: @escaping @Sendable (SurfaceMessage) -> Void) {
+        self.onWrite = onWriteMessage
     }
 
     /// Enqueues one inbound JSON payload for the session to read.
     public func enqueue(_ payload: Data) {
-        inbound.enqueue(payload)
+        inbound.enqueue(SurfaceMessage(payload: payload))
+    }
+
+    /// Enqueues one inbound message, attachment and all.
+    public func enqueue(_ message: SurfaceMessage) {
+        inbound.enqueue(message)
     }
 
     /// Signals the peer closing, so the session's read loop ends.
@@ -87,12 +158,21 @@ public final class InMemoryMessageTransport: MessageTransport {
     public var isClosed: Bool { closed.withLock { $0 } }
 
     public func readMessage() async throws -> Data? {
+        await inbound.next()?.payload
+    }
+
+    public func readSurfaceMessage() async throws -> SurfaceMessage? {
         await inbound.next()
     }
 
     public func writeMessage(_ payload: Data) async throws {
         written.withLock { $0.append(payload) }
-        onWrite?(payload)
+        onWrite?(SurfaceMessage(payload: payload))
+    }
+
+    public func writeMessage(_ payload: Data, surface: IOSurface) async throws {
+        written.withLock { $0.append(payload) }
+        onWrite?(SurfaceMessage(payload: payload, surface: surface))
     }
 
     public func close() async {
@@ -113,8 +193,8 @@ public enum LinkedMessageTransports {
     ///   is the caller's choice.
     public static func makePair() -> (InMemoryMessageTransport, InMemoryMessageTransport) {
         let box = PeerBox()
-        let a = InMemoryMessageTransport { payload in box.peer(of: .a)?.enqueue(payload) }
-        let b = InMemoryMessageTransport { payload in box.peer(of: .b)?.enqueue(payload) }
+        let a = InMemoryMessageTransport(onWriteMessage: { message in box.peer(of: .a)?.enqueue(message) })
+        let b = InMemoryMessageTransport(onWriteMessage: { message in box.peer(of: .b)?.enqueue(message) })
         box.set(a: a, b: b)
         return (a, b)
     }

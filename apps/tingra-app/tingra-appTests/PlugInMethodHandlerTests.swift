@@ -68,7 +68,9 @@ struct PlugInMethodHandlerTests {
     @Test("storage.get answers null before a set, then the set value, and nil clears")
     func storageRoundTrip() async throws {
         let store = MemoryStore()
-        let handler = PlugInMethodHandler(plugIn: notes, eventBus: EventBus(), storage: store)
+        let handler = PlugInMethodHandler(
+            plugIn: notes, eventBus: EventBus(), storage: store, statusItems: StatusItemRegistry(), meters: MeterFeed(),
+            frames: NoFrames())
         let empty = try await handler.respond(method: AppTierMethod.storageGet, params: .object(["scope": "project"]))
         #expect(empty?["value"] == .null)
         let set = try await handler.respond(
@@ -85,7 +87,9 @@ struct PlugInMethodHandlerTests {
 
     @Test("the two scopes are separate")
     func scopesAreSeparate() async throws {
-        let handler = PlugInMethodHandler(plugIn: notes, eventBus: EventBus(), storage: MemoryStore())
+        let handler = PlugInMethodHandler(
+            plugIn: notes, eventBus: EventBus(), storage: MemoryStore(), statusItems: StatusItemRegistry(),
+            meters: MeterFeed(), frames: NoFrames())
         _ = try await handler.respond(
             method: AppTierMethod.storageSet, params: .object(["scope": "application", "value": .int(14)]))
         let project = try await handler.respond(method: AppTierMethod.storageGet, params: .object(["scope": "project"]))
@@ -97,7 +101,9 @@ struct PlugInMethodHandlerTests {
 
     @Test("a missing or unknown scope throws an invalid-params error naming the scopes")
     func badScopeThrows() async {
-        let handler = PlugInMethodHandler(plugIn: notes, eventBus: EventBus(), storage: MemoryStore())
+        let handler = PlugInMethodHandler(
+            plugIn: notes, eventBus: EventBus(), storage: MemoryStore(), statusItems: StatusItemRegistry(),
+            meters: MeterFeed(), frames: NoFrames())
         await #expect(throws: JSONRPCError.self) {
             try await handler.respond(method: AppTierMethod.storageGet, params: .object(["scope": "secret"]))
         }
@@ -109,7 +115,9 @@ struct PlugInMethodHandlerTests {
     @Test("secrets.get answers null before a set, then the secret, and null removes it")
     func secretRoundTrip() async throws {
         let store = MemoryStore()
-        let handler = PlugInMethodHandler(plugIn: notes, eventBus: EventBus(), storage: store)
+        let handler = PlugInMethodHandler(
+            plugIn: notes, eventBus: EventBus(), storage: store, statusItems: StatusItemRegistry(), meters: MeterFeed(),
+            frames: NoFrames())
         let empty = try await handler.respond(method: AppTierMethod.secretsGet, params: .object(["name": "token"]))
         #expect(empty?["value"] == .null)
         let set = try await handler.respond(
@@ -129,9 +137,12 @@ struct PlugInMethodHandlerTests {
     func secretsAreNarrowedToThePlugIn() async throws {
         let store = MemoryStore()
         let bus = EventBus()
-        let notesHandler = PlugInMethodHandler(plugIn: notes, eventBus: bus, storage: store)
+        let notesHandler = PlugInMethodHandler(
+            plugIn: notes, eventBus: bus, storage: store, statusItems: StatusItemRegistry(), meters: MeterFeed(),
+            frames: NoFrames())
         let otherHandler = PlugInMethodHandler(
-            plugIn: PlugInID(rawValue: "com.example.tally"), eventBus: bus, storage: store)
+            plugIn: PlugInID(rawValue: "com.example.tally"), eventBus: bus, storage: store,
+            statusItems: StatusItemRegistry(), meters: MeterFeed(), frames: NoFrames())
         _ = try await notesHandler.respond(
             method: AppTierMethod.secretsSet, params: .object(["name": "token", "value": "notes-token"]))
         let other = try await otherHandler.respond(
@@ -143,7 +154,9 @@ struct PlugInMethodHandlerTests {
 
     @Test("a missing or empty name, or a value that is not a string, throws an invalid-params error")
     func badSecretParamsThrow() async {
-        let handler = PlugInMethodHandler(plugIn: notes, eventBus: EventBus(), storage: MemoryStore())
+        let handler = PlugInMethodHandler(
+            plugIn: notes, eventBus: EventBus(), storage: MemoryStore(), statusItems: StatusItemRegistry(),
+            meters: MeterFeed(), frames: NoFrames())
         for params: JSONValue? in [nil, .object([:]), .object(["name": ""]), .object(["name": .int(3)])] {
             do {
                 _ = try await handler.respond(method: AppTierMethod.secretsGet, params: params)
@@ -169,7 +182,8 @@ struct PlugInMethodHandlerTests {
     func refusedSecretIsReported() async throws {
         let bus = EventBus()
         let handler = PlugInMethodHandler(
-            plugIn: notes, eventBus: bus, storage: MemoryStore(secretFailure: .keychain(-34018)))
+            plugIn: notes, eventBus: bus, storage: MemoryStore(secretFailure: .keychain(-34018)),
+            statusItems: StatusItemRegistry(), meters: MeterFeed(), frames: NoFrames())
         let events = bus.events()
         do {
             _ = try await handler.respond(
@@ -197,7 +211,9 @@ struct PlugInMethodHandlerTests {
 
     @Test("a method that is not the handler's returns nil")
     func unknownMethodIsNil() async throws {
-        let handler = PlugInMethodHandler(plugIn: notes, eventBus: EventBus(), storage: MemoryStore())
+        let handler = PlugInMethodHandler(
+            plugIn: notes, eventBus: EventBus(), storage: MemoryStore(), statusItems: StatusItemRegistry(),
+            meters: MeterFeed(), frames: NoFrames())
         let result = try await handler.respond(method: "tools/call", params: nil)
         #expect(result == nil)
     }
@@ -205,7 +221,9 @@ struct PlugInMethodHandlerTests {
     @Test("tingra/event lands on the bus under the plug-in's domain with its params")
     func eventLandsOnBus() async throws {
         let bus = EventBus()
-        let handler = PlugInMethodHandler(plugIn: notes, eventBus: bus, storage: MemoryStore())
+        let handler = PlugInMethodHandler(
+            plugIn: notes, eventBus: bus, storage: MemoryStore(), statusItems: StatusItemRegistry(),
+            meters: MeterFeed(), frames: NoFrames())
         let events = bus.events()
         await handler.handleNotification(
             method: AppTierMethod.event,
@@ -231,7 +249,9 @@ struct PlugInMethodHandlerTests {
     @Test("an event without a name is reported as an error under the plug-in domain")
     func namelessEventIsReported() async throws {
         let bus = EventBus()
-        let handler = PlugInMethodHandler(plugIn: notes, eventBus: bus, storage: MemoryStore())
+        let handler = PlugInMethodHandler(
+            plugIn: notes, eventBus: bus, storage: MemoryStore(), statusItems: StatusItemRegistry(),
+            meters: MeterFeed(), frames: NoFrames())
         let events = bus.events()
         await handler.handleNotification(method: AppTierMethod.event, params: .object(["params": .object([:])]))
         bus.shutdown()
@@ -256,5 +276,65 @@ struct PlugInMethodHandlerTests {
         #expect(store.value(for: notes) == nil)
         #expect(!FileManager.default.fileExists(atPath: store.fileURL(for: notes).path()))
         try store.setValue(nil, for: notes)
+    }
+
+    /// A registry holding the tally plug-in's `link` status item.
+    private func registryWithLink(plugIn: PlugInID) throws -> StatusItemRegistry {
+        let registry = StatusItemRegistry()
+        try registry.register(
+            RegisteredStatusItem(
+                plugIn: plugIn, plugInName: "Tally",
+                descriptor: StatusItemDescriptor(
+                    id: StatusItemID(rawValue: "link"), title: "Tally Link", systemImage: "link")))
+        return registry
+    }
+
+    @Test("statusItem.set gives a declared item its text, and null takes the reading off the bar")
+    func statusItemRoundTrip() async throws {
+        let registry = try registryWithLink(plugIn: notes)
+        let handler = PlugInMethodHandler(
+            plugIn: notes, eventBus: EventBus(), storage: MemoryStore(), statusItems: registry, meters: MeterFeed(),
+            frames: NoFrames())
+        let answer = try await handler.respond(
+            method: AppTierMethod.statusItemSet, params: .object(["item": "link", "text": "Connected"]))
+        #expect(answer == .object([:]))
+        #expect(registry.readings.map(\.text) == ["Connected"])
+        _ = try await handler.respond(
+            method: AppTierMethod.statusItemSet, params: .object(["item": "link", "text": .null]))
+        #expect(registry.readings.isEmpty)
+    }
+
+    @Test("statusItem.set reaches only the connection's own items, and an undeclared item is invalid params")
+    func statusItemsAreNarrowedToThePlugIn() async throws {
+        let registry = try registryWithLink(plugIn: PlugInID(rawValue: "com.example.tally"))
+        let handler = PlugInMethodHandler(
+            plugIn: notes, eventBus: EventBus(), storage: MemoryStore(), statusItems: registry, meters: MeterFeed(),
+            frames: NoFrames())
+        do {
+            _ = try await handler.respond(
+                method: AppTierMethod.statusItemSet, params: .object(["item": "link", "text": "Mine now"]))
+            Issue.record("another plug-in's item should not be settable")
+        } catch let error as JSONRPCError {
+            #expect(error.code == JSONRPCErrorCode.invalidParams.rawValue)
+            #expect(error.message.contains("link"))
+        }
+        #expect(registry.readings.isEmpty)
+    }
+
+    @Test("statusItem.set without an item, or with a text that is not a string, is invalid params")
+    func statusItemInvalidParams() async throws {
+        let handler = PlugInMethodHandler(
+            plugIn: notes, eventBus: EventBus(), storage: MemoryStore(),
+            statusItems: try registryWithLink(plugIn: notes), meters: MeterFeed(), frames: NoFrames())
+        for params: JSONValue in [
+            .object(["text": "x"]), .object(["item": "", "text": "x"]), .object(["item": "link", "text": 4]),
+        ] {
+            do {
+                _ = try await handler.respond(method: AppTierMethod.statusItemSet, params: params)
+                Issue.record("\(params) should be invalid params")
+            } catch let error as JSONRPCError {
+                #expect(error.code == JSONRPCErrorCode.invalidParams.rawValue)
+            }
+        }
     }
 }

@@ -39,8 +39,10 @@ protocol ProgramControlling: AnyObject, Sendable {
 }
 
 /// The first-party program tools plug-in: the controls a plug-in or an agent
-/// acts on the program with — `shot_take`, `preview_set`, `fade_to_black` —
-/// registered through the same `ToolRegistering` seam every tool plug-in
+/// acts on the program with — `shot_take`, `preview_set`, `fade_to_black`,
+/// and the stream and recording controls `program_stream_start`,
+/// `program_stream_stop`, `program_record_start`, `program_record_stop`
+/// (`ProgramOutputTools.swift`; PLUGINS.md, Decision 17) — registered through the same `ToolRegistering` seam every tool plug-in
 /// uses (PLUGINS.md, Decision 10: plug-ins control the engine through the
 /// MCP tools, never a parallel API). App-owned rather than in `TingraMCP`
 /// because only the app has a program: the daemon streams a single input
@@ -52,17 +54,27 @@ nonisolated struct ProgramToolsPlugIn: PlugIn {
     /// The program the tools act on.
     private let program: any ProgramControlling
 
-    /// Creates the plug-in over a program.
+    /// The stream and recording the output tools act on.
+    private let outputs: any ProgramOutputControlling
+
+    /// Creates the plug-in over a program and its outputs.
     ///
-    /// - Parameter program: The program the tools act on.
-    init(program: any ProgramControlling) {
+    /// - Parameters:
+    ///   - program: The program the switcher's tools act on.
+    ///   - outputs: The stream and recording the output tools act on.
+    init(program: any ProgramControlling, outputs: any ProgramOutputControlling) {
         self.program = program
+        self.outputs = outputs
     }
 
     func activate(in context: PlugInContext) async throws {
         try await context.tools.register(ShotTakeTool(program: program))
         try await context.tools.register(PreviewSetTool(program: program))
         try await context.tools.register(FadeToBlackTool(program: program))
+        try await context.tools.register(ProgramStreamStartTool(outputs: outputs))
+        try await context.tools.register(ProgramStreamStopTool(outputs: outputs))
+        try await context.tools.register(ProgramRecordStartTool(outputs: outputs))
+        try await context.tools.register(ProgramRecordStopTool(outputs: outputs))
     }
 }
 

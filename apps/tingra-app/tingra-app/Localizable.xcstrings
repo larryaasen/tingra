@@ -4568,6 +4568,23 @@
         }
       }
     },
+    "Plug-in" : {
+      "comment" : "Title of a plug-in's window while the plug-in that owns it is unavailable",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Plug-in"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Complemento"
+          }
+        }
+      }
+    },
     "Plug-in Data" : {
       "comment" : "Data settings: the name of the app-scoped files plug-ins keep on this Mac",
       "localizations" : {
@@ -4598,6 +4615,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Secretos de complementos"
+          }
+        }
+      }
+    },
+    "Plug-in Unavailable" : {
+      "comment" : "Title shown in a plug-in's window when the plug-in is disabled or not installed",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Plug-in nicht verfügbar"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Complemento no disponible"
           }
         }
       }
@@ -6745,6 +6779,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "No se pudo convertir la imagen en un archivo de imagen. Inténtalo de nuevo."
+          }
+        }
+      }
+    },
+    "The plug-in that owns this window is not available." : {
+      "comment" : "Explanation shown in a plug-in's window when the plug-in is disabled or not installed",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Plug-in, zu dem dieses Fenster gehört, ist nicht verfügbar."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El complemento al que pertenece esta ventana no está disponible."
           }
         }
       }

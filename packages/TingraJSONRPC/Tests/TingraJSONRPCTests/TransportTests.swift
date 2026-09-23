@@ -8,6 +8,7 @@
 //
 
 import Foundation
+import IOSurface
 import Testing
 
 @testable import TingraJSONRPC
@@ -67,6 +68,59 @@ struct TransportTests {
         try await server.writeMessage(Data("{\"id\":1,\"jsonrpc\":\"2.0\",\"result\":{}}".utf8))
         let response = try await client.readMessage()
         #expect(response?.utf8String == "{\"id\":1,\"jsonrpc\":\"2.0\",\"result\":{}}")
+
+        await client.close()
+        await server.close()
+    }
+
+    /// A small BGRA surface, the kind a program frame is backed by.
+    private func makeSurface() throws -> IOSurface {
+        try #require(
+            IOSurface(properties: [
+                .width: 16, .height: 9, .bytesPerElement: 4, .pixelFormat: 0x4247_5241,  // 'BGRA'
+            ]))
+    }
+
+    @Test("a linked pair hands a surface across beside its payload, and a plain read drops it")
+    func linkedPairCarriesSurface() async throws {
+        let (client, server) = LinkedMessageTransports.makePair()
+        let surface = try makeSurface()
+        try await server.writeMessage(Data("{\"method\":\"tingra/frame\"}".utf8), surface: surface)
+        try await server.writeMessage(Data("{\"method\":\"tingra/meters\"}".utf8))
+        try await server.writeMessage(Data("{\"method\":\"tingra/frame\"}".utf8), surface: surface)
+        let first = try #require(try await client.readSurfaceMessage())
+        #expect(first.payload.utf8String == "{\"method\":\"tingra/frame\"}")
+        #expect(first.surface === surface)
+        let second = try #require(try await client.readSurfaceMessage())
+        #expect(second.surface == nil)
+        let third = try await client.readMessage()
+        #expect(third?.utf8String == "{\"method\":\"tingra/frame\"}")
+        #expect(server.writtenLines.count == 3)
+    }
+
+    @Test("an XPC transport hands the peer the very surface attached, not a copy")
+    func xpcTransportCarriesSurface() async throws {
+        let listener = NSXPCListener.anonymous()
+        let accepted = AsyncQueue<XPCMessageTransport>()
+        let delegate = AcceptingDelegate { connection in
+            accepted.enqueue(XPCMessageTransport(connection: connection, opening: false))
+        }
+        listener.delegate = delegate
+        listener.resume()
+        defer { listener.invalidate() }
+
+        let clientConnection = NSXPCConnection(listenerEndpoint: listener.endpoint)
+        let client = XPCMessageTransport(connection: clientConnection, opening: true)
+        let server = try #require(await accepted.next())
+
+        let surface = try makeSurface()
+        try await server.writeMessage(Data("{\"method\":\"tingra/frame\"}".utf8), surface: surface)
+        let message = try #require(try await client.readSurfaceMessage())
+        #expect(message.payload.utf8String == "{\"method\":\"tingra/frame\"}")
+        let received = try #require(message.surface)
+        #expect(IOSurfaceGetID(received) == IOSurfaceGetID(surface))
+        #expect(received.width == 16)
+        #expect(received.height == 9)
 
         await client.close()
         await server.close()
