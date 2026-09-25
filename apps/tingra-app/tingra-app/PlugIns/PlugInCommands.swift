@@ -24,6 +24,9 @@ import TingraPlugInKit
 /// `openWindow` is an environment action only the menu can reach. The
 /// command's own effect is the plug-in's event, so the convention from
 /// EVENTS.md holds for authors who have never read EVENTS.md.
+///
+/// The View menu also lists every registered sidebar pane as a checked item,
+/// which is how a pane closed with its header's close button comes back.
 struct PlugInCommands: Commands {
     /// The engine model the `tap` is reported through.
     let model: EngineModel
@@ -36,6 +39,16 @@ struct PlugInCommands: Commands {
 
     /// The menu.
     var body: some Commands {
+        if !host.panes.panes.isEmpty {
+            CommandGroup(after: .sidebar) {
+                Divider()
+                ForEach(host.panes.panes) { pane in
+                    Toggle(isOn: shownBinding(for: pane)) {
+                        Text(verbatim: pane.descriptor.title)
+                    }
+                }
+            }
+        }
         if !host.commands.commands.isEmpty {
             CommandMenu(Text("Plug-ins", comment: "Title of the Plug-ins menu, one submenu per plug-in with commands"))
             {
@@ -51,6 +64,22 @@ struct PlugInCommands: Commands {
                     }
                 }
             }
+        }
+    }
+
+    /// Whether a pane is shown in its sidebar, as the View menu's checked
+    /// item edits it, reporting the operator's `tap` before the change.
+    ///
+    /// - Parameter pane: The pane.
+    /// - Returns: The binding.
+    private func shownBinding(for pane: RegisteredPane) -> Binding<Bool> {
+        Binding {
+            !host.isClosed(pane.id)
+        } set: { isShown in
+            model.eventBus.tap(
+                "plugInPane.menuItem", domain: EventDomain(pane.plugIn.rawValue),
+                params: ["pane": .string(pane.id.rawValue), "visible": .bool(isShown)])
+            host.setClosed(!isShown, for: pane.id)
         }
     }
 }

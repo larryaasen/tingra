@@ -63,6 +63,10 @@ final class AppPlugInHost {
     /// sidebar and a command's `showsPane` share one observable answer.
     private(set) var expandedPanes: Set<PaneID> = []
 
+    /// Which panes the operator closed out of their sidebar, mirrored from
+    /// ``PanePreferences`` like ``expandedPanes``.
+    private(set) var closedPanes: Set<PaneID> = []
+
     /// Whether the Settings window's Plug-ins section — the collapsible
     /// heading over the plug-ins' settings panes — is open, mirrored from
     /// ``PanePreferences`` like ``expandedPanes``.
@@ -225,6 +229,7 @@ final class AppPlugInHost {
             let registered = RegisteredPane(plugIn: manifest.id, plugInName: manifest.name, descriptor: pane)
             report(try panes.register(registered), plugIn: manifest.id, services: services)
             if preferences.isExpanded(pane.id) { expandedPanes.insert(pane.id) }
+            if preferences.isClosed(pane.id) { closedPanes.insert(pane.id) }
         }
         for pane in manifest.settingsPanes {
             report(
@@ -315,6 +320,24 @@ final class AppPlugInHost {
         preferences.setExpanded(isExpanded, for: pane)
     }
 
+    /// Whether a pane was closed out of its sidebar.
+    func isClosed(_ pane: PaneID) -> Bool {
+        closedPanes.contains(pane)
+    }
+
+    /// Closes a pane out of its sidebar, or brings it back, persisting the
+    /// choice. A pane brought back arrives expanded: the operator asked to
+    /// see it.
+    ///
+    /// - Parameters:
+    ///   - isClosed: Whether the pane is closed.
+    ///   - pane: The pane.
+    func setClosed(_ isClosed: Bool, for pane: PaneID) {
+        if isClosed { closedPanes.insert(pane) } else { closedPanes.remove(pane) }
+        preferences.setClosed(isClosed, for: pane)
+        if !isClosed { setExpanded(true, for: pane) }
+    }
+
     /// Opens or closes the Settings window's Plug-ins section, persisting
     /// the choice.
     ///
@@ -372,7 +395,7 @@ final class AppPlugInHost {
     ///
     /// - Parameter command: The command.
     func invoke(_ command: RegisteredCommand) async {
-        if let pane = command.descriptor.showsPane { setExpanded(true, for: pane) }
+        if let pane = command.descriptor.showsPane { setClosed(false, for: pane) }
         guard let link = links[command.plugIn] else { return }
         await link.perform(command.descriptor.id)
     }

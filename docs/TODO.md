@@ -1492,11 +1492,42 @@ or two in the doc that owns them — none need a rewrite.
     2026-09-18 as the eighth slice: the bus's own `IOSurface` attached to a
     `tingra/frame` notification (`SurfaceMessageTransport`), one per
     `tingra/frame.next` demand, `PlugInConnection.frames(_:)` and
-    `BusMonitorView`; Decision 21 and the shared-memory trust question await
-    Larry's veto; neither slice yet watched in the running app (his debug
-    instance was up)*. Phase 2's seams are all built.
-  - [ ] **The external bundle loader**, tagging `TingraPlugInKit` 1.0.0
-    (ARCHITECTURE.md, "Plug-in API stability and versioning").
+    `BusMonitorView`; Decisions 20 and 21 approved 2026-09-22, the
+    shared-memory blit question still open; neither slice yet watched in the
+    running app (his debug instance was up)*. Phase 2's seams are all built.
+  - [x] **The external bundle loader** (ARCHITECTURE.md, "Plug-in API
+    stability and versioning"); the 1.0.0 tag now follows NDI (Decision 29).
+    *Built 2026-09-23 (uncommitted) after Larry approved Decisions 22–29 the
+    same day: 14 packages, the CLI, and the app build warning-free; every
+    package's tests, the CLI's, and the app's 678 pass, three of them loading
+    the real fixture bundle. Not yet seen in the running app with a bundle in
+    the plug-in folder. Spiked
+    2026-09-22 (PLUGINS.md, "The bundle loader: spike findings", rows A–G, all
+    passed): one copy of the kit across the boundary needs the two kits as
+    dynamic, Library Evolution products in every front end; a third party
+    needs a binary SDK, because SwiftPM refuses `unsafeFlags` in a
+    version-pinned dependency.*
+    - [x] Kits dynamic + Library Evolution, `@frozen JSONValue`, eleven
+      `@unknown default` sites (a parameter kind the app does not know draws
+      `UnsupportedParameterRow`), frameworks embedded in the app and linked by
+      its test target, CLI ships the dylibs (release script, formula, `.pkg`,
+      verified by a dry run of the packaging script: the staged binary runs
+      and finds both beside it, including through a `bin` symlink).
+    - [x] `BundledPlugIn`, `PlugInKitVersion`; `PlugInBundleLoader` in
+      `TingraHost` behind `PlugInBundleOpening` and `CodeSignatureChecking`;
+      `PlugInLoader.activate(_:thenBundlesFrom:in:)` wired into the app,
+      `serve`, `stream`, `probe`, and `devices`.
+    - [x] Fixture bundle target (`tingra-fixture-plugin`) in the app project,
+      carried in the test bundle's `Contents/PlugIns` and loaded by the app's
+      tests: activated, its input in the host's registry, and an unsigned
+      copy refused.
+    - [ ] Manual check: a signed bundle in
+      `~/Library/Application Support/Tingra/Plug-ins` loads in the running
+      app and in `tingra-cli devices`, and a quarantined unnotarized one is
+      refused with its `plugin.bundle` event.
+    - [ ] Follow-ups: safe mode, the Plug-ins settings pane, `tingra-cli
+      plug-ins`, the `TingraPlugInSDK` release script and repo, the 1.0.0 tag
+      after NDI (Decision 29).
   - [ ] **NDI as an external plug-in bundle**, outside this repo, importing
     the closed-source SDK: an NDI input and an NDI output. Waits on the
     loader; NDI's own virtual input is the stopgap the capture plug-in
@@ -1903,6 +1934,16 @@ or two in the doc that owns them — none need a rewrite.
   the job, so it now earns its place only where automatic signing produces no
   usable signature — a `CODE_SIGNING_ALLOWED=NO` build, or a checkout on a Mac
   whose keychain holds no certificate for the team.
+
+  *Revised 2026-09-24 (Larry): `run-app.sh` builds into Xcode's own
+  DerivedData and reads the product path from `-showBuildSettings`. The
+  private `.build` copy was a second Tingra.app with a second Notes, which
+  each app counted as an extension awaiting approval (`plugin.availability
+  unapproved=1`); ExtensionKit reports only that count, never which
+  extension, so the app cannot tell a copy of its own Notes from a stranger's.
+  The script now calls `sign-app.sh` only when the build left no certificate
+  signature, so it never re-signs Xcode's product, and it stops on a failed
+  build instead of launching the last good one.*
 
   **Built as recorded, with four things worth keeping.** (1) **The move really
   was a move**: the source diff is five mechanical categories and no logic —

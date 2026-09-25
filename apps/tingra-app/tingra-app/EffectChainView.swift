@@ -105,6 +105,8 @@ struct EffectChainView: View {
                         parameterSlider(parameter, at: index, in: configuration)
                     case .color:
                         parameterColorWell(parameter, at: index, in: configuration)
+                    @unknown default:
+                        UnsupportedParameterRow(parameter: parameter)
                     }
                 }
             }

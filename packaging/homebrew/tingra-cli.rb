@@ -14,8 +14,11 @@
 # `version` and `sha256`. By hand, run scripts/release-cli-package.sh and copy
 # both from its output.
 #
-# `bin.install "tingra-cli"` relies on Homebrew descending into the archive's
-# single top-level directory: the zip holds `dist/tingra-cli`, because the
+# The zip holds one `tingra-cli/` folder: the binary and the two plug-in kit
+# libraries it loads from beside itself through its `@loader_path` rpath
+# (docs/PLUGINS.md, Decision 22). Homebrew descends into that single top-level
+# directory, so `libexec.install` sees the three files; the binary is linked
+# into `bin`, and dyld resolves the link before expanding `@loader_path`. The
 # packaging script zips with `ditto --keepParent`. Keep the two in step.
 class TingraCli < Formula
   desc "Native macOS live-streaming engine with an MCP server (headless CLI front end)"
@@ -32,7 +35,8 @@ class TingraCli < Formula
   end
 
   def install
-    bin.install "tingra-cli"
+    libexec.install "tingra-cli", "libTingraEventBus.dylib", "libTingraPlugInKit.dylib"
+    bin.install_symlink libexec/"tingra-cli"
   end
 
   def caveats

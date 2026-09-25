@@ -9,7 +9,11 @@
 #
 # Builds, signs, notarizes, and packages `tingra-cli` for distribution through
 # the Homebrew tap (see docs/CLI.md, "Distribution"). Apple Silicon (arm64)
-# only. Produces two artifacts from one signed binary:
+# only. The binary does not travel alone: the two plug-in kits are dynamic
+# libraries (docs/PLUGINS.md, Decision 22), so `libTingraEventBus.dylib` and
+# `libTingraPlugInKit.dylib` sit beside it, found through its `@loader_path`
+# rpath, and every host-tier plug-in bundle binds to that one copy. Produces
+# two artifacts from one signed set of files:
 #   - a zip the tap downloads (a bare Mach-O can't be stapled; Gatekeeper
 #     fetches the notarization ticket online on first run), and
 #   - a stapled .pkg for offline-capable direct download.
@@ -39,6 +43,9 @@ readonly ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 readonly CLI_DIR="${ROOT}/apps/tingra-cli"
 readonly ENTITLEMENTS="${CLI_DIR}/tingra-cli.entitlements"
 readonly DIST="${ROOT}/dist"
+# The dynamic libraries that ship beside the binary: the plug-in kits
+# (docs/PLUGINS.md, Decision 22). The binary cannot start without them.
+readonly KIT_DYLIBS=("libTingraEventBus.dylib" "libTingraPlugInKit.dylib")
 
 log()  { echo "release-cli-package: $*"; }
 warn() { echo "release-cli-package: WARNING: $*" >&2; }
@@ -47,8 +54,13 @@ die()  { echo "release-cli-package: ERROR: $*" >&2; exit 1; }
 # 1. Build the release binary (arm64 only, per Platform Support).
 log "building release binary…"
 ( cd "$CLI_DIR" && swift build -c release --arch arm64 )
-BIN="$(cd "$CLI_DIR" && swift build -c release --arch arm64 --show-bin-path)/tingra-cli"
+BIN_DIR="$(cd "$CLI_DIR" && swift build -c release --arch arm64 --show-bin-path)"
+BIN="${BIN_DIR}/tingra-cli"
 [[ -f "$BIN" ]] || die "built binary not found at $BIN"
+for dylib in "${KIT_DYLIBS[@]}"; do
+    [[ -f "${BIN_DIR}/${dylib}" ]] || die "built kit library not found at ${BIN_DIR}/${dylib}; \
+the kits must be dynamic products (docs/PLUGINS.md, Decision 22)"
+done
 
 # 2. Resolve and reconcile the version (arg → `version` subcommand), and assert
 #    the embedded Info.plist agrees so the tag, binary, and plist never drift.
@@ -64,11 +76,24 @@ if ! grep -q "<string>${VERSION}</string>" "${CLI_DIR}/Info.plist"; then
 fi
 log "packaging tingra-cli ${VERSION} (arm64)"
 
-# 3. Stage a clean copy to sign and package.
+# 3. Stage a clean copy to sign and package: a `tingra-cli` folder holding the
+#    binary and the kit libraries it loads from beside itself.
 rm -rf "$DIST"
-mkdir -p "$DIST"
-STAGE_BIN="${DIST}/tingra-cli"
+readonly STAGE="${DIST}/tingra-cli"
+mkdir -p "$STAGE"
+STAGE_BIN="${STAGE}/tingra-cli"
 cp "$BIN" "$STAGE_BIN"
+for dylib in "${KIT_DYLIBS[@]}"; do
+    cp "${BIN_DIR}/${dylib}" "${STAGE}/${dylib}"
+done
+
+# Every @rpath library the binary names must be staged beside it, or the
+# packaged binary dies in dyld on a user's Mac. The smoke test below would
+# catch that too; this names the missing file.
+while read -r dependency; do
+    [[ -f "${STAGE}/${dependency#@rpath/}" ]] || die "the binary loads ${dependency}, which is not \
+staged beside it; add it to KIT_DYLIBS"
+done < <(otool -L "$STAGE_BIN" | awk '/@rpath\// {print $1}')
 
 # 4. Sign (Developer ID Application, hardened runtime, stable identifier), then
 #    verify identity, entitlements, and the embedded plist — the same checks CI
@@ -97,6 +122,16 @@ It reached this file with a restricted entitlement (keychain-access-groups); a b
 carry the provisioning profile that would authorize one, so the signed binary is killed at launch. \
 Remove the entitlement — the CLI reads its own keychain group, not a shared one."
     fi
+
+    # The kit libraries first, with the same identity: the binary's hardened
+    # runtime loads them, and each carries its own stable identifier.
+    for dylib in "${KIT_DYLIBS[@]}"; do
+        codesign --force --options runtime --timestamp \
+            --sign "$TINGRA_SIGN_ID" \
+            --identifier "com.moonwink.tingra.${dylib%.dylib}" \
+            "${STAGE}/${dylib}"
+        codesign --verify --strict --verbose=2 "${STAGE}/${dylib}"
+    done
 
     codesign --force --options runtime --timestamp \
         --sign "$TINGRA_SIGN_ID" \
@@ -137,11 +172,12 @@ which does not name version ${VERSION}"
 log "smoke test passed: the packaged binary runs and reports ${VERSION}."
 
 # 6. Zip for the tap. --keepParent embeds the enclosing folder, so the archive
-#    holds `dist/tingra-cli` rather than a bare `tingra-cli`. That is fine and
-#    deliberate: Homebrew descends into a single top-level directory when
-#    staging, so the formula's `bin.install "tingra-cli"` still resolves. The two
-#    are coupled — changing this line or the formula's install block requires
-#    changing both (packaging/README.md, "Verifying a published release").
+#    holds a `tingra-cli/` folder with the binary and the kit libraries in it.
+#    That is deliberate: Homebrew descends into a single top-level directory
+#    when staging, so the formula's `libexec.install` sees the three files. The
+#    two are coupled — changing this line or the formula's install block
+#    requires changing both (packaging/README.md, "Verifying a published
+#    release").
 ZIP="${DIST}/tingra-cli-${VERSION}-arm64.zip"
 ( cd "$DIST" && ditto -c -k --keepParent "tingra-cli" "$ZIP" )
 log "wrote $ZIP"
@@ -167,7 +203,10 @@ fi
 SHA="$(shasum -a 256 "$ZIP" | awk '{print $1}')"
 log "zip sha256: $SHA   (paste into packaging/homebrew/tingra-cli.rb)"
 
-# 9. Build the offline .pkg: install to /usr/local/bin (Homebrew's own path is
+# 9. Build the offline .pkg: install the binary and its kit libraries to
+#    /usr/local/libexec/tingra-cli, with /usr/local/bin/tingra-cli a symlink to
+#    the binary — the same layout the formula gives Homebrew, and dyld resolves
+#    the symlink before it expands `@loader_path` (Homebrew's own path is
 #    managed by the formula; the pkg is the manual-install fallback). Best
 #    effort — the notarized zip above is what the tap uses, so a pkg
 #    signing/keychain failure warns rather than aborting the release.
@@ -175,8 +214,9 @@ PKG="${DIST}/tingra-cli-${VERSION}.pkg"
 build_pkg() {
     local pkg_root="${DIST}/pkgroot"
     local component="${DIST}/tingra-cli-component.pkg"
-    mkdir -p "${pkg_root}/usr/local/bin" || return 1
-    cp "$STAGE_BIN" "${pkg_root}/usr/local/bin/tingra-cli" || return 1
+    mkdir -p "${pkg_root}/usr/local/bin" "${pkg_root}/usr/local/libexec" || return 1
+    ditto "$STAGE" "${pkg_root}/usr/local/libexec/tingra-cli" || return 1
+    ln -s ../libexec/tingra-cli/tingra-cli "${pkg_root}/usr/local/bin/tingra-cli" || return 1
     pkgbuild --root "$pkg_root" --identifier "$BUNDLE_ID" --version "$VERSION" \
         --install-location "/" "$component" || return 1
     if [[ -n "${TINGRA_INSTALLER_SIGN_ID:-}" ]]; then

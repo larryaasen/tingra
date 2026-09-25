@@ -14,11 +14,18 @@ import PackageDescription
 // against (see ARCHITECTURE.md, "Plug-in API stability and versioning").
 // Its only dependency is the zero dependency event bus package, which is
 // re-exposed to every plug-in.
+//
+// The product is dynamic and the target compiles with Library Evolution
+// (PLUGINS.md, Decision 22): a host-tier plug-in bundle built apart from
+// Tingra must bind to the one copy of these types the running engine loaded,
+// and a newer host must keep loading a bundle built against an older kit.
+// SwiftPM accepts the flag only from a path dependency, which is all the
+// monorepo uses; third parties build against the binary SDK (Decision 28).
 let package = Package(
     name: "TingraPlugInKit",
     platforms: [.macOS(.v15)],
     products: [
-        .library(name: "TingraPlugInKit", targets: ["TingraPlugInKit"])
+        .library(name: "TingraPlugInKit", type: .dynamic, targets: ["TingraPlugInKit"])
     ],
     dependencies: [
         .package(path: "../TingraEventBus")
@@ -28,7 +35,8 @@ let package = Package(
             name: "TingraPlugInKit",
             dependencies: [
                 .product(name: "TingraEventBus", package: "TingraEventBus")
-            ]
+            ],
+            swiftSettings: [.unsafeFlags(["-enable-library-evolution"])]
         ),
         .testTarget(name: "TingraPlugInKitTests", dependencies: ["TingraPlugInKit"]),
     ]

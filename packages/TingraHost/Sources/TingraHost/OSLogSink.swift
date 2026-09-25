@@ -48,6 +48,9 @@ public final class OSLogSink: EventSink {
         case .app, .event, .tap: .info
         case .network, .trace: .debug
         case .error: .error
+        // A group a later kit adds logs at info, the neutral level, until
+        // this mapping names it.
+        @unknown default: .info
         }
     }
 

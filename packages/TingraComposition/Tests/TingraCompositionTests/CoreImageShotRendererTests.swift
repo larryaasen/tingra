@@ -84,9 +84,7 @@ struct CoreImageShotRendererTests {
         let renderer = makeRenderer()
         let format = ProgramFormat(width: 4, height: 4, frameRate: 30)
 
-        let program = try #require(
-            renderer.render(shot: Shot(background: .black), frames: [:], format: format, time: .zero)
-        )
+        let program = try renderer.render(shot: Shot(background: .black), frames: [:], format: format, time: .zero)
 
         let pixel = readPixel(program.pixelBuffer, x: 2, y: 2)
         #expect(pixel.red == 0)
@@ -101,13 +99,11 @@ struct CoreImageShotRendererTests {
         let camera = InputID(rawValue: "camera")
         let shot = Shot(layers: [Layer(input: camera)])
 
-        let program = try #require(
-            renderer.render(
-                shot: shot,
-                frames: [camera: solidFrame(red: 255, green: 0, blue: 0)],
-                format: format,
-                time: CMTime(value: 5, timescale: 30)
-            )
+        let program = try renderer.render(
+            shot: shot,
+            frames: [camera: solidFrame(red: 255, green: 0, blue: 0)],
+            format: format,
+            time: CMTime(value: 5, timescale: 30)
         )
 
         let pixel = readPixel(program.pixelBuffer, x: 2, y: 2)
@@ -128,13 +124,11 @@ struct CoreImageShotRendererTests {
             background: .black
         )
 
-        let program = try #require(
-            renderer.render(
-                shot: shot,
-                frames: [camera: solidFrame(red: 255, green: 0, blue: 0)],
-                format: format,
-                time: .zero
-            )
+        let program = try renderer.render(
+            shot: shot,
+            frames: [camera: solidFrame(red: 255, green: 0, blue: 0)],
+            format: format,
+            time: .zero
         )
 
         // The top-left pixel is inside the layer (red); the bottom-right
@@ -154,12 +148,8 @@ struct CoreImageShotRendererTests {
         let faded = Shot(layers: [Layer(input: camera, opacity: 0.5)])
         let white = solidFrame(red: 255, green: 255, blue: 255)
 
-        let opaqueProgram = try #require(
-            renderer.render(shot: opaque, frames: [camera: white], format: format, time: .zero)
-        )
-        let fadedProgram = try #require(
-            renderer.render(shot: faded, frames: [camera: white], format: format, time: .zero)
-        )
+        let opaqueProgram = try renderer.render(shot: opaque, frames: [camera: white], format: format, time: .zero)
+        let fadedProgram = try renderer.render(shot: faded, frames: [camera: white], format: format, time: .zero)
 
         let opaquePixel = readPixel(opaqueProgram.pixelBuffer, x: 2, y: 2)
         let fadedPixel = readPixel(fadedProgram.pixelBuffer, x: 2, y: 2)
@@ -176,12 +166,50 @@ struct CoreImageShotRendererTests {
         let renderer = makeRenderer()
         let format = ProgramFormat(width: 4, height: 4, frameRate: 30)
 
-        let program = try #require(
-            renderer.render(shot: Shot(), frames: [:], format: format, time: .zero)
-        )
+        let program = try renderer.render(shot: Shot(), frames: [:], format: format, time: .zero)
 
         let primaries = CVBufferCopyAttachment(program.pixelBuffer, kCVImageBufferColorPrimariesKey, nil)
         #expect(primaries as? String == kCVImageBufferColorPrimaries_ITU_R_709_2 as String)
+    }
+
+    @Test("a render Core Image cannot perform throws rather than aborting the process")
+    func unperformableRenderThrows() {
+        let context = CIContext(options: [.useSoftwareRenderer: true])
+        let buffer = makeSolidBuffer(width: 4, height: 4, red: 0, green: 0, blue: 0)
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        // An image entirely outside the rendered region is one render
+        // failure a test can provoke deterministically; allocation failure
+        // under memory pressure takes the same thrown path.
+        let offscreen = CIImage(color: .red).cropped(to: CGRect(x: 100, y: 100, width: 4, height: 4))
+
+        #expect(throws: (any Error).self) {
+            try CoreImageShotRenderer.render(
+                offscreen, into: buffer, bounds: .null, context: context, colorSpace: colorSpace)
+        }
+    }
+
+    @Test("a program size no buffer pool can serve throws a pixel buffer pool failure")
+    func unservableSizeThrowsPixelBufferFailure() {
+        let renderer = makeRenderer()
+        let format = ProgramFormat(width: 0, height: 0, frameRate: 30)
+
+        let thrown = #expect(throws: ShotRenderFailure.self) {
+            try renderer.render(shot: Shot(), frames: [:], format: format, time: .zero)
+        }
+        #expect(thrown?.reason == "pixelBufferPool")
+    }
+
+    @Test("the throwing render writes the image's pixels into the buffer")
+    func throwingRenderWritesPixels() throws {
+        let context = CIContext(options: [.useSoftwareRenderer: true])
+        let buffer = makeSolidBuffer(width: 4, height: 4, red: 0, green: 0, blue: 0)
+        let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
+        let bounds = CGRect(x: 0, y: 0, width: 4, height: 4)
+        let red = CIImage(color: CIColor(red: 1, green: 0, blue: 0)).cropped(to: bounds)
+
+        try CoreImageShotRenderer.render(red, into: buffer, bounds: bounds, context: context, colorSpace: colorSpace)
+
+        #expect(readPixel(buffer, x: 2, y: 2) == Pixel(blue: 0, green: 0, red: 255, alpha: 255))
     }
 
     @Test("a dissolve at progress 0 renders the outgoing shot alone")
@@ -192,15 +220,13 @@ struct CoreImageShotRendererTests {
         let red = Shot(layers: [Layer(input: camera)], background: .black)
         let blue = Shot(background: .black)
 
-        let program = try #require(
-            renderer.renderDissolve(
-                from: red,
-                to: blue,
-                progress: 0,
-                frames: [camera: solidFrame(red: 255, green: 0, blue: 0)],
-                format: format,
-                time: .zero
-            )
+        let program = try renderer.renderDissolve(
+            from: red,
+            to: blue,
+            progress: 0,
+            frames: [camera: solidFrame(red: 255, green: 0, blue: 0)],
+            format: format,
+            time: .zero
         )
 
         let pixel = readPixel(program.pixelBuffer, x: 2, y: 2)
@@ -216,15 +242,13 @@ struct CoreImageShotRendererTests {
         let outgoing = Shot(background: .black)
         let incoming = Shot(layers: [Layer(input: camera)], background: .black)
 
-        let program = try #require(
-            renderer.renderDissolve(
-                from: outgoing,
-                to: incoming,
-                progress: 1,
-                frames: [camera: solidFrame(red: 0, green: 0, blue: 255)],
-                format: format,
-                time: .zero
-            )
+        let program = try renderer.renderDissolve(
+            from: outgoing,
+            to: incoming,
+            progress: 1,
+            frames: [camera: solidFrame(red: 0, green: 0, blue: 255)],
+            format: format,
+            time: .zero
         )
 
         let pixel = readPixel(program.pixelBuffer, x: 2, y: 2)
@@ -241,15 +265,13 @@ struct CoreImageShotRendererTests {
         let incoming = Shot(background: .black)
         let white = solidFrame(red: 255, green: 255, blue: 255)
 
-        let program = try #require(
-            renderer.renderDissolve(
-                from: outgoing,
-                to: incoming,
-                progress: 0.5,
-                frames: [camera: white],
-                format: format,
-                time: .zero
-            )
+        let program = try renderer.renderDissolve(
+            from: outgoing,
+            to: incoming,
+            progress: 0.5,
+            frames: [camera: white],
+            format: format,
+            time: .zero
         )
 
         // Halfway between an opaque white outgoing layer and a black
@@ -269,16 +291,14 @@ struct CoreImageShotRendererTests {
         let red = Shot(layers: [Layer(input: camera)], background: .black)
         let black = Shot(background: .black)
 
-        let program = try #require(
-            renderer.renderWipe(
-                from: red,
-                to: black,
-                edge: .left,
-                progress: 0,
-                frames: [camera: solidFrame(red: 255, green: 0, blue: 0)],
-                format: format,
-                time: .zero
-            )
+        let program = try renderer.renderWipe(
+            from: red,
+            to: black,
+            edge: .left,
+            progress: 0,
+            frames: [camera: solidFrame(red: 255, green: 0, blue: 0)],
+            format: format,
+            time: .zero
         )
 
         // Every pixel is still the outgoing shot — the reveal has not
@@ -297,16 +317,14 @@ struct CoreImageShotRendererTests {
         let outgoing = Shot(background: .black)
         let incoming = Shot(layers: [Layer(input: camera)], background: .black)
 
-        let program = try #require(
-            renderer.renderWipe(
-                from: outgoing,
-                to: incoming,
-                edge: .left,
-                progress: 1,
-                frames: [camera: solidFrame(red: 0, green: 0, blue: 255)],
-                format: format,
-                time: .zero
-            )
+        let program = try renderer.renderWipe(
+            from: outgoing,
+            to: incoming,
+            edge: .left,
+            progress: 1,
+            frames: [camera: solidFrame(red: 0, green: 0, blue: 255)],
+            format: format,
+            time: .zero
         )
 
         // Every pixel is the incoming shot — the reveal has crossed the
@@ -331,16 +349,14 @@ struct CoreImageShotRendererTests {
             cameraB: solidFrame(red: 0, green: 0, blue: 255),
         ]
 
-        let program = try #require(
-            renderer.renderWipe(
-                from: outgoing,
-                to: incoming,
-                edge: .left,
-                progress: 0.5,
-                frames: frames,
-                format: format,
-                time: .zero
-            )
+        let program = try renderer.renderWipe(
+            from: outgoing,
+            to: incoming,
+            edge: .left,
+            progress: 0.5,
+            frames: frames,
+            format: format,
+            time: .zero
         )
 
         // The boundary sits mid-frame: the left column is revealed
@@ -367,16 +383,14 @@ struct CoreImageShotRendererTests {
             cameraB: solidFrame(red: 0, green: 0, blue: 255),
         ]
 
-        let program = try #require(
-            renderer.renderWipe(
-                from: outgoing,
-                to: incoming,
-                edge: .top,
-                progress: 0.5,
-                frames: frames,
-                format: format,
-                time: .zero
-            )
+        let program = try renderer.renderWipe(
+            from: outgoing,
+            to: incoming,
+            edge: .top,
+            progress: 0.5,
+            frames: frames,
+            format: format,
+            time: .zero
         )
 
         // The top row (operator terms — row 0) is revealed, the bottom row
@@ -401,16 +415,14 @@ struct CoreImageShotRendererTests {
         let outgoing = Shot(layers: [Layer(input: camera)], background: .black)
         let incoming = Shot(background: .black)
 
-        let program = try #require(
-            renderer.renderShader(
-                from: outgoing,
-                to: incoming,
-                shader: shader,
-                progress: 0,
-                frames: [camera: solidFrame(red: 255, green: 0, blue: 0)],
-                format: format,
-                time: .zero
-            )
+        let program = try renderer.renderShader(
+            from: outgoing,
+            to: incoming,
+            shader: shader,
+            progress: 0,
+            frames: [camera: solidFrame(red: 255, green: 0, blue: 0)],
+            format: format,
+            time: .zero
         )
 
         // Every probed pixel is still the outgoing shot — the reveal has
@@ -434,16 +446,14 @@ struct CoreImageShotRendererTests {
         let outgoing = Shot(background: .black)
         let incoming = Shot(layers: [Layer(input: camera)], background: .black)
 
-        let program = try #require(
-            renderer.renderShader(
-                from: outgoing,
-                to: incoming,
-                shader: shader,
-                progress: 1,
-                frames: [camera: solidFrame(red: 0, green: 0, blue: 255)],
-                format: format,
-                time: .zero
-            )
+        let program = try renderer.renderShader(
+            from: outgoing,
+            to: incoming,
+            shader: shader,
+            progress: 1,
+            frames: [camera: solidFrame(red: 0, green: 0, blue: 255)],
+            format: format,
+            time: .zero
         )
 
         // Every probed pixel is the incoming shot — the reveal has crossed
@@ -468,16 +478,14 @@ struct CoreImageShotRendererTests {
             cameraB: solidFrame(red: 0, green: 0, blue: 255),
         ]
 
-        let program = try #require(
-            renderer.renderShader(
-                from: outgoing,
-                to: incoming,
-                shader: .iris,
-                progress: 0.5,
-                frames: frames,
-                format: format,
-                time: .zero
-            )
+        let program = try renderer.renderShader(
+            from: outgoing,
+            to: incoming,
+            shader: .iris,
+            progress: 0.5,
+            frames: frames,
+            format: format,
+            time: .zero
         )
 
         // The circular boundary sits mid-sweep: the center pixel is
@@ -503,16 +511,14 @@ struct CoreImageShotRendererTests {
             cameraB: solidFrame(red: 0, green: 0, blue: 255),
         ]
 
-        let program = try #require(
-            renderer.renderShader(
-                from: outgoing,
-                to: incoming,
-                shader: .diagonal,
-                progress: 0.5,
-                frames: frames,
-                format: format,
-                time: .zero
-            )
+        let program = try renderer.renderShader(
+            from: outgoing,
+            to: incoming,
+            shader: .diagonal,
+            progress: 0.5,
+            frames: frames,
+            format: format,
+            time: .zero
         )
 
         // The diagonal boundary sits mid-sweep: the top-left pixel
@@ -543,16 +549,14 @@ struct CoreImageShotRendererTests {
             cameraB: solidFrame(red: 0, green: 0, blue: 255),
         ]
 
-        let program = try #require(
-            renderer.renderShader(
-                from: outgoing,
-                to: incoming,
-                shader: .blinds,
-                progress: 0.5,
-                frames: frames,
-                format: format,
-                time: .zero
-            )
+        let program = try renderer.renderShader(
+            from: outgoing,
+            to: incoming,
+            shader: .blinds,
+            progress: 0.5,
+            frames: frames,
+            format: format,
+            time: .zero
         )
 
         // Two bands sampled: each opens from its screen-upper row — the
@@ -573,16 +577,14 @@ struct CoreImageShotRendererTests {
         let renderer = makeRenderer()
         let format = ProgramFormat(width: 4, height: 4, frameRate: 30)
 
-        let program = try #require(
-            renderer.renderShader(
-                from: Shot(),
-                to: Shot(),
-                shader: .iris,
-                progress: 0.5,
-                frames: [:],
-                format: format,
-                time: CMTime(value: 9, timescale: 30)
-            )
+        let program = try renderer.renderShader(
+            from: Shot(),
+            to: Shot(),
+            shader: .iris,
+            progress: 0.5,
+            frames: [:],
+            format: format,
+            time: CMTime(value: 9, timescale: 30)
         )
 
         #expect(program.presentationTime == CMTime(value: 9, timescale: 30))
@@ -598,16 +600,14 @@ struct CoreImageShotRendererTests {
         let renderer = makeRenderer()
         let format = ProgramFormat(width: 4, height: 4, frameRate: 30)
 
-        let program = try #require(
-            renderer.renderWipe(
-                from: Shot(),
-                to: Shot(),
-                edge: .bottom,
-                progress: 0.5,
-                frames: [:],
-                format: format,
-                time: CMTime(value: 9, timescale: 30)
-            )
+        let program = try renderer.renderWipe(
+            from: Shot(),
+            to: Shot(),
+            edge: .bottom,
+            progress: 0.5,
+            frames: [:],
+            format: format,
+            time: CMTime(value: 9, timescale: 30)
         )
 
         #expect(program.presentationTime == CMTime(value: 9, timescale: 30))
@@ -623,15 +623,13 @@ struct CoreImageShotRendererTests {
         let renderer = makeRenderer()
         let format = ProgramFormat(width: 4, height: 4, frameRate: 30)
 
-        let program = try #require(
-            renderer.renderDissolve(
-                from: Shot(),
-                to: Shot(),
-                progress: 0.5,
-                frames: [:],
-                format: format,
-                time: CMTime(value: 7, timescale: 30)
-            )
+        let program = try renderer.renderDissolve(
+            from: Shot(),
+            to: Shot(),
+            progress: 0.5,
+            frames: [:],
+            format: format,
+            time: CMTime(value: 7, timescale: 30)
         )
 
         #expect(program.presentationTime == CMTime(value: 7, timescale: 30))
@@ -655,13 +653,11 @@ struct CoreImageShotRendererTests {
             ]
         )
 
-        let program = try #require(
-            renderer.render(
-                shot: shot,
-                frames: [camera: solidFrame(red: 255, green: 0, blue: 0)],
-                format: format,
-                time: .zero
-            )
+        let program = try renderer.render(
+            shot: shot,
+            frames: [camera: solidFrame(red: 255, green: 0, blue: 0)],
+            format: format,
+            time: .zero
         )
 
         let pixel = readPixel(program.pixelBuffer, x: 2, y: 2)
@@ -686,13 +682,11 @@ struct CoreImageShotRendererTests {
             background: .black
         )
 
-        let program = try #require(
-            renderer.render(
-                shot: shot,
-                frames: [camera: solidFrame(red: 255, green: 0, blue: 0)],
-                format: format,
-                time: .zero
-            )
+        let program = try renderer.render(
+            shot: shot,
+            frames: [camera: solidFrame(red: 255, green: 0, blue: 0)],
+            format: format,
+            time: .zero
         )
 
         for x in 0..<4 {
@@ -715,13 +709,11 @@ struct CoreImageShotRendererTests {
             background: .black
         )
 
-        let program = try #require(
-            renderer.render(
-                shot: shot,
-                frames: [camera: solidFrame(red: 255, green: 0, blue: 0)],
-                format: format,
-                time: .zero
-            )
+        let program = try renderer.render(
+            shot: shot,
+            frames: [camera: solidFrame(red: 255, green: 0, blue: 0)],
+            format: format,
+            time: .zero
         )
 
         // Only the background remains.
@@ -762,13 +754,11 @@ struct CoreImageShotRendererTests {
             ]
         )
 
-        let program = try #require(
-            renderer.render(
-                shot: shot,
-                frames: [camera: solidFrame(red: 255, green: 0, blue: 0)],
-                format: format,
-                time: .zero
-            )
+        let program = try renderer.render(
+            shot: shot,
+            frames: [camera: solidFrame(red: 255, green: 0, blue: 0)],
+            format: format,
+            time: .zero
         )
 
         let pixel = readPixel(program.pixelBuffer, x: 2, y: 2)
@@ -790,13 +780,11 @@ struct CoreImageShotRendererTests {
             ]
         )
 
-        let program = try #require(
-            renderer.render(
-                shot: shot,
-                frames: [camera: solidFrame(red: 255, green: 0, blue: 0)],
-                format: format,
-                time: .zero
-            )
+        let program = try renderer.render(
+            shot: shot,
+            frames: [camera: solidFrame(red: 255, green: 0, blue: 0)],
+            format: format,
+            time: .zero
         )
 
         let pixel = readPixel(program.pixelBuffer, x: 2, y: 2)
@@ -814,13 +802,11 @@ struct CoreImageShotRendererTests {
             ]
         )
 
-        let program = try #require(
-            renderer.render(
-                shot: shot,
-                frames: [camera: solidFrame(red: 255, green: 0, blue: 0)],
-                format: format,
-                time: .zero
-            )
+        let program = try renderer.render(
+            shot: shot,
+            frames: [camera: solidFrame(red: 255, green: 0, blue: 0)],
+            format: format,
+            time: .zero
         )
 
         let pixel = readPixel(program.pixelBuffer, x: 2, y: 2)
@@ -852,11 +838,11 @@ struct CoreImageShotRendererTests {
             id: shotID,
             layers: [Layer(input: camera, effects: [EffectConfiguration(effect: EffectID(rawValue: "a"))])]
         )
-        let first = try #require(renderer.render(shot: green, frames: frames, format: format, time: .zero))
+        let first = try renderer.render(shot: green, frames: frames, format: format, time: .zero)
         #expect(readPixel(first.pixelBuffer, x: 2, y: 2).green > 200)
 
         // Re-rendering the same shot reuses the cached instance (still green).
-        let cached = try #require(renderer.render(shot: green, frames: frames, format: format, time: .zero))
+        let cached = try renderer.render(shot: green, frames: frames, format: format, time: .zero)
         #expect(readPixel(cached.pixelBuffer, x: 2, y: 2).green > 200)
 
         // A changed configuration rebuilds the chain — now the blue effect.
@@ -872,7 +858,7 @@ struct CoreImageShotRendererTests {
                 )
             ]
         )
-        let after = try #require(renderer.render(shot: edited, frames: frames, format: format, time: .zero))
+        let after = try renderer.render(shot: edited, frames: frames, format: format, time: .zero)
         #expect(readPixel(after.pixelBuffer, x: 2, y: 2).blue > 200)
     }
 
@@ -884,7 +870,7 @@ struct CoreImageShotRendererTests {
         let format = ProgramFormat(width: 4, height: 4, frameRate: 30)
         let frame = solidFrame(red: 200, green: 100, blue: 50)
 
-        let faded = try #require(renderer.renderFaded(frame, toBlack: 0, format: format, time: .zero))
+        let faded = try renderer.renderFaded(frame, toBlack: 0, format: format, time: .zero)
 
         #expect(readPixel(faded.pixelBuffer, x: 2, y: 2) == Pixel(blue: 50, green: 100, red: 200, alpha: 255))
     }
@@ -895,7 +881,7 @@ struct CoreImageShotRendererTests {
         let format = ProgramFormat(width: 4, height: 4, frameRate: 30)
         let frame = solidFrame(red: 200, green: 100, blue: 50)
 
-        let faded = try #require(renderer.renderFaded(frame, toBlack: 1, format: format, time: .zero))
+        let faded = try renderer.renderFaded(frame, toBlack: 1, format: format, time: .zero)
 
         #expect(readPixel(faded.pixelBuffer, x: 2, y: 2) == Pixel(blue: 0, green: 0, red: 0, alpha: 255))
     }
@@ -906,7 +892,7 @@ struct CoreImageShotRendererTests {
         let format = ProgramFormat(width: 4, height: 4, frameRate: 30)
         let frame = solidFrame(red: 200, green: 100, blue: 50)
 
-        let faded = try #require(renderer.renderFaded(frame, toBlack: 0.5, format: format, time: .zero))
+        let faded = try renderer.renderFaded(frame, toBlack: 0.5, format: format, time: .zero)
 
         // Every channel darkens, none reaches black, and their order is
         // preserved — a fade dims the picture rather than tinting it. The
@@ -932,12 +918,10 @@ struct CoreImageShotRendererTests {
 
         // The picture the fade is handed, and the same picture dissolved
         // toward an empty shot over opaque black.
-        let composited = try #require(renderer.render(shot: shot, frames: frames, format: format, time: .zero))
-        let faded = try #require(renderer.renderFaded(composited, toBlack: 0.5, format: format, time: .zero))
-        let dissolved = try #require(
-            renderer.renderDissolve(
-                from: shot, to: Shot(), progress: 0.5, frames: frames, format: format, time: .zero)
-        )
+        let composited = try renderer.render(shot: shot, frames: frames, format: format, time: .zero)
+        let faded = try renderer.renderFaded(composited, toBlack: 0.5, format: format, time: .zero)
+        let dissolved = try renderer.renderDissolve(
+            from: shot, to: Shot(), progress: 0.5, frames: frames, format: format, time: .zero)
 
         // Fade to black and a dissolve toward black share the renderer's
         // alpha math, so the operator sees the same ramp character from
@@ -964,9 +948,8 @@ struct CoreImageShotRendererTests {
         let format = ProgramFormat(width: 4, height: 4, frameRate: 30)
         let time = CMTime(value: 7, timescale: 30)
 
-        let faded = try #require(
-            renderer.renderFaded(solidFrame(red: 10, green: 20, blue: 30), toBlack: 0.5, format: format, time: time)
-        )
+        let faded = try renderer.renderFaded(
+            solidFrame(red: 10, green: 20, blue: 30), toBlack: 0.5, format: format, time: time)
 
         #expect(faded.presentationTime == time)
         let primaries = CVBufferCopyAttachment(faded.pixelBuffer, kCVImageBufferColorPrimariesKey, nil)

@@ -167,7 +167,7 @@ private struct MockShotRenderer: ShotRenderer {
         frames: [InputID: CapturedFrame],
         format: ProgramFormat,
         time: CMTime
-    ) -> CapturedFrame? {
+    ) -> CapturedFrame {
         recorder.record(
             RenderRecorder.Call(
                 shot: shot,
@@ -190,7 +190,7 @@ private struct MockShotRenderer: ShotRenderer {
         frames: [InputID: CapturedFrame],
         format: ProgramFormat,
         time: CMTime
-    ) -> CapturedFrame? {
+    ) -> CapturedFrame {
         recorder.record(
             RenderRecorder.Call(
                 shot: incoming,
@@ -213,7 +213,7 @@ private struct MockShotRenderer: ShotRenderer {
         frames: [InputID: CapturedFrame],
         format: ProgramFormat,
         time: CMTime
-    ) -> CapturedFrame? {
+    ) -> CapturedFrame {
         recorder.record(
             RenderRecorder.Call(
                 shot: incoming,
@@ -236,7 +236,7 @@ private struct MockShotRenderer: ShotRenderer {
         frames: [InputID: CapturedFrame],
         format: ProgramFormat,
         time: CMTime
-    ) -> CapturedFrame? {
+    ) -> CapturedFrame {
         recorder.record(
             RenderRecorder.Call(
                 shot: incoming,
@@ -256,9 +256,92 @@ private struct MockShotRenderer: ShotRenderer {
         toBlack amount: Double,
         format: ProgramFormat,
         time: CMTime
-    ) -> CapturedFrame? {
+    ) -> CapturedFrame {
         recorder.recordFade(amount, at: time)
         return CapturedFrame(pixelBuffer: makePixelBuffer(), presentationTime: time)
+    }
+}
+
+/// A renderer whose first `failingCalls` renders throw, then succeed —
+/// scripting a render stall (an exhausted buffer pool, say) and its
+/// recovery so the episode reporting is testable without a GPU.
+private final class StallingShotRenderer: ShotRenderer {
+    /// How many calls throw before rendering resumes.
+    let failingCalls: Int
+
+    /// The failure each stalled call throws.
+    let failure: ShotRenderFailure
+
+    /// Calls made so far. A class, not a struct, because the count must
+    /// advance across calls; like every renderer it stays inside the tick
+    /// task, so it needs no lock.
+    private var calls = 0
+
+    /// Creates a renderer that throws `failure` for its first `failingCalls`
+    /// calls.
+    init(failingCalls: Int, failure: ShotRenderFailure = .pixelBufferUnavailable(kCVReturnPoolAllocationFailed)) {
+        self.failingCalls = failingCalls
+        self.failure = failure
+    }
+
+    /// Throws while the scripted stall lasts, then returns a 2x2 frame.
+    private func produce(time: CMTime) throws(ShotRenderFailure) -> CapturedFrame {
+        calls += 1
+        guard calls > failingCalls else { throw failure }
+        return CapturedFrame(pixelBuffer: makePixelBuffer(), presentationTime: time)
+    }
+
+    func render(
+        shot: Shot,
+        frames: [InputID: CapturedFrame],
+        format: ProgramFormat,
+        time: CMTime
+    ) throws(ShotRenderFailure) -> CapturedFrame {
+        try produce(time: time)
+    }
+
+    func renderDissolve(
+        from outgoing: Shot,
+        to incoming: Shot,
+        progress: Double,
+        frames: [InputID: CapturedFrame],
+        format: ProgramFormat,
+        time: CMTime
+    ) throws(ShotRenderFailure) -> CapturedFrame {
+        try produce(time: time)
+    }
+
+    func renderWipe(
+        from outgoing: Shot,
+        to incoming: Shot,
+        edge: WipeEdge,
+        progress: Double,
+        frames: [InputID: CapturedFrame],
+        format: ProgramFormat,
+        time: CMTime
+    ) throws(ShotRenderFailure) -> CapturedFrame {
+        try produce(time: time)
+    }
+
+    func renderShader(
+        from outgoing: Shot,
+        to incoming: Shot,
+        shader: TransitionShader,
+        progress: Double,
+        frames: [InputID: CapturedFrame],
+        format: ProgramFormat,
+        time: CMTime
+    ) throws(ShotRenderFailure) -> CapturedFrame {
+        try produce(time: time)
+    }
+
+    func renderFaded(
+        _ frame: CapturedFrame,
+        toBlack amount: Double,
+        format: ProgramFormat,
+        time: CMTime
+    ) throws(ShotRenderFailure) -> CapturedFrame {
+        try produce(time: time)
     }
 }
 
@@ -2013,5 +2096,69 @@ struct CompositorBoundedStreamTests {
 
         let times = await collect(program, limit: 5)
         #expect(times == ticks)
+    }
+
+    @Test("a program render stall reports one stalled error and one resumed event carrying the skipped count")
+    func programRenderStallReportsTheEpisode() async {
+        let ticks = (0..<5).map { CMTime(value: CMTimeValue($0), timescale: 30) }
+        let bus = EventBus()
+        let events = bus.events()
+        let compositor = Compositor(
+            clock: SyntheticClock(tickTimes: ticks),
+            format: ProgramFormat(width: 2, height: 2, frameRate: 30),
+            eventBus: bus,
+            makeRenderer: { StallingShotRenderer(failingCalls: 3) }
+        )
+
+        let program = compositor.programFrames(bufferingPolicy: .unbounded)
+        compositor.start()
+
+        // The three stalled ticks are skipped; the last two reach the consumer.
+        let times = await collect(program, limit: 2)
+        #expect(times == Array(ticks.suffix(2)))
+
+        var stalled: [EventBusEvent] = []
+        var resumed: EventBusEvent?
+        for await event in events where event.name.hasPrefix("program.") {
+            if event.name == "program.stalled" { stalled.append(event) }
+            if event.name == "program.resumed" {
+                resumed = event
+                break
+            }
+        }
+        #expect(stalled.count == 1)
+        #expect(stalled.first?.group == .error)
+        #expect(stalled.first?.params?["reason"]?.description == "pixelBuffer")
+        #expect(stalled.first?.params?["status"]?.description == "\(kCVReturnPoolAllocationFailed)")
+        #expect(resumed?.group == .event)
+        #expect(resumed?.params?["skipped"]?.description == "3")
+    }
+
+    @Test("a preview render stall is reported on the preview bus, not the program's")
+    func previewRenderStallReportsOnPreview() async {
+        let ticks = (0..<3).map { CMTime(value: CMTimeValue($0), timescale: 30) }
+        let bus = EventBus()
+        let events = bus.events()
+        let compositor = Compositor(
+            clock: SyntheticClock(tickTimes: ticks),
+            format: ProgramFormat(width: 2, height: 2, frameRate: 30),
+            eventBus: bus,
+            makeRenderer: { StallingShotRenderer(failingCalls: 1) }
+        )
+        let shot = Shot(layers: [Layer(input: InputID(rawValue: "a"))])
+        compositor.addShot(shot, at: 0)
+        compositor.setPreview(shotID: shot.id)
+
+        // Only preview is watched, so the one stalled render is preview's.
+        let preview = compositor.previewFrames(bufferingPolicy: .unbounded)
+        compositor.start()
+        _ = await collect(preview, limit: 2)
+
+        var names: [String] = []
+        for await event in events where event.name.hasSuffix(".stalled") || event.name.hasSuffix(".resumed") {
+            names.append(event.name)
+            if event.name == "preview.resumed" { break }
+        }
+        #expect(names == ["preview.stalled", "preview.resumed"])
     }
 }

@@ -25,8 +25,10 @@ import TingraPlugInKit
 /// **Drift is bounded by dropping, never by waiting.** The mix tick is paced
 /// by the master clock at exactly `blockFrames / sampleRate`, while the
 /// output device runs on its own crystal — over a long session the two
-/// diverge. The monitor therefore counts the blocks it has scheduled but not
-/// yet heard played back, and a block arriving while that backlog is at
+/// diverge. The monitor therefore counts the blocks it has scheduled but the
+/// engine has not yet consumed (the device's own output buffer, a fixed
+/// few milliseconds, sits past that point and does not grow with drift),
+/// and a block arriving while that backlog is at
 /// ``maximumScheduledBlocks`` is **dropped**: the mixer's one-second intake
 /// cap mirrored at the output, so drift costs a bounded, audible glitch
 /// rather than monitor latency that grows all session. An underrun is not a
@@ -37,7 +39,7 @@ import TingraPlugInKit
 /// is exercised through real devices rather than unit tests, which is
 /// exactly why ``AudioMonitor`` exists for a double to stand in for.
 public actor AVAudioEngineMonitor: AudioMonitor {
-    /// The most blocks that may sit scheduled and unheard before new ones
+    /// The most blocks that may sit scheduled and unconsumed before new ones
     /// are dropped — four blocks, ≈85 ms at the default mix format. Small
     /// enough that monitor latency stays unobtrusive, large enough to ride
     /// out ordinary scheduling jitter.
@@ -53,8 +55,8 @@ public actor AVAudioEngineMonitor: AudioMonitor {
     /// player node and never to the program mix.
     private var level: Double = 1
 
-    /// The blocks scheduled but not yet reported played back — the backlog
-    /// the drop rule bounds.
+    /// The blocks scheduled but not yet reported consumed — the backlog the
+    /// drop rule bounds.
     private var scheduledBlocks = 0
 
     /// The single active device-list consumer, while attached.
@@ -172,8 +174,22 @@ public actor AVAudioEngineMonitor: AudioMonitor {
     public func stop() {
         guard let running else { return }
         running.player.stop()
+
+        // `AVAudioEngine.stop()` is synchronous: it blocks until the
+        // engine's own I/O thread, which runs at Default QoS, has torn the
+        // graph down. Called from a User-initiated caller, Xcode's Thread
+        // Performance Checker reports that wait as a priority inversion
+        // ("[Internal] Thread running at User-initiated quality-of-service
+        // class waiting on a lower QoS thread"). It is expected and harmless
+        // here: the wait is once per monitor stop or device switch, never on
+        // the per-block playback path, and the QoS of AVAudioEngine's thread
+        // is not ours to raise. Lowering this caller's priority to hide the
+        // diagnostic would be a workaround, not a fix — only investigate if
+        // the warning shows up anywhere other than stop.
         running.engine.stop()
+
         running.engine.detach(running.player)
+
         self.running = nil
         currentDevice = nil
         scheduledBlocks = 0
@@ -194,14 +210,21 @@ public actor AVAudioEngineMonitor: AudioMonitor {
         guard let buffer = Self.pcmBuffer(from: audio, format: running.format) else { return }
 
         scheduledBlocks += 1
-        running.player.scheduleBuffer(buffer, completionCallbackType: .dataPlayedBack) { [weak self] _ in
-            Task { await self?.blockPlayedBack() }
+        // `.dataConsumed`, not `.dataPlayedBack`: AVFoundation leaks one
+        // dispatch source (plus its callback blocks) for every buffer
+        // scheduled with `.dataPlayedBack` — measured 2026-09-24 at one per
+        // buffer in a standalone probe, ~47 per second here, ≈40 MB an hour
+        // for as long as the monitor runs. `.dataConsumed` frees them, and
+        // since the device's output latency past consumption is fixed, the
+        // backlog it counts still bounds drift exactly as before.
+        running.player.scheduleBuffer(buffer, completionCallbackType: .dataConsumed) { [weak self] _ in
+            Task { await self?.blockConsumed() }
         }
     }
 
-    /// Records that one scheduled block has finished playing, freeing a slot
-    /// in the backlog.
-    private func blockPlayedBack() {
+    /// Records that the engine has consumed one scheduled block, freeing a
+    /// slot in the backlog.
+    private func blockConsumed() {
         scheduledBlocks = max(0, scheduledBlocks - 1)
     }
 

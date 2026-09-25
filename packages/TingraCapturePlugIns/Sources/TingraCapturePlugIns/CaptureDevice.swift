@@ -85,6 +85,9 @@ extension CaptureInputError: CustomStringConvertible {
             // A media file needs no TCC grant either; named for
             // exhaustiveness only.
             case .media: permission = "Capture"
+            // A kind a later kit adds is named generically until this
+            // message learns its permission.
+            @unknown default: permission = "Capture"
             }
             return """
                 \(permission) access for the input '\(id.rawValue)' was denied. Grant it in \

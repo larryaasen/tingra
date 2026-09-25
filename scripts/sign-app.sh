@@ -77,7 +77,12 @@ fi
 target="${1:-}"
 if [[ -z "$target" ]]; then
     root="$(cd "$(dirname "$0")/.." && pwd)"
-    target="${root}/apps/tingra-app/.build/DerivedData/Build/Products/Debug/Tingra.app"
+    # Xcode's DerivedData, where run-app.sh builds (since 2026-09-24): the
+    # folder is named after a hash of the project's path, so ask for it.
+    products="$(xcodebuild -showBuildSettings -project "${root}/apps/tingra-app/tingra-app.xcodeproj" \
+        -scheme tingra-app -configuration Debug -destination 'platform=macOS,arch=arm64' 2>/dev/null \
+        | awk -F ' = ' '/^ +BUILT_PRODUCTS_DIR = / { print $2; exit }')"
+    target="${products}/Tingra.app"
 fi
 
 # `-e`, not `-f`: the target is a `.app` bundle directory, not a file.

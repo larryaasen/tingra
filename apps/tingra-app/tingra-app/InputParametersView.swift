@@ -45,6 +45,8 @@ struct InputParametersView: View {
                     parameterSlider(parameter)
                 case .color:
                     parameterColorWell(parameter)
+                @unknown default:
+                    UnsupportedParameterRow(parameter: parameter)
                 }
             }
         }

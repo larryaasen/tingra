@@ -204,9 +204,10 @@ struct Serve: AsyncParsableCommand {
             destinationStore: destinations
         )
 
-        // First-party plug-ins load through the same path a third party will
-        // use, including the control tools that expose the CLI surface as MCP
-        // tools (MCP.md, "Tool surface").
+        // First-party plug-ins load through the same path a third party's
+        // does, including the control tools that expose the CLI surface as
+        // MCP tools (MCP.md, "Tool surface"); the plug-in bundles installed
+        // in the plug-in folders load after them (PLUGINS.md, Decision 27).
         let context = PlugInContext(
             eventBus: eventBus, clock: clock, inputs: inputs, outputs: outputs, effects: EffectRegistry(),
             tools: tools)
@@ -219,6 +220,7 @@ struct Serve: AsyncParsableCommand {
                 ControlToolsPlugIn(
                     coordinator: coordinator, inputs: inputs, outputs: outputs, destinations: destinations),
             ],
+            thenBundlesFrom: PlugInBundleLoader(),
             in: context
         )
 

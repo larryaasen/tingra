@@ -130,6 +130,7 @@ struct TingraApp: App {
                 plugInHost.start(model: model)
             }
             .environment(plugInHost)
+            .environment(statusBar)
         }
         .commands {
             ProjectCommands(model: model)

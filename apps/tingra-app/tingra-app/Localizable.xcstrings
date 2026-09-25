@@ -1429,6 +1429,57 @@
         }
       }
     },
+    "Close %@" : {
+      "comment" : "Accessibility label of a plug-in pane's close button; the argument is the pane's title",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ schließen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cerrar %@"
+          }
+        }
+      }
+    },
+    "Close %@ — show it again from the View menu" : {
+      "comment" : "Tooltip on a plug-in pane's close button; the argument is the pane's title",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ schließen – über das Menü „Darstellung“ wieder einblenden"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cerrar %@: vuelve a mostrarlo desde el menú Visualización"
+          }
+        }
+      }
+    },
+    "Collapse" : {
+      "comment" : "Tooltip on a plug-in pane header that collapses the pane to its header",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einklappen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Contraer"
+          }
+        }
+      }
+    },
     "Connecting…" : {
       "comment" : "Stream status: connecting to the destination",
       "localizations" : {
@@ -2140,6 +2191,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Se perdieron todos los destinos y no se recuperaron."
+          }
+        }
+      }
+    },
+    "Expand" : {
+      "comment" : "Tooltip on a collapsed plug-in pane header that expands the pane",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ausklappen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Expandir"
           }
         }
       }
@@ -3505,6 +3573,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Nombre"
+          }
+        }
+      }
+    },
+    "Needs a newer version of Tingra" : {
+      "comment" : "Note beside a plug-in's setting whose kind this version of the app can't edit",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erfordert eine neuere Version von Tingra"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Requiere una versión más reciente de Tingra"
           }
         }
       }
@@ -6967,6 +7052,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Este inicio"
+          }
+        }
+      }
+    },
+    "This plug-in declares a kind of setting this version of Tingra can't edit. Update Tingra to change it." : {
+      "comment" : "Help tag on a plug-in's setting whose kind this version of the app can't edit",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieses Plug-in deklariert eine Art von Einstellung, die diese Version von Tingra nicht bearbeiten kann. Aktualisiere Tingra, um sie zu ändern."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este plug-in declara un tipo de ajuste que esta versión de Tingra no puede editar. Actualiza Tingra para cambiarlo."
           }
         }
       }

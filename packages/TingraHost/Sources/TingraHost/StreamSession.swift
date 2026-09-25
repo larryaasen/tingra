@@ -833,6 +833,10 @@ public actor StreamSession {
                     switch event {
                     case .connectionLost(let reason):
                         await reconnect(leg: index, after: reason)
+                    // An event a later kit adds asks nothing of a session
+                    // that predates it; the leg keeps streaming.
+                    @unknown default:
+                        break
                     }
                 }
             }
@@ -854,6 +858,10 @@ public actor StreamSession {
                 switch event {
                 case .failed(let reason):
                     reportRecordingFailure(reason)
+                // An event a later kit adds asks nothing of a session that
+                // predates it; the recording keeps writing.
+                @unknown default:
+                    break
                 }
             }
         }

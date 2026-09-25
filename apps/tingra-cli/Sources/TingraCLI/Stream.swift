@@ -309,6 +309,7 @@ struct Stream: AsyncParsableCommand {
         )
         await PlugInLoader().activate(
             [AVFoundationCapturePlugIn(), GeneratorPlugIn(), HaishinKitOutputPlugIn(), RecordingPlugIn()],
+            thenBundlesFrom: PlugInBundleLoader(),
             in: context
         )
 

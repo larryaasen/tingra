@@ -112,7 +112,7 @@ struct Probe: AsyncParsableCommand {
             effects: EffectRegistry(),
             tools: ToolRegistry()
         )
-        await PlugInLoader().activate([HaishinKitOutputPlugIn()], in: context)
+        await PlugInLoader().activate([HaishinKitOutputPlugIn()], thenBundlesFrom: PlugInBundleLoader(), in: context)
 
         do {
             guard let destinationURL = URL(string: url), let scheme = destinationURL.scheme?.lowercased()

@@ -46,6 +46,41 @@ struct PanePreferencesTests {
         #expect(preferences.isExpanded(pane))
     }
 
+    @Test("a pane never seen is not closed")
+    func freshPaneIsNotClosed() throws {
+        let (preferences, defaults, name) = try makePreferences()
+        defer { defaults.removePersistentDomain(forName: name) }
+        #expect(!preferences.isClosed(pane))
+    }
+
+    @Test("a closed pane persists under sidebar.<pane>.closed, apart from its expansion")
+    func closePersists() throws {
+        let (preferences, defaults, name) = try makePreferences()
+        defer { defaults.removePersistentDomain(forName: name) }
+        preferences.setClosed(true, for: pane)
+        #expect(PanePreferences(defaults: defaults).isClosed(pane))
+        #expect(defaults.object(forKey: "sidebar.com.moonwink.tingra.notes.pane.closed") as? Bool == true)
+        #expect(preferences.isExpanded(pane))
+        preferences.setClosed(false, for: pane)
+        #expect(!preferences.isClosed(pane))
+    }
+
+    @Test("a pane brought back from closed arrives expanded, and closing leaves its expansion alone")
+    func hostReopensExpanded() throws {
+        let (preferences, defaults, name) = try makePreferences()
+        defer { defaults.removePersistentDomain(forName: name) }
+        let host = AppPlugInHost(preferences: preferences)
+        host.setExpanded(false, for: pane)
+        host.setClosed(true, for: pane)
+        #expect(host.isClosed(pane))
+        #expect(!host.isExpanded(pane))
+        host.setClosed(false, for: pane)
+        #expect(!host.isClosed(pane))
+        #expect(host.isExpanded(pane))
+        #expect(!preferences.isClosed(pane))
+        #expect(preferences.isExpanded(pane))
+    }
+
     @Test("the Settings window's Plug-ins section is open until collapsed, persisting under its own key")
     func settingsSectionPersists() throws {
         let (preferences, defaults, name) = try makePreferences()

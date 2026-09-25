@@ -116,9 +116,9 @@ public final class CoreImageShotRenderer: ShotRenderer {
         frames: [InputID: CapturedFrame],
         format: ProgramFormat,
         time: CMTime
-    ) -> CapturedFrame? {
+    ) throws(ShotRenderFailure) -> CapturedFrame {
         let image = layerTreeImage(shot: shot, frames: frames, format: format)
-        return renderToBuffer(image, format: format, time: time)
+        return try renderToBuffer(image, format: format, time: time)
     }
 
     /// The shot's layer tree composited over its background as one **lazy**
@@ -153,7 +153,7 @@ public final class CoreImageShotRenderer: ShotRenderer {
         frames: [InputID: CapturedFrame],
         format: ProgramFormat,
         time: CMTime
-    ) -> CapturedFrame? {
+    ) throws(ShotRenderFailure) -> CapturedFrame {
         let clampedProgress = min(max(progress, 0), 1)
         let outgoingImage = layerTreeImage(shot: outgoing, frames: frames, format: format)
         let incomingImage = layerTreeImage(shot: incoming, frames: frames, format: format)
@@ -162,7 +162,7 @@ public final class CoreImageShotRenderer: ShotRenderer {
             parameters: ["inputAVector": CIVector(x: 0, y: 0, z: 0, w: clampedProgress)]
         )
         let blended = fadedIncoming.composited(over: outgoingImage)
-        return renderToBuffer(blended, format: format, time: time)
+        return try renderToBuffer(blended, format: format, time: time)
     }
 
     /// Composites a wipe: both shots' layer trees are rendered
@@ -180,7 +180,7 @@ public final class CoreImageShotRenderer: ShotRenderer {
         frames: [InputID: CapturedFrame],
         format: ProgramFormat,
         time: CMTime
-    ) -> CapturedFrame? {
+    ) throws(ShotRenderFailure) -> CapturedFrame {
         let clampedProgress = min(max(progress, 0), 1)
         let outgoingImage = layerTreeImage(shot: outgoing, frames: frames, format: format)
         let incomingImage = layerTreeImage(shot: incoming, frames: frames, format: format)
@@ -192,7 +192,7 @@ public final class CoreImageShotRenderer: ShotRenderer {
                 "inputMaskImage": mask,
             ]
         )
-        return renderToBuffer(blended, format: format, time: time)
+        return try renderToBuffer(blended, format: format, time: time)
     }
 
     /// Composites a custom-shader transition: both shots' layer trees are
@@ -205,7 +205,7 @@ public final class CoreImageShotRenderer: ShotRenderer {
     /// If the kernel could not be compiled or refuses to apply — an
     /// environment defect, never expected for first-party source — the
     /// transition **degrades to the incoming shot** (visually a cut):
-    /// returning `nil` would make the compositor skip every tick of the
+    /// throwing would make the compositor skip every tick of the
     /// transition and freeze the program for its duration, where a visible
     /// early cut keeps the program live (ARCHITECTURE.md, "Custom-shader
     /// transitions").
@@ -217,7 +217,7 @@ public final class CoreImageShotRenderer: ShotRenderer {
         frames: [InputID: CapturedFrame],
         format: ProgramFormat,
         time: CMTime
-    ) -> CapturedFrame? {
+    ) throws(ShotRenderFailure) -> CapturedFrame {
         let clampedProgress = min(max(progress, 0), 1)
         let outgoingImage = layerTreeImage(shot: outgoing, frames: frames, format: format)
         let incomingImage = layerTreeImage(shot: incoming, frames: frames, format: format)
@@ -235,9 +235,9 @@ public final class CoreImageShotRenderer: ShotRenderer {
                 ]
             )
         else {
-            return renderToBuffer(incomingImage, format: format, time: time)
+            return try renderToBuffer(incomingImage, format: format, time: time)
         }
-        return renderToBuffer(blended, format: format, time: time)
+        return try renderToBuffer(blended, format: format, time: time)
     }
 
     /// Darkens a composited program frame toward black: an opaque black
@@ -253,13 +253,13 @@ public final class CoreImageShotRenderer: ShotRenderer {
         toBlack amount: Double,
         format: ProgramFormat,
         time: CMTime
-    ) -> CapturedFrame? {
+    ) throws(ShotRenderFailure) -> CapturedFrame {
         let clampedAmount = min(max(amount, 0), 1)
         let programRect = CGRect(x: 0, y: 0, width: format.width, height: format.height)
         let image = CIImage(cvPixelBuffer: frame.pixelBuffer)
         let black = CIImage(color: CIColor(red: 0, green: 0, blue: 0, alpha: clampedAmount))
             .cropped(to: programRect)
-        return renderToBuffer(black.composited(over: image), format: format, time: time)
+        return try renderToBuffer(black.composited(over: image), format: format, time: time)
     }
 
     /// The compiled transition kernels, keyed by shader — built once on
@@ -463,13 +463,58 @@ public final class CoreImageShotRenderer: ShotRenderer {
 
     /// Renders a composited image into a fresh output buffer, tags it
     /// BT.709, and stamps it with the tick time — the shared tail of both
-    /// render paths.
-    private func renderToBuffer(_ image: CIImage, format: ProgramFormat, time: CMTime) -> CapturedFrame? {
-        guard let buffer = makeOutputBuffer(width: format.width, height: format.height) else { return nil }
+    /// render paths. Throws when Core Image cannot complete the render, so
+    /// the compositor skips the tick and reports the episode (the
+    /// ``ShotRenderer`` contract) instead of the process aborting.
+    private func renderToBuffer(
+        _ image: CIImage,
+        format: ProgramFormat,
+        time: CMTime
+    ) throws(ShotRenderFailure) -> CapturedFrame {
+        let buffer = try makeOutputBuffer(width: format.width, height: format.height)
         let programRect = CGRect(x: 0, y: 0, width: format.width, height: format.height)
-        context.render(image, to: buffer, bounds: programRect, colorSpace: outputColorSpace)
+        do {
+            try Self.render(image, into: buffer, bounds: programRect, context: context, colorSpace: outputColorSpace)
+        } catch {
+            throw .renderIncomplete(code: (error as NSError).code)
+        }
         tagBT709(buffer)
         return CapturedFrame(pixelBuffer: buffer, presentationTime: time)
+    }
+
+    /// Renders `bounds` of an image into a pixel buffer and waits for the
+    /// GPU to finish, throwing when Core Image cannot.
+    ///
+    /// This deliberately avoids `CIContext.render(_:to:bounds:colorSpace:)`:
+    /// that API has no error channel, so when Core Image cannot allocate an
+    /// intermediate (an `IOSurface` refused under memory pressure) it calls
+    /// `abort()` and takes the whole host down. The render-destination API
+    /// reports the same condition as a thrown error, which lets one tick be
+    /// dropped instead — a renderer problem must never crash the process.
+    ///
+    /// - Parameters:
+    ///   - image: The composited image to render.
+    ///   - buffer: The destination pixel buffer.
+    ///   - bounds: The region of `image` to render, placed at the buffer's
+    ///     origin.
+    ///   - context: The Core Image context that runs the render.
+    ///   - colorSpace: The color space the buffer's pixels are written in.
+    /// - Throws: Core Image's error when the task cannot be started (for
+    ///   example the image and destination do not intersect) or does not
+    ///   complete (for example an intermediate cannot be allocated).
+    static func render(
+        _ image: CIImage,
+        into buffer: CVPixelBuffer,
+        bounds: CGRect,
+        context: CIContext,
+        colorSpace: CGColorSpace
+    ) throws {
+        let destination = CIRenderDestination(pixelBuffer: buffer)
+        destination.colorSpace = colorSpace
+        let task = try context.startTask(toRender: image, from: bounds, to: destination, at: .zero)
+        // Waiting keeps the old synchronous contract: the buffer is fully
+        // written before it is tagged and handed to the program's sinks.
+        _ = try task.waitUntilCompleted()
     }
 
     /// The background as an infinite color image cropped to the program.
@@ -532,24 +577,34 @@ public final class CoreImageShotRenderer: ShotRenderer {
     }
 
     /// Fetches (or lazily builds) the output buffer pool for the program
-    /// size and vends one `IOSurface`-backed 32BGRA buffer, or nil if the
-    /// pool or a buffer cannot be created.
-    private func makeOutputBuffer(width: Int, height: Int) -> CVPixelBuffer? {
+    /// size and vends one `IOSurface`-backed 32BGRA buffer.
+    ///
+    /// - Throws: ``ShotRenderFailure/pixelBufferPoolUnavailable(_:)`` when
+    ///   the pool cannot be created, or
+    ///   ``ShotRenderFailure/pixelBufferUnavailable(_:)`` when it cannot
+    ///   vend a buffer.
+    private func makeOutputBuffer(width: Int, height: Int) throws(ShotRenderFailure) -> CVPixelBuffer {
         if poolSize?.width != width || poolSize?.height != height {
-            pool = Self.makePool(width: width, height: height)
-            poolSize = pool == nil ? nil : (width, height)
+            pool = nil
+            poolSize = nil
+            pool = try Self.makePool(width: width, height: height)
+            poolSize = (width, height)
         }
-        guard let pool else { return nil }
+        guard let pool else { throw .pixelBufferPoolUnavailable(kCVReturnError) }
         var bufferOut: CVPixelBuffer?
-        guard CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, pool, &bufferOut) == kCVReturnSuccess else {
-            return nil
+        let status = CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, pool, &bufferOut)
+        guard status == kCVReturnSuccess, let bufferOut else {
+            throw .pixelBufferUnavailable(status)
         }
         return bufferOut
     }
 
     /// Builds an `IOSurface`-backed 32BGRA pixel buffer pool for the given
     /// size (the GPU-resident program buffer type).
-    private static func makePool(width: Int, height: Int) -> CVPixelBufferPool? {
+    ///
+    /// - Throws: ``ShotRenderFailure/pixelBufferPoolUnavailable(_:)`` with
+    ///   the `CVPixelBufferPoolCreate` status when the pool cannot be made.
+    private static func makePool(width: Int, height: Int) throws(ShotRenderFailure) -> CVPixelBufferPool {
         let attributes: [CFString: Any] = [
             kCVPixelBufferPixelFormatTypeKey: kCVPixelFormatType_32BGRA,
             kCVPixelBufferWidthKey: width,
@@ -558,7 +613,10 @@ public final class CoreImageShotRenderer: ShotRenderer {
             kCVPixelBufferMetalCompatibilityKey: true,
         ]
         var pool: CVPixelBufferPool?
-        CVPixelBufferPoolCreate(kCFAllocatorDefault, nil, attributes as CFDictionary, &pool)
+        let status = CVPixelBufferPoolCreate(kCFAllocatorDefault, nil, attributes as CFDictionary, &pool)
+        guard status == kCVReturnSuccess, let pool else {
+            throw .pixelBufferPoolUnavailable(status)
+        }
         return pool
     }
 

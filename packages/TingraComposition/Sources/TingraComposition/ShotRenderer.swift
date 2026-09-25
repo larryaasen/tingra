@@ -49,16 +49,17 @@ public protocol ShotRenderer {
     ///   - time: The program tick's master clock time, stamped onto the
     ///     returned frame — video sinks receive a clean, monotonic,
     ///     constant-rate PTS sequence regardless of input cadence (CLOCK.md).
-    /// - Returns: The composited program frame, or `nil` if a buffer could
-    ///   not be produced (a transient pool exhaustion, say); the compositor
-    ///   skips that tick rather than crash — a renderer problem must never
-    ///   take down the pipeline.
+    /// - Returns: The composited program frame.
+    /// - Throws: ``ShotRenderFailure`` when no frame could be produced (a
+    ///   transient pool exhaustion, say, or Core Image unable to allocate);
+    ///   the compositor skips that tick and reports the episode rather than
+    ///   crash — a renderer problem must never take down the pipeline.
     func render(
         shot: Shot,
         frames: [InputID: CapturedFrame],
         format: ProgramFormat,
         time: CMTime
-    ) -> CapturedFrame?
+    ) throws(ShotRenderFailure) -> CapturedFrame
 
     /// Renders one program frame of a **dissolve** in progress (GLOSSARY.md,
     /// "Transition"): a crossfade between the outgoing and incoming shot's
@@ -76,8 +77,9 @@ public protocol ShotRenderer {
     ///   - format: The program geometry to render into.
     ///   - time: The program tick's master clock time, stamped onto the
     ///     returned frame.
-    /// - Returns: The composited program frame, or `nil` if a buffer could
-    ///   not be produced; the compositor skips that tick rather than crash.
+    /// - Returns: The composited program frame.
+    /// - Throws: ``ShotRenderFailure`` when no frame could be produced; the
+    ///   compositor skips that tick rather than crash.
     func renderDissolve(
         from outgoing: Shot,
         to incoming: Shot,
@@ -85,7 +87,7 @@ public protocol ShotRenderer {
         frames: [InputID: CapturedFrame],
         format: ProgramFormat,
         time: CMTime
-    ) -> CapturedFrame?
+    ) throws(ShotRenderFailure) -> CapturedFrame
 
     /// Renders one program frame of a **wipe** in progress (GLOSSARY.md,
     /// "Transition"): a directional reveal of the incoming shot from `edge`
@@ -115,8 +117,9 @@ public protocol ShotRenderer {
     ///   - format: The program geometry to render into.
     ///   - time: The program tick's master clock time, stamped onto the
     ///     returned frame.
-    /// - Returns: The composited program frame, or `nil` if a buffer could
-    ///   not be produced; the compositor skips that tick rather than crash.
+    /// - Returns: The composited program frame.
+    /// - Throws: ``ShotRenderFailure`` when no frame could be produced; the
+    ///   compositor skips that tick rather than crash.
     func renderWipe(
         from outgoing: Shot,
         to incoming: Shot,
@@ -125,7 +128,7 @@ public protocol ShotRenderer {
         frames: [InputID: CapturedFrame],
         format: ProgramFormat,
         time: CMTime
-    ) -> CapturedFrame?
+    ) throws(ShotRenderFailure) -> CapturedFrame
 
     /// Renders one program frame of a **custom-shader transition** in
     /// progress (GLOSSARY.md, "Transition"): the built-in shader named by
@@ -151,8 +154,9 @@ public protocol ShotRenderer {
     ///   - format: The program geometry to render into.
     ///   - time: The program tick's master clock time, stamped onto the
     ///     returned frame.
-    /// - Returns: The composited program frame, or `nil` if a buffer could
-    ///   not be produced; the compositor skips that tick rather than crash.
+    /// - Returns: The composited program frame.
+    /// - Throws: ``ShotRenderFailure`` when no frame could be produced; the
+    ///   compositor skips that tick rather than crash.
     func renderShader(
         from outgoing: Shot,
         to incoming: Shot,
@@ -161,7 +165,7 @@ public protocol ShotRenderer {
         frames: [InputID: CapturedFrame],
         format: ProgramFormat,
         time: CMTime
-    ) -> CapturedFrame?
+    ) throws(ShotRenderFailure) -> CapturedFrame
 
     /// Darkens an already-composited program frame toward black by `amount`
     /// — the pixel half of **fade to black** (GLOSSARY.md, "Fade to black").
@@ -194,12 +198,13 @@ public protocol ShotRenderer {
     ///   - format: The program geometry to render into.
     ///   - time: The program tick's master clock time, stamped onto the
     ///     returned frame.
-    /// - Returns: The darkened program frame, or `nil` if a buffer could not
-    ///   be produced; the compositor skips that tick rather than crash.
+    /// - Returns: The darkened program frame.
+    /// - Throws: ``ShotRenderFailure`` when no frame could be produced; the
+    ///   compositor skips that tick rather than crash.
     func renderFaded(
         _ frame: CapturedFrame,
         toBlack amount: Double,
         format: ProgramFormat,
         time: CMTime
-    ) -> CapturedFrame?
+    ) throws(ShotRenderFailure) -> CapturedFrame
 }

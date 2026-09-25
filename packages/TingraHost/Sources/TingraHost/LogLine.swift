@@ -33,6 +33,9 @@ public enum LogLevel: String, CaseIterable, Sendable {
         case .error: self = .error
         case .network, .trace: self = .debug
         case .app, .event, .tap: self = .info
+        // A group a later kit adds logs at the neutral level until this
+        // mapping names it.
+        @unknown default: self = .info
         }
     }
 

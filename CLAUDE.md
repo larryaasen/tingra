@@ -192,14 +192,17 @@ This repository is public, so **no app secret and nothing personal to one develo
 - **Follow the timing model in [CLOCK.md](docs/CLOCK.md).** One master clock (the host time clock) for every timestamp; the host's program tick paces the compositor (pull-based, latest frame wins) — never a display link and never an input's cadence; audio PTS comes from `AVAudioTime` host time, never a synthetic sample-count position; the clock is a protocol-typed injected dependency (synthetic clock in tests), never a global.
 - **Follow the events model in [EVENTS.md](docs/EVENTS.md).** All observability flows as structured events on the host's event bus (group = kind, `app`/`error`/`event`/`network`/`tap`/`trace`; domain = emitting area); sinks (OSLog, CLI console/`--json`, file, status) subscribe and route — code never logs directly. Control plane only: never put per-frame events on the bus. Secrets never become event params.
 - **Follow the daemon/transport model in [MCP.md](docs/MCP.md).** The `serve` daemon is the one owner of the engine and speaks MCP JSON-RPC natively over a per-user Unix domain socket (launchd socket activated); `tingra-cli mcp` is a transparent byte proxy with no protocol logic. Never add a second internal RPC protocol, and never open a TCP listener.
-- **The plug-in protocol package is a stability contract** (see [ARCHITECTURE.md](docs/ARCHITECTURE.md) "Plug-in API stability and versioning"). SemVer from its first tag — 0.x during the CLI era, 1.0.0 when the external bundle loader ships, breaking changes only in majors thereafter. Never remove/rename public symbols, change signatures or semantics, add protocol requirements without default implementations, or tighten `Sendable`/isolation on existing API outside a major; deprecate (with a replacement named) at least one minor before removal. The same rules bind the event bus package it depends on. CI runs `swift package diagnose-api-breaking-changes` against the latest tag on both.
+- **The plug-in protocol package is a stability contract** (see [ARCHITECTURE.md](docs/ARCHITECTURE.md) "Plug-in API stability and versioning"). SemVer from its first tag — 0.x until NDI, the first out-of-repo plug-in, builds against the binary SDK and loads (PLUGINS.md, Decision 29), 1.0.0 then, breaking changes only in majors thereafter. Never remove/rename public symbols, change signatures or semantics, add protocol requirements without default implementations, or tighten `Sendable`/isolation on existing API outside a major; deprecate (with a replacement named) at least one minor before removal. The same rules bind the event bus package it depends on. CI runs `swift package diagnose-api-breaking-changes` against the latest tag on both. **Both are dynamic library products compiled with Library Evolution** (PLUGINS.md, Decision 22), so a host-tier bundle binds to the engine's one copy: the app embeds them as frameworks, the CLI ships them as dylibs beside its binary, and every other package links them. A consequence for code outside the kits: a `switch` over one of their public enums needs `@unknown default` (an error in Swift 6), and it must do something honest — only `JSONValue` is `@frozen`.
 - **App-tier plug-ins are ExtensionKit extensions** (see [PLUGINS.md](docs/PLUGINS.md)): they run out of process, always, and talk to the app over the existing MCP JSON-RPC layer carried by `XPCMessageTransport` — never a second RPC protocol. Their descriptors (panes, commands, settings panes) are read from the extension's Info.plist before it runs. Engine packages stay UI-free; `TingraAppPlugInKit` is the extension side and is never imported by the engine or the CLI.
 
 ### Package Dependency Graph
 
 ```
-packages/  TingraEventBus         no engine-internal dependencies
-packages/  TingraPlugInKit        →  TingraEventBus; importable standalone by third parties
+packages/  TingraEventBus         no engine-internal dependencies; a dynamic product built with
+                                     Library Evolution, like TingraPlugInKit (PLUGINS.md,
+                                     Decision 22)
+packages/  TingraPlugInKit        →  TingraEventBus; importable standalone by third parties (who
+                                     build against the binary TingraPlugInSDK, Decision 28)
 packages/  TingraHost             →  TingraPlugInKit + TingraEventBus
 packages/  TingraCapturePlugIns   →  TingraPlugInKit + TingraEventBus (registers through the
                                      `InputRegistering` seam, so no TingraHost dependency)
@@ -261,7 +264,11 @@ apps/      tingra-app (phase 3)   →  TingraHost + TingraComposition + TingraAu
                                      the app target, not a Package.swift. The same project's
                                      embedded tingra-notes extension target — the first-party
                                      Notes plug-in, TingraNotes.appex — links
-                                     TingraAppPlugInKit only)
+                                     TingraAppPlugInKit only; the tingra-fixture-plugin target
+                                     builds FixturePlugIn.tingraplugin, linking TingraPlugInKit
+                                     + TingraEventBus without embedding them, for the tests
+                                     only — never embedded in the app. The app target embeds
+                                     the two kit frameworks; the test target links them)
 apps/      ingest-simulator       →  none of the above (wraps MediaMTX; see SIMULATOR.md)
 ```
 

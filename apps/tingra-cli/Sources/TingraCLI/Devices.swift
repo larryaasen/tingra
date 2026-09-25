@@ -65,7 +65,8 @@ struct Devices: AsyncParsableCommand {
             effects: EffectRegistry(),
             tools: ToolRegistry()
         )
-        await PlugInLoader().activate([AVFoundationCapturePlugIn()], in: context)
+        await PlugInLoader().activate(
+            [AVFoundationCapturePlugIn()], thenBundlesFrom: PlugInBundleLoader(), in: context)
 
         let listing = await DeviceList(inputs: registry.allInputs, type: type)
         if json {

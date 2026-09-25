@@ -1014,6 +1014,7 @@ public final class Compositor: Sendable {
     public func start() {
         let clock = self.clock
         let makeRenderer = self.makeRenderer
+        let eventBus = self.eventBus
 
         let format: ProgramFormat = state.withLock { state in
             guard state.tickTask == nil else { return state.format }
@@ -1022,6 +1023,10 @@ public final class Compositor: Sendable {
                 // The renderer lives entirely inside this task; program
                 // frames leave it only through the continuation's yield.
                 let renderer = makeRenderer()
+                // One episode reporter per bus, task-confined beside the
+                // renderer whose failures they report.
+                var programReporter = RenderStallReporter(bus: "program", eventBus: eventBus)
+                var previewReporter = RenderStallReporter(bus: "preview", eventBus: eventBus)
                 // The cadence the tick stream is armed at. A format change
                 // that alters the rate re-arms the stream at the new
                 // interval (``setFormat(_:)``); a size change needs nothing
@@ -1058,7 +1063,13 @@ public final class Compositor: Sendable {
                                 fadeAmount: state.fade.amount
                             )
                         }
-                        Self.render(snapshot, with: renderer, at: tickTime)
+                        Self.render(
+                            snapshot,
+                            with: renderer,
+                            at: tickTime,
+                            programReporter: &programReporter,
+                            previewReporter: &previewReporter
+                        )
                         if snapshot.format.frameRate != frameRate {
                             // This tick still rendered at the old cadence; the
                             // next comes from a stream armed at the new one.
@@ -1089,41 +1100,77 @@ public final class Compositor: Sendable {
     /// so it is plainly the tick task's own work: the renderer never leaves
     /// that task (see ``ShotRenderer``).
     ///
+    /// A bus whose render throws skips this tick — a renderer problem must
+    /// never take down the pipeline — and its reporter turns the skip into
+    /// at most one `stalled` error per episode (``RenderStallReporter``).
+    /// A bus nobody is watching renders nothing and records nothing, so an
+    /// open episode stays open until that bus renders again.
+    ///
     /// - Parameters:
     ///   - snapshot: What the tick captured under the lock.
     ///   - renderer: The tick task's renderer.
     ///   - tickTime: The tick's master clock time, stamped on every frame.
-    private static func render(_ snapshot: TickSnapshot, with renderer: any ShotRenderer, at tickTime: CMTime) {
-        let format = snapshot.format
+    ///   - programReporter: The program bus's episode reporter.
+    ///   - previewReporter: The preview bus's episode reporter.
+    private static func render(
+        _ snapshot: TickSnapshot,
+        with renderer: any ShotRenderer,
+        at tickTime: CMTime,
+        programReporter: inout RenderStallReporter,
+        previewReporter: inout RenderStallReporter
+    ) {
         // Preview is a second pass over this same snapshot, so it
         // renders the very frames program does — and only when a
         // shot is staged and someone is watching.
-        if let previewContinuation = snapshot.previewContinuation,
-            let previewShot = snapshot.previewShot,
-            let preview = renderer.render(
-                shot: previewShot, frames: snapshot.frames, format: format, time: tickTime)
-        {
-            previewContinuation.yield(preview)
+        if let previewContinuation = snapshot.previewContinuation, let previewShot = snapshot.previewShot {
+            do {
+                let preview = try renderer.render(
+                    shot: previewShot, frames: snapshot.frames, format: snapshot.format, time: tickTime)
+                previewReporter.recordOutput()
+                previewContinuation.yield(preview)
+            } catch {
+                previewReporter.recordFailure(error)
+            }
         }
         guard let continuation = snapshot.continuation else { return }
+        do {
+            let program = try renderProgram(snapshot, with: renderer, at: tickTime)
+            programReporter.recordOutput()
+            continuation.yield(program)
+        } catch {
+            programReporter.recordFailure(error)
+        }
+    }
+
+    /// Renders the program bus's frame for one tick: the shot or the
+    /// transition in progress, then the master fade stage.
+    ///
+    /// - Parameters:
+    ///   - snapshot: What the tick captured under the lock.
+    ///   - renderer: The tick task's renderer.
+    ///   - tickTime: The tick's master clock time, stamped on the frame.
+    /// - Returns: The program frame to yield.
+    /// - Throws: The renderer's ``ShotRenderFailure`` from whichever stage
+    ///   could not render; the caller skips the tick.
+    private static func renderProgram(
+        _ snapshot: TickSnapshot,
+        with renderer: any ShotRenderer,
+        at tickTime: CMTime
+    ) throws(ShotRenderFailure) -> CapturedFrame {
+        let format = snapshot.format
         // Held fully black: the layer tree is not composited at
         // all — an empty shot over its opaque-black background is
         // the whole frame — so a program held down costs less
         // than a program running clear, and the fade stage itself
         // is skipped too (ARCHITECTURE.md, "Fade to black").
         if snapshot.fadeAmount >= 1 {
-            if let black = renderer.render(
-                shot: Self.blackShot, frames: [:], format: format, time: tickTime)
-            {
-                continuation.yield(black)
-            }
-            return
+            return try renderer.render(shot: Self.blackShot, frames: [:], format: format, time: tickTime)
         }
-        let composited: CapturedFrame? =
+        let composited: CapturedFrame =
             if let blend = snapshot.blend {
                 switch blend.kind {
                 case .dissolve:
-                    renderer.renderDissolve(
+                    try renderer.renderDissolve(
                         from: blend.outgoing,
                         to: snapshot.shot,
                         progress: blend.progress,
@@ -1132,7 +1179,7 @@ public final class Compositor: Sendable {
                         time: tickTime
                     )
                 case .wipe(let edge):
-                    renderer.renderWipe(
+                    try renderer.renderWipe(
                         from: blend.outgoing,
                         to: snapshot.shot,
                         edge: edge,
@@ -1142,7 +1189,7 @@ public final class Compositor: Sendable {
                         time: tickTime
                     )
                 case .shader(let name):
-                    renderer.renderShader(
+                    try renderer.renderShader(
                         from: blend.outgoing,
                         to: snapshot.shot,
                         shader: name,
@@ -1153,22 +1200,16 @@ public final class Compositor: Sendable {
                     )
                 }
             } else {
-                renderer.render(
+                try renderer.render(
                     shot: snapshot.shot, frames: snapshot.frames, format: format, time: tickTime)
             }
-        guard let composited else { return }
         // The master stage, last: it darkens whatever the tick
         // rendered — a plain shot, a dissolve, a wipe, a shader
         // transition — which is what lets a fade and a transition
         // run at once.
-        let program: CapturedFrame? =
-            snapshot.fadeAmount > 0
-            ? renderer.renderFaded(
-                composited, toBlack: snapshot.fadeAmount, format: format, time: tickTime)
-            : composited
-        if let program {
-            continuation.yield(program)
-        }
+        guard snapshot.fadeAmount > 0 else { return composited }
+        return try renderer.renderFaded(
+            composited, toBlack: snapshot.fadeAmount, format: format, time: tickTime)
     }
 
     /// Stops the program tick, cancels every fill task, finishes the program

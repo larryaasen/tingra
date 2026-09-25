@@ -36,6 +36,21 @@ struct PanePreferences {
         defaults.object(forKey: Self.expansionKey(for: pane)) as? Bool ?? true
     }
 
+    /// The defaults key a pane's closed state persists under.
+    static func closedKey(for pane: PaneID) -> String { "sidebar.\(pane.rawValue).closed" }
+
+    /// Whether the pane was closed out of its sidebar; shown unless it was.
+    /// Separate from expansion: a collapsed pane keeps its header, a closed
+    /// one is gone until the View menu brings it back.
+    func isClosed(_ pane: PaneID) -> Bool {
+        defaults.bool(forKey: Self.closedKey(for: pane))
+    }
+
+    /// Records whether the pane is closed.
+    func setClosed(_ isClosed: Bool, for pane: PaneID) {
+        defaults.set(isClosed, forKey: Self.closedKey(for: pane))
+    }
+
     /// Records whether the pane is open.
     func setExpanded(_ isExpanded: Bool, for pane: PaneID) {
         defaults.set(isExpanded, forKey: Self.expansionKey(for: pane))

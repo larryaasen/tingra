@@ -597,6 +597,9 @@ final class EngineModel {
         case .media:
             LibraryItem.kind(of: mediaItem(forInput: id).flatMap { MediaRegistry.contentType(of: $0.url) }).symbol
         case nil: "exclamationmark.triangle"
+        // A kind a later kit adds gets a generic symbol until this mapping
+        // names it.
+        @unknown default: "questionmark.square.dashed"
         }
     }
 
@@ -1603,6 +1606,7 @@ final class EngineModel {
                 HaishinKitOutputPlugIn(), EffectPlugIn(), RecordingPlugIn(), MediaPlugIn(),
                 ProgramToolsPlugIn(program: self, outputs: self),
             ],
+            thenBundlesFrom: PlugInBundleLoader(),
             in: context
         )
         for resource in EngineResources.all(for: self) {

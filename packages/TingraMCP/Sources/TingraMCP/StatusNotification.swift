@@ -19,6 +19,9 @@ extension JSONValue {
         case .int(let int): self = .int(int)
         case .double(let double): self = .double(double)
         case .bool(let bool): self = .bool(bool)
+        // A kind of value a later bus adds still reaches the client, as its
+        // description, rather than being dropped.
+        @unknown default: self = .string(String(describing: value))
         }
     }
 }

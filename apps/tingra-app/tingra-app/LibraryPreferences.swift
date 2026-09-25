@@ -114,12 +114,18 @@ struct LibraryPreferences {
     /// column is too short for both, when the Library's minimum wins,
     /// because a Library that cannot show a row is not a Library.
     ///
+    /// The plug-in panes below the Library take their height first: left out,
+    /// an expanded pane pushed the column past the window's bottom edge and
+    /// the Notes pane's Clear button hung off it (found 2026-09-24).
+    ///
     /// - Parameters:
     ///   - height: The requested height.
     ///   - columnHeight: The trailing sidebar's total height.
+    ///   - reserved: The height already taken by the plug-in panes below the
+    ///     Library (none by default).
     /// - Returns: The clamped height.
-    static func clamped(_ height: CGFloat, in columnHeight: CGFloat) -> CGFloat {
-        let ceiling = max(minimumHeight, columnHeight - minimumInspectorHeight)
+    static func clamped(_ height: CGFloat, in columnHeight: CGFloat, reserving reserved: CGFloat = 0) -> CGFloat {
+        let ceiling = max(minimumHeight, columnHeight - reserved - minimumInspectorHeight)
         return min(max(height, minimumHeight), ceiling)
     }
 }

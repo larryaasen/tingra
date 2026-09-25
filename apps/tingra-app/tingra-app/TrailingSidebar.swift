@@ -37,12 +37,20 @@ struct TrailingSidebar: View {
     /// The height when the current drag began, or nil between drags.
     @State private var dragStartHeight: CGFloat?
 
+    /// The measured height of the plug-in panes below the Library, which the
+    /// Library's clamp leaves room for so they stay inside the window.
+    @State private var plugInPanesHeight: CGFloat = 0
+
     /// Where the height persists.
     private let preferences: LibraryPreferences
 
     /// The app-tier plug-in host, whose registered panes follow the Library
     /// as collapsible sections (PLUGINS.md, "The app side").
     @Environment(AppPlugInHost.self) private var plugInHost: AppPlugInHost?
+
+    /// Whether the window's status bar is shown, which the sidebar stops
+    /// short of; absent in a window that was handed none.
+    @Environment(StatusBarModel.self) private var statusBar: StatusBarModel?
 
     /// The sidebar's width bounds: wide enough for two fields beside a label,
     /// never so wide it starves the monitors.
@@ -73,7 +81,8 @@ struct TrailingSidebar: View {
     /// Pinned, a pane can only ever overflow itself.
     var body: some View {
         GeometryReader { proxy in
-            let height = LibraryPreferences.clamped(libraryHeight, in: proxy.size.height)
+            let height = LibraryPreferences.clamped(
+                libraryHeight, in: proxy.size.height, reserving: plugInPanesHeight)
             VStack(alignment: .leading, spacing: 0) {
                 LayerInspectorColumn(model: model)
                     .frame(width: proxy.size.width, alignment: .leading)
@@ -82,7 +91,8 @@ struct TrailingSidebar: View {
                     let start = dragStartHeight ?? height
                     dragStartHeight = start
                     // Dragging the divider down shrinks the Library.
-                    libraryHeight = LibraryPreferences.clamped(start - translation, in: proxy.size.height)
+                    libraryHeight = LibraryPreferences.clamped(
+                        start - translation, in: proxy.size.height, reserving: plugInPanesHeight)
                 } onEnd: {
                     dragStartHeight = nil
                     preferences.setHeight(libraryHeight)
@@ -94,14 +104,28 @@ struct TrailingSidebar: View {
                 // Registered plug-in panes, each in the shared disclosure
                 // chrome; a pane asking for another sidebar is hosted here
                 // until one exists — the operator's layout wins.
-                if let plugInHost {
-                    ForEach(plugInHost.panes.panes) { pane in
-                        PlugInPaneSection(pane: pane, host: plugInHost, model: model)
-                            .frame(width: proxy.size.width, alignment: .leading)
+                // Measured, so the Library's clamp gives them their room.
+                VStack(alignment: .leading, spacing: 0) {
+                    if let plugInHost {
+                        ForEach(plugInHost.panes.panes.filter { !plugInHost.isClosed($0.id) }) { pane in
+                            PlugInPaneSection(pane: pane, host: plugInHost, model: model)
+                                .frame(width: proxy.size.width, alignment: .leading)
+                        }
                     }
+                }
+                .fixedSize(horizontal: false, vertical: true)
+                .onGeometryChange(for: CGFloat.self) {
+                    $0.size.height
+                } action: {
+                    plugInPanesHeight = $0
                 }
             }
         }
+        // The status bar runs under this column too, but an inspector
+        // column takes the window's full height and never receives the
+        // bar's safe-area inset, so the sidebar leaves the bar's room itself
+        // (``StatusBarView/occupiedHeight``).
+        .padding(.bottom, statusBar?.isVisible == true ? StatusBarView.occupiedHeight : 0)
         .inspectorColumnWidth(min: Self.minimumWidth, ideal: Self.idealWidth, max: Self.maximumWidth)
     }
 }

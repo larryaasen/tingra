@@ -198,6 +198,8 @@ lands.
 
 The zero-dependency event bus: the structured event spine every part of the
 engine and every plug-in reports through (see [EVENTS.md](docs/EVENTS.md)).
+A dynamic library built with Library Evolution, like `TingraPlugInKit`, since
+the kit re-exposes it to every plug-in.
 
 **Types:** [`TingraEventBus` in TYPES.md](docs/TYPES.md#packagestingraeventbus)
 
@@ -209,7 +211,10 @@ plug-ins build against, importable without the engine (see
 Every registration — input, effect, streaming or recording output — declares
 its adjustable settings as `Parameter`s through one `ParameterDescribing`
 protocol, so the app draws a native settings pane for a plug-in that shipped
-no UI ([PLUGINS.md](docs/PLUGINS.md), Decision 15).
+no UI ([PLUGINS.md](docs/PLUGINS.md), Decision 15). A dynamic library built
+with Library Evolution (Decision 22): a third party's host-tier plug-in, a
+`*.tingraplugin` bundle whose principal class is a `BundledPlugIn`, binds to
+the one copy the running engine loaded, and keeps loading in a newer Tingra.
 
 **Types:** [`TingraPlugInKit` in TYPES.md](docs/TYPES.md#packagestingrapluginkit)
 
@@ -219,6 +224,12 @@ The host/core package: plug-in loading, registries, frame transport,
 session/state, secure storage, the operator's destination store, and
 authorization — the minimal core that is not a plug-in (see
 [ARCHITECTURE.md](docs/ARCHITECTURE.md), "Engine model: host and plug-ins").
+Plug-in loading includes the external bundle loader: every front end loads
+the `*.tingraplugin` bundles in `~/Library/Application Support/Tingra/Plug-ins`
+and `/Library/Application Support/Tingra/Plug-ins` after its compiled-in
+plug-ins, checking each bundle's declared id, kit version, and signature
+before any of its code runs ([PLUGINS.md](docs/PLUGINS.md), "The bundle
+loader: the design").
 
 **Types:** [`TingraHost` in TYPES.md](docs/TYPES.md#packagestingrahost)
 
@@ -367,7 +378,10 @@ reporting), `probe` (validate a destination URL/key without going live), `serve`
 (the persistent engine daemon behind a Unix domain socket — manual foreground
 mode, or launchd socket-activated in the product path; `--install`/`--uninstall`
 register and remove the LaunchAgent), `mcp` (the transparent stdio↔socket proxy
-agents point at), and `version`.
+agents point at), and `version`. It ships as the binary with the two kit
+libraries beside it (`libTingraEventBus.dylib`, `libTingraPlugInKit.dylib`),
+which Homebrew installs into `libexec` (see [CLI.md](docs/CLI.md),
+"Distribution").
 
 ### `apps/ingest-simulator`
 
@@ -404,6 +418,10 @@ product `TingraNotes.appex`) as an ExtensionKit extension embedded in
 point, hosts their panes in the trailing sidebar and the Settings window, and
 speaks MCP to each over XPC — and Notes, linking `TingraAppPlugInKit` alone
 from its own sandboxed process, is the proof a third-party plug-in follows.
+The app embeds the two kit frameworks in `Contents/Frameworks`, which Notes
+loads from too. A third target, `tingra-fixture-plugin`, builds
+`FixturePlugIn.tingraplugin` for the tests alone — never embedded in the app —
+so the host tier's bundle loader is proven against a real bundle.
 
 To build a signed, runnable copy, copy `apps/tingra-app/Local.xcconfig.example`
 to `Local.xcconfig` (git-ignored) and set your own Apple Developer Team ID; the

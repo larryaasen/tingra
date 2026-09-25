@@ -73,6 +73,20 @@ struct LibraryPreferencesTests {
         #expect(LibraryPreferences.clamped(790, in: column) == column - LibraryPreferences.minimumInspectorHeight)
     }
 
+    @Test("Clamping leaves the plug-in panes below the Library their room")
+    func clampingReservesPlugInPanes() {
+        let column: CGFloat = 800
+        let panes: CGFloat = 280
+        let ceiling = column - panes - LibraryPreferences.minimumInspectorHeight
+        #expect(LibraryPreferences.clamped(790, in: column, reserving: panes) == ceiling)
+        #expect(LibraryPreferences.clamped(ceiling - 10, in: column, reserving: panes) == ceiling - 10)
+        #expect(
+            LibraryPreferences.clamped(790, in: column, reserving: 0) == column
+                - LibraryPreferences.minimumInspectorHeight)
+        // Too short for the panes and both minimums: the Library still keeps its own.
+        #expect(LibraryPreferences.clamped(500, in: 400, reserving: panes) == LibraryPreferences.minimumHeight)
+    }
+
     @Test("In a column too short for both minimums, the Library keeps its own minimum")
     func clampingInAShortColumn() {
         let short = LibraryPreferences.minimumHeight + LibraryPreferences.minimumInspectorHeight - 50

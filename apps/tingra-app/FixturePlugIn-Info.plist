@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>NSPrincipalClass</key>
+	<string>FixturePlugIn.FixturePlugIn</string>
+	<key>com.moonwink.tingra.plug-in.id</key>
+	<string>com.moonwink.tingra.fixture</string>
+	<key>com.moonwink.tingra.plug-in.kit-version</key>
+	<string>0.1.0</string>
+</dict>
+</plist>

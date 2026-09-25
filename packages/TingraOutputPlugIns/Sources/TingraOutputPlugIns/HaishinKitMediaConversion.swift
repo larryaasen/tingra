@@ -37,6 +37,9 @@ enum HaishinKitMediaConversion {
             switch configuration.videoCodec {
             case .h264: kVTProfileLevel_H264_High_AutoLevel as String
             case .hevc: kVTProfileLevel_HEVC_Main_AutoLevel as String
+            // A codec a later kit adds is not one this output compresses;
+            // H.264 High is what every RTMP destination accepts.
+            @unknown default: kVTProfileLevel_H264_High_AutoLevel as String
             }
         return VideoCodecSettings(
             videoSize: CGSize(width: configuration.width, height: configuration.height),

@@ -171,10 +171,21 @@ internal surface a reader needs to navigate the target instead.
   scalars, arrays, and objects, encoding as natural JSON; more general than
   the event bus's scalar-only `EventValue`. Reads through `objectValue`,
   `arrayValue`, `stringValue`, `intValue`, `doubleValue`, and `boolValue`.
+  `@frozen` (2026-09-23; PLUGINS.md, Decision 22): JSON has exactly its six
+  kinds, so a client's switch stays exhaustive against the resilient kit —
+  the kit's one frozen enum.
 - `EngineClock` — the master clock seam: current time and the absolute-deadline
   tick stream (see [CLOCK.md](docs/CLOCK.md)).
 - `PlugIn` — the protocol every plug-in conforms to: identity plus an
   activation hook for registering capabilities.
+- `BundledPlugIn` — a host-tier plug-in shipped as a bundle (2026-09-23;
+  PLUGINS.md, Decision 23): a `PlugIn` that is a class with `init()`, named
+  as the bundle's `NSPrincipalClass`; the host's bundle loader makes one
+  instance and activates it exactly as it does a compiled-in plug-in.
+- `PlugInKitVersion` — the kit's `MAJOR.MINOR.PATCH` (2026-09-23; Decision
+  24), `current` naming this build's; parsed from the
+  `com.moonwink.tingra.plug-in.kit-version` a bundle's Info.plist declares
+  and compared before any of the bundle's code loads.
 - `PlugInID` — the stable reverse-DNS identifier for a plug-in; doubles as its
   event domain.
 - `MediaProviderID` — a stable identifier for a media input provider.
@@ -210,7 +221,38 @@ internal surface a reader needs to navigate the target instead.
   `PlugInContext`, reporting each outcome on the event bus (`plugin.activated`,
   or the `plugin.activation` error, each with `tier: "host"` — the app tier
   emits the same names with `tier: "app"`, see PLUGINS.md); a throwing plug-in
-  is skipped, never fatal.
+  is skipped, never fatal. `activate(bundles:in:)` activates loaded bundles
+  the same way, their events adding `source: "bundle"` and the `path`, and
+  `activate(_:thenBundlesFrom:in:)` is what every front end calls: the
+  compiled-in plug-ins, then the bundles, compiled-in ids winning.
+- `PlugInBundleLoader` — the host tier's external bundle loader (2026-09-23;
+  PLUGINS.md, "The bundle loader: the design"): scans the user's and the
+  machine's `Tingra/Plug-ins` folders once for `*.tingraplugin` bundles and,
+  before any code loads, checks the Info.plist's id and kit version, the
+  duplicate rule, and the signature (notarized when quarantined); then loads,
+  casts the principal class to `BundledPlugIn`, and makes one instance.
+  Every problem is a `plugin.bundle` `error` event. `canLoad(builtAgainst:in:)`
+  is the version rule: majors equal and the bundle's minor not newer — before
+  1.0.0, minors equal.
+- `PlugInBundle` — a loaded bundle: its `BundledPlugIn` instance and its
+  directory.
+- `PlugInBundleScan` — one scan's result: the bundles loaded and the problems
+  found, in scan order.
+- `PlugInBundleProblem` — a refusal, or a defect in a bundle that loaded
+  anyway, with its stable `Reason` (`unsigned`, `notNotarized`, `kitVersion`,
+  `duplicateID`, `idMismatch`, `noPrincipalClass`, `loadFailed`, and
+  `embeddedKit`, the one that does not refuse), the bundle, its id when
+  known, and the developer-facing message naming the fix.
+- `PlugInBundleInfo` — what a bundle's Info.plist declares: its id, its kit
+  version, and its principal class name.
+- `PlugInBundleOpening` — the seam under the loader that touches a bundle on
+  disk (reads its declarations, lists its `Contents/Frameworks`, loads its
+  code); `FoundationPlugInBundleOpener` is the production one, over `Bundle`.
+- `CodeSignatureChecking` — the seam under the loader that admits a bundle's
+  signature, returning a `CodeSignatureVerdict` (`valid`, `unsigned` with the
+  Security framework's detail, `notNotarized`); `StaticCodeSignatureChecker`
+  is the production one: `SecStaticCodeCheckValidity`, ad-hoc accepted, and
+  the `notarized` requirement for a quarantined bundle.
 - `AuthorizationPermission` — the three TCC grants capture depends on — `camera`,
   `microphone`, `screenRecording` — with raw values that are a stable contract.
 - `AuthorizationStatus` — where one stands: `notDetermined`, `granted`, `denied`,
@@ -586,6 +628,13 @@ internal surface a reader needs to navigate the target instead.
   composited *frame* rather than shots, because it is a master stage applying to
   whatever the tick produced); task-confined, so it needs no `Sendable`, and
   swappable for a mock in tests.
+- `ShotRenderFailure` — why a `ShotRenderer` produced no frame for a tick (the
+  output pool could not be created, could not vend a buffer, or Core Image could
+  not complete the render — the out-of-`IOSurface` case that used to abort the
+  process); every requirement throws it, typed, and the compositor skips that
+  bus's tick and reports the episode as `program.stalled`/`preview.stalled`
+  with the failure's stable `reason` token and `status` code (EVENTS.md,
+  "Reporting a repeating failure").
 - `VideoEffectFactory` — how a renderer resolves a layer's persisted chain
   entries into live `VideoEffect`s without depending on the host's effect
   registry: the app builds one from a boot-time snapshot of the registry and
@@ -1287,6 +1336,12 @@ surface is:
   loss. `EffectParameterFormat` holds the pure conversions: a `%` unit means
   a stored fraction shown and typed as percent; other units show as stored
   with no fraction digits, a unitless value with one.
+- `UnsupportedParameterRow` — the row every parameters editor (both chain
+  editors and the input settings) draws for a declared parameter whose
+  `Parameter.Kind` this build does not know — the kit's enums are open under
+  Library Evolution (2026-09-23; PLUGINS.md, Decision 22), so a bundle built
+  against a later kit can declare one: the parameter's name and "Needs a
+  newer version of Tingra".
 - `EffectColorWell` — the control both chain editors draw for a color
   parameter (2026-09-09): an AppKit `NSColorWell` in its minimal style (a
   swatch popover at the well, "Show Colors…" inside it for the panel),
@@ -1864,6 +1919,18 @@ surface is:
     it, so the pane is the editor alone.
   - `NotesSettingsView` — the settings pane: the editor's font size, kept on
     this Mac (`notes.fontSize`).
+- **The fixture plug-in bundle** (`tingra-fixture-plugin`, 2026-09-23;
+  PLUGINS.md, Decision 27) — a third target in `tingra-app.xcodeproj`
+  (product `FixturePlugIn.tingraplugin`, module `FixturePlugIn`, Info.plist
+  `FixturePlugIn-Info.plist`), built only for the tests: the test target
+  carries it in its own `Contents/PlugIns`, and it is never embedded in
+  Tingra.app. It links the two kits without embedding them, as a third
+  party's bundle does, and `PlugInBundleFixtureTests` loads it through the
+  production loader.
+  - `FixturePlugIn` — the principal class, a `BundledPlugIn` registering one
+    input and reporting `fixture.activated`.
+  - `FixtureInput` — a generator that delivers nothing; its job is to land in
+    the host's `InputRegistry` from across the boundary.
 - `InspectorCommands` — the View menu's Show/Hide Inspector item, ⌥⌘I, beside
   the sidebar's; `InspectorButton` is the same toggle as the toolbar's
   trailing-most item, each under its own tap.

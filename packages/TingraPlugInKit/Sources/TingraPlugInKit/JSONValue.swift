@@ -21,6 +21,12 @@
 /// and versioning"): it is the shape third-party tools speak, so it encodes
 /// as natural JSON — a `.string` is a bare JSON string, an `.object` a bare
 /// JSON object — never a keyed wrapper.
+///
+/// `@frozen` because JSON has exactly these six kinds of value and always
+/// will (PLUGINS.md, Decision 22): a switch over it stays exhaustive in a
+/// client built against the resilient kit, with no `@unknown default`. The
+/// kit's other public enums stay open, so they can grow a case in a minor.
+@frozen
 public enum JSONValue: Sendable, Equatable {
     /// JSON `null`.
     case null

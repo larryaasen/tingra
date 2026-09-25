@@ -240,6 +240,7 @@ struct LeadingSidebar: View {
         .listStyle(.sidebar)
         .safeAreaInset(edge: .bottom, spacing: 0) {
             addPresetButton
+                .background(.bar)
         }
         .navigationSplitViewColumnWidth(
             min: Self.minimumWidth,
@@ -394,9 +395,11 @@ struct LeadingSidebar: View {
     /// this sidebar lists" — Notes' New Folder, Reminders' Add List, Calendar's
     /// **+** — and it is drawn the way those are: borderless, a `plus.circle`
     /// beside the title, leading-aligned with the rows above, with the
-    /// system's own sidebar material showing through. No hand-drawn bar and no
-    /// divider — the material is the sidebar's, and the inset is what keeps
-    /// the control in view while the sections scroll. Never disabled: a
+    /// system's bar material behind it. The inset keeps the control in view
+    /// while the sections scroll, but rows still scroll *under* an inset, so
+    /// without a backing of its own the last rows showed through the button
+    /// and the two labels overprinted (found 2026-09-24); the bar material is
+    /// the same backing the window's status bar uses. Never disabled: a
     /// project can always hold one more preset. Add Shot was a second row
     /// above it until 2026-09-07 and moved into the Shots section's context
     /// menu, the bank's heading, and the menu bar (``AddShotMenuItems``).

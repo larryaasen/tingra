@@ -50,6 +50,15 @@ struct StatusBarView: View {
     /// reads as one rather than as a row of controls.
     private static let height: CGFloat = 24
 
+    /// How much of the window's bottom edge the bar takes when shown: its
+    /// row and the hairline separator above it. The trailing sidebar stops
+    /// this far short of the window's bottom, because an inspector column
+    /// runs the window's full height and never receives the bar's safe-area
+    /// inset, so without it the bar covered the bottom of the Notes pane
+    /// (measured 2026-09-24: the pane ended at the window's bottom edge,
+    /// under the bar).
+    static let occupiedHeight: CGFloat = height + 1
+
     /// The inset before the first reading, matching the padding around the
     /// production surfaces (``ContentView/columnPadding``) so the readings line
     /// up with the panel headings above them rather than sitting a few points

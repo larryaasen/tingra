@@ -30,6 +30,8 @@ That is two events per episode however long it runs, so the cost is bounded no m
 
 First applied to the generators as `generator.stalled` and `generator.resumed` in the `capture` domain (params: `id`, `reason`, and a numeric `status` where the framework gave one; `skipped` on resume). The shape is deliberately generic — it suits any tick-paced producer that can fail the same way on every tick, not generators specifically.
 
+The compositor applies it second, per bus: `program.stalled`/`program.resumed` and `preview.stalled`/`preview.resumed` in the `composition` domain (params: `reason` — `pixelBufferPool`, `pixelBuffer`, or `render` — and a numeric `status`, the Core Video status or Core Image error code; `reason` and `skipped` on resume). A `render` stall is Core Image unable to finish a frame, most often because it could not allocate an intermediate `IOSurface` under memory pressure — the condition that aborted the process before the renderer moved to Core Image's throwing render-destination API. Each bus reports for itself because program and preview render in separate passes; a bus nobody is watching renders nothing, so its open episode stays open until it renders again.
+
 ## The event
 
 An event has five parts (sketch follows `EventBusBasics`, adapted to Tingra's rules):

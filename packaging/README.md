@@ -14,6 +14,15 @@ holds the concrete recipe.
 - **`tingra-cli-<version>.pkg`** — a stapled installer for offline-capable
   direct download.
 
+Both carry the binary and, beside it, the two plug-in kit libraries it loads
+through its `@loader_path` rpath — `libTingraEventBus.dylib` and
+`libTingraPlugInKit.dylib`, dynamic so every host-tier plug-in bundle binds to
+the one copy the engine loaded ([docs/PLUGINS.md](../docs/PLUGINS.md), Decision
+22). The formula installs the three into `libexec` and links the binary into
+`bin`; the `.pkg` installs them into `/usr/local/libexec/tingra-cli` with a
+`/usr/local/bin/tingra-cli` symlink. The libraries are signed with the same
+identity, each under its own `com.moonwink.tingra.lib…` identifier.
+
 Both come from one signed binary: Developer ID Application signature, hardened
 runtime, the stable identifier `com.moonwink.tingra.cli`, and the entitlements
 in [`apps/tingra-cli/tingra-cli.entitlements`](../apps/tingra-cli/tingra-cli.entitlements)
@@ -110,8 +119,9 @@ gh release download v<version> --repo larryaasen/tingra --pattern '*.zip'
 shasum -a 256 tingra-cli-<version>-arm64.zip                 # must equal the tap formula's sha256
 xcrun stapler validate tingra-cli-<version>.pkg              # proves Apple issued a ticket
 pkgutil --check-signature tingra-cli-<version>.pkg           # "trusted by the Apple notary service"
-codesign -dv --verbose=4 dist/tingra-cli                     # identifier, chain, flags=0x10000(runtime)
-codesign -d --entitlements - --xml dist/tingra-cli | plutil -p -
+codesign -dv --verbose=4 dist/tingra-cli/tingra-cli          # identifier, chain, flags=0x10000(runtime)
+codesign -d --entitlements - --xml dist/tingra-cli/tingra-cli | plutil -p -
+codesign -dv dist/tingra-cli/libTingraPlugInKit.dylib         # same authority as the binary
 ```
 
 Two results that look like problems and are not:
@@ -120,12 +130,12 @@ Two results that look like problems and are not:
   assessment only applies to bundles. For a bare executable the meaningful
   evidence is the `origin=Developer ID Application: …` line it prints, plus the
   stapled `.pkg` above — the zip itself carries no ticket to staple by design.
-- **The zip extracts to `dist/tingra-cli`, not a bare `tingra-cli`.** `ditto
+- **The zip extracts to a `tingra-cli/` folder, not bare files.** `ditto
   --keepParent` embeds the enclosing folder. Homebrew descends into a single
-  top-level directory when staging, so the formula's `bin.install "tingra-cli"`
-  resolves correctly — verified on every release through 0.1.3. Anyone changing
-  the `ditto` invocation or the formula's `install` block must keep those two
-  agreeing.
+  top-level directory when staging, so the formula's `libexec.install` finds the
+  binary and both libraries — the pattern verified on every release through
+  0.1.3, when the folder held the binary alone. Anyone changing the `ditto`
+  invocation or the formula's `install` block must keep those two agreeing.
 
 ## Cutting a release
 
