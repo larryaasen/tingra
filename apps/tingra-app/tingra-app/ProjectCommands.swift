@@ -74,7 +74,7 @@ struct ProjectCommands: Commands {
                         model.eventBus.tap(
                             "projectOpenRecent.menuItem",
                             domain: .composition,
-                            params: ["path": .string(url.path(percentEncoded: false))]
+                            params: ["file": .string(url.lastPathComponent)]
                         )
                         Task { await model.openProject(at: url) }
                     } label: {

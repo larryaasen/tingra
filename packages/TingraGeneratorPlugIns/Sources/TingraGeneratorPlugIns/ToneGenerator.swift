@@ -194,6 +194,9 @@ public final class ToneGenerator: Input, Sendable {
         return stream.makeStream(
             clock: clock,
             tickInterval: tickDuration,
+            // Catch up, never skip: a skipped tick would be a hole in the
+            // tone (CLOCK.md, "Late ticks").
+            lateTicks: .catchUp,
             inputID: id,
             eventBus: eventBus,
             makeRenderer: {

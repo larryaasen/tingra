@@ -8,6 +8,7 @@
 //
 
 import CoreMedia
+import Foundation
 import Testing
 import TingraEventBus
 import TingraPlugInKit
@@ -174,5 +175,51 @@ struct GeneratorStreamCoordinatorTests {
             outputs.append(output)
         }
         #expect(outputs.count == 2)
+    }
+}
+
+/// A renderer that autoreleases one object per tick and reports whether the
+/// previous tick's object had already been freed — a direct observation of
+/// whether the thread's autorelease pool drained between ticks.
+private final class AutoreleasingRenderer {
+    /// The object the previous tick autoreleased; nil once it is freed.
+    private weak var previous: NSObject?
+
+    /// Autoreleases a fresh object and returns whether the previous tick's
+    /// object was freed before this tick began.
+    func render() -> Bool {
+        let freed = previous == nil
+        let object = NSObject()
+        // Leaves the pool holding the only reference, as an autoreleased
+        // Core Image or Foundation result would.
+        _ = Unmanaged.passRetained(object).autorelease()
+        previous = object
+        return freed
+    }
+}
+
+@Suite("GeneratorStreamCoordinator autorelease draining")
+struct GeneratorStreamAutoreleaseTests {
+    @Test("each tick's autoreleased objects are freed before the next tick, even when ticks arrive back to back")
+    func autoreleasedObjectsAreFreedEveryTick() async {
+        // The synthetic clock buffers every tick up front, so the loop never
+        // suspends between them — the case of a synthesis loop that has
+        // fallen behind, where only a per-tick pool frees anything.
+        let coordinator = GeneratorStreamCoordinator<Bool>()
+        let stream = coordinator.makeStream(
+            clock: SyntheticClock(tickTimes: tickTimes(20)),
+            tickInterval: CMTime(value: 1, timescale: 30),
+            inputID: InputID(rawValue: "autoreleasing"),
+            eventBus: nil,
+            makeRenderer: { AutoreleasingRenderer() },
+            render: { (renderer, _) throws(GeneratorSynthesisFailure) in renderer.render() }
+        )
+
+        var freedFlags: [Bool] = []
+        for await freed in stream {
+            freedFlags.append(freed)
+        }
+        #expect(freedFlags.count == 20)
+        #expect(freedFlags.allSatisfy { $0 })
     }
 }

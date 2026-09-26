@@ -1321,7 +1321,8 @@ final class EngineModel {
     /// The position recorded by the last run, read at the top of
     /// ``loadProject()`` before any assignment can overwrite it, and consumed
     /// once by ``establishSessionPreset()``; nil after that, and on every
-    /// launch that seeds a fresh project.
+    /// launch that seeds a fresh project. While it is set, nothing records
+    /// the position (``recordSessionPosition()``).
     @ObservationIgnored private var restoredPosition: SessionPosition?
 
     /// The pending debounced autosave, if any — each edit restarts the delay
@@ -4618,8 +4619,10 @@ final class EngineModel {
     /// Called from the app delegate for **every** quit AppKit dispatches
     /// (``TingraAppDelegate/applicationShouldTerminate(_:)``). It emits one
     /// `app.terminating` event (domain `platform`) carrying the cause and
-    /// whether a recording or a stream was open, finalizes the recording the
-    /// way quitting always has — an unfinalized movie is an unplayable one —
+    /// whether a recording or a stream was open, writes a pending debounced
+    /// autosave at once — an edit made in the second before the quit would
+    /// otherwise be lost with its timer — finalizes the recording the way
+    /// quitting always has — an unfinalized movie is an unplayable one —
     /// then shuts the bus down and **awaits every log sink's drain**, because
     /// delivery is asynchronous and an event still buffered when the process
     /// exits was never logged. Nothing else is torn down: the stream, the
@@ -4636,49 +4639,15 @@ final class EngineModel {
                 "streaming": .bool(isStreaming),
             ]
         )
+        // Before the bus shuts down, so its `project.saved` (or
+        // `project.save` error) reaches the log with the rest of the quit.
+        if autosaveTask != nil { saveProject() }
         await finishRecording()
         eventBus.shutdown()
         for task in logSinkTasks {
             await task.value
         }
         logSinkTasks = []
-    }
-
-    /// Stops the compositor, the program and preview drains, and every active
-    /// input, flushing any pending autosave first so the last edits reach disk.
-    func stop() async {
-        // The recording goes first, and is *waited* for: an unfinalized movie
-        // is an unplayable one, so the file is closed before anything that
-        // feeds it is torn down.
-        await finishRecording()
-        await stopStreaming()
-        streamStatusTask?.cancel()
-        streamStatusTask = nil
-        permissions.stopObservingActivation()
-        if autosaveTask != nil { saveProject() }
-        programTask?.cancel()
-        programTask = nil
-        previewTask?.cancel()
-        previewTask = nil
-        programAudioTask?.cancel()
-        programAudioTask = nil
-        meterTask?.cancel()
-        meterTask = nil
-        monitorDeviceTask?.cancel()
-        monitorDeviceTask = nil
-        await monitor.stop()
-        isMonitoring = false
-        compositor.stop()
-        mixer.stop()
-        for input in activeInputs.values {
-            await input.stop()
-        }
-        activeInputs.removeAll()
-        for input in activeAudioInputs.values {
-            await input.stop()
-        }
-        activeAudioInputs.removeAll()
-        eventBus.shutdown()
     }
 
     /// Loads the project document at boot — the project the app last had
@@ -4713,7 +4682,7 @@ final class EngineModel {
             last.standardizedFileURL != defaultStore.fileURL.standardizedFileURL
         {
             let lastStore = ProjectStore(fileURL: last)
-            let lastPath = last.path(percentEncoded: false)
+            let lastFile = last.lastPathComponent
             do {
                 if let project = try lastStore.load() {
                     store = lastStore
@@ -4722,14 +4691,14 @@ final class EngineModel {
                     eventBus.event(
                         "project.reopen",
                         domain: .composition,
-                        params: ["path": .string(lastPath), "reason": .string("missing")]
+                        params: ["file": .string(lastFile), "reason": .string("missing")]
                     )
                 }
             } catch {
                 eventBus.error(
                     "project.reopen",
                     domain: .composition,
-                    params: ["path": .string(lastPath), "error": .string(String(describing: error))]
+                    params: ["file": .string(lastFile), "error": .string(ProjectStore.eventDescription(of: error))]
                 )
             }
         }
@@ -4757,7 +4726,7 @@ final class EngineModel {
             "project.loaded",
             domain: .composition,
             params: [
-                "path": .string(store.fileURL.path(percentEncoded: false)),
+                "file": .string(store.fileURL.lastPathComponent),
                 "presets": .int(presets.count),
                 "shots": .int(shots.count),
             ]
@@ -4771,27 +4740,27 @@ final class EngineModel {
     ///
     /// - Returns: The default project, or nil when there is no readable one.
     private func loadDefaultProject() -> Project? {
-        let path = defaultStore.fileURL.path(percentEncoded: false)
+        let file = defaultStore.fileURL.lastPathComponent
         do {
             return try defaultStore.load()
         } catch {
             eventBus.error(
                 "project.load",
                 domain: .composition,
-                params: ["path": .string(path), "error": .string(String(describing: error))]
+                params: ["file": .string(file), "error": .string(ProjectStore.eventDescription(of: error))]
             )
             do {
                 let setAside = try defaultStore.setAsideUnreadableFile()
                 eventBus.event(
                     "project.setAside",
                     domain: .composition,
-                    params: ["path": .string(setAside.path(percentEncoded: false))]
+                    params: ["file": .string(setAside.lastPathComponent)]
                 )
             } catch {
                 eventBus.error(
                     "project.setAside",
                     domain: .composition,
-                    params: ["path": .string(path), "error": .string(String(describing: error))]
+                    params: ["file": .string(file), "error": .string(ProjectStore.eventDescription(of: error))]
                 )
             }
             return nil
@@ -4814,7 +4783,7 @@ final class EngineModel {
     /// - Parameter project: The document to adopt.
     /// - Returns: The recorded position for that project.
     private func adoptDocument(_ project: Project) -> SessionPosition {
-        let path = store.fileURL.path(percentEncoded: false)
+        let file = store.fileURL.lastPathComponent
         // A document written before transient shots existed carries the
         // automatic shots the app made to stage clicked inputs; under the
         // rule they were never the operator's, so they are dropped rather
@@ -4833,7 +4802,7 @@ final class EngineModel {
             eventBus.event(
                 "project.transientShotsDropped",
                 domain: .composition,
-                params: ["path": .string(path), "count": .int(dropped)]
+                params: ["file": .string(file), "count": .int(dropped)]
             )
             scheduleAutosave()
         }
@@ -4902,12 +4871,12 @@ final class EngineModel {
     /// - Parameter url: The project document to open.
     func openProject(at url: URL) async {
         guard hasSessionPreset, !isRemovingData else { return }
-        let path = url.path(percentEncoded: false)
+        let file = url.lastPathComponent
         if let reason = ProjectSwitch.refusal(isStreaming: isStreaming, isRecording: isRecording) {
             eventBus.error(
                 "project.open",
                 domain: .composition,
-                params: ["path": .string(path), "reason": .string(reason)]
+                params: ["file": .string(file), "reason": .string(reason)]
             )
             return
         }
@@ -4919,7 +4888,7 @@ final class EngineModel {
                 eventBus.error(
                     "project.open",
                     domain: .composition,
-                    params: ["path": .string(path), "reason": .string("missing")]
+                    params: ["file": .string(file), "reason": .string("missing")]
                 )
                 return
             }
@@ -4928,7 +4897,7 @@ final class EngineModel {
             eventBus.error(
                 "project.open",
                 domain: .composition,
-                params: ["path": .string(path), "error": .string(String(describing: error))]
+                params: ["file": .string(file), "error": .string(ProjectStore.eventDescription(of: error))]
             )
             return
         }
@@ -4937,7 +4906,7 @@ final class EngineModel {
             "project.opened",
             domain: .composition,
             params: [
-                "path": .string(path),
+                "file": .string(file),
                 "presets": .int(presets.count),
                 "shots": .int(shots.count),
             ]
@@ -4969,19 +4938,19 @@ final class EngineModel {
     /// - Parameter url: Where the new project document goes.
     func newProject(at url: URL) async {
         guard hasSessionPreset, !isRemovingData else { return }
-        let path = url.path(percentEncoded: false)
+        let file = url.lastPathComponent
         if let reason = ProjectSwitch.refusal(isStreaming: isStreaming, isRecording: isRecording) {
             eventBus.error(
                 "project.new",
                 domain: .composition,
-                params: ["path": .string(path), "reason": .string(reason)]
+                params: ["file": .string(file), "reason": .string(reason)]
             )
             return
         }
         let project = Project(id: ProjectID(), presets: [seededShow().preset])
         await replaceShow(with: project, store: ProjectStore(fileURL: url))
         saveProject()
-        eventBus.event("project.created", domain: .composition, params: ["path": .string(path)])
+        eventBus.event("project.created", domain: .composition, params: ["file": .string(file)])
     }
 
     /// Writes the open show to a new file and makes that file the open
@@ -5007,8 +4976,8 @@ final class EngineModel {
             "project.savedAs",
             domain: .composition,
             params: [
-                "from": .string(previous.path(percentEncoded: false)),
-                "path": .string(url.path(percentEncoded: false)),
+                "from": .string(previous.lastPathComponent),
+                "file": .string(url.lastPathComponent),
             ]
         )
     }
@@ -5079,10 +5048,12 @@ final class EngineModel {
             scheduleAutosave()
         }
         guard let preset = recorded.launchPreset(in: presets) else { return }
+        // Held before the first assignment, so the placeholders below are not
+        // recorded over the position being restored (``recordSessionPosition()``).
+        restoredPosition = recorded
         activePresetID = preset.id
         shots = preset.shots
         compositor.loadPreset(preset)
-        restoredPosition = recorded
         restoreSessionPosition(in: preset)
         if compositor.activeShotID == nil {
             if let first = preset.shots.first {
@@ -5158,7 +5129,7 @@ final class EngineModel {
             eventBus.event(
                 "project.seeded",
                 domain: .composition,
-                params: ["path": .string(store.fileURL.path(percentEncoded: false))]
+                params: ["file": .string(store.fileURL.lastPathComponent)]
             )
             saveProject()
         }
@@ -5215,9 +5186,14 @@ final class EngineModel {
     /// ``takeTransitionDuration``, so no path that moves a bus or arms a
     /// transition can forget to. Silent while data
     /// is being removed, so the preferences the operator just cleared are not
-    /// written back by the quit that follows.
+    /// written back by the quit that follows. Silent too while a recorded
+    /// position is waiting to be restored (``restoredPosition``): until
+    /// ``restoreSessionPosition(in:)`` runs, the buses hold placeholders, and
+    /// recording them would overwrite the position the launch is about to put
+    /// back — for good, if the process ends in that window (a kill mid-boot,
+    /// a crash, a test host torn down).
     private func recordSessionPosition() {
-        guard !isRemovingData else { return }
+        guard !isRemovingData, restoredPosition == nil else { return }
         sessionPreferences.position = SessionPosition(
             presetID: activePresetID,
             activeShotID: activeShotID,
@@ -5297,7 +5273,7 @@ final class EngineModel {
             eventBus.event(
                 "project.saved",
                 domain: .composition,
-                params: ["path": .string(target.fileURL.path(percentEncoded: false))]
+                params: ["file": .string(target.fileURL.lastPathComponent)]
             )
             return true
         } catch {
@@ -5305,8 +5281,8 @@ final class EngineModel {
                 "project.save",
                 domain: .composition,
                 params: [
-                    "path": .string(target.fileURL.path(percentEncoded: false)),
-                    "error": .string(String(describing: error)),
+                    "file": .string(target.fileURL.lastPathComponent),
+                    "error": .string(ProjectStore.eventDescription(of: error)),
                 ]
             )
             return false

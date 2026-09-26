@@ -1063,13 +1063,26 @@ public final class Compositor: Sendable {
                                 fadeAmount: state.fade.amount
                             )
                         }
-                        Self.render(
-                            snapshot,
-                            with: renderer,
-                            at: tickTime,
-                            programReporter: &programReporter,
-                            previewReporter: &previewReporter
-                        )
+                        // One autorelease pool per tick. Core Image
+                        // autoreleases each render's task and image graph,
+                        // and those retain the tick's input and output
+                        // pixel buffers. The executor only drains the
+                        // thread's pool when this task suspends, and a loop
+                        // that has fallen behind never does — its next tick
+                        // is always already waiting (the newest one, since
+                        // late ticks are skipped) — so without this
+                        // every frame's `IOSurface` stays alive until the
+                        // process runs out (measured 2026-09-26: 16,319
+                        // leaked 1080p buffers, 126 GB, after a day).
+                        autoreleasepool {
+                            Self.render(
+                                snapshot,
+                                with: renderer,
+                                at: tickTime,
+                                programReporter: &programReporter,
+                                previewReporter: &previewReporter
+                            )
+                        }
                         if snapshot.format.frameRate != frameRate {
                             // This tick still rendered at the old cadence; the
                             // next comes from a stream armed at the new one.

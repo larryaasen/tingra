@@ -25,12 +25,12 @@
 		5B14E5020000000000000B42 /* TingraAppPlugInKit in Frameworks */ = {isa = PBXBuildFile; productRef = 5B14E5020000000000000B32 /* TingraAppPlugInKit */; };
 		5B14E5020000000000000B43 /* TingraAppPlugInKit in Frameworks */ = {isa = PBXBuildFile; productRef = 5B14E5020000000000000B33 /* TingraAppPlugInKit */; };
 		5B14E5030000000000000C01 /* TingraEventBus in Embed Frameworks */ = {isa = PBXBuildFile; productRef = 46DA99153005000000B79666 /* TingraEventBus */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
-		5B14E504000000000000D21 /* TingraPlugInKit in Frameworks */ = {isa = PBXBuildFile; productRef = 5B14E504000000000000D20 /* TingraPlugInKit */; };
-		5B14E504000000000000D23 /* TingraEventBus in Frameworks */ = {isa = PBXBuildFile; productRef = 5B14E504000000000000D22 /* TingraEventBus */; };
 		5B14E5030000000000000C02 /* TingraPlugInKit in Embed Frameworks */ = {isa = PBXBuildFile; productRef = 46DA99193005000000B79666 /* TingraPlugInKit */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 		5B14E504000000000000D11 /* TingraPlugInKit in Frameworks */ = {isa = PBXBuildFile; productRef = 5B14E504000000000000D10 /* TingraPlugInKit */; };
 		5B14E504000000000000D13 /* TingraEventBus in Frameworks */ = {isa = PBXBuildFile; productRef = 5B14E504000000000000D12 /* TingraEventBus */; };
 		5B14E504000000000000D16 /* FixturePlugIn.tingraplugin in Embed Fixture Plug-in */ = {isa = PBXBuildFile; fileRef = 5B14E504000000000000D01 /* FixturePlugIn.tingraplugin */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		5B14E504000000000000D21 /* TingraPlugInKit in Frameworks */ = {isa = PBXBuildFile; productRef = 5B14E504000000000000D20 /* TingraPlugInKit */; };
+		5B14E504000000000000D23 /* TingraEventBus in Frameworks */ = {isa = PBXBuildFile; productRef = 5B14E504000000000000D22 /* TingraEventBus */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */

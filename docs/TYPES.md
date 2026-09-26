@@ -175,7 +175,14 @@ internal surface a reader needs to navigate the target instead.
   kinds, so a client's switch stays exhaustive against the resilient kit —
   the kit's one frozen enum.
 - `EngineClock` — the master clock seam: current time and the absolute-deadline
-  tick stream (see [CLOCK.md](docs/CLOCK.md)).
+  tick stream (see [CLOCK.md](docs/CLOCK.md)); `tick(every:lateTicks:)`
+  (2026-09-26, defaulted to forward to `tick(every:)`) lets the consumer choose
+  what a late tick stream delivers.
+- `LateTickPolicy` — what a tick stream does with deadlines missed while its
+  consumer runs late: `skip` (the default and the program tick's rule — only
+  the newest due tick, a gap rather than a burst) or `catchUp` (every deadline
+  in order, for audio that must stay contiguous: the mix tick and the tone
+  generator); CLOCK.md, "Late ticks".
 - `PlugIn` — the protocol every plug-in conforms to: identity plus an
   activation hook for registering capabilities.
 - `BundledPlugIn` — a host-tier plug-in shipped as a bundle (2026-09-23;
@@ -207,7 +214,9 @@ internal surface a reader needs to navigate the target instead.
 ## `packages/TingraHost`
 
 - `HostClock` — the production `EngineClock`: the host time clock with a
-  `ContinuousClock`-based absolute-deadline tick loop.
+  `ContinuousClock`-based absolute-deadline tick loop that skips late ticks
+  (jumping to the latest due deadline, newest-only buffering) or catches up,
+  per the consumer's `LateTickPolicy`.
 - `InputRegistry` — the actor where input plug-ins register the inputs they
   contribute and the engine resolves them from (by stable ID, listing index, or
   unique name substring via `resolveInput(selector:ofKind:)`); the host's
@@ -1584,6 +1593,11 @@ surface is:
   `systemBuild` (`sysctl kern.osversion`), and `hardwareModel` (`sysctl
   hw.model`, `Mac15,3`); a missing reading drops its key. Injectable readings,
   so the assembly is tested without booting an engine.
+- `LaunchEnvironment` — whether the process is the unit tests' host: the
+  `tingra-app` scheme's Test action sets `TINGRA_TEST_HOST=1`, and the main
+  window's task then skips `EngineModel.start()`, so a test run never touches
+  the developer's devices, project, preferences, or log (the tests build
+  their own `EngineModel` over doubles and never boot one).
 - `TerminationReason` — why the app is quitting, as far as AppKit can say: the
   app's own `terminate(_:)` (the Quit item, ⌘Q), or a quit Apple event from the
   Dock, a script, or the login window on logout, restart, and shutdown, read
@@ -1791,6 +1805,9 @@ surface is:
     `ActivationTable`; `AppPlugInLink.activate` launches the process if
     needed and sends `tingra/activation`), and re-hosts a pane one second
     after its process dies.
+    `AvailabilityCounts` is the system's enabled/disabled/unapproved counts,
+    compared so `plugin.availability` is reported only when they change
+    (Launch Services re-announces the same counts on every record update).
     `DiscoveredPlugIn` is an identity with its manifest; `AppPlugInServices`
     is what every link needs (the bus, the tool registry, the status sink and
     identity the session serves, the storage, the status items — whose texts

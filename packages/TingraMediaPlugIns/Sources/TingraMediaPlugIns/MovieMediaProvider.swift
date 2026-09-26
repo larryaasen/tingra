@@ -265,18 +265,26 @@ public final class MovieInput: Input, Sendable {
                     }
                 }
                 guard let current = reader else { break ticking }
-                let position = CMTimeSubtract(CMTimeSubtract(tickTime, start), loopOffset)
-                let base = CMTimeAdd(start, loopOffset)
-                for block in current.audio(upTo: position) {
-                    if let retimed = CapturedAudio(sampleBuffer: block).rebased(by: CMTimeSubtract(.zero, base)) {
-                        deliverAudio(retimed)
+                // One autorelease pool per pull: the reader's sample buffers
+                // come out of AVFoundation, and a loop that has fallen
+                // behind always finds its next tick already waiting, so it
+                // never suspends and nothing else drains the thread's pool —
+                // every decoded frame's `IOSurface` would stay alive (the
+                // compositor's tick loop leaked exactly this way).
+                let deliveredFrame = autoreleasepool { () -> Bool in
+                    let position = CMTimeSubtract(CMTimeSubtract(tickTime, start), loopOffset)
+                    let base = CMTimeAdd(start, loopOffset)
+                    for block in current.audio(upTo: position) {
+                        if let retimed = CapturedAudio(sampleBuffer: block).rebased(by: CMTimeSubtract(.zero, base)) {
+                            deliverAudio(retimed)
+                        }
                     }
-                }
-                if let pixelBuffer = current.latestVideoFrame(upTo: position) {
+                    guard let pixelBuffer = current.latestVideoFrame(upTo: position) else { return false }
                     MediaPixelBuffer.tagBT709IfUntagged(pixelBuffer)
                     deliverFrame(CapturedFrame(pixelBuffer: pixelBuffer, presentationTime: tickTime))
-                    break
+                    return true
                 }
+                if deliveredFrame { break }
                 // Nothing due and nothing left: loop, unless the reader just
                 // opened — a file with no samples would otherwise spin.
                 guard current.isAtEnd, opened < 2 else { break }

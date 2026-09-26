@@ -169,7 +169,9 @@ struct MixerView: View {
                     model.eventBus.tap(
                         "monitorLevel.slider",
                         domain: .audio,
-                        params: ["value": .double(model.monitorLevel)]
+                        // Three decimal places: the gain's full precision
+                        // (0.08256329203882862) is noise in a log line.
+                        params: ["value": .double((model.monitorLevel * 1000).rounded() / 1000)]
                     )
                 }
                 .frame(height: MasterMeter.length)

@@ -9,6 +9,7 @@
 
 import CoreMedia
 import CoreVideo
+import Foundation
 import Synchronization
 import Testing
 import TingraEventBus
@@ -342,6 +343,105 @@ private final class StallingShotRenderer: ShotRenderer {
         time: CMTime
     ) throws(ShotRenderFailure) -> CapturedFrame {
         try produce(time: time)
+    }
+}
+
+/// Records, per render, whether the object the previous render autoreleased
+/// had already been freed. Lock-protected: the renderer writes it inside the
+/// tick task and the test reads it afterward.
+private final class DrainRecorder: Sendable {
+    /// One flag per render, in order.
+    private let flags = Mutex<[Bool]>([])
+
+    /// Appends one render's observation.
+    func record(_ freed: Bool) {
+        flags.withLock { $0.append(freed) }
+    }
+
+    /// Every observation so far.
+    var recorded: [Bool] {
+        flags.withLock { $0 }
+    }
+}
+
+/// A renderer that autoreleases one object per render, as Core Image does
+/// with each render's task and image graph, and records whether the previous
+/// render's object was freed before this one began — a direct observation of
+/// whether the tick loop's autorelease pool drains between ticks.
+private final class AutoreleasingShotRenderer: ShotRenderer {
+    /// Where each render's observation goes.
+    let recorder: DrainRecorder
+
+    /// The object the previous render autoreleased; nil once it is freed.
+    private weak var previous: NSObject?
+
+    /// Creates a renderer reporting into `recorder`.
+    init(recorder: DrainRecorder) {
+        self.recorder = recorder
+    }
+
+    /// Records the previous object's fate, autoreleases a fresh one, and
+    /// returns a 2x2 frame.
+    private func produce(time: CMTime) -> CapturedFrame {
+        recorder.record(previous == nil)
+        let object = NSObject()
+        // Leaves the pool holding the only reference.
+        _ = Unmanaged.passRetained(object).autorelease()
+        previous = object
+        return CapturedFrame(pixelBuffer: makePixelBuffer(), presentationTime: time)
+    }
+
+    func render(
+        shot: Shot,
+        frames: [InputID: CapturedFrame],
+        format: ProgramFormat,
+        time: CMTime
+    ) -> CapturedFrame {
+        produce(time: time)
+    }
+
+    func renderDissolve(
+        from outgoing: Shot,
+        to incoming: Shot,
+        progress: Double,
+        frames: [InputID: CapturedFrame],
+        format: ProgramFormat,
+        time: CMTime
+    ) -> CapturedFrame {
+        produce(time: time)
+    }
+
+    func renderWipe(
+        from outgoing: Shot,
+        to incoming: Shot,
+        edge: WipeEdge,
+        progress: Double,
+        frames: [InputID: CapturedFrame],
+        format: ProgramFormat,
+        time: CMTime
+    ) -> CapturedFrame {
+        produce(time: time)
+    }
+
+    func renderShader(
+        from outgoing: Shot,
+        to incoming: Shot,
+        shader: TransitionShader,
+        progress: Double,
+        frames: [InputID: CapturedFrame],
+        format: ProgramFormat,
+        time: CMTime
+    ) -> CapturedFrame {
+        produce(time: time)
+    }
+
+    func renderFaded(
+        _ frame: CapturedFrame,
+        toBlack amount: Double,
+        format: ProgramFormat,
+        time: CMTime
+    ) -> CapturedFrame {
+        produce(time: time)
     }
 }
 
@@ -2160,5 +2260,28 @@ struct CompositorBoundedStreamTests {
             if event.name == "preview.resumed" { break }
         }
         #expect(names == ["preview.stalled", "preview.resumed"])
+    }
+
+    @Test("each tick's autoreleased objects are freed before the next tick, even when ticks arrive back to back")
+    func autoreleasedObjectsAreFreedEveryTick() async {
+        // The synthetic clock buffers every tick up front, so the tick loop
+        // never suspends between them — the case of a compositor that has
+        // fallen behind, where only a per-tick pool frees each frame's
+        // Core Image objects and the buffers they retain.
+        let ticks = (0..<20).map { CMTime(value: CMTimeValue($0), timescale: 30) }
+        let recorder = DrainRecorder()
+        let compositor = Compositor(
+            clock: SyntheticClock(tickTimes: ticks),
+            format: ProgramFormat(width: 2, height: 2, frameRate: 30),
+            eventBus: EventBus(),
+            makeRenderer: { AutoreleasingShotRenderer(recorder: recorder) }
+        )
+
+        let program = compositor.programFrames(bufferingPolicy: .unbounded)
+        compositor.start()
+        _ = await collect(program, limit: 20)
+
+        #expect(recorder.recorded.count == 20)
+        #expect(recorder.recorded.allSatisfy { $0 })
     }
 }

@@ -119,6 +119,11 @@ struct TingraApp: App {
             .navigationTitle(model.projectName)
             .navigationDocument(model.projectURL)
             .task {
+                // The unit tests' host launches the app only so the test
+                // bundle can load; the engine stays down so a test run never
+                // touches the developer's devices, project, or preferences
+                // (``LaunchEnvironment``).
+                guard !LaunchEnvironment.isTestHost else { return }
                 appDelegate.model = model
                 // A document double-clicked to launch the app arrived at the
                 // delegate before the model existed; handed over before the

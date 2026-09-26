@@ -55,8 +55,15 @@ struct LayerTreeEditorView: View {
     private static let lampDiameter: CGFloat = 8
 
     /// One list row's height, which sizes the list to its rows: tall enough
-    /// for the thumbnail.
-    private static let rowHeight: CGFloat = 30
+    /// for the thumbnail. It is also the list's minimum row height, and it
+    /// has to clear the row's natural height (the thumbnail plus the bordered
+    /// style's insets, measured 30.5 pt on 2026-09-24): the table view places
+    /// a newly inserted row at its estimated height and only then measures
+    /// it, and the difference stayed behind as scroll offset. The list is
+    /// topmost first, so every shot switch that grew the list inserted a row
+    /// above the one showing and slid the rows up by that difference, until
+    /// the top layer was scrolled out of a list that had room for all of them.
+    private static let rowHeight: CGFloat = 32
 
     /// The row thumbnail's width; 16:9, so its height follows.
     private static let thumbnailWidth: CGFloat = 40
@@ -200,6 +207,7 @@ struct LayerTreeEditorView: View {
                     }
                 }
                 .listStyle(.bordered)
+                .environment(\.defaultMinListRowHeight, Self.rowHeight)
                 .onDeleteCommand {
                     removeSelectedLayer(reporting: "layerDelete.key")
                 }

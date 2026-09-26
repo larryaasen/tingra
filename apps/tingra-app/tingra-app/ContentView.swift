@@ -76,6 +76,10 @@ struct ContentView: View {
     /// (``EngineModel/undoManager``).
     @Environment(\.undoManager) private var undoManager
 
+    /// Whether the window's status bar is shown, which the scrolling column
+    /// ends short of; absent in a window that was handed none.
+    @Environment(StatusBarModel.self) private var statusBar: StatusBarModel?
+
     /// The shot the bank's rename dialog is editing, or `nil` while it is
     /// closed. View-local, like the layer editor's selection: which shot is
     /// being renamed is transient session state.
@@ -164,6 +168,12 @@ struct ContentView: View {
                 }
                 .padding(Self.columnPadding)
             }
+            // The column scrolls under the status bar's material but ends
+            // above it. Attaching `.inspector` moves this content into a
+            // split column that never receives the bar's safe-area inset,
+            // so the column leaves the bar's room itself, as the trailing
+            // sidebar does (``StatusBarView/occupiedHeight``).
+            .safeAreaPadding(.bottom, statusBar?.isVisible == true ? StatusBarView.occupiedHeight : 0)
         }
         // The selected layer's controls, in the trailing sidebar beside the
         // monitors whose handles they describe — outside the scroll, and

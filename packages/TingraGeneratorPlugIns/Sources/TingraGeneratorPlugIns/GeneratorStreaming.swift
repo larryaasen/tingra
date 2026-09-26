@@ -45,6 +45,10 @@ final class GeneratorStreamCoordinator<Output: Sendable>: Sendable {
     /// - Parameters:
     ///   - clock: The clock that paces synthesis and stamps output times.
     ///   - tickInterval: The clock tick cadence (one output per tick).
+    ///   - lateTicks: What the stream does with deadlines missed while it
+    ///     runs late — skipped (the default, right for a video frame that
+    ///     only the compositor's latest-wins slot will see) or caught up
+    ///     (synthesized audio, whose buffers must abut).
     ///   - inputID: The generator's identifier, reported with a stall.
     ///   - eventBus: The host's event bus; when absent nothing is reported
     ///     and skipping behaves exactly as before.
@@ -55,6 +59,7 @@ final class GeneratorStreamCoordinator<Output: Sendable>: Sendable {
     func makeStream<Renderer>(
         clock: any EngineClock,
         tickInterval: CMTime,
+        lateTicks: LateTickPolicy = .skip,
         inputID: InputID,
         eventBus: EventBus?,
         makeRenderer: @escaping @Sendable () -> Renderer,
@@ -71,13 +76,24 @@ final class GeneratorStreamCoordinator<Output: Sendable>: Sendable {
                 // resource that fails belongs to this renderer alone.
                 let renderer = makeRenderer()
                 var stall = StallReporter(inputID: inputID, eventBus: eventBus)
-                for await tickTime in clock.tick(every: tickInterval) {
+                for await tickTime in clock.tick(every: tickInterval, lateTicks: lateTicks) {
                     guard !Task.isCancelled else { break }
-                    do throws(GeneratorSynthesisFailure) {
-                        let output = try render(renderer, tickTime)
+                    // One autorelease pool per tick: rendering goes through
+                    // Core Text and Foundation (the bars' timecode is an
+                    // attributed string), and a loop that has fallen behind
+                    // always finds its next tick already waiting, so it
+                    // never suspends and nothing else drains the thread's pool
+                    // (the compositor's tick loop leaked this way). The
+                    // `Result` carries the typed failure out of the pool,
+                    // whose closure only rethrows untyped.
+                    let rendered = autoreleasepool {
+                        Result { () throws(GeneratorSynthesisFailure) in try render(renderer, tickTime) }
+                    }
+                    switch rendered {
+                    case .success(let output):
                         stall.recordOutput()
                         continuation.yield(output)
-                    } catch {
+                    case .failure(let error):
                         stall.recordFailure(error)
                     }
                 }

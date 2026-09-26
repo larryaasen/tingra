@@ -138,7 +138,7 @@ Start every Swift source file with this header. `<ModuleName>` is the containing
 | Build/test the CLI | `cd apps/tingra-cli && swift build` / `swift test` |
 | Run the CLI locally | `cd apps/tingra-cli && swift run tingra-cli <subcommand> [options]` (see [CLI.md](docs/CLI.md)) |
 | Build the app | `cd apps/tingra-app && xcodebuild build -project tingra-app.xcodeproj -scheme tingra-app -destination 'platform=macOS,arch=arm64'` (add `CODE_SIGNING_ALLOWED=NO` if you have no `Local.xcconfig` — see Signing below) |
-| Test the app | same with `test` in place of `build` (Swift Testing, run through the app host) |
+| Test the app | same with `test` in place of `build` (Swift Testing, run through the app host; the scheme's Test action sets `TINGRA_TEST_HOST=1` so the host never boots the engine — see `LaunchEnvironment`) |
 | Run the app from a terminal | `scripts/run-app.sh` (builds, signs, and runs it in the foreground so the event log streams to the terminal; `--release`, `--no-run`) |
 | Start the local ingest simulator | `apps/ingest-simulator/sim.sh start` (see [SIMULATOR.md](docs/SIMULATOR.md)) |
 | Run the streaming integration tests | `scripts/integration-test.sh` (generators → simulator, verified server side with ffprobe; needs ffmpeg installed) |

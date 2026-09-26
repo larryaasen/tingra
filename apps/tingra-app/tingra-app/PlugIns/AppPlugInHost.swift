@@ -104,6 +104,30 @@ final class AppPlugInHost {
     /// The task following the system's availability counts.
     @ObservationIgnored private var availabilityTask: Task<Void, Never>?
 
+    /// The system's count of the app's extensions in each approval state, as
+    /// the `plugin.availability` event reports it — a value of its own so
+    /// the host can tell a changed count from the same one re-announced.
+    struct AvailabilityCounts: Equatable {
+        /// Extensions the operator has enabled.
+        let enabled: Int
+
+        /// Extensions the operator has turned off.
+        let disabled: Int
+
+        /// Extensions still awaiting the operator's approval.
+        let unapproved: Int
+
+        /// The `plugin.availability` event's params.
+        var params: [String: EventValue] {
+            [
+                "tier": .string("app"),
+                "enabled": .int(enabled),
+                "disabled": .int(disabled),
+                "unapproved": .int(unapproved),
+            ]
+        }
+    }
+
     /// The task keeping the status sink attached to the bus.
     @ObservationIgnored private var statusTask: Task<Void, Never>?
 
@@ -147,15 +171,18 @@ final class AppPlugInHost {
             }
         }
         availabilityTask = Task {
+            // The system re-announces availability whenever Launch Services
+            // updates its records, most often with the same counts; only a
+            // change is worth an event.
+            var reported: AvailabilityCounts?
             for await availability in AppExtensionIdentity.availabilityUpdates {
-                services.eventBus.event(
-                    "plugin.availability", domain: .plugIn,
-                    params: [
-                        "tier": .string("app"),
-                        "enabled": .int(availability.enabledCount),
-                        "disabled": .int(availability.disabledCount),
-                        "unapproved": .int(availability.unapprovedCount),
-                    ])
+                let counts = AvailabilityCounts(
+                    enabled: availability.enabledCount,
+                    disabled: availability.disabledCount,
+                    unapproved: availability.unapprovedCount)
+                guard counts != reported else { continue }
+                reported = counts
+                services.eventBus.event("plugin.availability", domain: .plugIn, params: counts.params)
             }
         }
     }

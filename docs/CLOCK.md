@@ -56,16 +56,29 @@ GCD is banned project wide, so the scheduler is one of:
 - a dedicated high priority thread sleeping until each absolute host clock deadline, or
 - a `ContinuousClock` based `Task.sleep(until:)` deadline loop.
 
-Start with whichever measures acceptably; **validate jitter by measurement** (tick timing error should be small relative to a frame duration, and dropped-tick behavior must be defined: skip, never burst). A known alternative is driving the tick from the audio render callback — the most reliable real time heartbeat on the platform. Tingra starts with the independent scheduler for simplicity and revisits only if measured sync is not tight enough. This choice is an implementation detail behind the host's frame transport; nothing outside the host may depend on it.
+Start with whichever measures acceptably; **validate jitter by measurement** (tick timing error should be small relative to a frame duration, and dropped-tick behavior must be defined: skip, never burst — defined and built 2026-09-26, see "Late ticks" below). A known alternative is driving the tick from the audio render callback — the most reliable real time heartbeat on the platform. Tingra starts with the independent scheduler for simplicity and revisits only if measured sync is not tight enough. This choice is an implementation detail behind the host's frame transport; nothing outside the host may depend on it.
+
+### Late ticks
+
+A tick is late in one of two ways: the scheduler itself wakes past later deadlines (the process was suspended, or its thread starved), or the consumer is still busy with the previous tick when the next deadline passes. What happens then is the **consumer's** choice, made when it asks for the stream (`tick(every:lateTicks:)`, a `LateTickPolicy`), because rule 3 cuts both ways:
+
+- **Skip — the default, and the program tick's rule.** A late consumer receives only the most recent due tick, never the backlog: the scheduler jumps its grid index to the latest deadline already due when it wakes late, and the stream buffers only the newest tick, so a slow consumer finds one current tick waiting rather than a queue. Ticks stay on the absolute `T0 + n × duration` grid and monotonic; a late stretch is a gap (dropped program frames), never a burst of stale renders. The compositor, the video generators, movie playback, the CLI's pacer, and the stream stats all use it. Movie audio is unaffected by a skipped tick: it is pulled by playback position, so the next tick delivers every block up to that position.
+- **Catch up — for audio that must abut.** Every deadline is delivered, in order, however late. The **mix tick** and the **tone generator** use it: a skipped mix tick would be a hole in the program audio, and the samples it would have consumed stay in the channel queues, so every skipped block would add permanent latency to the monitor and the stream (up to the intake cap). Catching up mixes the missed blocks back to back with their own grid times, so the program audio stays contiguous — any lost capture shows up as silence at the right timestamps, not as a timeline that shrinks.
+
+`tick(every:)` is `tick(every:lateTicks: .skip)`. The policy parameter arrived as an addition to the `EngineClock` seam with a default implementation forwarding to `tick(every:)`, so existing conformers — every synthetic test clock, which scripts each tick and is never late — are untouched (the plug-in API stability rules, ARCHITECTURE.md).
+
+### Tick loops drain an autorelease pool per tick
+
+Every loop driven by the tick stream (or draining a buffered frame or audio stream) that calls into Objective-C frameworks wraps each iteration's work in `autoreleasepool { }`. Core Image, AVFoundation, Core Text, and Foundation autorelease their results, and those results retain the frame's `IOSurface`-backed buffers. Swift concurrency drains the thread's pool when the task suspends, but a loop that has fallen behind always finds its next tick already waiting (every missed deadline under catch up, the newest one under skip) and **never suspends**, so without a per-tick pool every frame it renders stays alive: the compositor leaked 16,319 1080p buffers (126 GB) over a day this way before the pool went in (2026-09-26). The compositor, generator, movie, and mixer tick loops and the mixer's per-channel intake each carry one; a loop whose Objective-C work happens behind an `await` to another actor (the stream and recording drains) is already drained at that hop and needs none. A new tick loop that touches a framework adopts the pool in the same change, with a test that its autoreleased objects are freed between back-to-back ticks (the synthetic clock buffers every tick, which is exactly the case).
 
 ## Timestamp rules
 
 | Media | PTS rule |
 | :---- | :------- |
 | Captured video frame | Host time stamped by the capture framework, normalized by the input onto the master clock. |
-| Program video frame | The program tick's host clock time. |
+| Program video frame | The program tick's host clock time. Late ticks are skipped, so a late stretch leaves a gap in the sequence, never a burst of stale frames (see "Late ticks"). |
 | Captured audio buffer | Actual host time of capture from `AVAudioTime.hostTime` — never a synthetic sample count position. |
-| Program audio block | The mix tick's host clock time (the mixer's blocks; see ARCHITECTURE.md, "The audio mixer"). A mixed block spans multiple inputs, so no single capture time exists for it; tick deadlines are absolute (`T0 + n × blockDuration`), so consecutive blocks are contiguous and monotonic by construction. |
+| Program audio block | The mix tick's host clock time (the mixer's blocks; see ARCHITECTURE.md, "The audio mixer"). A mixed block spans multiple inputs, so no single capture time exists for it; tick deadlines are absolute (`T0 + n × blockDuration`) and the mix tick catches up rather than skipping ("Late ticks"), so consecutive blocks are contiguous and monotonic by construction. |
 | Into the sinks | `PTS = hostTime − T0`, where `T0` is the session start on the master clock, shared by every sink. |
 
 - **Recording:** `AVAssetWriter` starts with `startSession(atSourceTime:)` at the shared `T0`; video and audio tracks interleave by the PTS rules above.
@@ -83,7 +96,8 @@ The clock is exposed to the engine as a small host protocol (sketch, not final A
 ```swift
 protocol EngineClock: Sendable {
     var now: CMTime { get }                       // current master clock time
-    func tick(every duration: CMTime) -> AsyncStream<CMTime>  // absolute-deadline tick stream
+    func tick(every duration: CMTime) -> AsyncStream<CMTime>  // absolute-deadline tick stream; late ticks skipped
+    func tick(every duration: CMTime, lateTicks: LateTickPolicy) -> AsyncStream<CMTime>  // .skip or .catchUp
 }
 ```
 

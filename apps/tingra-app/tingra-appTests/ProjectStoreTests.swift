@@ -88,6 +88,37 @@ struct ProjectStoreTests {
         }
     }
 
+    @Test("a file error's event description names the file but never its folder's path")
+    func fileErrorEventDescriptionOmitsTheFolder() throws {
+        let store = makeStore()
+        defer { cleanUp(store) }
+        // A directory where the document should be: it exists, so the load
+        // reads it, and the read throws a real Cocoa file error whose own
+        // description carries the full path in its user info.
+        try FileManager.default.createDirectory(at: store.fileURL, withIntermediateDirectories: true)
+        let error = try #require(throws: (any Error).self) {
+            try store.load()
+        }
+        let description = ProjectStore.eventDescription(of: error)
+        #expect(String(describing: error).contains(store.directoryURL.path(percentEncoded: false)))
+        #expect(!description.contains(store.directoryURL.path(percentEncoded: false)))
+        #expect(description.contains("Default.tingraproject"))
+        #expect(description.contains("(NSCocoaErrorDomain 256)"))
+        #expect(description.contains("underlying (NSPOSIXErrorDomain 21)"))
+    }
+
+    @Test("a decoding error's event description is its full description")
+    func decodingErrorEventDescriptionIsComplete() throws {
+        let store = makeStore()
+        defer { cleanUp(store) }
+        try FileManager.default.createDirectory(at: store.directoryURL, withIntermediateDirectories: true)
+        try Data("not a project".utf8).write(to: store.fileURL)
+        let error = try #require(throws: DecodingError.self) {
+            try store.load()
+        }
+        #expect(ProjectStore.eventDescription(of: error) == String(describing: error))
+    }
+
     @Test("setting an unreadable file aside moves it next to the original, freeing the path")
     func setAsideMovesTheFile() throws {
         let store = makeStore()

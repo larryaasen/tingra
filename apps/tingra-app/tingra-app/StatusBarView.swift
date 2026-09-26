@@ -56,7 +56,10 @@ struct StatusBarView: View {
     /// runs the window's full height and never receives the bar's safe-area
     /// inset, so without it the bar covered the bottom of the Notes pane
     /// (measured 2026-09-24: the pane ended at the window's bottom edge,
-    /// under the bar).
+    /// under the bar). The main column's scroll view pads its content by the
+    /// same amount, for the same reason: attaching the inspector moves it
+    /// into a split column the inset never reaches either, so the mixer's
+    /// last row scrolled under the bar (``ContentView``).
     static let occupiedHeight: CGFloat = height + 1
 
     /// The inset before the first reading, matching the padding around the

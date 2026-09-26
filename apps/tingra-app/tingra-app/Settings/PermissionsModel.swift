@@ -174,12 +174,6 @@ final class PermissionsModel {
             }
         }
     }
-
-    /// Stops re-reading on activation.
-    func stopObservingActivation() {
-        activationTask?.cancel()
-        activationTask = nil
-    }
 }
 
 extension AuthorizationPermission {

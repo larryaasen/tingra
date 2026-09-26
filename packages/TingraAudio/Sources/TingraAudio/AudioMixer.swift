@@ -354,7 +354,11 @@ public final class AudioMixer: Sendable {
                 channel.fillTask = Task { [weak self] in
                     var normalizer = ChannelNormalizer(sampleRate: sampleRate)
                     for await audio in stream {
-                        guard let samples = normalizer.normalize(audio) else { continue }
+                        // Per-block pool, for the same reason as the mix
+                        // tick: `AVAudioConverter` runs here, and a channel
+                        // delivering a backlog is drained without suspending.
+                        let normalized = autoreleasepool { normalizer.normalize(audio) }
+                        guard let samples = normalized else { continue }
                         self?.enqueue(samples, for: id)
                     }
                 }
@@ -524,9 +528,20 @@ public final class AudioMixer: Sendable {
         state.withLock { state in
             guard state.mixTask == nil else { return }
             state.mixTask = Task { [weak self] in
-                for await tickTime in clock.tick(every: blockDuration) {
+                // Catch up, never skip: a skipped mix tick is a hole in the
+                // program audio, and the samples it would have consumed stay
+                // queued, so monitor and stream latency would creep up by
+                // every skipped block (CLOCK.md, "Late ticks").
+                for await tickTime in clock.tick(every: blockDuration, lateTicks: .catchUp) {
                     guard !Task.isCancelled, let self else { break }
-                    self.mixBlock(at: tickTime, format: format)
+                    // One autorelease pool per block: the mixed block is
+                    // built through AVFoundation, and a loop that has fallen
+                    // behind is handed buffered ticks back to back without
+                    // ever suspending, so nothing else drains the thread's
+                    // pool (the compositor's tick loop leaked this way).
+                    autoreleasepool {
+                        self.mixBlock(at: tickTime, format: format)
+                    }
                 }
             }
         }

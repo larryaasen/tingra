@@ -103,4 +103,29 @@ struct ProjectStore {
         try FileManager.default.moveItem(at: fileURL, to: destination)
         return destination
     }
+
+    /// Describes an error from loading, saving, or setting aside a project
+    /// for an event's `error` param, naming files but never the folders they
+    /// sit in — where a project lives is the operator's, not the log's.
+    ///
+    /// A `DecodingError` is described in full: its coding path and debug
+    /// description name keys inside the document, never a location, and they
+    /// are what says *why* the file did not read. Any other error — chiefly
+    /// a Cocoa file error, whose own description carries the full path in its
+    /// user info — is described by its localized description, which Foundation
+    /// words around the file's name (and at most its folder's own name, never
+    /// the folder's path), followed by its domain and code and those of the
+    /// error underneath it, if any.
+    ///
+    /// - Parameter error: The error a store operation threw.
+    /// - Returns: A one-line description with no folder paths in it.
+    static func eventDescription(of error: any Error) -> String {
+        if error is DecodingError { return String(describing: error) }
+        let nsError = error as NSError
+        var description = "\(nsError.localizedDescription) (\(nsError.domain) \(nsError.code))"
+        if let underlying = nsError.userInfo[NSUnderlyingErrorKey] as? NSError {
+            description += " underlying (\(underlying.domain) \(underlying.code))"
+        }
+        return description
+    }
 }
