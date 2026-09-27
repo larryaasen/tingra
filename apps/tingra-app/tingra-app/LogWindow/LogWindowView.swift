@@ -15,18 +15,16 @@ import TingraHost
 /// The Log window: the log file's recent lines, followed live, filtered by
 /// level, taps, domain, launch, and search (ARCHITECTURE.md, "The log window").
 ///
-/// A lazy list of one monospaced row per line, truncated at the window's width
+/// A table of one monospaced row per line (``LogLineTable``, AppKit, for
+/// what SwiftUI's lists cost at a log's size), truncated at the window's width
 /// — ERROR lines in red, DEBUG lines in the secondary color — under a header
 /// per launch, with the selected line shown whole in a detail area beneath,
 /// Console's pattern, so a long line is readable without wrapping every row.
 /// Line text is the file's and is never localized; the window's own labels are.
 ///
-/// The list **follows the newest line while it is scrolled to the bottom** and
+/// The table **follows the newest line while it is scrolled to the bottom** and
 /// stops following when the operator scrolls up, Console's and Xcode's
-/// behavior: whether the list sits at the bottom is read from the scroll
-/// geometry, and settles into *following* only when a scroll the operator made
-/// comes to rest, so a line arriving — which briefly leaves the bottom out of
-/// view — never turns following off by itself.
+/// behavior — see ``LogLineTable``.
 ///
 /// The model opens when the window appears and closes when it goes away, so a
 /// closed window holds no lines and no sink (``LogWindowModel``).
@@ -37,24 +35,6 @@ struct LogWindowView: View {
 
     /// The selected line's identity.
     @State private var selection: LogWindowLine.ID?
-
-    /// The list's scroll position, starting at the newest line.
-    @State private var position = ScrollPosition(edge: .bottom)
-
-    /// Whether the list is scrolled to the bottom, as of the last geometry
-    /// change.
-    @State private var isAtBottom = true
-
-    /// Whether new lines scroll the list to the bottom.
-    @State private var isFollowing = true
-
-    /// Whether the list has keyboard focus, so Edit ▸ Copy copies the selected
-    /// line.
-    @FocusState private var isListFocused: Bool
-
-    /// How close to the bottom counts as at the bottom, in points — the slack
-    /// fractional scroll offsets need.
-    private static let bottomTolerance: CGFloat = 2
 
     /// The log window model.
     private var log: LogWindowModel { model.logWindowModel }
@@ -93,43 +73,15 @@ struct LogWindowView: View {
     /// - Parameter groups: The shown lines, by launch.
     /// - Returns: The list.
     private func lineList(groups: [LogLaunchGroup]) -> some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 0, pinnedViews: .sectionHeaders) {
-                if log.hasEarlierLines || (log.readFailure != nil && !log.lines.isEmpty) {
-                    earlierLinesRow
-                }
-                ForEach(groups) { group in
-                    Section {
-                        ForEach(group.lines) { line in
-                            row(for: line)
-                        }
-                    } header: {
-                        launchHeader(for: group)
-                    }
-                }
-            }
-        }
-        .scrollPosition($position)
-        .onScrollGeometryChange(for: Bool.self) { geometry in
-            geometry.visibleRect.maxY >= geometry.contentSize.height - Self.bottomTolerance
-        } action: { _, atBottom in
-            isAtBottom = atBottom
-        }
-        .onScrollPhaseChange { _, phase in
-            if phase == .idle {
-                isFollowing = isAtBottom
-            }
-        }
-        .onChange(of: log.lines.last?.id) {
-            guard isFollowing, !log.isPaused else { return }
-            position.scrollTo(edge: .bottom)
-        }
-        .focusable()
-        .focused($isListFocused)
-        .focusEffectDisabled()
-        .onCopyCommand {
-            copySelection()
-        }
+        LogLineTable(
+            rows: LogLineTableRow.rows(
+                for: groups,
+                showsEarlierLines: log.hasEarlierLines || (log.readFailure != nil && !log.lines.isEmpty)
+            ),
+            selection: $selection.reportingTap(to: model.eventBus, "logLine.row", domain: .platform),
+            earlierLines: earlierLinesRow,
+            copyLine: copySelection
+        )
         .overlay {
             emptyState(groups: groups)
         }
@@ -158,52 +110,6 @@ struct LogWindowView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 6)
-    }
-
-    /// One line's row: the text on one line, colored by level, selectable.
-    ///
-    /// - Parameter line: The line.
-    /// - Returns: The row.
-    private func row(for line: LogWindowLine) -> some View {
-        // An empty line still takes a row's height.
-        Text(verbatim: line.entry.text.isEmpty ? " " : line.entry.text)
-            .font(.callout.monospaced())
-            .foregroundStyle(Self.color(for: line.entry))
-            .lineLimit(1)
-            .truncationMode(.tail)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 1)
-            .background(selection == line.id ? AnyShapeStyle(.selection) : AnyShapeStyle(.clear))
-            .contentShape(.rect)
-            .onTapGesture {
-                model.eventBus.tap("logLine.row", domain: .platform)
-                selection = line.id
-                isListFocused = true
-            }
-    }
-
-    /// The header over one launch's lines, naming its log session; none for
-    /// lines before any line that parsed.
-    ///
-    /// - Parameter group: The launch's lines.
-    /// - Returns: The header.
-    @ViewBuilder
-    private func launchHeader(for group: LogLaunchGroup) -> some View {
-        if let sessionID = group.sessionID {
-            let session = sessionID.formatted(.number.precision(.integerLength(4...)).grouping(.never))
-            Text(
-                "Launch \(session)",
-                comment:
-                    "Log window: the header over one launch's lines; the placeholder is the four-digit log session ID"
-            )
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
-            .background(.bar)
-        }
     }
 
     /// The selected line, whole, with its text selectable.
@@ -405,13 +311,12 @@ struct LogWindowView: View {
         }
     }
 
-    /// Edit ▸ Copy: the selected line's text.
-    ///
-    /// - Returns: The line, or nothing when no line is selected.
-    private func copySelection() -> [NSItemProvider] {
-        guard let line = selectedLine else { return [] }
+    /// Edit ▸ Copy: puts the selected line's text on the pasteboard.
+    private func copySelection() {
+        guard let line = selectedLine else { return }
         model.eventBus.tap("logCopy.command", domain: .platform)
-        return [NSItemProvider(object: line.entry.text as NSString)]
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(line.entry.text, forType: .string)
     }
 
     /// A level's name in the levels menu.
@@ -423,18 +328,6 @@ struct LogWindowView: View {
         case .info: Text("Info", comment: "Log window: the level filter for INFO lines")
         case .debug: Text("Debug", comment: "Log window: the level filter for DEBUG lines")
         case .error: Text("Errors", comment: "Log window: the level filter for ERROR lines")
-        }
-    }
-
-    /// A line's color: red for ERROR, secondary for DEBUG, primary otherwise.
-    ///
-    /// - Parameter entry: The line.
-    /// - Returns: The color.
-    private static func color(for entry: LogEntry) -> Color {
-        switch entry.level {
-        case .error: .red
-        case .debug: .secondary
-        case .info, nil: .primary
         }
     }
 }

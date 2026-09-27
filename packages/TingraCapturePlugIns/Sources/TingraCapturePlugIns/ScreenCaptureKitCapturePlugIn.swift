@@ -73,7 +73,7 @@ public struct ScreenCaptureKitCapturePlugIn: PlugIn {
     /// running.
     public func activate(in context: PlugInContext) async throws {
         for display in enumerateDisplays() {
-            try await context.inputs.register(DisplayInput(display: display))
+            try await context.inputs.register(DisplayInput(display: display, eventBus: context.eventBus))
             context.eventBus.trace(
                 "input.discovered",
                 domain: .capture,
@@ -92,7 +92,7 @@ public struct ScreenCaptureKitCapturePlugIn: PlugIn {
         let eventBus = context.eventBus
         let reporter = DisplayEventReporter(
             changes: displayChanges(),
-            makeInput: { DisplayInput(display: $0) }
+            makeInput: { DisplayInput(display: $0, eventBus: eventBus) }
         )
         let inputs = context.inputs
         Task {

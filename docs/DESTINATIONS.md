@@ -1,6 +1,6 @@
 # Destinations: the named destination model
 
-**Status: approved 2026-08-15; amended 2026-08-15 after v0.1.1 — the shared keychain access group is reverted for **both** `tingra-cli` and the app (see "Key sharing between the app and the daemon"). Steps 2, 3, and 4 of the sequencing are all built; how the daemon reaches an app-filed key is reopened.** Each decision here lands in the doc that owns its area as it is built, per the decide-then-build rule: the store and the shared access group are in [TYPES.md](TYPES.md) and [README.md](../README.md), the tool surface in [MCP.md](MCP.md), and the two new error identifiers in [CLI.md](CLI.md). [GLOSSARY.md](GLOSSARY.md)'s Destination entry is rewritten with step 4.
+**Status: approved 2026-08-15; amended 2026-08-15 after v0.1.1 — the shared keychain access group is reverted for **both** `tingra-cli` and the app (see "Key sharing between the app and the daemon"). Steps 2, 3, and 4 of the sequencing are all built; how the daemon reaches an app-filed key is reopened. Destination templates — well-known services a new destination starts from — approved and built 2026-09-26 (see "Destination templates").** Each decision here lands in the doc that owns its area as it is built, per the decide-then-build rule: the store and the shared access group are in [TYPES.md](TYPES.md) and [README.md](../README.md), the tool surface in [MCP.md](MCP.md), and the two new error identifiers in [CLI.md](CLI.md). [GLOSSARY.md](GLOSSARY.md)'s Destination entry is rewritten with step 4.
 
 ## The problem
 
@@ -133,3 +133,43 @@ The two questions below were both answered 2026-08-15.
 
 - ~~Whether `destinations_list` should also report each destination's last-seen leg state from the status sink~~ — **no, one tool per question.** Beyond the "one tool per question" principle, there is no id to join on: MCP leg identity is positional (`destination-1`), never the store id, so the join could only match URL strings — the fragile inference the 2026-08-15 leg-state decision deliberately moved away from, and one that collides outright for two destinations sharing an ingest URL with different keys (a case the id-keyed key storage exists to support). A store read must also answer with nothing streaming, so the field would be absent on most calls. An agent wanting the join reads both tools and matches on `url`.
 - ~~Whether the ingest simulator's test destinations warrant a seeded store fixture for integration tests~~ — **no; raw URLs remain the test surface.** The store is operator state at a real path in Application Support, with keys in the real Keychain: a fixture that seeds it is a test writing the developer's own destinations. The raw `url`/`key` path stays supported permanently and everything downstream of resolution is identical, so the integration tests lose no coverage; resolution itself is covered by unit tests over a temporary directory. The store's directory *is* injectable, which is what would let a fixture be added later without touching operator state — so this defers the option rather than closing it.
+
+## Destination templates
+
+**Approved and built 2026-09-26.** A new destination used to start blank: the operator had to know that Twitch lives at `rtmp://live.twitch.tv/app` before Tingra would stream anywhere, and until a usable URL was typed the toolbar's Start Streaming sat disabled with nothing saying why. That was the report that opened this — a destination named "Twitch", with its key filed, and an empty URL field. The URL was the one part of it Tingra could have known.
+
+**A destination template is a well-known destination's name, its published URL, and the page where its stream key is found** (GLOSSARY.md, "Destination template"). It is not a destination: nothing is saved, filed, or referenced until the operator picks one, and what picking one makes is an ordinary destination — the store keeps no link back to the template, so editing the URL afterwards, or a later release changing the template, touches nothing already saved.
+
+### Where the list comes from
+
+**The streaming output plug-in contributes it, and the host lists it.** `StreamingServiceProvider` gains `destinationTemplates`, defaulting to empty — a requirement with a default implementation, which the plug-in API stability rules allow in a minor. `OutputRegistry.destinationTemplates` returns every registered provider's templates, sorted by name.
+
+- **Why a plug-in and not the host:** the boundary test. Removing the list breaks one capability — suggestions — not plug-ins in general. It also puts the list with the only code that can vouch for it: a provider offers a template for a URL it can stream to, a third-party output (a WHIP plug-in, say) contributes its own services the same way, and a service is never offered that no registered output can reach.
+- **A template on a scheme its provider does not serve is a plug-in defect**, rejected at registration with `OutputRegistryError.templateSchemeNotServed` — thrown, never trapped, like a duplicate scheme.
+- **The list ships with the release; nothing is fetched.** OBS updates its service list from the network; Tingra deliberately does not — no request leaves the Mac to learn where to stream, and nothing polls. A service that moves its URL is fixed by a release, which on the Homebrew path is one `brew upgrade` away.
+
+### The first-party list
+
+The RTMP provider contributes three, each checked on 2026-09-26 against the service's own documentation, OBS's maintained service list, and a DNS lookup:
+
+| Template | URL | Stream key page |
+|---|---|---|
+| Facebook Live | `rtmps://live-api-s.facebook.com:443/rtmp/` | `https://www.facebook.com/live/producer` |
+| Twitch | `rtmp://live.twitch.tv/app` | `https://dashboard.twitch.tv/settings/stream` |
+| YouTube | `rtmps://a.rtmps.youtube.com/live2` | `https://www.youtube.com/live_dashboard` |
+
+- **Twitch's URL is its auto-routing one.** `live.twitch.tv` resolves to Twitch's geo-routed contribution network (`g.contribute.live-video.net`), so it reaches the nearest server; the per-region servers OBS lists are not offered, and neither is a region picker.
+- **RTMPS wherever the service offers it**, since the stream key travels in the clear over plain RTMP. Twitch's documented URL is plain RTMP, so its template is.
+- **Only services with one URL for every account.** A service that hands each account or each broadcast its own URL has no template to offer; the operator adds it as a custom server, as before.
+- **The RTMP application name is the service's convention, not a checked value** — an aside from the same session. `rtmp://live.twitch.tv/apps` streamed to Twitch as well as `/app` does: RTMP carries the URL's path as the application name in its `connect` command and the stream key separately in `publish`, and Twitch identifies the channel by the key alone. The templates carry each service's documented name, since tolerance of any other is undocumented.
+
+### What the app does with it
+
+- **Add Destination is a pull-down menu:** the templates by name, a divider, then Custom Server — which adds a blank destination, exactly what the button did before. Picking a template adds a destination with its name and URL filled in (the URL is usable, so it is written to the store at once) and puts the cursor in its Stream key field, the one thing the operator still has to fetch from the service.
+- **The URL field suggests templates as it is typed** (SwiftUI's `textInputSuggestions`, macOS 15, which is the deployment floor), matching the typed text against each template's name and URL with `localizedStandardContains`. Choosing one fills the URL. A URL that matches a template — chosen, typed, or pasted — fills the name too while the name is still blank. The match ignores case in the scheme and host, an explicit default port, and a trailing slash, so a pasted `rtmps://live-api-s.facebook.com/rtmp` is still Facebook Live.
+- **A destination whose URL matches a template offers a link to that service's stream-key page**, as a row under the key field. It is a row and not a section footer on purpose: a footer that appears as the URL completes would change the section's identity and rebuild it under the operator's cursor, the defect that once dropped focus from the Name field after one keystroke.
+- **Start Streaming says why it is disabled.** Its tooltip names what is missing — an enabled destination with an `rtmp://`, `rtmps://`, or `srt://` URL — rather than leaving a gray button to explain itself.
+
+### Not in this slice
+
+The agent and CLI surfaces. `OutputRegistry.destinationTemplates` is what an MCP read or a `tingra-cli stream --service twitch` would resolve through, and neither is built: nothing has asked for them yet, and a `--service` flag is a CLI.md scripting-contract decision in its own right.

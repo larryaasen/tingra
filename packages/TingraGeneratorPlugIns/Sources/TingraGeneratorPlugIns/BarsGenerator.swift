@@ -15,15 +15,22 @@ import Foundation
 import TingraEventBus
 import TingraPlugInKit
 
-/// The SMPTE color bars video generator with burned in timecode
+/// The SMPTE color bars video generator with burned in time-of-day timecode
 /// (`--video-generator bars`, see CLI.md).
 ///
 /// Frames are synthesized on the injected clock's tick — one frame per tick,
 /// stamped with the tick's master clock time (CLOCK.md, "Generators") — in
 /// the working format: `IOSurface`-backed 32BGRA, SDR, tagged BT.709
 /// (ARCHITECTURE.md, "Color and pixel format conventions"). Under a
-/// synthetic clock the generator is fully deterministic, which is what makes
-/// it the CI test surface.
+/// synthetic clock and a fixed wall clock the generator is fully
+/// deterministic, which is what makes it the CI test surface.
+///
+/// The burned in timecode is the **local time of day** each frame stands for
+/// (``BarsTimecode``), not the master clock itself: the master clock counts
+/// the Mac's awake time since boot, which read as a plausible but wrong time
+/// of day (Larry, 2026-09-27). A time of day also lets a viewer estimate the
+/// stream's delay against any clock. Only the picture changes — the frame is
+/// still stamped with the tick's master clock time.
 ///
 /// A class because the generator owns live stream state (the active frame
 /// continuations `stop()` finishes); frame configuration is fixed at
@@ -60,6 +67,13 @@ public final class BarsGenerator: Input, Sendable {
     /// Frames synthesized per second; also the timecode's frame base.
     private let frameRate: Int
 
+    /// The wall clock the burned in time of day is read against: `Date.now`,
+    /// or a fixed date under test.
+    private let wallClock: @Sendable () -> Date
+
+    /// The time zone the time of day is shown in.
+    private let timeZone: TimeZone
+
     /// The event bus, for reporting a synthesis stall and its recovery.
     /// Optional so unit tests construct a generator without one; when absent
     /// the generator simply reports nothing.
@@ -79,18 +93,26 @@ public final class BarsGenerator: Input, Sendable {
     ///   - width: Frame width in pixels.
     ///   - height: Frame height in pixels.
     ///   - frameRate: Frames per second.
+    ///   - wallClock: The wall clock the burned in time of day is read
+    ///     against (default: `Date.now`; tests fix it).
+    ///   - timeZone: The time zone the time of day is shown in (default: the
+    ///     Mac's own, following a change of zone or daylight saving).
     public init(
         clock: any EngineClock,
         eventBus: EventBus? = nil,
         width: Int = 1920,
         height: Int = 1080,
-        frameRate: Int = 30
+        frameRate: Int = 30,
+        wallClock: @escaping @Sendable () -> Date = { Date.now },
+        timeZone: TimeZone = .autoupdatingCurrent
     ) {
         self.clock = clock
         self.eventBus = eventBus
         self.width = width
         self.height = height
         self.frameRate = frameRate
+        self.wallClock = wallClock
+        self.timeZone = timeZone
     }
 
     /// Nothing to acquire — a generator has no device and cannot be denied
@@ -104,6 +126,9 @@ public final class BarsGenerator: Input, Sendable {
         let width = self.width
         let height = self.height
         let frameRate = self.frameRate
+        let clock = self.clock
+        let wallClock = self.wallClock
+        let timeZone = self.timeZone
         return stream.makeStream(
             clock: clock,
             tickInterval: CMTime(value: 1, timescale: CMTimeScale(frameRate)),
@@ -111,7 +136,8 @@ public final class BarsGenerator: Input, Sendable {
             eventBus: eventBus,
             makeRenderer: { BarsRenderer(width: width, height: height, frameRate: frameRate) },
             render: { (renderer, tickTime) throws(GeneratorSynthesisFailure) in
-                try renderer.render(at: tickTime)
+                let timeOfDay = BarsTimecode.timeOfDay(at: tickTime, clockNow: clock.now, wallNow: wallClock())
+                return try renderer.render(at: tickTime, timeOfDay: timeOfDay, in: timeZone)
             }
         )
     }
@@ -164,13 +190,20 @@ private final class BarsRenderer {
         self.font = CTFontCreateWithName("Menlo-Bold" as CFString, CGFloat(height) / 12, nil)
     }
 
-    /// Renders one frame for the given master clock time.
+    /// Renders one frame for the given master clock time, burning in the
+    /// time of day it stands for.
     ///
+    /// - Parameters:
+    ///   - time: The tick's master clock time, the frame's stamp.
+    ///   - timeOfDay: The wall-clock moment the tick stands for.
+    ///   - timeZone: The time zone the time of day is shown in.
     /// - Throws: A ``GeneratorSynthesisFailure`` if a buffer or drawing
     ///   context could not be created. The caller skips the tick — a
     ///   generator problem must never take down the pipeline — and reports
     ///   the stall.
-    func render(at time: CMTime) throws(GeneratorSynthesisFailure) -> CapturedFrame {
+    func render(at time: CMTime, timeOfDay: Date, in timeZone: TimeZone) throws(GeneratorSynthesisFailure)
+        -> CapturedFrame
+    {
         let buffer = try pool.buffer()
 
         CVPixelBufferLockBaseAddress(buffer, [])
@@ -178,7 +211,7 @@ private final class BarsRenderer {
         let context = try GeneratorPixelBuffer.makeDrawingContext(width: width, height: height, buffer: buffer)
 
         drawBars(in: context)
-        drawTimecode(BarsTimecode.string(at: time, frameRate: frameRate), in: context)
+        drawTimecode(BarsTimecode.string(for: timeOfDay, frameRate: frameRate, timeZone: timeZone), in: context)
         buffer.tagBT709()
         return CapturedFrame(pixelBuffer: buffer, presentationTime: time)
     }
@@ -233,29 +266,49 @@ private final class BarsRenderer {
 }
 
 /// The burned in timecode's formatting, split out from the renderer because
-/// it is pure — a master clock time and a frame base in, a string out, with
-/// no buffer, font, or geometry involved — so the wraparound below is
+/// it is pure — a moment, a frame base, and a time zone in, a string out,
+/// with no buffer, font, or geometry involved — so the clock arithmetic is
 /// verifiable without drawing a frame.
 enum BarsTimecode {
-    /// The `HH:MM:SS:FF` timecode for a master clock time, using the given
-    /// frame rate as the frame base. Times before zero clamp to `00:00:00:00`.
+    /// The `HH:MM:SS:FF` time of day at `date` in `timeZone`: the hours,
+    /// minutes, and seconds that zone's clock reads — daylight saving
+    /// included, so the hour after a change is the clock's, not elapsed time
+    /// since midnight — and the frame within the second at the frame base.
     ///
-    /// Hours wrap at 24, the SMPTE 12M convention (settled 2026-08-06; it had
-    /// been `% 100`). A two-digit hours field in `HH:MM:SS:FF` has one
-    /// established meaning, and wrapping at 100 matched neither that nor a
-    /// true elapsed run time — it merely moved the wrap to a point no reader
-    /// expects. A run longer than a day is a legitimate thing to want to see,
-    /// but it wants a display that says so, not a timecode quietly counting
-    /// past the only place anyone reads one.
-    static func string(at time: CMTime, frameRate: Int) -> String {
-        let totalFrames = max(0, Int((time.seconds * Double(frameRate)).rounded()))
-        let totalSeconds = totalFrames / frameRate
-        let components = [
-            (totalSeconds / 3600) % 24,
-            (totalSeconds / 60) % 60,
-            totalSeconds % 60,
-            totalFrames % frameRate,
-        ]
+    /// Time of day since 2026-09-27; until then this formatted the master
+    /// clock's own time, wrapping its hours at 24 (the SMPTE 12M convention,
+    /// settled 2026-08-06). A time of day never passes 23:59:59, so the wrap
+    /// is now the day's.
+    ///
+    /// - Parameters:
+    ///   - date: The moment to show.
+    ///   - frameRate: The frame base (frames per second).
+    ///   - timeZone: The time zone whose clock to read.
+    /// - Returns: The timecode.
+    static func string(for date: Date, frameRate: Int, timeZone: TimeZone) -> String {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        let parts = calendar.dateComponents([.hour, .minute, .second, .nanosecond], from: date)
+        let fraction = Double(parts.nanosecond ?? 0) / 1_000_000_000
+        let frame = max(0, min(frameRate - 1, Int(fraction * Double(frameRate))))
+        let components = [parts.hour ?? 0, parts.minute ?? 0, parts.second ?? 0, frame]
         return components.map { $0.formatted(.number.precision(.integerLength(2...))) }.joined(separator: ":")
+    }
+
+    /// The wall-clock moment a master clock time stands for: the wall
+    /// clock now, moved by how far `time` is from the master clock now.
+    ///
+    /// Read per frame rather than fixed once, so a wall clock set or slewed
+    /// while the generator runs shows at once. The master clock is not a
+    /// time of day — it counts the Mac's awake time since boot — so only
+    /// the difference between its two readings is used.
+    ///
+    /// - Parameters:
+    ///   - time: The master clock time to place.
+    ///   - clockNow: The master clock now.
+    ///   - wallNow: The wall clock now, read beside `clockNow`.
+    /// - Returns: The moment `time` stands for.
+    static func timeOfDay(at time: CMTime, clockNow: CMTime, wallNow: Date) -> Date {
+        wallNow.addingTimeInterval((time - clockNow).seconds)
     }
 }

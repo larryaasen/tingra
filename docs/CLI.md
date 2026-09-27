@@ -200,7 +200,7 @@ Note that no reconnect attempt is ever made for the **initial** connection, on a
 | `--mic <sel>` | Microphone, same selector forms. Default: system default input. |
 | `--no-video` | Audio only stream. |
 | `--no-audio` | Video only stream. |
-| `--video-generator bars` | SMPTE color bars generator with burned in timecode instead of a camera. For testing on machines with no camera (CI). |
+| `--video-generator bars` | SMPTE color bars generator with a burned in time-of-day timecode instead of a camera. For testing on machines with no camera (CI). |
 | `--video-generator alignment` | Industry-standard-style alignment pattern instead of a camera. The pattern image is generated once at runtime, then reused for subsequent frames. |
 | `--video-generator pluge` | PLUGE (Picture Line-Up Generation Equipment) black-level calibration pattern instead of a camera. Useful for checking shadow detail and crushed blacks. |
 | `--video-generator pluge-strict` | Stricter broadcast-style PLUGE pattern instead of a camera. Uses a sparse reference-black field with the classic below-black / reference-black / above-black trio. |

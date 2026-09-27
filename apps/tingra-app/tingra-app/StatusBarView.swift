@@ -176,6 +176,12 @@ struct StatusBarView: View {
                 Text(verbatim: "\(attempt)/\(maxAttempts)")
                     .monospacedDigit()
             }
+        case .stopping:
+            reading(
+                item,
+                label: Text(
+                    "Stopping…", comment: "Stream status: Stop was clicked and the connections are being closed")
+            )
         case .error(let message):
             reading(
                 item,

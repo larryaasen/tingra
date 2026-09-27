@@ -15,7 +15,8 @@ import TingraPlugInKit
 
 /// A stream and a recording that record what the tools did to them, and
 /// settle the way the model does: a start goes to `starting` — or to the
-/// scripted error — and a stop to `stopped` or `finalizing`.
+/// scripted error — and a stop to `stopping` or `finalizing`, the states the
+/// model sets at the request while the session closes.
 @MainActor
 final class FakeProgramOutputs: ProgramOutputControlling {
     var streamStatus: EngineModel.StreamStatus = .idle
@@ -36,10 +37,7 @@ final class FakeProgramOutputs: ProgramOutputControlling {
     init() {}
 
     var isStreaming: Bool {
-        switch streamStatus {
-        case .starting, .live, .reconnecting: true
-        case .idle, .stopped, .error: false
-        }
+        streamStatus.isActive
     }
 
     var isRecording: Bool {
@@ -56,7 +54,7 @@ final class FakeProgramOutputs: ProgramOutputControlling {
 
     func stopStreaming() async {
         calls.append("stopStreaming")
-        streamStatus = .stopped
+        streamStatus = .stopping
     }
 
     func startRecording() async {
@@ -141,10 +139,30 @@ struct ProgramOutputToolsTests {
         #expect(idle["changed"]?.boolValue == false)
         #expect(outputs.calls.isEmpty)
         outputs.streamStatus = .live
-        let stopped = try await ProgramStreamStopTool(outputs: outputs).call(none)
-        #expect(stopped["stream"]?["state"]?.stringValue == "stopped")
-        #expect(stopped["changed"]?.boolValue == true)
+        let stopping = try await ProgramStreamStopTool(outputs: outputs).call(none)
+        #expect(stopping["stream"]?["state"]?.stringValue == "stopping")
+        #expect(stopping["changed"]?.boolValue == true)
         #expect(outputs.calls == ["stopStreaming"])
+    }
+
+    @Test("program_stream_stop while a stop is under way asks for nothing and answers stopping, unchanged")
+    func stopWhileStoppingIsUnchanged() async throws {
+        let outputs = FakeProgramOutputs()
+        outputs.streamStatus = .stopping
+        let result = try await ProgramStreamStopTool(outputs: outputs).call(none)
+        #expect(result["stream"]?["state"]?.stringValue == "stopping")
+        #expect(result["changed"]?.boolValue == false)
+        #expect(outputs.calls.isEmpty)
+    }
+
+    @Test("program_stream_start while a stop is under way starts nothing and answers stopping, unchanged")
+    func startWhileStoppingIsUnchanged() async throws {
+        let outputs = FakeProgramOutputs()
+        outputs.streamStatus = .stopping
+        let result = try await ProgramStreamStartTool(outputs: outputs).call(none)
+        #expect(result["stream"]?["state"]?.stringValue == "stopping")
+        #expect(result["changed"]?.boolValue == false)
+        #expect(outputs.calls.isEmpty)
     }
 
     @Test("program_record_start starts the recording and names the file")
@@ -218,6 +236,7 @@ struct ProgramOutputToolsTests {
     @Test("the state renderers carry a reconnect's counters and an error's message")
     func stateRenderers() {
         #expect(EngineResources.streamState(.live) == ["state": .string("live")])
+        #expect(EngineResources.streamState(.stopping) == ["state": .string("stopping")])
         #expect(
             EngineResources.streamState(.error("refused")) == [
                 "state": .string("error"), "message": .string("refused"),

@@ -106,6 +106,47 @@ struct HaishinKitOutputPlugInTests {
         #expect(first !== second)
     }
 
+    @Test("The RTMP provider offers Facebook Live, Twitch, and YouTube at their published URLs")
+    func rtmpProviderOffersTheFirstPartyTemplates() {
+        let templates = RTMPStreamingServiceProvider().destinationTemplates
+        // Listing every id is what catches a malformed URL literal, which
+        // would otherwise drop its template silently.
+        #expect(templates.map(\.id) == ["facebook", "twitch", "youtube"])
+        #expect(templates.map(\.name) == ["Facebook Live", "Twitch", "YouTube"])
+        #expect(
+            templates.map(\.url.absoluteString) == [
+                "rtmps://live-api-s.facebook.com:443/rtmp/",
+                "rtmp://live.twitch.tv/app",
+                "rtmps://a.rtmps.youtube.com/live2",
+            ])
+    }
+
+    @Test("Every RTMP template streams on a scheme the provider serves, names a host, and links an https key page")
+    func rtmpTemplatesAreStreamable() throws {
+        let provider = RTMPStreamingServiceProvider()
+        for template in provider.destinationTemplates {
+            let scheme = try #require(template.url.scheme)
+            #expect(provider.schemes.contains(scheme), "\(template.id) uses \(scheme)")
+            #expect(template.url.host()?.isEmpty == false, "\(template.id) has no host")
+            #expect(template.streamKeyPageURL?.scheme == "https", "\(template.id) has no https key page")
+        }
+    }
+
+    @Test("A destination made from each RTMP template connects to the template's URL and publishes the key")
+    func rtmpTemplatesSplitIntoConnectAndPublish() throws {
+        for template in RTMPStreamingServiceProvider().destinationTemplates {
+            let endpoint = try HaishinKitStreamingService.endpoint(
+                for: Destination(url: template.url, streamKey: "live_example"))
+            #expect(endpoint.command == template.url.absoluteString)
+            #expect(endpoint.streamName == "live_example")
+        }
+    }
+
+    @Test("The SRT provider offers no destination templates")
+    func srtProviderOffersNoTemplates() {
+        #expect(SRTStreamingServiceProvider().destinationTemplates.isEmpty)
+    }
+
     @Test("The SRT provider creates a fresh service per stream")
     func srtProviderCreatesFreshServices() throws {
         let provider = SRTStreamingServiceProvider()

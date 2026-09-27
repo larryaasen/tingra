@@ -64,6 +64,31 @@ struct ShotThumbnailSource: MonitorFrameSource {
         return nil
     }
 
+    /// The shot as authored, the stamp of every layer's latest frame, and
+    /// the program format — all ``image(for:)`` composes from, so an edit
+    /// to the shot redraws its tile as surely as a new frame does.
+    var pictureState: any Equatable {
+        let shot = shot
+        return PictureState(
+            shot: shot,
+            frames: shot.map { model.latestFrames(for: $0).mapValues(MonitorFrameStamp.init) } ?? [:],
+            format: model.format
+        )
+    }
+
+    /// What a shot tile's picture depends on.
+    private struct PictureState: Equatable {
+        /// The shot, or nil once it has left the pool.
+        let shot: Shot?
+
+        /// The stamp of each layer input's latest frame, keyed by input; an
+        /// input that has not delivered is absent.
+        let frames: [InputID: MonitorFrameStamp]
+
+        /// The program format the shot is composed in.
+        let format: ProgramFormat
+    }
+
     /// The whole shot composed over its background in program pixels —
     /// every layer's latest frame, not only the one ``latest`` returned,
     /// which is the monitor's cue to draw rather than the picture itself.

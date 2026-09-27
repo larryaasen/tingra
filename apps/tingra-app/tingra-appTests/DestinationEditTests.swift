@@ -11,6 +11,7 @@ import Foundation
 import Testing
 import TingraComposition
 import TingraHost
+import TingraPlugInKit
 
 @testable import TingraApp
 
@@ -212,5 +213,24 @@ struct DestinationEditTests {
         #expect(base != DestinationEdit(id: id, urlText: "rtmp://a.example/app", name: "B"))
         #expect(base != DestinationEdit(id: id, urlText: "rtmp://a.example/app", name: "A", isEnabled: false))
         #expect(base != DestinationEdit(urlText: "rtmp://a.example/app", name: "A"))
+    }
+
+    @Test("a destination started from a template takes its name and URL, is enabled, and streams")
+    func startedFromTemplate() throws {
+        let template = DestinationTemplate(
+            id: "twitch", name: "Twitch", url: try #require(URL(string: "rtmp://live.twitch.tv/app")))
+        let destination = DestinationEdit(template: template)
+        #expect(destination.name == "Twitch")
+        #expect(destination.urlText == "rtmp://live.twitch.tv/app")
+        #expect(destination.isEnabled)
+        #expect(destination.isStreamable)
+        #expect(destination.storedDestination?.url.absoluteString == "rtmp://live.twitch.tv/app")
+    }
+
+    @Test("two destinations started from one template are distinct destinations")
+    func templateDestinationsAreDistinct() throws {
+        let template = DestinationTemplate(
+            id: "twitch", name: "Twitch", url: try #require(URL(string: "rtmp://live.twitch.tv/app")))
+        #expect(DestinationEdit(template: template).id != DestinationEdit(template: template).id)
     }
 }

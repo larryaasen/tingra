@@ -8,9 +8,11 @@
 //
 
 import CoreImage
+import CoreMedia
 import CoreVideo
 @preconcurrency import MetalKit
 import SwiftUI
+import TingraPlugInKit
 
 /// Where a monitor reads the frame it is about to draw: the bus-agnostic
 /// (and now input-agnostic) half of ``MonitorView``.
@@ -39,12 +41,49 @@ protocol MonitorFrameSource {
     /// - Parameter pixelBuffer: The frame ``latest`` returned.
     /// - Returns: The image the monitor fits and draws.
     func image(for pixelBuffer: CVPixelBuffer) -> CIImage
+
+    /// Everything the picture drawn now depends on — which frame, and
+    /// whatever else goes into ``image(for:)`` — so the monitor can tell a
+    /// refresh with something new to show from one that would draw the same
+    /// pixels again, and skip the latter (``MonitorView``, "Drawing only a
+    /// changed picture").
+    ///
+    /// Two reads return equal values exactly when nothing the picture
+    /// depends on changed between them. The monitor reads this **before**
+    /// ``latest``, so a frame that lands between the two reads shows up as a
+    /// new state on the next refresh and is drawn then — never mistaken for
+    /// the picture already on screen.
+    var pictureState: any Equatable { get }
 }
 
 extension MonitorFrameSource {
     /// The frame as it is.
     func image(for pixelBuffer: CVPixelBuffer) -> CIImage {
         CIImage(cvPixelBuffer: pixelBuffer)
+    }
+}
+
+/// One frame's identity, for telling a new frame from the one a monitor last
+/// drew: its buffer and its presentation time together.
+///
+/// Neither half is enough alone. A buffer pool hands the same buffer object
+/// back for a later frame once the earlier one is let go — so the buffer
+/// alone would take that later frame for the one already drawn — and two
+/// different buffers can carry one time. Together they change with every
+/// frame an input delivers.
+struct MonitorFrameStamp: Equatable {
+    /// The frame's buffer object.
+    let buffer: ObjectIdentifier
+
+    /// The frame's presentation time on the master clock.
+    let presentationTime: CMTime
+
+    /// The stamp of a frame.
+    ///
+    /// - Parameter frame: The frame.
+    init(_ frame: CapturedFrame) {
+        buffer = ObjectIdentifier(frame.pixelBuffer)
+        presentationTime = frame.presentationTime
     }
 }
 
@@ -102,6 +141,25 @@ final class MonitorRenderContext {
 /// the monitor draws whatever frame is current at display rate and never
 /// drives the program tick itself (the compositor does). Core Image
 /// composites the frame into the drawable, so the path stays GPU-resident.
+///
+/// **Drawing only a changed picture.** The display asks for a draw on every
+/// refresh, but a picture changes only when a frame arrives or what it is
+/// composed from is edited: program at the program's frame rate, a still
+/// image's tile never. Each refresh therefore reads the source's
+/// ``MonitorFrameSource/pictureState`` first and returns at once when it
+/// equals the state last drawn at the same drawable size — the layer keeps
+/// presenting the last drawable, so the screen is unchanged. Drawing every
+/// refresh regardless cost a full Core Image render per monitor per refresh
+/// on the main thread: with program, preview, and ten tiles open, over half
+/// the main thread, and most of an idle app's CPU (measured 2026-09-26).
+///
+/// **Thumbnails sample less often.** A tile the operator glances at — a shot
+/// bank tile, a layer row's thumbnail, an input grid tile — samples at most
+/// ``thumbnailFramesPerSecond`` times a second (Larry, 2026-09-26). Skipping
+/// unchanged pictures left nearly every tile drawing at the program rate,
+/// since nearly every source is live; the tiles were still the largest single
+/// load in the app. Program, preview, and the layer monitor, where the
+/// operator judges motion, sample at the display's rate.
 struct MonitorView: NSViewRepresentable {
     /// Where this monitor reads the frame it draws — a bus's relay, or one
     /// input's slot in multiview.
@@ -119,6 +177,18 @@ struct MonitorView: NSViewRepresentable {
     /// main monitors have since gone square by decision (they pass zero);
     /// the layer rounding stays for any rounded tile that grows an overlay.
     var cornerRadius: CGFloat = 0
+
+    /// The most times a second the monitor samples its source, or nil for
+    /// the display's rate — ``thumbnailFramesPerSecond`` for a tile the
+    /// operator glances at.
+    var maximumFramesPerSecond: Int?
+
+    /// The rate a thumbnail tile samples at: enough to read as live, a
+    /// quarter of the display's refreshes.
+    static let thumbnailFramesPerSecond = 15
+
+    /// `MTKView`'s own sampling rate, used when no maximum is given.
+    static let displayFramesPerSecond = 60
 
     /// Builds the drawing coordinator.
     func makeCoordinator() -> Coordinator {
@@ -140,6 +210,7 @@ struct MonitorView: NSViewRepresentable {
         // the program tick, not the view, paces the compositor.
         view.isPaused = false
         view.enableSetNeedsDisplay = false
+        view.preferredFramesPerSecond = Self.framesPerSecond(maximum: maximumFramesPerSecond)
         view.wantsLayer = true
         view.layer?.masksToBounds = true
         view.layer?.cornerRadius = cornerRadius
@@ -155,6 +226,16 @@ struct MonitorView: NSViewRepresentable {
     func updateNSView(_ nsView: MTKView, context: Context) {
         context.coordinator.source = source
         nsView.layer?.cornerRadius = cornerRadius
+        nsView.preferredFramesPerSecond = Self.framesPerSecond(maximum: maximumFramesPerSecond)
+    }
+
+    /// The rate an `MTKView` samples at for a maximum: the maximum, or the
+    /// display's rate when there is none.
+    ///
+    /// - Parameter maximum: The most samples a second, or nil for none.
+    /// - Returns: The `MTKView`'s `preferredFramesPerSecond`.
+    static func framesPerSecond(maximum: Int?) -> Int {
+        maximum ?? displayFramesPerSecond
     }
 
     /// Draws the source's latest frame into the `MTKView`'s drawable with
@@ -184,13 +265,22 @@ struct MonitorView: NSViewRepresentable {
         /// — once, not at display rate for as long as it stays empty.
         private var hasPresentedFrame = false
 
+        /// The source's ``MonitorFrameSource/pictureState`` when the picture
+        /// on the drawable was drawn, or nil before the first draw and after
+        /// the drawable is resized. A refresh that reads an equal state has
+        /// nothing new to show and skips the draw.
+        private var drawnPictureState: (any Equatable)?
+
         /// Creates a coordinator sampling the given source.
         init(source: any MonitorFrameSource) {
             self.source = source
         }
 
-        /// No per-size state to update; drawing recomputes the fit each frame.
-        func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
+        /// Forgets the picture drawn: a resized drawable must be drawn again
+        /// at its new size even though the source has not changed.
+        func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {
+            drawnPictureState = nil
+        }
 
         /// Renders the source's current frame, aspect-fit and centered, into
         /// the drawable. Shows the black clear color while the source has no
@@ -203,10 +293,20 @@ struct MonitorView: NSViewRepresentable {
         /// never accumulates frames, which would starve a capture
         /// framework's buffer pool (ARCHITECTURE.md, "Frame ownership across
         /// the `Input` seam", clause 4).
+        ///
+        /// A refresh whose picture state equals the one last drawn returns
+        /// before reading the frame (``MonitorView``, "Drawing only a changed
+        /// picture"). The state is recorded only once its picture is on the
+        /// drawable, so a refresh that could not get a drawable is retried
+        /// on the next one.
         func draw(in view: MTKView) {
             guard let commandQueue = renderContext.commandQueue else { return }
+            let pictureState = source.pictureState
+            if let drawnPictureState, Self.isEqual(pictureState, drawnPictureState) { return }
             guard let pixelBuffer = source.latest else {
-                clearIfNeeded(view, commandQueue: commandQueue)
+                if clearIfNeeded(view, commandQueue: commandQueue) {
+                    drawnPictureState = pictureState
+                }
                 return
             }
             guard
@@ -250,6 +350,7 @@ struct MonitorView: NSViewRepresentable {
             commandBuffer.present(drawable)
             commandBuffer.commit()
             hasPresentedFrame = true
+            drawnPictureState = pictureState
         }
 
         /// Presents one drawable holding only the view's clear color, if a
@@ -260,17 +361,33 @@ struct MonitorView: NSViewRepresentable {
         /// - Parameters:
         ///   - view: The view whose drawable to clear.
         ///   - commandQueue: The queue the clearing command buffer comes from.
-        private func clearIfNeeded(_ view: MTKView, commandQueue: MTLCommandQueue) {
-            guard hasPresentedFrame,
-                let descriptor = view.currentRenderPassDescriptor,
+        /// - Returns: Whether the drawable now shows the clear color — true
+        ///   when it already did — or false when no drawable could be had,
+        ///   so the next refresh tries again.
+        private func clearIfNeeded(_ view: MTKView, commandQueue: MTLCommandQueue) -> Bool {
+            guard hasPresentedFrame else { return true }
+            guard let descriptor = view.currentRenderPassDescriptor,
                 let drawable = view.currentDrawable,
                 let commandBuffer = commandQueue.makeCommandBuffer(),
                 let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: descriptor)
-            else { return }
+            else { return false }
             encoder.endEncoding()
             commandBuffer.present(drawable)
             commandBuffer.commit()
             hasPresentedFrame = false
+            return true
+        }
+
+        /// Whether two picture states are equal: false when they are of
+        /// different types, which only a source swapped for another kind can
+        /// produce — and that must draw.
+        ///
+        /// - Parameters:
+        ///   - state: The state read now.
+        ///   - drawn: The state last drawn.
+        /// - Returns: Whether the two are the same picture.
+        private static func isEqual<State: Equatable>(_ state: State, _ drawn: any Equatable) -> Bool {
+            (drawn as? State) == state
         }
     }
 }
@@ -319,6 +436,12 @@ struct MonitorTile<Overlay: View>: View {
     /// lower-third edge or a safe-area overshoot shows.
     var cornerRadius: CGFloat = 8
 
+    /// The most times a second the picture is sampled, or nil for the
+    /// display's rate: ``MonitorView/thumbnailFramesPerSecond`` for the shot
+    /// bank, the layer rows, and the input grid; nil for program, preview,
+    /// and the layer monitor.
+    var maximumFramesPerSecond: Int?
+
     /// The picture's width over its height — the program's
     /// (``EngineModel/programAspectRatio``), so every tile is the shape of
     /// the canvas it monitors whatever the project's format is; a portrait
@@ -343,6 +466,8 @@ struct MonitorTile<Overlay: View>: View {
     ///   - borderTint: The tally border's tint, or nil for no border.
     ///   - statusBadge: A state badge opposite the label, or nil.
     ///   - cornerRadius: The picture's corner radius (default 8).
+    ///   - maximumFramesPerSecond: The most samples a second, or nil for the
+    ///     display's rate (default).
     ///   - overlay: The content drawn over the fitted video rect.
     init(
         source: any MonitorFrameSource,
@@ -352,6 +477,7 @@ struct MonitorTile<Overlay: View>: View {
         borderTint: Color? = nil,
         statusBadge: Text? = nil,
         cornerRadius: CGFloat = 8,
+        maximumFramesPerSecond: Int? = nil,
         @ViewBuilder overlay: @escaping () -> Overlay
     ) {
         self.source = source
@@ -361,13 +487,14 @@ struct MonitorTile<Overlay: View>: View {
         self.borderTint = borderTint
         self.statusBadge = statusBadge
         self.cornerRadius = cornerRadius
+        self.maximumFramesPerSecond = maximumFramesPerSecond
         self.overlay = overlay
     }
 
     /// The monitor: video (rounded on its own layer — see
     /// ``MonitorView/cornerRadius``), its overlay, tally border, then badge.
     var body: some View {
-        MonitorView(source: source, cornerRadius: cornerRadius)
+        MonitorView(source: source, cornerRadius: cornerRadius, maximumFramesPerSecond: maximumFramesPerSecond)
             .aspectRatio(aspectRatio, contentMode: .fit)
             .overlay { overlay() }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -413,6 +540,8 @@ extension MonitorTile where Overlay == EmptyView {
     ///   - borderTint: The tally border's tint, or nil for no border.
     ///   - statusBadge: A state badge opposite the label, or nil.
     ///   - cornerRadius: The picture's corner radius (default 8).
+    ///   - maximumFramesPerSecond: The most samples a second, or nil for the
+    ///     display's rate (default).
     init(
         source: any MonitorFrameSource,
         label: Text?,
@@ -420,11 +549,12 @@ extension MonitorTile where Overlay == EmptyView {
         aspectRatio: Double,
         borderTint: Color? = nil,
         statusBadge: Text? = nil,
-        cornerRadius: CGFloat = 8
+        cornerRadius: CGFloat = 8,
+        maximumFramesPerSecond: Int? = nil
     ) {
         self.init(
             source: source, label: label, badgeTint: badgeTint, aspectRatio: aspectRatio, borderTint: borderTint,
-            statusBadge: statusBadge, cornerRadius: cornerRadius
+            statusBadge: statusBadge, cornerRadius: cornerRadius, maximumFramesPerSecond: maximumFramesPerSecond
         ) {
             EmptyView()
         }

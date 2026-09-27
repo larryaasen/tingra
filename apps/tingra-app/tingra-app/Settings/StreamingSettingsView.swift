@@ -83,6 +83,9 @@ struct StreamingSettingsView: View {
             (Text("Reconnecting…", comment: "Stream status: a reconnect attempt is in flight")
                 + Text(verbatim: " \(attempt)/\(maxAttempts)"))
                 .foregroundStyle(.orange)
+        case .stopping:
+            Text("Stopping…", comment: "Stream status: Stop was clicked and the connections are being closed")
+                .foregroundStyle(.orange)
         case .stopped:
             Text("Stopped", comment: "Stream status: the stream ended cleanly")
                 .foregroundStyle(.secondary)

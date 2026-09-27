@@ -151,7 +151,8 @@ enum EngineResources {
         ModelResource(
             uri: sessionURI, name: "session", title: "Session",
             description:
-                "The stream and the recording: 'stream.state' (idle, starting, live, reconnecting, stopped, error) "
+                "The stream and the recording: 'stream.state' (idle, starting, live, reconnecting, stopping, stopped, "
+                + "error) "
                 + "with the delivery counters and each destination's own state, and 'recording.state' (idle, "
                 + "starting, recording, finalizing, error) with the file being written. Changes whenever either does."
         ) { [weak model] in
@@ -202,6 +203,7 @@ enum EngineResources {
         case .live: ["state": .string("live")]
         case .reconnecting(let attempt, let maxAttempts):
             ["state": .string("reconnecting"), "attempt": .int(attempt), "maxAttempts": .int(maxAttempts)]
+        case .stopping: ["state": .string("stopping")]
         case .stopped: ["state": .string("stopped")]
         case .error(let message): ["state": .string("error"), "message": .string(message)]
         }

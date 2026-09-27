@@ -26,6 +26,12 @@ struct StatusBarItemTests {
         #expect(StatusBarItem.streaming(.reconnecting(attempt: 2, maxAttempts: 5)).light == .pending)
     }
 
+    @Test("a stream that is stopping reads pending, never off, and keeps its antenna")
+    func stoppingStreamIsPending() {
+        #expect(StatusBarItem.streaming(.stopping).light == .pending)
+        #expect(StatusBarItem.streaming(.stopping).systemImage == StatusBarItem.streaming(.live).systemImage)
+    }
+
     @Test("a stream that never started and one that ended cleanly read the same")
     func idleAndStoppedStreamsReadTheSame() {
         #expect(StatusBarItem.streaming(.idle) == StatusBarItem.streaming(.stopped))

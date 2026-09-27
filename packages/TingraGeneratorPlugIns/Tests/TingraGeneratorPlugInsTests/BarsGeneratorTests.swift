@@ -9,6 +9,7 @@
 
 import CoreMedia
 import CoreVideo
+import Foundation
 import Testing
 import TingraPlugInKit
 
@@ -20,13 +21,25 @@ struct BarsGeneratorTests {
     private static let width = 322
     private static let height = 180
 
-    /// Collects every frame the generator produces for the scripted ticks.
-    private func collectFrames(tickTimes: [CMTime]) async -> [CapturedFrame] {
+    /// A fixed wall clock reading, so every frame's burned in time of day is
+    /// the same run to run: 2026-09-27 12:00:00 UTC.
+    private static let noon = Date(timeIntervalSince1970: 1_790_510_400)
+
+    /// Collects every frame the generator produces for the scripted ticks,
+    /// against a fixed wall clock in UTC.
+    ///
+    /// - Parameters:
+    ///   - tickTimes: The ticks to render.
+    ///   - wallNow: The wall clock's reading.
+    /// - Returns: The frames.
+    private func collectFrames(tickTimes: [CMTime], wallNow: Date = noon) async -> [CapturedFrame] {
         let generator = BarsGenerator(
             clock: SyntheticClock(tickTimes: tickTimes),
             width: Self.width,
             height: Self.height,
-            frameRate: 30
+            frameRate: 30,
+            wallClock: { wallNow },
+            timeZone: .gmt
         )
         var frames: [CapturedFrame] = []
         for await frame in generator.frames() {
@@ -89,6 +102,24 @@ struct BarsGeneratorTests {
         let first = try Self.bytes(of: frames[0].pixelBuffer)
         let second = try Self.bytes(of: frames[1].pixelBuffer)
         #expect(first != second)
+    }
+
+    @Test("the same tick against the same wall clock draws the same frame")
+    func sameWallClockDrawsSameFrame() async throws {
+        let first = try #require(await collectFrames(tickTimes: [.zero]).first)
+        let second = try #require(await collectFrames(tickTimes: [.zero]).first)
+
+        #expect(try Self.bytes(of: first.pixelBuffer) == Self.bytes(of: second.pixelBuffer))
+    }
+
+    @Test("the burned in time of day follows the wall clock, not the master clock")
+    func timeOfDayFollowsWallClock() async throws {
+        let noon = try #require(await collectFrames(tickTimes: [.zero]).first)
+        let later = try #require(
+            await collectFrames(tickTimes: [.zero], wallNow: Self.noon.addingTimeInterval(3600)).first)
+
+        #expect(noon.presentationTime == later.presentationTime)
+        #expect(try Self.bytes(of: noon.pixelBuffer) != Self.bytes(of: later.pixelBuffer))
     }
 
     @Test("stop() finishes a live frame stream")
@@ -164,60 +195,92 @@ struct BarsTimecodeTests {
     /// The generator's default frame base.
     private static let frameRate = 30
 
-    /// The timecode for a whole number of seconds at the default frame base.
-    private func timecode(seconds: Double) -> String {
-        BarsTimecode.string(
-            at: CMTime(seconds: seconds, preferredTimescale: 600),
-            frameRate: Self.frameRate
-        )
+    /// New York, whose clocks change for daylight saving.
+    private static let newYork = TimeZone(identifier: "America/New_York")
+
+    /// The moment a New York clock reads the given time on 2026-09-27.
+    ///
+    /// - Parameters:
+    ///   - hour: The hour.
+    ///   - minute: The minute.
+    ///   - second: The second, with any fraction.
+    ///   - day: The day of the month (default the 27th).
+    ///   - month: The month (default September).
+    /// - Returns: The moment.
+    private func newYork(
+        _ hour: Int, _ minute: Int, _ second: Double, day: Int = 27, month: Int = 9
+    ) throws -> Date {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try #require(Self.newYork)
+        let whole = try #require(
+            calendar.date(from: DateComponents(year: 2026, month: month, day: day, hour: hour, minute: minute)))
+        return whole.addingTimeInterval(second)
     }
 
-    @Test("the session start reads as all zeroes")
-    func startOfSession() {
-        #expect(timecode(seconds: 0) == "00:00:00:00")
+    /// The timecode for a moment on a New York clock at the default frame base.
+    private func timecode(_ date: Date) throws -> String {
+        BarsTimecode.string(for: date, frameRate: Self.frameRate, timeZone: try #require(Self.newYork))
     }
 
-    @Test("each field advances at its own base")
-    func fieldsAdvance() {
-        #expect(timecode(seconds: 0.5) == "00:00:00:15")
-        #expect(timecode(seconds: 1) == "00:00:01:00")
-        #expect(timecode(seconds: 61) == "00:01:01:00")
-        #expect(timecode(seconds: 3661) == "01:01:01:00")
+    @Test("midnight reads as all zeroes")
+    func midnight() throws {
+        #expect(try timecode(newYork(0, 0, 0)) == "00:00:00:00")
     }
 
-    @Test("the last moment before a day reads 23:59:59:29")
-    func lastFrameOfTheDay() {
-        let almostADay = 24.0 * 3600 - 1.0 / 30
-        #expect(timecode(seconds: almostADay) == "23:59:59:29")
+    @Test("each field reads the zone's clock, the frame counted within the second")
+    func fieldsReadTheClock() throws {
+        #expect(try timecode(newYork(13, 45, 7.5)) == "13:45:07:15")
+        #expect(try timecode(newYork(7, 49, 0)) == "07:49:00:00")
     }
 
-    @Test("hours wrap at 24, the SMPTE convention")
-    func hoursWrapAtTwentyFour() {
-        #expect(timecode(seconds: 24 * 3600) == "00:00:00:00")
-        #expect(timecode(seconds: 25 * 3600) == "01:00:00:00")
-        // The old modulus put this at 47:00:00:00 — a two-digit hours field
-        // that matched neither SMPTE nor a plain elapsed count.
-        #expect(timecode(seconds: 47 * 3600) == "23:00:00:00")
-        #expect(timecode(seconds: 48 * 3600) == "00:00:00:00")
+    @Test("the last frame before midnight reads 23:59:59:29")
+    func lastFrameOfTheDay() throws {
+        #expect(try timecode(newYork(23, 59, 59 + 29.5 / 30)) == "23:59:59:29")
     }
 
-    @Test("a time before zero clamps to the session start rather than going negative")
-    func negativeTimeClamps() {
-        #expect(timecode(seconds: -5) == "00:00:00:00")
+    @Test("one moment reads each zone's own hour")
+    func zonesReadTheirOwnHour() throws {
+        let moment = try newYork(7, 49, 0)
+        let utc = BarsTimecode.string(for: moment, frameRate: Self.frameRate, timeZone: .gmt)
+
+        // New York is four hours behind UTC in September (daylight time).
+        #expect(utc == "11:49:00:00")
+    }
+
+    @Test("after the spring daylight-saving change the hour is the clock's, not the time elapsed since midnight")
+    func daylightSavingHourIsTheClocks() throws {
+        // 2026-03-08: New York's clocks jump from 02:00 to 03:00, so 03:30
+        // on the clock is only 2.5 hours after midnight.
+        #expect(try timecode(newYork(3, 30, 0, day: 8, month: 3)) == "03:30:00:00")
     }
 
     @Test("every field is zero padded to two digits")
-    func fieldsAreZeroPadded() {
-        let value = timecode(seconds: 3661.1)
-        #expect(value.count == 11)
+    func fieldsAreZeroPadded() throws {
+        let value = try timecode(newYork(1, 2, 3.1))
+        #expect(value == "01:02:03:03")
         #expect(value.split(separator: ":").allSatisfy { $0.count == 2 })
     }
 
     @Test("the frame field counts to the frame base and no further")
-    func frameFieldRespectsTheFrameBase() {
-        let sixty = BarsTimecode.string(at: CMTime(seconds: 1.5, preferredTimescale: 600), frameRate: 60)
-        #expect(sixty == "00:00:01:30")
-        let twentyFive = BarsTimecode.string(at: CMTime(seconds: 0.96, preferredTimescale: 600), frameRate: 25)
-        #expect(twentyFive == "00:00:00:24")
+    func frameFieldRespectsTheFrameBase() throws {
+        let zone = try #require(Self.newYork)
+        #expect(BarsTimecode.string(for: try newYork(0, 0, 1.5), frameRate: 60, timeZone: zone) == "00:00:01:30")
+        #expect(BarsTimecode.string(for: try newYork(0, 0, 0.96), frameRate: 25, timeZone: zone) == "00:00:00:24")
+        #expect(BarsTimecode.string(for: try newYork(0, 0, 0.9999999), frameRate: 30, timeZone: zone) == "00:00:00:29")
+    }
+
+    @Test("a master clock time stands for the wall clock moved by its distance from the master clock now")
+    func timeOfDayMapsTheMasterClock() {
+        let wallNow = Date(timeIntervalSince1970: 1_790_510_400)
+        let clockNow = CMTime(value: 1_140_250, timescale: 1)
+
+        let ahead = BarsTimecode.timeOfDay(
+            at: CMTimeAdd(clockNow, CMTime(value: 2, timescale: 1)), clockNow: clockNow, wallNow: wallNow)
+        let behind = BarsTimecode.timeOfDay(
+            at: CMTimeSubtract(clockNow, CMTime(value: 1, timescale: 30)), clockNow: clockNow, wallNow: wallNow)
+
+        #expect(ahead == wallNow.addingTimeInterval(2))
+        // A date this far from its 2001 reference resolves to about 0.1 µs.
+        #expect(abs(behind.timeIntervalSince(wallNow) + 1.0 / 30) < 1e-6)
     }
 }

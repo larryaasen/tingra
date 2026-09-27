@@ -75,6 +75,23 @@
         }
       }
     },
+    "%@ %@" : {
+      "comment" : "About settings: an uptime of hours then minutes, e.g. “1 hour” then “43 min”",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ %2$@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ %2$@"
+          }
+        }
+      }
+    },
     "%@ and its stored stream key will be removed. This cannot be undone." : {
       "comment" : "Confirmation alert message before deleting a destination; the placeholder is the destination's name",
       "localizations" : {
@@ -1463,6 +1480,23 @@
         }
       }
     },
+    "Closing the connection to every destination" : {
+      "comment" : "Tooltip for the stream button while the stream is stopping",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Verbindung zu allen Zielen wird geschlossen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cerrando la conexión con todos los destinos"
+          }
+        }
+      }
+    },
     "Collapse" : {
       "comment" : "Tooltip on a plug-in pane header that collapses the pane to its header",
       "localizations" : {
@@ -1527,6 +1561,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "No se pudo leer el registro"
+          }
+        }
+      }
+    },
+    "Custom Server" : {
+      "comment" : "Add Destination menu item that adds a blank destination for a server of the operator's own",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eigener Server"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Servidor personalizado"
           }
         }
       }
@@ -2396,6 +2447,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Generadores"
+          }
+        }
+      }
+    },
+    "Get your stream key from %@" : {
+      "comment" : "Link under a destination's stream key field to the service's stream key page; the argument is the service's name, e.g. Twitch",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Streamschlüssel bei %@ abrufen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Obtener la clave de transmisión en %@"
           }
         }
       }
@@ -6493,6 +6561,23 @@
         }
       }
     },
+    "Stop streaming to every destination" : {
+      "comment" : "Tooltip for Stop Streaming while on air",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Streaming an alle Ziele stoppen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Detener la transmisión a todos los destinos"
+          }
+        }
+      }
+    },
     "Stopped" : {
       "comment" : "Stream status: the stream ended cleanly",
       "localizations" : {
@@ -6506,6 +6591,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Detenido"
+          }
+        }
+      }
+    },
+    "Stopping…" : {
+      "comment" : "Stream status: Stop was clicked and the connections are being closed",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wird gestoppt…"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deteniendo…"
           }
         }
       }
@@ -6540,6 +6642,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Claves de transmisión"
+          }
+        }
+      }
+    },
+    "Stream the program to every enabled destination" : {
+      "comment" : "Tooltip for Start Streaming",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Programm an alle aktivierten Ziele streamen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transmitir el programa a todos los destinos activados"
           }
         }
       }
@@ -7158,6 +7277,23 @@
         }
       }
     },
+    "To start streaming, add a destination with an rtmp://, rtmps://, or srt:// URL and turn it on in Settings ▸ Streaming." : {
+      "comment" : "Tooltip for Start Streaming while it is disabled because no enabled destination has a usable URL",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Um mit dem Streaming zu beginnen, fügen Sie unter Einstellungen ▸ Streaming ein Ziel mit einer rtmp://-, rtmps://- oder srt://-URL hinzu und aktivieren Sie es."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Para empezar a transmitir, añada un destino con una URL rtmp://, rtmps:// o srt:// en Ajustes ▸ Transmisión y actívelo."
+          }
+        }
+      }
+    },
     "Top" : {
       "comment" : "Wipe edge picker option: reveal from the top edge of the frame",
       "localizations" : {
@@ -7273,6 +7409,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Destino sin título"
+          }
+        }
+      }
+    },
+    "Uptime" : {
+      "comment" : "About settings: label of the row showing how long the app has been running",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Betriebszeit"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tiempo de actividad"
           }
         }
       }

@@ -12,6 +12,7 @@ import CoreMedia
 import CoreVideo
 @preconcurrency import ScreenCaptureKit
 import Synchronization
+import TingraEventBus
 import TingraPlugInKit
 
 /// A display behind the `Input` seam: an `SCStream` (ScreenCaptureKit)
@@ -23,16 +24,34 @@ import TingraPlugInKit
 /// ScreenCaptureKit, so timestamp normalization is the identity here — zero
 /// clock domain translation, per CLOCK.md ("Why the host time clock").
 ///
-/// Concurrency: the non-`Sendable` stream and output live entirely inside
-/// one session task that `start()` spawns and `stop()` signals — they never
-/// cross an isolation boundary, so the input needs no `@unchecked Sendable`
-/// (the frame ownership rule covers the frames themselves). The capture
-/// machinery is a hardware path: it gets this seam, not unit tests; the
-/// injected authorization check keeps the denied path testable without the
-/// Screen Recording TCC prompt (CLAUDE.md, Testing).
+/// **A capture outlives a display sleep** (2026-09-26). ScreenCaptureKit
+/// stops the stream itself the moment the displays sleep — even for a
+/// fraction of a second — and never starts it again, which left a display
+/// layer frozen on its last frame for the rest of the show with nothing on
+/// the bus to say why. The input now reports every stop the capture makes
+/// on its own as a normal `input.interrupted` event, and starts a fresh
+/// capture when the displays wake (``DisplayPower``), reporting
+/// `input.resumed`. The frame stream stays open throughout, so the layer
+/// holds its last frame while the displays sleep and picks up the new
+/// capture with no change to the shot (ARCHITECTURE.md, "Display capture
+/// across display sleep").
+///
+/// Concurrency: the non-`Sendable` capture lives entirely inside one
+/// session task that `start()` spawns and `stop()` ends — it never crosses
+/// an isolation boundary, so the input needs no `@unchecked Sendable` (the
+/// frame ownership rule covers the frames themselves). The session is a
+/// small state machine over the signals it is sent (``SessionSignal``), and
+/// the capture itself is injected (``DisplayCaptureStarter``), so the
+/// interruption and resume rules are unit-tested without ScreenCaptureKit
+/// or the Screen Recording TCC prompt; the real capture is a hardware path
+/// and gets this seam, not unit tests (CLAUDE.md, Testing).
 final class DisplayInput: Input, Sendable {
     /// The discovered display this input captures from.
     private let display: DisplayDevice
+
+    /// The host's event bus, for the interruption and resume events, or nil
+    /// where nothing listens.
+    private let eventBus: EventBus?
 
     /// Requests Screen Recording authorization, returning whether access is
     /// granted. Production asks ScreenCaptureKit
@@ -40,35 +59,66 @@ final class DisplayInput: Input, Sendable {
     /// inject a fixed answer.
     private let requestAuthorization: @Sendable () async -> Bool
 
-    /// The stop signal for the running session task and the single active
-    /// frame continuation. One holder at a time, per the frame ownership
-    /// rule (ARCHITECTURE.md): a new `frames()` call finishes and replaces
-    /// the previous stream.
+    /// Subscribes to display sleep and wake. Production observes
+    /// `NSWorkspace` (``DisplayPower/liveEvents()``); tests script the
+    /// events.
+    private let powerEvents: @Sendable () -> AsyncStream<DisplayPowerEvent>
+
+    /// Starts one capture of the display. Production starts an `SCStream`;
+    /// tests inject a fake.
+    private let startCapture: DisplayCaptureStarter
+
+    /// The running session's signal stream and the single active frame
+    /// continuation. One holder at a time, per the frame ownership rule
+    /// (ARCHITECTURE.md): a new `frames()` call finishes and replaces the
+    /// previous stream.
     private let state = Mutex<CaptureState>(CaptureState())
 
     /// The mutable capture state behind the mutex — `Sendable` handles
-    /// only; the stream itself stays inside its task.
+    /// only; the capture itself stays inside its task.
     private struct CaptureState {
         /// Finishing this ends the session task, while started.
-        var stopSignal: AsyncStream<Never>.Continuation?
+        var signal: AsyncStream<SessionSignal>.Continuation?
 
         /// The single active frame continuation, while a consumer is
         /// attached.
         var continuation: AsyncStream<CapturedFrame>.Continuation?
     }
 
+    /// What the session task reacts to, in the order it arrives.
+    private enum SessionSignal: Sendable {
+        /// A capture ended on its own. Tagged with the capture's generation,
+        /// so a late report from a capture already replaced is ignored.
+        case captureEnded(generation: Int, DisplayCaptureEnd)
+
+        /// The displays slept or woke.
+        case power(DisplayPowerEvent)
+    }
+
     /// Creates a display input over a discovered display.
     ///
     /// - Parameters:
     ///   - display: The discovered display.
+    ///   - eventBus: The host's event bus, for `input.interrupted`,
+    ///     `input.resumed`, and a failed resume. Omit it where nothing
+    ///     listens.
     ///   - requestAuthorization: The authorization seam; defaults to the
     ///     real Screen Recording check.
+    ///   - powerEvents: The display sleep and wake seam; defaults to
+    ///     `NSWorkspace`'s notifications.
+    ///   - startCapture: The capture seam; defaults to ScreenCaptureKit.
     init(
         display: DisplayDevice,
-        requestAuthorization: @escaping @Sendable () async -> Bool = DisplayInput.requestScreenRecordingAccess
+        eventBus: EventBus? = nil,
+        requestAuthorization: @escaping @Sendable () async -> Bool = DisplayInput.requestScreenRecordingAccess,
+        powerEvents: @escaping @Sendable () -> AsyncStream<DisplayPowerEvent> = DisplayPower.liveEvents,
+        startCapture: @escaping DisplayCaptureStarter = DisplayInput.startScreenCapture
     ) {
         self.display = display
+        self.eventBus = eventBus
         self.requestAuthorization = requestAuthorization
+        self.powerEvents = powerEvents
+        self.startCapture = startCapture
     }
 
     /// The stable identifier — the display's UUID, verbatim, so a resolved
@@ -85,53 +135,97 @@ final class DisplayInput: Input, Sendable {
     /// ScreenCaptureKit surface; when it lands this becomes `[.video, .audio]`.
     var media: InputMedia { .video }
 
-    /// Requests authorization and starts the capture stream task.
+    /// Requests authorization, starts the capture, and runs the session
+    /// that keeps it going across display sleep.
     ///
     /// Throws ``CaptureInputError/authorizationDenied(_:_:)`` when Screen
     /// Recording access is denied, ``CaptureInputError/deviceUnavailable(_:)``
     /// when the display has disconnected since discovery, and
     /// ``CaptureInputError/configurationRejected(_:_:)`` when ScreenCaptureKit
-    /// cannot start the stream. Display disconnection after a successful
-    /// start is a normal event, never an error.
+    /// cannot start the stream. Everything after a successful start is an
+    /// event, never a throw: a capture that stops is `input.interrupted`, a
+    /// wake that restarts it is `input.resumed`, and a restart that fails is
+    /// an `input.resume` error, retried at the next wake. Display
+    /// disconnection is a normal event reported by the plug-in.
     func start() async throws {
         guard await requestAuthorization() else {
             throw CaptureInputError.authorizationDenied(.display, id)
         }
 
-        let (stopSignal, stopContinuation) = AsyncStream.makeStream(of: Never.self)
+        let (signals, signal) = AsyncStream.makeStream(of: SessionSignal.self)
         let display = self.display
         let inputID = id
+        let startCapture = self.startCapture
+        let powerEvents = self.powerEvents
+        let report = SessionReporter(eventBus: eventBus, id: inputID, name: name)
         let deliver: @Sendable (CapturedFrame) -> Void = { [weak self] frame in
             self?.state.withLock { $0.continuation }?.yield(frame)
         }
+        // Each capture reports its own end tagged with its generation.
+        let capture: @Sendable (Int) async throws -> any DisplayCapture = { generation in
+            try await startCapture(display, inputID, deliver) { end in
+                signal.yield(.captureEnded(generation: generation, end))
+            }
+        }
         try await withCheckedThrowingContinuation { (ready: CheckedContinuation<Void, any Error>) in
             Task {
-                let running: RunningStream
+                var generation = 0
+                var running: (any DisplayCapture)?
                 do {
-                    running = try await Self.makeRunningStream(for: display, id: inputID, deliver: deliver)
+                    running = try await capture(generation)
                 } catch {
                     ready.resume(throwing: error)
                     return
                 }
                 ready.resume()
-                // Park until stop() finishes the signal (or the task is
-                // cancelled). Holding `running` across this await is what
-                // keeps **both** the stream and its output alive for the
-                // capture's lifetime — `SCStream` retains neither, and an
-                // output that deallocates silently stops every frame while
-                // leaving the stream apparently healthy (``RunningStream``).
-                // Both stay task-confined, never crossing an isolation
-                // boundary, so no `@unchecked Sendable` is needed.
-                for await _ in stopSignal {}
-                try? await running.stream.stopCapture()
+                let power = Task {
+                    for await event in powerEvents() {
+                        signal.yield(.power(event))
+                    }
+                }
+                // Until stop() finishes the signal stream. Holding `running`
+                // here is what keeps the capture alive (``RunningStream``).
+                for await next in signals {
+                    switch next {
+                    case .captureEnded(let ended, let end):
+                        guard ended == generation, let stopped = running else { continue }
+                        running = nil
+                        await stopped.stop()
+                        report.interrupted(reason: end.reason, error: end.message)
+                    case .power(.slept):
+                        guard let stopped = running else { continue }
+                        running = nil
+                        await stopped.stop()
+                        report.interrupted(reason: "displaySleep", error: nil)
+                    case .power(.woke):
+                        // Restart whether or not a stop was seen:
+                        // ScreenCaptureKit stops the capture at display sleep
+                        // without always saying so, and a capture that did
+                        // survive loses a moment, not the show.
+                        if let previous = running {
+                            running = nil
+                            await previous.stop()
+                        }
+                        generation += 1
+                        do {
+                            running = try await capture(generation)
+                            report.resumed()
+                        } catch {
+                            report.resumeFailed(error)
+                        }
+                    }
+                }
+                power.cancel()
+                await running?.stop()
             }
         }
-        state.withLock { $0.stopSignal = stopContinuation }
+        state.withLock { $0.signal = signal }
     }
 
     /// The stream of captured frames. One consumer at a time: a new call
     /// finishes the previous stream and takes over, per the frame ownership
-    /// rule.
+    /// rule. It stays open across display sleep — the consumer sees no
+    /// frames while the displays sleep, then the restarted capture's.
     func frames() -> AsyncStream<CapturedFrame> {
         AsyncStream { continuation in
             let previous = state.withLock { state in
@@ -143,17 +237,68 @@ final class DisplayInput: Input, Sendable {
         }
     }
 
-    /// Ends the session task (which stops the capture stream) and finishes
-    /// the frame stream. Safe to call more than once.
+    /// Ends the session task (which stops the capture) and finishes the
+    /// frame stream. Safe to call more than once.
     func stop() async {
-        let (stopSignal, continuation) = state.withLock { state in
-            let pair = (state.stopSignal, state.continuation)
-            state.stopSignal = nil
+        let (signal, continuation) = state.withLock { state in
+            let pair = (state.signal, state.continuation)
+            state.signal = nil
             state.continuation = nil
             return pair
         }
-        stopSignal?.finish()
+        signal?.finish()
         continuation?.finish()
+    }
+
+    /// Reports the session's interruptions and resumes on the bus, carrying
+    /// the input's identity so every event names the display it is about.
+    private struct SessionReporter: Sendable {
+        /// The bus, or nil where nothing listens.
+        let eventBus: EventBus?
+
+        /// The input's identifier.
+        let id: InputID
+
+        /// The input's name.
+        let name: String
+
+        /// The params every event carries.
+        private var identity: [String: EventValue] {
+            ["id": .string(id.rawValue), "name": .string(name)]
+        }
+
+        /// The capture stopped — a normal event, like a disconnection
+        /// (CLAUDE.md, Data Flow Rules): the layer holds its last frame.
+        ///
+        /// - Parameters:
+        ///   - reason: Why: `displaySleep`, `streamStopped`, or
+        ///     `streamFailed`.
+        ///   - error: ScreenCaptureKit's description, for `streamFailed`.
+        func interrupted(reason: String, error: String?) {
+            var params = identity
+            params["reason"] = .string(reason)
+            if let error { params["error"] = .string(error) }
+            eventBus?.event("input.interrupted", domain: .capture, params: params)
+        }
+
+        /// A fresh capture started after the displays woke.
+        func resumed() {
+            eventBus?.event("input.resumed", domain: .capture, params: identity)
+        }
+
+        /// The fresh capture could not start; the next wake tries again.
+        ///
+        /// - Parameter error: Why it could not start.
+        func resumeFailed(_ error: any Error) {
+            var params = identity
+            params["error"] = .string(String(describing: error))
+            eventBus?.error("input.resume", domain: .capture, params: params)
+        }
+    }
+
+    /// The production capture seam: an `SCStream` over the display.
+    static let startScreenCapture: DisplayCaptureStarter = { display, id, deliver, ended in
+        try await makeRunningStream(for: display, id: id, deliver: deliver, ended: ended)
     }
 
     /// A running capture stream together with the output object it delivers
@@ -168,13 +313,19 @@ final class DisplayInput: Input, Sendable {
     /// nothing errors, and every tile bound to the display simply stays black.
     /// Holding both for the stream's lifetime is what makes the capture
     /// actually produce pixels.
-    private struct RunningStream {
+    private struct RunningStream: DisplayCapture {
         /// The capture stream.
         let stream: SCStream
 
         /// The output the stream delivers through, held solely to keep it
         /// alive — `SCStream` will not.
         let output: DisplayStreamOutput
+
+        /// Stops the stream. One ScreenCaptureKit already stopped reports an
+        /// error here, which is the state asked for and is ignored.
+        func stop() async {
+            try? await stream.stopCapture()
+        }
     }
 
     /// Builds, configures, and starts the capture stream for a display.
@@ -184,12 +335,18 @@ final class DisplayInput: Input, Sendable {
     /// it against ScreenCaptureKit's shareable content, and starts an
     /// `SCStream` delivering 32BGRA frames at native pixel size.
     ///
+    /// - Parameters:
+    ///   - display: The display to capture.
+    ///   - id: The input's identifier, for errors.
+    ///   - deliver: Hands each frame on.
+    ///   - ended: Called when the stream stops on its own.
     /// - Returns: The started stream and its output, which the caller must
     ///   keep alive together (see ``RunningStream``).
     private static func makeRunningStream(
         for display: DisplayDevice,
         id: InputID,
-        deliver: @escaping @Sendable (CapturedFrame) -> Void
+        deliver: @escaping @Sendable (CapturedFrame) -> Void,
+        ended: @escaping @Sendable (DisplayCaptureEnd) -> Void
     ) async throws -> RunningStream {
         guard let displayID = currentDisplayID(forUUID: display.uniqueID) else {
             throw CaptureInputError.deviceUnavailable(id)
@@ -222,7 +379,7 @@ final class DisplayInput: Input, Sendable {
         // program, so a generous queue depth only buffers native frames.
         configuration.queueDepth = 6
 
-        let output = DisplayStreamOutput(deliver: deliver)
+        let output = DisplayStreamOutput(deliver: deliver, ended: ended)
         let stream = SCStream(filter: filter, configuration: configuration, delegate: output)
         do {
             // The output runs on its own queue: the callback immediately
@@ -259,6 +416,51 @@ final class DisplayInput: Input, Sendable {
         (try? await SCShareableContent.current) != nil
     }
 }
+
+/// One running capture of a display, as the input's session holds it — an
+/// `SCStream` and its output in production, a fake in tests. Not
+/// `Sendable`: it never leaves the session task.
+protocol DisplayCapture {
+    /// Stops the capture. Stopping one that already ended is harmless.
+    func stop() async
+}
+
+/// Why a capture ended on its own.
+enum DisplayCaptureEnd: Sendable, Equatable {
+    /// ScreenCaptureKit stopped the stream — what it does when the displays
+    /// sleep, reported through the frame status.
+    case stopped
+
+    /// ScreenCaptureKit stopped the stream with an error, described.
+    case failed(String)
+
+    /// The `reason` param of the `input.interrupted` event.
+    var reason: String {
+        switch self {
+        case .stopped: "streamStopped"
+        case .failed: "streamFailed"
+        }
+    }
+
+    /// The `error` param, for a failure.
+    var message: String? {
+        switch self {
+        case .stopped: nil
+        case .failed(let message): message
+        }
+    }
+}
+
+/// Starts one capture of a display: given the display, the input's
+/// identifier, where frames go, and what to call when the capture ends on its
+/// own, returns the running capture or throws why it could not start.
+typealias DisplayCaptureStarter =
+    @Sendable (
+        _ display: DisplayDevice,
+        _ id: InputID,
+        _ deliver: @escaping @Sendable (CapturedFrame) -> Void,
+        _ ended: @escaping @Sendable (DisplayCaptureEnd) -> Void
+    ) async throws -> any DisplayCapture
 
 /// The active displays and their stable UUID strings, read from
 /// CoreGraphics — discovery that needs no Screen Recording authorization
@@ -318,30 +520,46 @@ private func displayUUIDString(for displayID: CGDirectDisplayID) -> String? {
 }
 
 /// Bridges ScreenCaptureKit's output callback into the frame stream, and
-/// absorbs stream-stop errors as the normal events they are (a display
-/// disconnecting is not a failure). Confined to the stream's sample-handler
-/// queue; each delivered buffer is tagged if the framework left it
-/// untagged, keeps its host clock PTS, and leaves through `deliver` —
-/// transferring ownership at the yield, per the frame ownership rule.
+/// reports the stream stopping on its own — which it does when the displays
+/// sleep — as the normal event it is (a display sleeping is not a failure).
+/// Confined to the stream's sample-handler queue; each delivered buffer is
+/// tagged if the framework left it untagged, keeps its host clock PTS, and
+/// leaves through `deliver` — transferring ownership at the yield, per the
+/// frame ownership rule.
 private final class DisplayStreamOutput: NSObject, SCStreamOutput, SCStreamDelegate {
     /// Hands one normalized frame to the input's live stream.
     private let deliver: @Sendable (CapturedFrame) -> Void
 
+    /// Tells the input's session the stream ended on its own.
+    private let ended: @Sendable (DisplayCaptureEnd) -> Void
+
     /// Creates an output delivering frames through the given closure.
-    init(deliver: @escaping @Sendable (CapturedFrame) -> Void) {
+    ///
+    /// - Parameters:
+    ///   - deliver: Hands each frame on.
+    ///   - ended: Called when the stream stops on its own.
+    init(deliver: @escaping @Sendable (CapturedFrame) -> Void, ended: @escaping @Sendable (DisplayCaptureEnd) -> Void) {
         self.deliver = deliver
+        self.ended = ended
     }
 
     /// Normalizes and forwards one captured sample buffer, skipping the
     /// idle/blank frames ScreenCaptureKit emits when the screen is
-    /// unchanged (only `.complete` frames carry new pixels).
+    /// unchanged (only `.complete` frames carry new pixels), and reporting a
+    /// `.stopped` frame — ScreenCaptureKit's word that it has stopped the
+    /// stream, which it does when the displays sleep.
     func stream(
         _ stream: SCStream,
         didOutputSampleBuffer sampleBuffer: CMSampleBuffer,
         of type: SCStreamOutputType
     ) {
-        guard type == .screen, Self.isComplete(sampleBuffer) else { return }
-        guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+        guard type == .screen else { return }
+        let status = Self.frameStatus(of: sampleBuffer)
+        if status == .stopped {
+            ended(.stopped)
+            return
+        }
+        guard status == .complete, let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
         FrameNormalization.tagBT709IfUntagged(pixelBuffer)
         deliver(
             CapturedFrame(
@@ -351,20 +569,21 @@ private final class DisplayStreamOutput: NSObject, SCStreamOutput, SCStreamDeleg
         )
     }
 
-    /// A display disconnecting or the stream stopping is a normal event, not
-    /// an error (CLAUDE.md, Data Flow Rules): the frame stream simply goes
-    /// quiet, and the tick re-sends the last frame until the shot changes.
-    func stream(_ stream: SCStream, didStopWithError error: any Error) {}
+    /// The stream stopped with an error — reported, never thrown: the
+    /// session reports it as `input.interrupted` and tries again at the next
+    /// display wake.
+    func stream(_ stream: SCStream, didStopWithError error: any Error) {
+        ended(.failed(error.localizedDescription))
+    }
 
-    /// Whether the sample buffer is a complete frame with new pixels, read
-    /// from ScreenCaptureKit's per-frame status attachment.
-    private static func isComplete(_ sampleBuffer: CMSampleBuffer) -> Bool {
+    /// The frame status ScreenCaptureKit attached to a sample buffer, or nil
+    /// when it attached none.
+    private static func frameStatus(of sampleBuffer: CMSampleBuffer) -> SCFrameStatus? {
         guard
             let attachments = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: false)
                 as? [[SCStreamFrameInfo: Any]],
-            let statusRaw = attachments.first?[.status] as? Int,
-            let status = SCFrameStatus(rawValue: statusRaw)
-        else { return false }
-        return status == .complete
+            let statusRaw = attachments.first?[.status] as? Int
+        else { return nil }
+        return SCFrameStatus(rawValue: statusRaw)
     }
 }

@@ -34,6 +34,11 @@ struct TingraApp: App {
     /// (see ``StatusBarModel``).
     @State private var statusBar = StatusBarModel()
 
+    /// When the app launched, recorded as it is created — the About pane's
+    /// uptime counts from here (see ``AppUptime`` for why the app records it
+    /// rather than asking the system).
+    @State private var uptime = AppUptime()
+
     /// The app-tier plug-in host, owned for the app's lifetime: discovers
     /// the ExtensionKit extensions embedded in the app, fills the pane and
     /// command registries, and hosts each plug-in's process on demand
@@ -195,7 +200,7 @@ struct TingraApp: App {
             ),
             id: Self.settingsWindowID
         ) {
-            SettingsView(model: model, appearance: appearance, statusBar: statusBar)
+            SettingsView(model: model, appearance: appearance, statusBar: statusBar, uptime: uptime)
                 .environment(plugInHost)
         }
         .windowResizability(.contentMinSize)

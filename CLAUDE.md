@@ -205,7 +205,9 @@ packages/  TingraPlugInKit        →  TingraEventBus; importable standalone by 
                                      build against the binary TingraPlugInSDK, Decision 28)
 packages/  TingraHost             →  TingraPlugInKit + TingraEventBus
 packages/  TingraCapturePlugIns   →  TingraPlugInKit + TingraEventBus (registers through the
-                                     `InputRegistering` seam, so no TingraHost dependency)
+                                     `InputRegistering` seam, so no TingraHost dependency;
+                                     AppKit for NSWorkspace display sleep/wake only — the one
+                                     AppKit import in an engine package, never UI)
 packages/  TingraGeneratorPlugIns →  TingraPlugInKit + TingraEventBus (same seam-only design)
 packages/  TingraEffectPlugIns    →  TingraPlugInKit + TingraEventBus (same seam-only design;
                                      registers through the `EffectRegistering` seam; pure DSP

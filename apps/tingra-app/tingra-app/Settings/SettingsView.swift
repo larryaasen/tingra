@@ -138,6 +138,9 @@ struct SettingsView: View {
     /// Whether the windows carry a status bar, edited by the General pane.
     @Bindable var statusBar: StatusBarModel
 
+    /// How long the app has been running, shown by the About pane.
+    let uptime: AppUptime
+
     /// Closes the settings window — what Escape does (see ``body``).
     @Environment(\.dismiss) private var dismiss
 
@@ -338,7 +341,7 @@ struct SettingsView: View {
         case .shortcuts: ShortcutsSettingsView()
         case .data: DataSettingsView(model: model)
         case .logging: LoggingSettingsView(model: model)
-        case .about: AboutSettingsView()
+        case .about: AboutSettingsView(uptime: uptime)
         }
     }
 }

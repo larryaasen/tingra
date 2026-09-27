@@ -267,7 +267,8 @@ struct ShotBankView: View {
             aspectRatio: model.programAspectRatio,
             // A transient tile draws its own dashed border in the tally's
             // colour, so the solid one stays off.
-            borderTint: tile.isTransient ? nil : tile.tally.borderTint
+            borderTint: tile.isTransient ? nil : tile.tally.borderTint,
+            maximumFramesPerSecond: MonitorView.thumbnailFramesPerSecond
         )
         .frame(width: width, height: height)
         .overlay {

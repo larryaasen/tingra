@@ -7,6 +7,7 @@
 //  SPDX-License-Identifier: MIT
 //
 
+import Foundation
 import TingraPlugInKit
 
 /// Errors thrown by ``OutputRegistry``.
@@ -20,6 +21,13 @@ public enum OutputRegistryError: Error, Equatable {
     /// this provider declares. One provider per extension; the fix is for
     /// the plug-in to serve an extension no other recording output claims.
     case duplicateFileExtension(String, existing: OutputID)
+
+    /// A destination template the provider contributes points at a URL
+    /// scheme the provider does not serve, so a destination made from it
+    /// could never stream. A template is offered only by an output that can
+    /// reach it; the fix is for the plug-in to correct the template's URL or
+    /// to serve its scheme (DESTINATIONS.md, "Destination templates").
+    case templateSchemeNotServed(templateID: String, scheme: String, provider: OutputID)
 }
 
 extension OutputRegistryError: CustomStringConvertible {
@@ -36,6 +44,12 @@ extension OutputRegistryError: CustomStringConvertible {
                 The file extension '\(ext)' is already served by the registered recording \
                 output '\(existing.rawValue)'. One provider per extension: the plug-in \
                 contributing this provider must serve an extension no other output claims.
+                """
+        case .templateSchemeNotServed(let templateID, let scheme, let provider):
+            return """
+                The destination template '\(templateID)' contributed by the output '\(provider.rawValue)' \
+                uses the URL scheme '\(scheme)', which that output does not serve, so a destination made \
+                from it could never stream. The plug-in must correct the template's URL or serve its scheme.
                 """
         }
     }
@@ -66,11 +80,23 @@ public actor OutputRegistry {
     /// another provider already serves one of its schemes — a plug-in
     /// defect surfaces as a thrown error, never a trap (CLAUDE.md,
     /// never-crash rule). Schemes match case-insensitively.
+    ///
+    /// Also throws ``OutputRegistryError/templateSchemeNotServed(templateID:scheme:provider:)``
+    /// if one of the provider's destination templates points at a scheme the
+    /// provider does not serve — a template no destination could stream
+    /// through. Nothing is registered when either check throws.
     public func register(_ provider: any StreamingServiceProvider) throws {
         let schemes = provider.schemes.map { $0.lowercased() }
         for scheme in schemes {
             if let existing = providersByScheme[scheme] {
                 throw OutputRegistryError.duplicateScheme(scheme, existing: existing.id)
+            }
+        }
+        for template in provider.destinationTemplates {
+            let scheme = template.url.scheme?.lowercased() ?? ""
+            guard schemes.contains(scheme) else {
+                throw OutputRegistryError.templateSchemeNotServed(
+                    templateID: template.id, scheme: scheme, provider: provider.id)
             }
         }
         for scheme in schemes {
@@ -100,6 +126,26 @@ public actor OutputRegistry {
     /// Schemes match case-insensitively.
     public func provider(forScheme scheme: String) -> (any StreamingServiceProvider)? {
         providersByScheme[scheme.lowercased()]
+    }
+
+    /// Every registered streaming provider's destination templates, sorted
+    /// by name — what a host offers when the operator adds a destination
+    /// (DESTINATIONS.md, "Destination templates").
+    ///
+    /// Each provider contributes once, however many schemes it serves, and
+    /// the order is stable: name first, then URL, so two providers offering
+    /// a service of the same name always list in the same order.
+    public var destinationTemplates: [DestinationTemplate] {
+        var seenProviders: Set<OutputID> = []
+        var templates: [DestinationTemplate] = []
+        for provider in providersByScheme.values where seenProviders.insert(provider.id).inserted {
+            templates += provider.destinationTemplates
+        }
+        return templates.sorted {
+            let byName = $0.name.localizedStandardCompare($1.name)
+            guard byName == .orderedSame else { return byName == .orderedAscending }
+            return $0.url.absoluteString < $1.url.absoluteString
+        }
     }
 
     /// The recording provider serving the given file extension, if one is

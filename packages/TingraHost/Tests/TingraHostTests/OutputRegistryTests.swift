@@ -7,6 +7,7 @@
 //  SPDX-License-Identifier: MIT
 //
 
+import Foundation
 import Testing
 import TingraPlugInKit
 
@@ -22,6 +23,9 @@ private struct StubProvider: StreamingServiceProvider {
 
     /// The schemes the provider serves.
     let schemes: [String]
+
+    /// The destination templates the provider contributes (none by default).
+    var destinationTemplates: [DestinationTemplate] = []
 
     /// Creates a mock service; registry tests never start it.
     func makeStreamingService(configuration: StreamConfiguration) -> any StreamingService {
@@ -144,5 +148,113 @@ struct OutputRegistryTests {
                 StubRecordingProvider(id: OutputID(rawValue: "other"), name: "Other", fileExtensions: ["mp4"])
             )
         }
+    }
+
+    // MARK: - Destination templates
+
+    /// A template for the registry tests.
+    ///
+    /// - Parameters:
+    ///   - id: The template's identifier.
+    ///   - name: The service's name.
+    ///   - url: The template's URL.
+    /// - Returns: The template.
+    private static func template(id: String, name: String, url: String) throws -> DestinationTemplate {
+        DestinationTemplate(id: id, name: name, url: try #require(URL(string: url)))
+    }
+
+    @Test("An empty registry offers no destination templates")
+    func emptyRegistryOffersNoTemplates() async {
+        #expect(await OutputRegistry().destinationTemplates.isEmpty)
+    }
+
+    @Test("Templates from every provider are listed by name, each provider once however many schemes it serves")
+    func templatesListedByNameOncePerProvider() async throws {
+        let registry = OutputRegistry()
+        try await registry.register(
+            StubProvider(
+                id: OutputID(rawValue: "rtmp"), name: "RTMP", schemes: ["rtmp", "rtmps"],
+                destinationTemplates: [
+                    try Self.template(id: "youtube", name: "YouTube", url: "rtmps://a.example.com/live2"),
+                    try Self.template(id: "twitch", name: "Twitch", url: "rtmp://live.example.tv/app"),
+                ]
+            )
+        )
+        try await registry.register(
+            StubProvider(
+                id: OutputID(rawValue: "srt"), name: "SRT", schemes: ["srt"],
+                destinationTemplates: [
+                    try Self.template(id: "relay", name: "relay", url: "srt://relay.example.com:9000")
+                ]
+            )
+        )
+        #expect(await registry.destinationTemplates.map(\.id) == ["relay", "twitch", "youtube"])
+    }
+
+    @Test("Templates with the same name list in URL order, so the order never depends on registration")
+    func sameNamedTemplatesOrderByURL() async throws {
+        let registry = OutputRegistry()
+        try await registry.register(
+            StubProvider(
+                id: OutputID(rawValue: "srt"), name: "SRT", schemes: ["srt"],
+                destinationTemplates: [try Self.template(id: "b", name: "Service", url: "srt://service.example.com")]
+            )
+        )
+        try await registry.register(
+            StubProvider(
+                id: OutputID(rawValue: "rtmp"), name: "RTMP", schemes: ["rtmp"],
+                destinationTemplates: [try Self.template(id: "a", name: "Service", url: "rtmp://service.example.com")]
+            )
+        )
+        #expect(await registry.destinationTemplates.map(\.id) == ["a", "b"])
+    }
+
+    @Test("A template's scheme matches the provider's schemes case-insensitively")
+    func templateSchemeMatchesCaseInsensitively() async throws {
+        let registry = OutputRegistry()
+        try await registry.register(
+            StubProvider(
+                id: OutputID(rawValue: "rtmp"), name: "RTMP", schemes: ["rtmp"],
+                destinationTemplates: [try Self.template(id: "loud", name: "Loud", url: "RTMP://live.example.tv/app")]
+            )
+        )
+        #expect(await registry.destinationTemplates.map(\.id) == ["loud"])
+    }
+
+    @Test("A template on a scheme its provider does not serve throws templateSchemeNotServed and registers nothing")
+    func unservedTemplateSchemeThrows() async throws {
+        let registry = OutputRegistry()
+        await #expect(
+            throws: OutputRegistryError.templateSchemeNotServed(
+                templateID: "stray", scheme: "srt", provider: OutputID(rawValue: "rtmp"))
+        ) {
+            try await registry.register(
+                StubProvider(
+                    id: OutputID(rawValue: "rtmp"), name: "RTMP", schemes: ["rtmp"],
+                    destinationTemplates: [
+                        try Self.template(id: "stray", name: "Stray", url: "srt://relay.example.com")
+                    ]
+                )
+            )
+        }
+        #expect(await registry.provider(forScheme: "rtmp") == nil)
+        #expect(await registry.destinationTemplates.isEmpty)
+    }
+
+    @Test("The unserved-template error names the template and scheme and is equatable both ways")
+    func templateErrorDescriptionAndEquality() {
+        let error = OutputRegistryError.templateSchemeNotServed(
+            templateID: "stray", scheme: "srt", provider: OutputID(rawValue: "rtmp"))
+        let description = String(describing: error)
+        #expect(description.contains("stray"))
+        #expect(description.contains("srt"))
+        #expect(
+            error
+                == OutputRegistryError.templateSchemeNotServed(
+                    templateID: "stray", scheme: "srt", provider: OutputID(rawValue: "rtmp")))
+        #expect(
+            error
+                != OutputRegistryError.templateSchemeNotServed(
+                    templateID: "other", scheme: "srt", provider: OutputID(rawValue: "rtmp")))
     }
 }

@@ -33,6 +33,15 @@ import TingraEventBus
 /// is drawn red — the on-air convention, the tally's own color — beside the
 /// words "Stop Streaming", colored on the image itself for the reason
 /// ``RecordButton`` records (a toolbar's tint never reaches the glyph).
+///
+/// **While the stream is stopping it reads Stopping… and cannot be clicked**
+/// (2026-09-26). Closing every destination's connection takes a few seconds,
+/// and until then the button kept saying Stop Streaming, so a click looked
+/// ignored and invited a second one. The label changes the moment the click
+/// lands (``EngineModel/stopStreaming()`` sets the state before asking the
+/// session to stop), the antenna stays red because the program may still be
+/// reaching viewers until the connections close, and the button is disabled —
+/// ⌘G with it — until the stream has ended and it reads Start Streaming.
 struct StreamButton: View {
     /// The engine model the control drives.
     let model: EngineModel
@@ -51,7 +60,14 @@ struct StreamButton: View {
                 Task { await model.startStreaming() }
             }
         } label: {
-            if model.isStreaming {
+            if model.isStoppingStream {
+                Label {
+                    Text("Stopping…", comment: "Stream status: Stop was clicked and the connections are being closed")
+                } icon: {
+                    Image(systemName: "antenna.radiowaves.left.and.right")
+                        .foregroundStyle(.red)
+                }
+            } else if model.isStreaming {
                 Label {
                     Text("Stop Streaming", comment: "Button that takes the program off air")
                 } icon: {
@@ -67,7 +83,34 @@ struct StreamButton: View {
             }
         }
         .labelStyle(.titleAndIcon)
-        .disabled(!model.isStreaming && !model.hasStreamableDestination)
+        .disabled(model.isStoppingStream || (!model.isStreaming && !model.hasStreamableDestination))
+        .help(helpText)
         .keyboardShortcut(ProductionShortcut.goLive.shortcut)
+    }
+
+    /// The button's tooltip — above all, **why it is disabled** when it is.
+    ///
+    /// Added 2026-09-26, after a destination named "Twitch" with its key
+    /// filed but its URL left blank kept Start Streaming gray with nothing
+    /// saying why: a disabled control should name what it is waiting for, and
+    /// the thing it waits for is in another window (DESTINATIONS.md,
+    /// "Destination templates").
+    private var helpText: Text {
+        if model.isStoppingStream {
+            Text(
+                "Closing the connection to every destination",
+                comment: "Tooltip for the stream button while the stream is stopping"
+            )
+        } else if model.isStreaming {
+            Text("Stop streaming to every destination", comment: "Tooltip for Stop Streaming while on air")
+        } else if model.hasStreamableDestination {
+            Text("Stream the program to every enabled destination", comment: "Tooltip for Start Streaming")
+        } else {
+            Text(
+                "To start streaming, add a destination with an rtmp://, rtmps://, or srt:// URL and turn it on in Settings ▸ Streaming.",
+                comment:
+                    "Tooltip for Start Streaming while it is disabled because no enabled destination has a usable URL"
+            )
+        }
     }
 }

@@ -54,13 +54,17 @@ struct StatusBarItem: Equatable {
     /// a different answer from one that never started. The streaming panel
     /// still distinguishes the two.
     ///
+    /// **Stopping is pending, not off**, like a recording that is still
+    /// finishing: the connections are still closing, so the program may still
+    /// be reaching viewers for a moment.
+    ///
     /// - Parameter status: The live stream status.
     /// - Returns: The bar's reading.
     static func streaming(_ status: EngineModel.StreamStatus) -> StatusBarItem {
         switch status {
         case .idle, .stopped:
             StatusBarItem(light: .off, systemImage: "antenna.radiowaves.left.and.right.slash")
-        case .starting, .reconnecting:
+        case .starting, .reconnecting, .stopping:
             StatusBarItem(light: .pending, systemImage: "antenna.radiowaves.left.and.right")
         case .live:
             StatusBarItem(light: .on, systemImage: "antenna.radiowaves.left.and.right")

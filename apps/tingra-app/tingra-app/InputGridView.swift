@@ -71,7 +71,8 @@ struct InputGridView: View {
                             label: Text(verbatim: tile.name),
                             badgeTint: tile.tally.badgeTint,
                             aspectRatio: model.programAspectRatio,
-                            borderTint: tile.tally.borderTint
+                            borderTint: tile.tally.borderTint,
+                            maximumFramesPerSecond: MonitorView.thumbnailFramesPerSecond
                         )
                         .snapshotMenu(
                             model: model,
@@ -118,5 +119,11 @@ struct InputFrameSource: MonitorFrameSource {
     /// The input's most recent frame, or nil until it delivers one.
     var latest: CVPixelBuffer? {
         model.latestFrame(forInput: id)
+    }
+
+    /// The stamp of the input's most recent frame — the tile's whole
+    /// picture — or nil until it delivers one.
+    var pictureState: any Equatable {
+        model.latestFrameStamp(forInput: id)
     }
 }

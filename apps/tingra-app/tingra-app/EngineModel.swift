@@ -111,6 +111,15 @@ final class EngineModel {
         /// (`attempt` of `maxAttempts`).
         case reconnecting(attempt: Int, maxAttempts: Int)
 
+        /// Stop was clicked and the session is ending: flushing compression
+        /// and closing each destination's connection, which takes a few
+        /// seconds. Set by the app at the request — the session reports
+        /// nothing until `stream.stopped`, which settles it — so the
+        /// operator sees the click land at once (2026-09-26). Only the
+        /// stream's end moves the status on from here; a late `started` or
+        /// `reconnected` from a leg still closing does not.
+        case stopping
+
         /// The stream stopped cleanly (Stop, or an elapsed duration).
         case stopped
 
@@ -118,6 +127,17 @@ final class EngineModel {
         /// unreachable host) or a connection lost past the reconnect budget.
         /// Carries a developer-facing message (never a secret).
         case error(String)
+
+        /// Whether a session is in flight — starting, live, reconnecting, or
+        /// **stopping**. A stopping stream still counts: its session holds
+        /// the destinations and the program format until it has closed, so
+        /// the fields stay locked and a second start is refused until then.
+        var isActive: Bool {
+            switch self {
+            case .starting, .live, .reconnecting, .stopping: true
+            case .idle, .stopped, .error: false
+            }
+        }
     }
 
     /// The live state of the app's local recording, derived from the
@@ -299,6 +319,13 @@ final class EngineModel {
     /// a usable URL, as one session with one leg each.
     private(set) var destinations: [DestinationEdit] = []
 
+    /// The destination templates the registered streaming outputs offer —
+    /// the well-known services the Streaming settings pane's Add Destination
+    /// menu lists and its URL field suggests — sorted by name and snapshotted
+    /// at boot like the effect choices (DESTINATIONS.md, "Destination
+    /// templates"). Empty until the engine is up.
+    private(set) var destinationTemplates: [DestinationTemplate] = []
+
     /// Whether at least one destination is ready to stream — what the Start
     /// control enables on.
     var hasStreamableDestination: Bool {
@@ -408,13 +435,17 @@ final class EngineModel {
         }
     }
 
-    /// Whether a stream is currently starting, live, or reconnecting — so the
-    /// control shows Stop and the destination fields lock.
+    /// Whether a stream is currently starting, live, reconnecting, or
+    /// stopping — so the destination fields lock and a format change or a
+    /// project switch is refused (``StreamStatus/isActive``).
     var isStreaming: Bool {
-        switch streamStatus {
-        case .starting, .live, .reconnecting: return true
-        case .idle, .stopped, .error: return false
-        }
+        streamStatus.isActive
+    }
+
+    /// Whether Stop was clicked and the stream is still closing — so the
+    /// control reads Stopping… and cannot be clicked again.
+    var isStoppingStream: Bool {
+        streamStatus == .stopping
     }
 
     /// The project's presets, in switcher order — what the preset switcher
@@ -1634,6 +1665,7 @@ final class EngineModel {
         // The renderer resolves layer chains against this snapshot; it is
         // filled before the compositor starts below.
         videoEffectProviders.fill(with: videoProviders)
+        destinationTemplates = await outputs.destinationTemplates
 
         await readDeviceLists()
         loadProject()
@@ -2021,6 +2053,17 @@ final class EngineModel {
     ///   not running or has not delivered one yet.
     func latestFrame(forInput id: InputID) -> CVPixelBuffer? {
         compositor.latestFrame(forInput: id)?.pixelBuffer
+    }
+
+    /// The stamp of one input's latest frame, for a monitor to tell a new
+    /// frame from the one it last drew (``MonitorFrameStamp``) — read from
+    /// the same slot as ``latestFrame(forInput:)``, holding nothing.
+    ///
+    /// - Parameter id: The input to read.
+    /// - Returns: The stamp, or nil when the input is not running or has
+    ///   not delivered a frame yet.
+    func latestFrameStamp(forInput id: InputID) -> MonitorFrameStamp? {
+        compositor.latestFrame(forInput: id).map(MonitorFrameStamp.init)
     }
 
     /// The latest frame of every input a shot's layers are bound to, keyed
@@ -3716,6 +3759,32 @@ final class EngineModel {
         scheduleAutosave()
     }
 
+    /// Adds a destination started from a template — the service's name and
+    /// URL filled in — and autosaves (DESTINATIONS.md, "What the app does
+    /// with it").
+    ///
+    /// Unlike an empty row, its URL is usable from the start, so it is
+    /// written through to the operator's store at once, like any edit that
+    /// completes a URL.
+    ///
+    /// - Parameter template: The service to start from.
+    /// - Returns: The new destination's id, so the pane can put the cursor in
+    ///   its stream key field — the one thing the operator still has to
+    ///   fetch from the service.
+    @discardableResult
+    func addDestination(from template: DestinationTemplate) -> ProjectDestinationID {
+        let destination = DestinationEdit(template: template)
+        destinations.append(destination)
+        eventBus.event(
+            "destination.added",
+            domain: .output,
+            params: ["destinations": .int(destinations.count), "template": .string(template.id)]
+        )
+        scheduleAutosave()
+        Task { await syncDestinationToStore(destination) }
+        return destination.id
+    }
+
     /// Removes a destination and clears its stored stream key — deleting a
     /// destination should not leave its secret behind in the Keychain.
     ///
@@ -3943,9 +4012,19 @@ final class EngineModel {
     /// Takes the program off air: requests a clean stop of the active session
     /// (flush compression, close the connection). The `stream.stopped` event
     /// settles the status; ``teardownStream()`` releases the plumbing when
-    /// `run()` returns. A no-op when not streaming.
+    /// `run()` returns. A no-op when not streaming, or when a stop is
+    /// already under way.
+    ///
+    /// The status moves to ``StreamStatus/stopping`` **before** the request,
+    /// because the session takes a few seconds to close and says nothing
+    /// until it has: without it, a click on Stop Streaming looked ignored.
+    /// The headline counters go with it — they describe delivery, and
+    /// delivery is ending.
     func stopStreaming() async {
-        await streamSession?.stop()
+        guard let streamSession, streamStatus != .stopping else { return }
+        streamStatus = .stopping
+        streamStats = nil
+        await streamSession.stop()
     }
 
     /// Stores the stream key for a destination, or clears it when the key is
@@ -4447,7 +4526,7 @@ final class EngineModel {
         let destination = event.params?["destination"].flatMap(Self.stringValue).map(ProjectDestinationID.init)
         switch event.name {
         case "stream.started":
-            streamStatus = .live
+            setActiveStreamStatus(.live)
         case "stream.destination.started":
             setDestinationState(.live, for: destination)
         case "stream.destination.rejected":
@@ -4458,7 +4537,7 @@ final class EngineModel {
         case "stream.reconnected":
             // The session as a whole is live again as soon as any leg is; a
             // leg still down keeps its own row's state.
-            streamStatus = .live
+            setActiveStreamStatus(.live)
             setDestinationState(.live, for: destination)
         case "stream.stats":
             // Bitrate arrives in bits per second; the panel shows kbps.
@@ -4469,8 +4548,9 @@ final class EngineModel {
                 destinationStats[destination] = stats
                 setDestinationState(.live, for: destination)
             }
-            // The headline figure is the first live leg's, never an average.
-            if isFirstLiveDestination(destination) { streamStats = stats }
+            // The headline figure is the first live leg's, never an average
+            // — and none while stopping, when delivery is ending.
+            if isFirstLiveDestination(destination), !isStoppingStream { streamStats = stats }
         case "stream.reconnecting":
             let attempt = event.params?["attempt"].flatMap(Self.intValue) ?? 0
             let maxAttempts = event.params?["maxAttempts"].flatMap(Self.intValue) ?? 0
@@ -4478,8 +4558,8 @@ final class EngineModel {
             if let destination { destinationStats[destination] = nil }
             // The session banner reports trouble only when nothing is left
             // delivering; one leg of several reconnecting is that leg's news.
-            if !destinationStates.values.contains(.live) {
-                streamStatus = .reconnecting(attempt: attempt, maxAttempts: maxAttempts)
+            if !destinationStates.values.contains(.live), !isStoppingStream {
+                setActiveStreamStatus(.reconnecting(attempt: attempt, maxAttempts: maxAttempts))
                 streamStats = nil
             }
         case "stream.stopped":
@@ -4500,6 +4580,18 @@ final class EngineModel {
         default:
             break
         }
+    }
+
+    /// Moves the stream status to a running state reported by the session —
+    /// unless a stop is under way, which only the stream's end
+    /// (`stream.stopped`, or a start-time failure) settles. A leg that
+    /// finishes connecting, or recovers, while the session closes must not
+    /// flip Stopping… back to Live.
+    ///
+    /// - Parameter status: The running state the session reported.
+    private func setActiveStreamStatus(_ status: StreamStatus) {
+        guard !isStoppingStream else { return }
+        streamStatus = status
     }
 
     /// Settles the Record control from the recording session's own

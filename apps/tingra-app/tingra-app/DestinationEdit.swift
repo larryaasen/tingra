@@ -10,6 +10,7 @@
 import Foundation
 import TingraComposition
 import TingraHost
+import TingraPlugInKit
 
 /// One destination as the streaming panel edits it (GLOSSARY.md,
 /// "Destination"). This is the app's observable session state, merged from the
@@ -62,6 +63,18 @@ struct DestinationEdit: Identifiable, Equatable {
         self.urlText = urlText
         self.name = name
         self.isEnabled = isEnabled
+    }
+
+    /// Starts a destination from a template: the service's name and
+    /// published URL, enabled (DESTINATIONS.md, "Destination templates").
+    ///
+    /// Nothing links the result back to the template — it is an ordinary
+    /// destination from here on, with a fresh id, so the operator's edits and
+    /// a later release changing the template never touch each other.
+    ///
+    /// - Parameter template: The service to start from.
+    init(template: DestinationTemplate) {
+        self.init(urlText: template.url.absoluteString, name: template.name)
     }
 
     /// Adopts a saved destination for editing.

@@ -18,7 +18,7 @@ protocol ProgramOutputControlling: AnyObject, Sendable {
     /// The stream's live state.
     var streamStatus: EngineModel.StreamStatus { get }
 
-    /// Whether a stream is starting, live, or reconnecting.
+    /// Whether a stream is starting, live, reconnecting, or stopping.
     var isStreaming: Bool { get }
 
     /// Whether the project has an enabled destination with a usable URL.
@@ -141,12 +141,14 @@ nonisolated struct ProgramStreamStopTool: Tool {
     let title = "Stop Streaming the Program"
     let description =
         "Take the program off air: a clean stop of the stream to every destination. Takes no arguments. A "
-        + "recording in flight keeps rolling. Not streaming is not an error; 'changed' is false. Returns "
-        + "'stream.state'; follow tingra://session for 'stopped'."
+        + "recording in flight keeps rolling. Not streaming, or a stop already under way, is not an error; "
+        + "'changed' is false. Returns 'stream.state' — 'stopping' while the connections close; follow "
+        + "tingra://session for 'stopped'."
     let inputSchema = ProgramOutputTool.noArguments
 
     func call(_ arguments: JSONValue) async throws -> JSONValue {
-        guard await outputs.isStreaming else {
+        // A stop already under way is the state asked for, not a new change.
+        guard await outputs.isStreaming, await outputs.streamStatus != .stopping else {
             return await ProgramOutputTool.streamResult(of: outputs, changed: false)
         }
         await outputs.stopStreaming()

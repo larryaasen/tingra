@@ -100,6 +100,8 @@ A project is the saved file for an entire show. A project contains presets. A pr
 
 **Destination** — a configured target the program streams to: a streaming service ingest point, a custom server, or a local endpoint. A destination **belongs to the operator, not to a project**: its name, URL, and stable id are saved once in the destination store and are the same in every project, because a Twitch account is not per-show. A project *references* the destinations it streams to by id and records only whether each is enabled for that show. The stream key is never part of either document, living in secure storage under the destination's id.
 
+**Destination template** — a well-known destination a new one can start from: a service's name ("Twitch"), its published URL, and the page where its stream key is found. Contributed by the streaming output plug-in that can reach it, and shipped with the release — never fetched. A template is not a destination: picking one adds an ordinary destination with the name and URL filled in, which keeps no link back to the template. Not a *preset*, which is a composition term (see DESTINATIONS.md, "Destination templates").
+
 **Multiple destinations** — sending the program to several destinations simultaneously. It is **one stream fanned out**, not several streams: one capture, one composite, one timeline, one session. Each destination is a **leg** of that session, with its own connection and its own reconnect budget, so losing one leaves the others on air. Per-destination compression settings are a later iteration; today every leg carries the program's settings.
 
 ## Control and automation

@@ -96,6 +96,12 @@ nonisolated final class ProgramFrameRelay: MonitorFrameSource, Sendable {
         }
     }
 
+    /// The number of the relay's latest change — the one thing the picture
+    /// depends on, since every stored, replaced, or emptied frame moves it.
+    var pictureState: any Equatable {
+        state.withLock { $0.sequence }
+    }
+
     /// Keeps `frame` as the latest, unless the relay is not accepting.
     ///
     /// - Parameter frame: The frame the bus just yielded.

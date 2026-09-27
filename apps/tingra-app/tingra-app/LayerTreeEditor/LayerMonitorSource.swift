@@ -46,6 +46,36 @@ struct LayerMonitorSource: MonitorFrameSource {
         return model.latestFrame(forInput: layer.input)
     }
 
+    /// The selected layer — its input, chain, and frame — its input's
+    /// latest frame, and the program format the frame is placed against:
+    /// all ``image(for:)`` reads, so a slider moved on a still image's
+    /// layer redraws the monitor the moment it moves.
+    ///
+    /// An effect whose instance advances on every apply would stop
+    /// advancing while nothing here changes; no video effect keeps such
+    /// state today.
+    var pictureState: any Equatable {
+        let layer = model.selectedLayer?.layer
+        return PictureState(
+            layer: layer,
+            frame: layer.flatMap { model.latestFrameStamp(forInput: $0.input) },
+            format: model.format
+        )
+    }
+
+    /// What the layer monitor's picture depends on.
+    private struct PictureState: Equatable {
+        /// The selected layer, or nil while nothing is selected.
+        let layer: Layer?
+
+        /// The stamp of the layer's input's latest frame, or nil before it
+        /// delivers one.
+        let frame: MonitorFrameStamp?
+
+        /// The program format the layer's frame is normalized against.
+        let format: ProgramFormat
+    }
+
     /// The frame after the selected layer's chain, scaled to the
     /// proportion of the layer's frame in the program — the picture as
     /// the layer places it, a stretch included, which is what the program

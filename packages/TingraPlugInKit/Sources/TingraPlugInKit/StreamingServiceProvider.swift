@@ -44,6 +44,14 @@ public protocol StreamingServiceProvider: ParameterDescribing {
     /// by scheme; one provider per scheme.
     var schemes: [String] { get }
 
+    /// The well-known destinations this provider streams to — each a
+    /// service's name, published URL, and stream-key page — which a host
+    /// offers when the operator adds a destination (DESTINATIONS.md,
+    /// "Destination templates"). Every template's URL scheme must be one of
+    /// ``schemes``. Empty by default: a provider without well-known services
+    /// declares nothing.
+    var destinationTemplates: [DestinationTemplate] { get }
+
     /// Creates a streaming service for one stream session, configured with
     /// the session's compression and program settings.
     ///
@@ -51,4 +59,12 @@ public protocol StreamingServiceProvider: ParameterDescribing {
     /// - Returns: A fresh service; the caller owns its lifecycle
     ///   (``StreamingService/start(to:)`` through ``StreamingService/stop()``).
     func makeStreamingService(configuration: StreamConfiguration) -> any StreamingService
+}
+
+extension StreamingServiceProvider {
+    /// By default a provider offers no destination templates; one with
+    /// well-known services overrides this. The default is what lets the
+    /// requirement join the protocol without breaking a provider written
+    /// before it (ARCHITECTURE.md, "Plug-in API stability and versioning").
+    public var destinationTemplates: [DestinationTemplate] { [] }
 }

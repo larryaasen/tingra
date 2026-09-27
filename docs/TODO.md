@@ -7,6 +7,24 @@ or two in the doc that owns them — none need a rewrite.
 
 ## Roadmap progress
 
+- [ ] **Display capture across display sleep: built 2026-09-26, not yet seen
+  working live.** ScreenCaptureKit stops a display capture whenever the
+  displays sleep; `DisplayInput` now reports that as `input.interrupted` and
+  restarts on `NSWorkspace`'s screen wake (`input.resumed`). The state machine
+  is unit-tested (ARCHITECTURE.md, "Display capture across display sleep").
+  Remaining: run the new build, put Display 2 in a shot, `pmset
+  displaysleepnow`, wake, and confirm the layer moves again and the log
+  shows the interrupted/resumed pair. `tingra-cli` cannot restart (a
+  command-line process receives no screen wake notification) — decide
+  whether that wants `caffeinate -d` guidance in CLI.md or more.
+- [ ] **Two small defects seen while building the stream's Stopping state
+  (2026-09-26), not fixed.** (1) Record has the gap Stop Streaming had: while
+  a recording is finishing (`RecordingStatus.finalizing`) `RecordButton`
+  already reads Record and can be clicked. (2) `EngineModel.destinationStates`
+  is never cleared when a stream ends, though its doc comment says it is empty
+  when not streaming, so the Streaming pane's per-destination status rows can
+  keep reading Live after a stop.
+
 - [x] **App discovery gaps: all four findings** *(code complete 2026-07-28)*.
   The four findings from the 2026-07-28 test log. The two design-shaped ones
   — live device lists, and the private-aggregate filter — were **recorded and
@@ -1375,16 +1393,38 @@ or two in the doc that owns them — none need a rewrite.
     `ProgramTee`. Tests count frames off synthetic clocks with an explicit
     `.unbounded`; new tests prove the defaults. TingraComposition 212,
     TingraAudio 69, the app 571 green.
-    - [ ] **Monitors draw at 60 Hz unconditionally.** Six `MTKView`s each
+    - [x] **Monitors draw at 60 Hz unconditionally.** Six `MTKView`s each
       redraw through Core Image every display frame whether or not a new
       program frame arrived — the idle 100 % of a core, and the main-thread
       load that tipped the drains. Draw on demand (`enableSetNeedsDisplay`
       + `setNeedsDisplay` when a frame lands) or pin
-      `preferredFramesPerSecond` to the program rate.
+      `preferredFramesPerSecond` to the program rate. *Fixed 2026-09-26,
+      neither way:* a sample of the running app (twelve monitors, 96 % CPU)
+      put 53 % of the main thread in `MonitorView`'s Core Image render. Each
+      `MonitorFrameSource` now reports a `pictureState` — the relay's change
+      number; a frame's buffer and presentation time (`MonitorFrameStamp`);
+      the layer or shot as authored and the program format — and a refresh
+      that finds the state it last drew returns before reading the frame.
+      The display link still paces sampling (CLOCK.md), but only a changed
+      picture renders: program and preview at the program rate, a still
+      image's tile once. Draw-on-demand would have needed a push from every
+      compositor slot; a pinned rate would still redraw unchanged frames.
+      App tests +7 (`MonitorViewTests`). *Measured after:* the eleven
+      monitors of Larry's session submitted 294 command buffers a second —
+      each following its source at about 27 — yet the app still ran near a
+      whole core, since nearly every source is live at the program rate. So
+      the thumbnail tiles (shot bank, layer rows, input grid) now sample at
+      15 frames a second (Larry, 2026-09-26); program, preview, and the
+      layer monitor keep the display's rate.
     - [ ] **What grew main-thread load over the first eleven minutes** of
       both leaking sessions is not known; with the streams bounded it is a
       performance question, not a memory one. Measure with the log window
-      open and closed once the monitor draw cadence is fixed.
+      open and closed once the monitor draw cadence is fixed. *A likely
+      part of it, found 2026-09-26:* the log window's lazy `ScrollView`
+      spent about 0.7 s of main thread per arriving line with a full chunk
+      loaded (18,623 lines), and held 321 MB and growing; it is now an
+      `NSTableView` (`LogLineTable`, about 11 ms a line, 32 MB — ARCHITECTURE.md,
+      "The log window").
     - [ ] **Bound the inputs' `frames()`/`audio()` streams** — generators,
       media, capture. Their consumers are nonisolated and were healthy, but
       the buffers are unbounded; `Input.frames()` has no policy parameter
@@ -3509,6 +3549,19 @@ fixed together on 2026-08-06.
   A run longer than a day is a legitimate thing to want to see, but it wants a
   display that says so. Extracted as `BarsTimecode.string(at:frameRate:)` — pure,
   so the wraparound is verifiable without drawing a frame.
+- [x] **Bars shows the local time of day** *(Larry, 2026-09-27)*. The burned in
+  timecode was the master clock itself — `mach_absolute_time`, the Mac's awake
+  time since boot, wrapped at 24 hours — which read as a plausible but wrong
+  time of day (04:44 at 7:49 AM, thirteen awake days after boot). Each frame
+  now shows the local time of day its tick stands for: the wall clock moved by
+  the tick's distance from the master clock now, read per frame so a clock set
+  or slewed mid-run shows at once, in the Mac's autoupdating time zone, the
+  hour the clock reads across a daylight-saving change. The frame's stamp is
+  unchanged. `BarsTimecode.string(for:frameRate:timeZone:)` and
+  `timeOfDay(at:clockNow:wallNow:)` replace `string(at:frameRate:)`;
+  `BarsGenerator` takes an injectable `wallClock` and `timeZone`. A time of day
+  also lets a viewer estimate the stream's delay against any clock.
+  `TingraGeneratorPlugIns` 82 → 85.
 
   Tests: `TingraGeneratorPlugIns` 46 → 77 (the new `StallReporter`,
   `GeneratorSynthesisFailure`, coordinator-stall, rollback, and timecode suites)

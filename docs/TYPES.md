@@ -70,7 +70,12 @@ internal surface a reader needs to navigate the target instead.
 - `StreamingServiceProvider` — what an output plug-in registers: a factory
   keyed by destination URL scheme that creates a configured
   `StreamingService` per stream; a `ParameterDescribing`, whose declared
-  per-destination settings arrive on `Destination.parameters`.
+  per-destination settings arrive on `Destination.parameters`. May also offer
+  `destinationTemplates` (default none).
+- `DestinationTemplate` — a well-known destination a new one can start from: a
+  service's name, published URL, and stream-key page, contributed by the
+  streaming provider that can reach it (DESTINATIONS.md, "Destination
+  templates"). Not a destination; picking one makes an ordinary one.
 - `StreamingServiceEvent` — a connection event reported after a successful
   start (`connectionLost`); the session drives reconnect policy from it.
 - `StreamingServiceError` — the error currency of `StreamingService.start(to:)`
@@ -331,8 +336,10 @@ internal surface a reader needs to navigate the target instead.
 - `OutputRegistry` — the actor where output plug-ins register their providers —
   streaming (resolved by destination URL scheme) and recording (resolved by
   file extension) — in one registry; the host's concrete `OutputRegistering`.
+  Lists every streaming provider's destination templates, sorted by name.
 - `OutputRegistryError` — errors thrown by the output registry (a scheme, or a
-  recording file extension, already served by another provider).
+  recording file extension, already served by another provider; a destination
+  template on a scheme its provider does not serve).
 - `MediaRegistry` — the actor where media plug-ins register their
   `MediaInputProvider`s and the app resolves a file the operator added to
   the first provider whose content types it conforms to, by the file
@@ -451,6 +458,18 @@ internal surface a reader needs to navigate the target instead.
   a removed display's id no longer resolves to the UUID that is its only
   stable identifier — which also means a resolution or arrangement change
   reports nothing rather than a spurious disconnect/reconnect pair.
+- `DisplayInput` — one display behind the `Input` seam. Its session keeps the
+  capture going across display sleep: a stop ScreenCaptureKit makes on its
+  own is reported as `input.interrupted`, and a display wake starts a fresh
+  capture (`input.resumed`), with the frame stream open throughout.
+- `DisplayCapture` / `DisplayCaptureEnd` / `DisplayCaptureStarter` — the
+  injected capture seam that makes that session unit-testable: one running
+  capture (an `SCStream` and its output in production), why it ended on its
+  own, and the function that starts one.
+- `DisplayPower` / `DisplayPowerEvent` — display sleep and wake from
+  `NSWorkspace`'s screen notifications, observed once per process on the
+  posting thread and fanned out in order; the one AppKit import in an engine
+  package, and received only by an app, never a command-line process.
 - `SystemDefaultInputs` — the system default camera and microphone as input
   identifiers, for resolving the `stream` defaults without importing AVFoundation
   elsewhere.
@@ -467,9 +486,11 @@ internal surface a reader needs to navigate the target instead.
 
 - `GeneratorPlugIn` — contributes the built-in generators as inputs through the
   same registration seam as capture.
-- `BarsGenerator` — SMPTE color bars with burned in timecode
+- `BarsGenerator` — SMPTE color bars with a burned in time-of-day timecode
   (`--video-generator bars`): one IOSurface-backed 32BGRA, BT.709-tagged frame
-  per clock tick.
+  per clock tick, stamped with the tick's master clock time and showing the
+  local time of day it stands for (since 2026-09-27; an injectable wall clock
+  and time zone keep it deterministic under test).
 - `AlignmentGenerator` — industry-standard-style alignment pattern
   (`--video-generator alignment`): a cached crosshatch/alignment frame generated
   once at runtime and copied into fresh buffers thereafter.
@@ -793,7 +814,8 @@ internal surface a reader needs to navigate the target instead.
 - `HaishinKitOutputPlugIn` — contributes the RTMP/RTMPS and SRT providers
   through the output registration seam.
 - `RTMPStreamingServiceProvider` — the provider serving `rtmp://` and `rtmps://`
-  destinations; creates a fresh service per stream.
+  destinations; creates a fresh service per stream, and offers the first-party
+  destination templates (Facebook Live, Twitch, YouTube).
 - `HaishinKitStreamingService` — the concrete RTMP/RTMPS service: connects and
   publishes, compresses internally (VideoToolbox via HaishinKit), appends program
   video as uncompressed sample buffers and audio as PCM buffers carrying the
@@ -1266,7 +1288,11 @@ surface is:
   width. Fields lock while streaming, since v1 adds and removes destinations
   between runs. The key is filed in the Keychain **as it is typed**
   (`EngineModel.setStreamKey`) and prefilled from there: Start Streaming sits in
-  another window now and reads the keys back at the click.
+  another window now and reads the keys back at the click. Add Destination is a
+  pull-down of the destination templates, then Custom Server; a template fills
+  the name and URL and puts the cursor in the key field. The URL field suggests
+  templates as it is typed, a URL matching one names a blank destination, and a
+  matching destination gets a row linking to the service's stream-key page.
 - `DestinationEdit` — the pure, unit-tested destination state behind those rows,
   merged from the two places a destination lives: the name and URL from the
   operator's `StoredDestination`, the enabled flag from this project's
@@ -1276,7 +1302,13 @@ surface is:
   an edited URL keeps its id and therefore its stored key. Lists the store in
   store order: a destination this project never referenced appears disabled
   rather than surprise-live, and a reference to one the operator deleted is
-  dropped.
+  dropped. Starts from a `DestinationTemplate` with the service's name and URL.
+- `DestinationTemplateMatching` (file) — the pure, unit-tested template logic
+  behind the Streaming pane, as an extension on `[DestinationTemplate]`: which
+  templates the URL field suggests as it is typed, and which template a typed
+  URL already is — via `DestinationTemplateURLKey`, a URL reduced to scheme,
+  host, non-default port, path without trailing slashes, and query, so two
+  spellings of one destination compare equal.
 - `MixerView` — the mixer panel: one channel strip per authored audio channel
   and per discovered audio input, each a **column** with a console strip's
   anatomy (2026-09-12, ARCHITECTURE.md "The console mixer"; one row per strip
@@ -1471,6 +1503,7 @@ surface is:
   into the streaming panel's rows as a value collected at the click until the
   rows moved to the settings window (2026-09-08); `EngineModel.startStreaming()`
   now reads each key back from the Keychain, where the Streaming pane filed it.
+  Reads Stopping… and is disabled while the stream closes (2026-09-26).
 - `RecordingPreferences` — where the recordings folder and container persist:
   machine-local `UserDefaults` for the same reasons as `MonitorPreferences`,
   defaulting to `~/Movies/Tingra Recordings` — under Movies, which needs no
@@ -1540,7 +1573,8 @@ surface is:
   stayed on "Show Sidebar" with the sidebar plainly showing.
 - `StatusBarItem` — the pure, unit-tested reading behind it — the lamp state and
   symbol for a stream and for a recording, with idle and stopped reading the
-  same, a file still being closed reading pending rather than off, and both
+  same, a file still being closed or a stream still stopping reading pending
+  rather than off, and both
   faults drawing a warning triangle; plus the informational `programFormat`
   reading, lamp always off, whose label is `ProgramFormatChoice.label(for:)`.
 - `StatusBarPreferences` — whether the bar is shown: machine-local
@@ -2011,14 +2045,23 @@ surface is:
   display rate — one instance over program, another over preview, and one per
   input tile in multiview; it was `ProgramPreviewView` while program was the
   only bus. A source that empties after showing frames (preview cleared) gets
-  one cleared drawable, so the monitor never holds a stale frame.
+  one cleared drawable, so the monitor never holds a stale frame. Since
+  2026-09-26 it draws only a changed picture: a refresh whose source reports
+  the picture state it last drew returns without rendering; and a
+  `maximumFramesPerSecond` caps how often it samples — the thumbnail tiles
+  (shot bank, layer rows, input grid) pass `thumbnailFramesPerSecond`, 15.
 - `MonitorFrameSource` — the seam a monitor reads through, so those cases
   share one draw path: a bus's `ProgramFrameRelay`, an `InputFrameSource`,
   the inspector's `LayerMonitorSource`, or the shot bank's
   `ShotThumbnailSource`. `image(for:)` (2026-09-10, defaulted
   to the frame itself) is the `CIImage` the monitor draws for a frame, which
   is how the layer monitor hands a frame through the layer's chain on the
-  one draw path.
+  one draw path. `pictureState` (2026-09-26) is everything the picture
+  depends on — the relay's change number, a frame's stamp, a layer or shot
+  as authored — so the monitor can skip a refresh with nothing new to show.
+- `MonitorFrameStamp` — one frame's identity for that comparison (2026-09-26):
+  its buffer and presentation time together, since a pool hands a buffer back
+  for a later frame.
 - `LayerMonitorSource` — the inspector's layer monitor's source (2026-09-10;
   ARCHITECTURE.md, "The effect chain says its order, and the layer gets a
   monitor"): the selected layer's input, drawn through the layer's effect
@@ -2293,16 +2336,27 @@ surface is:
   - `LogWindowSink` — the `EventSink` attached only while the window is open and
     not paused: each event as the file sink's line, every group, keeping
     nothing.
-  - `LogWindowView` — the window: a lazy `ScrollView` of monospaced rows under
-    pinned launch headers, ERROR red and DEBUG secondary, following the newest
-    line while scrolled to the bottom; the selected line whole beneath, with
-    Edit ▸ Copy; toolbar Levels menu (Info, Debug, Errors, Taps), Domain and
-    Launch pickers, Pause/Resume, and search; empty states for no log, no
-    match, and a read that could not complete.
+  - `LogWindowView` — the window: the line table (`LogLineTable`), the
+    selected line whole beneath, with Edit ▸ Copy; toolbar Levels menu (Info,
+    Debug, Errors, Taps), Domain and Launch pickers, Pause/Resume, and search;
+    empty states for no log, no match, and a read that could not complete.
+  - `LogLineTable` — the lines (2026-09-26, replacing a lazy `ScrollView`): an
+    AppKit `NSTableView` in an `NSViewRepresentable`, fixed-height monospaced
+    rows, ERROR red and DEBUG secondary, floating launch group rows, Load
+    Earlier Lines hosted in the first row, one selected line, following the
+    newest line while scrolled to the bottom. Its coordinator inserts rows
+    when lines only arrived and reloads otherwise.
+  - `LogLineTableRow` / `LogLineTableChange` — a table row (Load Earlier
+    Lines, a launch header, or a line) with a stable identity, and the change
+    between two sets of rows: none, appended at the end, or reloaded.
+  - `LogLineTableView` — the `NSTableView` subclass answering Edit ▸ Copy for
+    the selected line.
   - `LogWindowCommands` — Window ▸ Log (`logWindow.menuItem`), above the window
     list; the scene's own item is removed. The Logging pane's Show Log button
     (`logShow.button`) opens the same window.
-- `AboutSettingsView` — the About pane: the app's icon, name, and version.
+- `AboutSettingsView` — the About pane: the app's icon, name, and version, and
+  an Uptime section redrawn on the uptime's own minute boundaries by a
+  `TimelineView`.
 - `AppearanceMode` — System, Light, or Dark — three cases rather than a boolean,
   because "follow the system" is a state and not the absence of a choice.
 - `AppearancePreferences` — where that choice persists: machine-local
@@ -2316,6 +2370,10 @@ surface is:
 - `AppVersion` — the pure, unit-tested version assembly the About pane prints —
   the build in parentheses, dropped when it repeats the version, and nothing
   invented for a bundle that names neither.
+- `AppUptime` — the pure, unit-tested uptime wording the About pane prints —
+  "4 min", "1 hour 43 min", "29 hours" — counted from the launch `TingraApp`
+  records as it is created, since `NSRunningApplication.launchDate` is nil for
+  a process LaunchServices did not start.
 
 ## `apps/tingra-cameras`
 
