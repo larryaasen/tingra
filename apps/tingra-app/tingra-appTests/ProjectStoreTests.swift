@@ -102,7 +102,7 @@ struct ProjectStoreTests {
         let description = ProjectStore.eventDescription(of: error)
         #expect(String(describing: error).contains(store.directoryURL.path(percentEncoded: false)))
         #expect(!description.contains(store.directoryURL.path(percentEncoded: false)))
-        #expect(description.contains("Default.tingraproject"))
+        #expect(description.contains("Project 1.tingraproject"))
         #expect(description.contains("(NSCocoaErrorDomain 256)"))
         #expect(description.contains("underlying (NSPOSIXErrorDomain 21)"))
     }
@@ -127,7 +127,7 @@ struct ProjectStoreTests {
         let garbage = Data("not a project".utf8)
         try garbage.write(to: store.fileURL)
         let setAside = try store.setAsideUnreadableFile()
-        #expect(setAside.lastPathComponent == "Default.tingraproject.unreadable")
+        #expect(setAside.lastPathComponent == "Project 1.tingraproject.unreadable")
         #expect(try Data(contentsOf: setAside) == garbage)
         #expect(try store.load() == nil)
     }
@@ -149,9 +149,9 @@ struct ProjectStoreTests {
     func fileLocation() {
         let directory = FileManager.default.temporaryDirectory.appending(path: "tingra-store-location")
         let store = ProjectStore(directory: directory)
-        #expect(store.fileURL.lastPathComponent == "Default.tingraproject")
+        #expect(store.fileURL.lastPathComponent == "Project 1.tingraproject")
         #expect(store.directoryURL == directory)
-        #expect(store.fileURL == directory.appending(path: "Default.tingraproject"))
+        #expect(store.fileURL == directory.appending(path: "Project 1.tingraproject"))
     }
 }
 
@@ -169,10 +169,10 @@ struct ProjectFileStoreTests {
         #expect(store.name == "Sunday Service")
     }
 
-    @Test("the default store is named Default and carries the project extension")
+    @Test("the default store is named Project 1 and carries the project extension")
     func defaultStoreName() {
         let store = ProjectStore()
-        #expect(store.name == "Default")
+        #expect(store.name == "Project 1")
         #expect(store.fileURL.pathExtension == ProjectStore.fileExtension)
         #expect(store.fileURL.lastPathComponent == ProjectStore.fileName)
     }

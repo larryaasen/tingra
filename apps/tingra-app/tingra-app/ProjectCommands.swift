@@ -47,7 +47,7 @@ struct ProjectCommands: Commands {
             Button {
                 model.eventBus.tap("projectNew.menuItem", domain: .composition)
                 Task {
-                    guard let url = await ProjectFilePanel.chooseNewLocation() else { return }
+                    guard let url = await ProjectFilePanel.chooseNewProjectLocation() else { return }
                     await model.newProject(at: url)
                 }
             } label: {
@@ -145,22 +145,99 @@ enum ProjectFilePanel {
         return panel.url
     }
 
-    /// Runs the save panel for a new project file's location.
+    /// Runs the save panel for a new project's location — New Project… —
+    /// with the name field suggesting the next free numbered name in the
+    /// folder the panel shows, Project 1, Project 2, … (``NewProjectName``),
+    /// renumbered as the operator moves between folders until they type a
+    /// name of their own (``NewProjectNameSuggester``).
     ///
-    /// - Parameter suggestedName: The name the panel's field starts with
-    ///   (the localized "Untitled" by default; the open project's name for
-    ///   Save As).
     /// - Returns: The chosen location, or nil when the panel was cancelled.
-    static func chooseNewLocation(
-        suggestedName: String = String(localized: "Untitled", comment: "Default name of a new project file")
-    ) async -> URL? {
+    static func chooseNewProjectLocation() async -> URL? {
+        let panel = makeSavePanel()
+        let suggester = NewProjectNameSuggester()
+        // The panel holds its delegate weakly, so the suggester is kept
+        // alive here for as long as the panel is up.
+        defer { withExtendedLifetime(suggester) {} }
+        suggester.attach(to: panel)
+        guard await panel.begin() == .OK else { return nil }
+        return panel.url
+    }
+
+    /// Runs the save panel for a copy of the open project's location —
+    /// Save As….
+    ///
+    /// - Parameter suggestedName: The name the panel's field starts with —
+    ///   the open project's name.
+    /// - Returns: The chosen location, or nil when the panel was cancelled.
+    static func chooseNewLocation(suggestedName: String) async -> URL? {
+        let panel = makeSavePanel()
+        panel.nameFieldStringValue = suggestedName
+        guard await panel.begin() == .OK else { return nil }
+        return panel.url
+    }
+
+    /// A save panel for a project document: filtered to the project type,
+    /// able to make a folder, and showing the extension.
+    ///
+    /// - Returns: The panel, not yet shown.
+    private static func makeSavePanel() -> NSSavePanel {
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.tingraProject]
         panel.canCreateDirectories = true
         panel.isExtensionHidden = false
-        panel.nameFieldStringValue = suggestedName
-        guard await panel.begin() == .OK else { return nil }
-        return panel.url
+        return panel
+    }
+}
+
+/// Keeps a New Project save panel's name field on the next free numbered
+/// name for the folder the panel is showing (``NewProjectName``): Project 3
+/// in a folder holding Project 1 and Project 2, Project 1 again in an empty
+/// one — renumbered each time the operator moves to another folder, the way
+/// the Finder names a new folder for the folder it lands in.
+///
+/// **A name the operator typed is theirs.** The field is renumbered only
+/// while it still shows the suggestion last put there
+/// (``NewProjectName/fieldShows(_:fieldValue:)``); once the operator types
+/// over it, moving between folders leaves their name alone.
+///
+/// The panel holds its delegate weakly, so the caller keeps the suggester
+/// alive while the panel is up (``ProjectFilePanel/chooseNewProjectLocation()``).
+final class NewProjectNameSuggester: NSObject, NSOpenSavePanelDelegate {
+    /// The name last put in the panel's field — the one the suggester may
+    /// still replace.
+    private var suggestion = ""
+
+    /// Becomes the panel's delegate and fills its name field with the next
+    /// free name in the folder it opens on.
+    ///
+    /// - Parameter panel: The New Project save panel, not yet shown.
+    func attach(to panel: NSSavePanel) {
+        panel.delegate = self
+        suggest(in: panel, for: panel.directoryURL)
+    }
+
+    /// Renumbers the name field for the folder the operator moved to, unless
+    /// they have typed a name of their own.
+    ///
+    /// - Parameters:
+    ///   - sender: The save panel.
+    ///   - url: The folder the panel now shows.
+    func panel(_ sender: Any, didChangeToDirectoryURL url: URL?) {
+        guard let panel = sender as? NSSavePanel,
+            NewProjectName.fieldShows(suggestion, fieldValue: panel.nameFieldStringValue)
+        else { return }
+        suggest(in: panel, for: url)
+    }
+
+    /// Puts the next free name in a folder into the panel's field and
+    /// remembers it as the suggestion.
+    ///
+    /// - Parameters:
+    ///   - panel: The save panel.
+    ///   - directory: The folder to number within.
+    private func suggest(in panel: NSSavePanel, for directory: URL?) {
+        suggestion = NewProjectName.next(in: directory)
+        panel.nameFieldStringValue = suggestion
     }
 }
 

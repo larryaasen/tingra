@@ -110,9 +110,9 @@ struct MixerView: View {
             VStack(spacing: 8) {
                 groupHeading(symbol: "waveform", Text("Master", comment: "Label of the mixer's master strip"))
 
-                PeakReadout(relay: model.meterRelay, subject: .master, eventBus: model.eventBus)
+                PeakReadout(displayLink: model.meterDisplayLink, subject: .master, eventBus: model.eventBus)
 
-                MasterMeter(relay: model.meterRelay)
+                MasterMeter(displayLink: model.meterDisplayLink)
             }
 
             Divider()
@@ -311,7 +311,7 @@ struct MixerView: View {
 
             panSlider(for: strip)
 
-            PeakReadout(relay: model.meterRelay, subject: .strip(strip.id), eventBus: model.eventBus)
+            PeakReadout(displayLink: model.meterDisplayLink, subject: .strip(strip.id), eventBus: model.eventBus)
 
             HStack(spacing: 6) {
                 VerticalSlider(
@@ -337,7 +337,7 @@ struct MixerView: View {
                 }
                 .frame(height: MasterMeter.length)
 
-                StripMeter(relay: model.meterRelay, id: strip.id)
+                StripMeter(displayLink: model.meterDisplayLink, id: strip.id)
             }
 
             levelReadout(gain: strip.level, dimmed: strip.isMuted)

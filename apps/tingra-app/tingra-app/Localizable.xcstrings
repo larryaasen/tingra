@@ -178,6 +178,23 @@
         }
       }
     },
+    "%@ preset" : {
+      "comment" : "Main window subtitle naming the active preset; the placeholder is the preset's name",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Voreinstellung „%@“"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Preajuste %@"
+          }
+        }
+      }
+    },
     "%@ will be removed from the preset. This cannot be undone." : {
       "comment" : "Confirmation alert message before deleting a shot; the placeholder is the shot's name",
       "localizations" : {
@@ -1686,7 +1703,7 @@
       }
     },
     "Default" : {
-      "comment" : "Name of a fresh project's seeded preset\nTransition picker option: take each shot with its own default transition",
+      "comment" : "Transition picker option: take each shot with its own default transition",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -3232,6 +3249,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "macOS conserva por su cuenta los permisos de cámara, micrófono y grabación de pantalla. Para restablecerlos también, ejecuta “tccutil reset All %@” en Terminal."
+          }
+        }
+      }
+    },
+    "Main" : {
+      "comment" : "Name of a fresh project's seeded preset",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Haupt"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Principal"
           }
         }
       }
@@ -4922,6 +4956,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Programa"
+          }
+        }
+      }
+    },
+    "Project %lld" : {
+      "comment" : "Suggested name of a new project file; the placeholder is its number, counting from 1",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Projekt %lld"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Proyecto %lld"
           }
         }
       }
@@ -7399,6 +7450,7 @@
     },
     "Untitled" : {
       "comment" : "Default name of a new project file",
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {

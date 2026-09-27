@@ -122,6 +122,10 @@ struct TingraApp: App {
             // visible where the eye expects it (ARCHITECTURE.md, "Projects
             // as documents").
             .navigationTitle(model.projectName)
+            // Beneath it, the active preset, labeled as one: a bare preset
+            // name under a project's name reads as a second name for the
+            // project (Larry, 2026-09-27). Follows a switch or a rename.
+            .navigationSubtitle(presetSubtitle)
             .navigationDocument(model.projectURL)
             .task {
                 // The unit tests' host launches the app only so the test
@@ -237,6 +241,15 @@ struct TingraApp: App {
         }
         .defaultSize(width: 640, height: 480)
         .commandsRemoved()
+    }
+
+    /// The main window's subtitle: the active preset's name labeled as a
+    /// preset — "Main preset" — or nothing before a preset is active.
+    private var presetSubtitle: Text {
+        guard let name = model.activePresetName else { return Text(verbatim: "") }
+        return Text(
+            "\(name) preset",
+            comment: "Main window subtitle naming the active preset; the placeholder is the preset's name")
     }
 }
 

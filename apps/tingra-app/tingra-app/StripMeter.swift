@@ -14,9 +14,9 @@ import TingraEventBus
 import TingraPlugInKit
 
 /// A plain, lock-guarded holder for the latest meter readings: the writer
-/// (the ``EngineModel``'s meter drain, off the main actor) and the readers
-/// (each strip's ``StripMeter``, on it) share one instance, so the meters
-/// render at reading cadence without pushing a mix tick's worth of state
+/// (the ``EngineModel``'s meter drain, off the main actor) and the reader
+/// (the ``MeterDisplayLink`` moving every meter, on it) share one instance,
+/// so the meters render at reading cadence without pushing a mix tick's worth of state
 /// changes per block through SwiftUI observation — the ``ProgramFrameRelay``
 /// pattern applied to audio (ARCHITECTURE.md, "Per-strip meters").
 ///
@@ -27,8 +27,9 @@ import TingraPlugInKit
 /// all the same — the one thing a peak hold exists to catch
 /// (ARCHITECTURE.md, "The console mixer").
 nonisolated final class MeterRelay: Sendable {
-    /// What the lock guards: the latest readings and the holds.
-    private struct State {
+    /// What the lock guards: the latest readings and the holds — and, read
+    /// whole through ``snapshot``, what one display frame of meters draws.
+    struct Snapshot: Sendable {
         /// The most recent mix tick's readings, keyed by input id.
         var latest: [InputID: MeterReading] = [:]
 
@@ -46,7 +47,14 @@ nonisolated final class MeterRelay: Sendable {
     /// meter drain writes off the main thread and never queues behind it
     /// (ARCHITECTURE.md, "Bounded frame streams"); the meters read under
     /// the same lock at display cadence.
-    private let state = Mutex(State())
+    private let state = Mutex(Snapshot())
+
+    /// Everything the relay holds, read under one lock — how the
+    /// ``MeterDisplayLink`` reads it once per display frame for every meter
+    /// and readout, rather than once per meter.
+    var snapshot: Snapshot {
+        state.withLock { $0 }
+    }
 
     /// The most recent mix tick's readings, keyed by input id — empty before
     /// the first tick.
@@ -121,6 +129,18 @@ enum PeakSubject: Equatable {
         case .master: "master"
         }
     }
+
+    /// The subject's held peak in one read of the relay, or nil when
+    /// nothing has been metered since the last reset.
+    ///
+    /// - Parameter snapshot: The relay's state.
+    /// - Returns: The held sample magnitude, or nil.
+    func heldPeak(in snapshot: MeterRelay.Snapshot) -> Float? {
+        switch self {
+        case .strip(let id): snapshot.heldPeaks[id]
+        case .master: snapshot.heldMasterPeak > 0 ? snapshot.heldMasterPeak : nil
+        }
+    }
 }
 
 /// A meter's **peak hold** readout (GLOSSARY.md, "Meter"): the held peak in
@@ -130,13 +150,15 @@ enum PeakSubject: Equatable {
 /// with the subject's id; nothing else resets one
 /// (ARCHITECTURE.md, "The console mixer").
 ///
-/// Samples the shared ``MeterRelay`` inside a `TimelineView` like the
-/// capsule does, so the hold never passes through SwiftUI observation — at
-/// ten hertz rather than display cadence, since a figure needs no
-/// per-frame redraw.
+/// Observes a ``PeakFigure`` the shared ``MeterDisplayLink`` updates, which
+/// changes only when the figure or its over state does — so the readout
+/// redraws when its hold rises or is reset, and never on a clock. It used
+/// to sample the relay in a ten-hertz `TimelineView`, which alone kept the
+/// whole main window updating at display rate (ARCHITECTURE.md, "Meters off
+/// the SwiftUI clock").
 struct PeakReadout: View {
-    /// The relay holding the peaks.
-    let relay: MeterRelay
+    /// The link that keeps the readout's figure current.
+    let displayLink: MeterDisplayLink
 
     /// Whose hold the readout shows.
     let subject: PeakSubject
@@ -144,51 +166,35 @@ struct PeakReadout: View {
     /// The bus the reset's `tap` is reported on.
     let eventBus: EventBus
 
+    /// The figure the readout shows, owned here and kept current by the
+    /// link while the readout is on screen.
+    @State private var figure = PeakFigure()
+
     /// A sample magnitude at or above which a hold reads as an over — full
     /// scale, 0 dBFS.
     static let overThreshold: Float = 1
 
-    /// How often the readout samples the relay, in seconds.
-    static let sampleInterval: TimeInterval = 0.1
-
     /// The readout: the figure as a plain button that resets the hold.
     var body: some View {
-        TimelineView(.periodic(from: .now, by: Self.sampleInterval)) { _ in
-            let peak = heldPeak
-            let figure = Self.text(forHeldPeak: peak)
-            let isOver = Self.isOver(peak)
-            Button {
-                eventBus.tap("meterPeak.reset", domain: .audio, params: ["id": .string(subject.tapID)])
-                reset()
-            } label: {
-                figure.map { Text($0) } ?? Text("−∞", comment: "Peak readout when nothing has been metered yet")
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(
-                isOver ? AnyShapeStyle(.red) : figure == nil ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.secondary)
-            )
-            .monospacedDigit()
-            .help(Text("Peak (click to reset)", comment: "Help tag on a meter's peak hold readout"))
-            .accessibilityLabel(Text("Peak", comment: "Accessibility label of a meter's peak hold readout"))
-            .accessibilityValue(accessibilityValue(figure: figure, isOver: isOver))
+        let text = figure.text
+        let isOver = figure.isOver
+        Button {
+            eventBus.tap("meterPeak.reset", domain: .audio, params: ["id": .string(subject.tapID)])
+            displayLink.resetPeak(of: subject)
+        } label: {
+            text.map { Text($0) } ?? Text("−∞", comment: "Peak readout when nothing has been metered yet")
         }
-    }
-
-    /// The subject's held peak on the relay, or nil when nothing has been
-    /// metered since the last reset.
-    private var heldPeak: Float? {
-        switch subject {
-        case .strip(let id): relay.heldPeaks[id]
-        case .master: relay.heldMasterPeak > 0 ? relay.heldMasterPeak : nil
-        }
-    }
-
-    /// Resets the subject's hold on the relay.
-    private func reset() {
-        switch subject {
-        case .strip(let id): relay.resetPeak(forInput: id)
-        case .master: relay.resetMasterPeak()
-        }
+        .buttonStyle(.plain)
+        .foregroundStyle(
+            isOver ? AnyShapeStyle(.red) : text == nil ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.secondary)
+        )
+        .monospacedDigit()
+        .help(Text("Peak (click to reset)", comment: "Help tag on a meter's peak hold readout"))
+        .accessibilityLabel(Text("Peak", comment: "Accessibility label of a meter's peak hold readout"))
+        .accessibilityValue(accessibilityValue(figure: text, isOver: isOver))
+        .onAppear { displayLink.register(figure, for: subject) }
+        .onChange(of: subject) { displayLink.register(figure, for: subject) }
+        .onDisappear { displayLink.unregister(figure) }
     }
 
     /// What VoiceOver reads for the figure: the figure itself, marked as an
@@ -233,13 +239,15 @@ struct PeakReadout: View {
 /// arrive (app policy, not meter semantics — ARCHITECTURE.md, "Per-strip
 /// meters").
 ///
-/// The meter draws in a `TimelineView` sampling the shared ``MeterRelay``
-/// each display frame — readings never drive SwiftUI observation, the
-/// preview's `MTKView` rule applied to audio display — and applies its
-/// ballistics at draw time (``MeterBallistics``).
+/// The meter's layers are moved by the shared ``MeterDisplayLink`` each
+/// display frame, sampling the ``MeterRelay`` — readings never drive
+/// SwiftUI observation, the preview's `MTKView` rule applied to audio
+/// display, and its motion never runs SwiftUI's graph (ARCHITECTURE.md,
+/// "Meters off the SwiftUI clock") — with its ballistics applied at draw
+/// time (``MeterBallistics``).
 struct StripMeter: View {
-    /// The relay the meter samples.
-    let relay: MeterRelay
+    /// The link that moves the meter.
+    let displayLink: MeterDisplayLink
 
     /// The strip's input id — the relay key.
     let id: InputID
@@ -247,7 +255,7 @@ struct StripMeter: View {
     /// The meter body: one standing capsule over the strip's pre-fader
     /// reading, as tall as the fader beside it.
     var body: some View {
-        MeterCapsule(thickness: 6, axis: .vertical) { relay.latest[id] ?? .floor }
+        MeterCapsule(displayLink: displayLink, subject: .strip(id), thickness: 6, axis: .vertical)
             .frame(height: MasterMeter.length)
             .help(Text("Meter", comment: "Help tag and accessibility label of a channel strip's meter"))
             .accessibilityLabel(
@@ -270,8 +278,8 @@ struct StripMeter: View {
 /// beside the monitor fader the way a console's master meter stands beside
 /// its fader, both over one ``length``.
 struct MasterMeter: View {
-    /// The relay the meter samples.
-    let relay: MeterRelay
+    /// The link that moves the meter.
+    let displayLink: MeterDisplayLink
 
     /// The meter's travel in points — shared by every fader and meter on the
     /// panel, the strips' and the monitor's, so they all read against one
@@ -281,8 +289,8 @@ struct MasterMeter: View {
     /// The master meter body: the left channel beside the right, standing.
     var body: some View {
         HStack(spacing: 3) {
-            MeterCapsule(thickness: 5, axis: .vertical) { relay.master.left }
-            MeterCapsule(thickness: 5, axis: .vertical) { relay.master.right }
+            MeterCapsule(displayLink: displayLink, subject: .masterLeft, thickness: 5, axis: .vertical)
+            MeterCapsule(displayLink: displayLink, subject: .masterRight, thickness: 5, axis: .vertical)
         }
         .frame(height: Self.length)
         .help(Text("Master meter", comment: "Help tag and accessibility label of the master's meter"))
@@ -292,20 +300,30 @@ struct MasterMeter: View {
 }
 
 /// One meter capsule: an RMS bar over broadcast green/yellow/red zones with
-/// a decayed peak marker, drawn at display cadence.
+/// a decayed peak marker, moved at display cadence.
 ///
 /// Shared by ``StripMeter`` and ``MasterMeter`` so the scale, the zone
 /// boundaries, and the ballistics can never drift between the two meters an
-/// operator reads side by side. The reading arrives through a closure the
-/// capsule calls **inside** its `TimelineView`, so readings never pass
-/// through SwiftUI observation — the `MTKView` preview's rule applied to
-/// audio display (ARCHITECTURE.md, "Per-strip meters").
+/// operator reads side by side. It draws with a layer-backed
+/// ``MeterCapsuleView`` the shared ``MeterDisplayLink`` moves every display
+/// frame, reading the relay itself — so readings never pass through SwiftUI
+/// observation, the `MTKView` preview's rule applied to audio display
+/// (ARCHITECTURE.md, "Per-strip meters"), and the meter's motion never runs
+/// SwiftUI's graph: the `TimelineView` it was drawn in until 2026-09-27
+/// recomputed every view in the main window every frame (ARCHITECTURE.md,
+/// "Meters off the SwiftUI clock").
 ///
 /// The capsule fills along one ``axis``: bottom to top standing beside a
 /// fader (every meter on the panel since the console layout), or left to
 /// right lying down — the same scale and zones either way, only the
-/// direction differs.
-struct MeterCapsule: View {
+/// direction differs. The geometry below is the view's, unit-tested here.
+struct MeterCapsule: NSViewRepresentable {
+    /// The link that moves the capsule.
+    let displayLink: MeterDisplayLink
+
+    /// Whose reading the capsule shows.
+    let subject: MeterSubject
+
     /// The capsule's thickness in points — its height lying horizontally,
     /// its width standing vertically.
     let thickness: CGFloat
@@ -314,53 +332,25 @@ struct MeterCapsule: View {
     /// leading edge, `.vertical` from the bottom.
     var axis: Axis = .horizontal
 
-    /// The latest reading, sampled once per drawn frame.
-    let reading: @MainActor () -> MeterReading
+    /// Makes the capsule's view; it starts moving once it is in a window.
+    func makeNSView(context: Context) -> MeterCapsuleView {
+        MeterCapsuleView(displayLink: displayLink, subject: subject, axis: axis)
+    }
 
-    /// The draw-time ballistics state (a plain class held per view
-    /// identity, deliberately unobserved).
-    @State private var ballistics = MeterBallistics()
+    /// Carries a changed subject or axis to the view.
+    func updateNSView(_ nsView: MeterCapsuleView, context: Context) {
+        nsView.subject = subject
+        nsView.axis = axis
+    }
 
-    /// The broadcast zone gradient over the meter's −60…0 dBFS scale:
-    /// green through −20 dBFS, yellow through −6, red above — the fill is
-    /// masked to the current level, so the zones sit at fixed positions.
-    private static let zones = Gradient(stops: [
-        .init(color: .green, location: 0),
-        .init(color: .green, location: 0.62),
-        .init(color: .yellow, location: 0.70),
-        .init(color: .yellow, location: 0.87),
-        .init(color: .red, location: 0.95),
-        .init(color: .red, location: 1),
-    ])
-
-    /// The capsule, redrawn at display cadence off the latest reading.
-    var body: some View {
-        TimelineView(.animation) { timeline in
-            let smoothed = ballistics.smoothed(reading(), at: timeline.date)
-            Canvas { context, size in
-                let track = Path(
-                    roundedRect: CGRect(origin: .zero, size: size), cornerRadius: min(size.width, size.height) / 2)
-                context.fill(track, with: .style(.quaternary))
-                context.clip(to: track)
-                if smoothed.rms > 0 {
-                    let zoneLine = Self.zoneLine(in: size, axis: axis)
-                    context.fill(
-                        Path(Self.barRect(fraction: smoothed.rms, in: size, axis: axis)),
-                        with: .linearGradient(Self.zones, startPoint: zoneLine.start, endPoint: zoneLine.end)
-                    )
-                }
-                if smoothed.peak > 0 {
-                    context.fill(
-                        Path(Self.peakRect(fraction: smoothed.peak, in: size, axis: axis)),
-                        with: .style(.primary)
-                    )
-                }
-            }
+    /// Sizes the capsule: ``thickness`` across its axis, whatever it is
+    /// offered along it — the frame the `Canvas` capsule set on itself.
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: MeterCapsuleView, context: Context) -> CGSize? {
+        let offered = proposal.replacingUnspecifiedDimensions()
+        switch axis {
+        case .horizontal: return CGSize(width: offered.width, height: thickness)
+        case .vertical: return CGSize(width: thickness, height: offered.height)
         }
-        .frame(
-            width: axis == .vertical ? thickness : nil,
-            height: axis == .horizontal ? thickness : nil
-        )
     }
 
     /// The RMS bar for a fill `fraction` (`0`…`1`) of a capsule of `size`:

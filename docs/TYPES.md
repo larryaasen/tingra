@@ -1411,8 +1411,15 @@ surface is:
   the held peak in dBFS to one decimal above the meter, `−∞` until anything
   is metered, red (and "over" to VoiceOver) once the hold reached full scale;
   a plain button that resets the hold, reporting `meterPeak.reset` with the
-  subject's id — a strip's input id, or `master`. Samples the relay in a
-  ten-hertz `TimelineView`, never through observation.
+  subject's id — a strip's input id, or `master`. Observes a `PeakFigure`
+  the `MeterDisplayLink` writes only when the figure changes (2026-09-27;
+  a ten-hertz `TimelineView` before, which alone kept the main window
+  updating at display rate).
+- `PeakFigure` — what one peak readout shows (2026-09-27): an `@Observable`
+  holding the hold's text and whether it is an over, remade only when the
+  raw hold moves and published only when either value changes, so a readout
+  redraws when its hold rises past a tenth of a decibel or resets and never
+  on a clock. Unit-tested.
 - `MasterMeter` — the master's meter: two capsules showing the program mix
   post-fader, one per program channel — stereo because the master is where the
   operator judges the stereo image; standing, left beside right, over the same
@@ -1420,18 +1427,39 @@ surface is:
 - `MeterCapsule` — the one capsule both meters draw, so the scale, the zone
   boundaries, and the ballistics can never drift between two meters read side by
   side — an RMS bar over broadcast green/yellow/red zones with a decayed peak
-  marker, drawn at display cadence in a `TimelineView` sampling the shared
-  `MeterRelay` the model's meter drain fills, so readings never churn SwiftUI
-  observation. Fills along one axis — upward standing beside a fader, every
-  meter on the panel since the console layout, or rightward lying down —
-  through unit-tested geometry helpers.
+  marker. An `NSViewRepresentable` over a `MeterCapsuleView` the shared
+  `MeterDisplayLink` moves at display cadence off the `MeterRelay` the model's
+  meter drain fills, so readings never churn SwiftUI observation and the
+  meter's motion never runs SwiftUI's graph (2026-09-27; drawn in a
+  `TimelineView` before, which recomputed the whole main window every frame).
+  Fills along one axis — upward standing beside a fader, every meter on the
+  panel since the console layout, or rightward lying down — through
+  unit-tested geometry helpers.
+- `MeterCapsuleView` / `MeterSubject` — the capsule's layer-backed, flipped
+  `NSView` (2026-09-27): its own layer the rounded track, a `CAGradientLayer`
+  of the zones clipped to the RMS level, and a peak-marker layer, placed by
+  `MeterCapsule`'s geometry helpers and resolved for light and dark in
+  `updateLayer()`; display only, it takes no clicks. A frame whose displayed
+  fractions did not move commits nothing. `MeterSubject` is what one capsule
+  shows — a strip's reading, or the master's left or right. Unit-tested.
+- `MeterDisplayLink` — the one display link every meter and peak readout on
+  screen shares (2026-09-27; ARCHITECTURE.md, "Meters off the SwiftUI
+  clock"), owned by the model beside `meterRelay`: a window display link in
+  the common run-loop modes, started by the first capsule into a window and
+  stopped with the last one out, and paused while that window is fully
+  covered (its occlusion state, followed as it changes). Each frame it reads `MeterRelay.snapshot`
+  once, steps every registered `MeterCapsuleView`, and shows every registered
+  `PeakFigure` its subject's hold; `resetPeak(of:)` resets a hold and updates
+  its figures in the same frame. One link rather than one per capsule, since
+  each link's frame is a Core Animation commit of its own. Unit-tested.
 - `MeterRelay` — the lock-guarded, nonisolated holder the meter drain writes
   off the main actor and the meters sample on it: the latest tick's strip
   readings and master reading, plus each meter's **peak hold** (2026-09-12)
   — the loudest sample since its last reset, folded **per block** by
   `fold(_:)` rather than at draw time, so a hot block while the window is
   occluded is held all the same; `resetPeak` per strip and `resetMasterPeak`.
-  Unit-tested.
+  Its `Snapshot` — everything it holds, read under one lock — is how the
+  `MeterDisplayLink` reads it once a frame (2026-09-27). Unit-tested.
 - `ProgramFrameRelay` — the lock-guarded, nonisolated holder of the latest
   program (or preview) frame (2026-09-12, ARCHITECTURE.md "Bounded frame
   streams"; a `@MainActor` class before that): the program drain stores off
@@ -2028,7 +2056,8 @@ surface is:
   between original and copy holds the on-program shot — and a rename that
   ignores empty names.
 - `ProjectStore` — loads and saves one `.tingraproject` document: the
-  default project's under `~/Library/Application Support/Tingra` (what a
+  default project's, `Project 1.tingraproject` (`Default.tingraproject`
+  until 2026-09-27), under `~/Library/Application Support/Tingra` (what a
   fresh install opens and the Data pane removes), or, since 2026-09-13, any
   file the operator named and placed (`init(fileURL:)`), with the `name` the
   window title shows; sets the default project's unreadable file aside
@@ -2040,7 +2069,17 @@ surface is:
   autosaved project the engine keeps open, not a `DocumentGroup`; New, Open,
   and Open Recent disabled while streaming or recording.
 - `ProjectFilePanel` — the AppKit open and save panels those items run,
-  filtered to the project document's type (`UTType.tingraProject`).
+  filtered to the project document's type (`UTType.tingraProject`); New
+  Project…'s save panel suggests a numbered name, Save As…'s the open
+  project's.
+- `NewProjectName` — the pure, unit-tested name New Project… suggests
+  (2026-09-27): Project 1, Project 2, … — the lowest number whose project file
+  is not already in the folder, the Finder's rule for a new folder (per
+  folder, gaps filled first, only `.tingraproject` files counted, case
+  ignored) — and whether the panel's field still shows that suggestion.
+- `NewProjectNameSuggester` — the New Project save panel's delegate:
+  renumbers the name field for each folder the operator moves to, until they
+  type a name of their own.
 - `ProjectSwitch` — the pure rule behind the disabled items and the model's
   refusal to replace the open project: the program format's own
   (`"streaming"` / `"recording"` / nil).

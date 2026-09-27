@@ -27,10 +27,21 @@ import TingraComposition
 struct ProjectStore {
     /// The file name of the default project. `.tingraproject` is the
     /// project document's extension; the content is JSON.
-    static let fileName = "Default.tingraproject"
+    ///
+    /// **Project 1**, the first of the numbered names File > New Project
+    /// suggests (``NewProjectName``), so the project a fresh install opens
+    /// reads as a project in the window title rather than as the name of the
+    /// preset inside it (2026-09-27; it was `Default.tingraproject`, which the
+    /// seeded preset's old name "Default" made ambiguous). Fixed rather than
+    /// localized: it is a location the app has to find again on every launch,
+    /// and a name that followed the system language would lose the project
+    /// the day the language changed.
+    static let fileName = "Project 1.tingraproject"
 
-    /// The project document's file extension, without the dot.
-    static let fileExtension = "tingraproject"
+    /// The project document's file extension, without the dot. Nonisolated
+    /// so the pure naming rules (``NewProjectName``) can read it off the main
+    /// actor.
+    nonisolated static let fileExtension = "tingraproject"
 
     /// The directory holding the project file.
     let directoryURL: URL

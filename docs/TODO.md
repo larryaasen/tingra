@@ -1430,6 +1430,46 @@ or two in the doc that owns them — none need a rewrite.
       the buffers are unbounded; `Input.frames()` has no policy parameter
       (stability contract), so the bound goes inside each conformer, with
       the generators' and media tests taught to attach before ticking.
+  - [x] **Meters off the SwiftUI clock** *(a defect found and fixed
+    2026-09-27; record in ARCHITECTURE.md, "Meters off the SwiftUI clock")*.
+    The meters' `TimelineView(.animation)` advanced the main window's
+    SwiftUI time every frame: measured on Larry's debug instance, 120 full
+    passes a second (two a frame), each recomputing all 561 view frames,
+    about 14 % of a core in `NSHostingView.layout()`. A harness showed the
+    peak readouts' ten-hertz timelines did the same alone — any
+    `TimelineView` at 0.25 s or faster runs its window at display rate.
+    Now one `MeterDisplayLink` (a window display link, owned by the model)
+    reads `MeterRelay.snapshot` once a frame and moves every
+    `MeterCapsuleView`'s layers; each `PeakReadout` observes a `PeakFigure`
+    written only when its text or over state changes. Harness with the real
+    sources: 0 SwiftUI passes a second at rest, and one link at 3–4 % of a
+    core where per-capsule links cost 8–12 % and the SwiftUI meters 18–24 %.
+    App tests 733 → 754.
+    - [x] Check by hand in the app: the meters and readouts moving with
+      real input, a readout's click-to-reset, the meters moving while a
+      fader is dragged, light and dark. Not seen by the building session —
+      Larry's Xcode debug instance was running; the harness screenshots
+      matched the `Canvas` meter. *Checked by Larry in the app, 2026-09-27:
+      it works.*
+    - [x] Does a window's display link pause while the window is occluded
+      or minimized? A hidden meter need not move (the holds fold in the
+      relay regardless); if it does not pause, pause it on the window's
+      occlusion state. *Measured 2026-09-27 in a harness over the real
+      sources, frames a second:* visible 60, **minimized 0**, **app hidden
+      (⌘H) 0**, restored and unhidden 60 again — but **fully covered by
+      another window, 60**, with `occlusionState` not `.visible`. So only
+      the covered case remains: pause the link on
+      `NSWindow.didChangeOcclusionStateNotification`. *Built 2026-09-27 at
+      Larry's go-ahead:* `MeterDisplayLink` follows its window's occlusion
+      state and pauses while no part of it is visible; the same harness now
+      reads covered 0, uncovered 60, and a window filled before it appears
+      starts paused and resumes as it shows. App tests +2.
+    - [ ] Every pass in the main window ran twice, about a millisecond
+      apart — one in the display cycle's commit, a second in the idle step
+      that follows, set off by the first pass's own invalidation. With the
+      meters off the clock the passes are event-driven and rare, but each
+      one (a fader drag's, say) still costs double. Not yet traced to a
+      cause.
   - [x] **Projects as documents** *(added, decided, and built 2026-09-13 on
     Larry noticing the app could only open the default project; record in
     ARCHITECTURE.md, "Projects as documents")*. A File menu — New Project…

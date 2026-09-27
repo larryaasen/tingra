@@ -462,6 +462,12 @@ final class EngineModel {
         didSet { recordSessionPosition() }
     }
 
+    /// The active preset's name, or nil before a preset is active — what the
+    /// window's subtitle shows beneath the project's name (``TingraApp``).
+    var activePresetName: String? {
+        presets.first { $0.id == activePresetID }?.name
+    }
+
     /// The active preset's shots, in switcher order — what the shot bank
     /// shows (roadmap step 7; ARCHITECTURE.md, "The shot bank"). The live
     /// session copy: edits land here (and in the compositor) first, and the
@@ -1098,10 +1104,16 @@ final class EngineModel {
 
     /// The latest mix tick's meter readings, handed to the strip meters to
     /// draw — the audio mirror of ``programRelay``: the meter drain writes
-    /// it, each ``StripMeter`` samples it at display cadence, and no reading
+    /// it, ``meterDisplayLink`` samples it at display cadence, and no reading
     /// passes through SwiftUI observation (ARCHITECTURE.md, "Per-strip
     /// meters").
-    @ObservationIgnored let meterRelay = MeterRelay()
+    @ObservationIgnored let meterRelay: MeterRelay
+
+    /// The one display link every meter and peak readout on screen shares,
+    /// reading ``meterRelay`` once a frame and moving the meters' layers
+    /// outside SwiftUI's graph (ARCHITECTURE.md, "Meters off the SwiftUI
+    /// clock"). Idle until a meter is in a window.
+    @ObservationIgnored let meterDisplayLink: MeterDisplayLink
 
     /// The same mix ticks as app-tier plug-ins follow them: the meter drain
     /// folds each block in, and a connection that subscribed is sent its
@@ -1576,6 +1588,9 @@ final class EngineModel {
         self.recordingFolder = recordingPreferences.folder
         self.recordingContainer = recordingPreferences.container
         self.snapshotFolder = snapshotPreferences.folder
+        let meterRelay = MeterRelay()
+        self.meterRelay = meterRelay
+        self.meterDisplayLink = MeterDisplayLink(relay: meterRelay)
     }
 
     /// Boots the engine: attaches the log sinks and records the launch,
@@ -5169,7 +5184,7 @@ final class EngineModel {
     /// discovered rather than started: a generator needs no authorization, so
     /// the seed can reference it before it runs.
     private struct SeededShow {
-        /// The seeded preset, named Default.
+        /// The seeded preset, named Main.
         let preset: Preset
 
         /// Whether the seed references the bars generator, which then needs
@@ -5180,14 +5195,19 @@ final class EngineModel {
     /// Seeds the built-in arrangement around the first discovered display
     /// and camera that are running.
     ///
+    /// The preset is named **Main** (2026-09-27; it was "Default", which read
+    /// as the project's name once both sat in the window's title bar — the
+    /// default project's file was `Default.tingraproject` — and as "the
+    /// fallback" rather than the show's first preset).
+    ///
     /// - Returns: The seeded preset.
     private func seededShow() -> SeededShow {
         let displayID = displays.first { activeInputs[$0.id] != nil }?.id
         let cameraID = cameras.first { activeInputs[$0.id] != nil }?.id
         let barsID = videoInputs.first { $0.id == BarsGenerator.inputID }?.id
         let preset = Preset(
-            id: PresetID(rawValue: "default"),
-            name: String(localized: "Default", comment: "Name of a fresh project's seeded preset"),
+            id: PresetID(rawValue: "main"),
+            name: String(localized: "Main", comment: "Name of a fresh project's seeded preset"),
             shots: ProgramLayout.shots(displayID: displayID, cameraID: cameraID, barsID: barsID)
         )
         return SeededShow(preset: preset, referencesBars: barsID != nil)
