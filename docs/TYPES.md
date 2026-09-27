@@ -1208,7 +1208,10 @@ surface is:
   edge, the Add Shot menu (`AddShotMenu`) over Add Preset, made a new one of
   each (2026-09-07), until the Add Shot row went the same day — adding a shot
   is now the Shots section header's context menu, an Add Shot submenu of the
-  shared `AddShotMenuItems`, leaving Add Preset alone at the bottom. The
+  shared `AddShotMenuItems`, leaving Add Preset alone at the bottom — until
+  it too moved into its header's context menu (2026-09-27): Add Preset is an
+  item on the Presets section header, and the sidebar has no bottom-edge
+  control. The
   audio and destination rows otherwise read rather than switch — the channel
   strips, the monitor picker, and the streaming panel already own those
   decisions — and listing a device starts nothing, so no camera indicator lights
@@ -2177,6 +2180,10 @@ surface is:
   first nine carry ⌘1–⌘9, which moved here from the preview row's buttons when
   those became optional — a key whose control may be off screen belongs in the
   menu bar.
+- `PresetCommands` — the Presets menu, between Program and Shots: an Add
+  Preset item, then one checkmark toggle per preset in the project, in sidebar
+  order and under the preset's own name, switching to it with the active one
+  checked (2026-09-27). No shortcuts — ⌘1–⌘9 stay the shots'.
 - `ProgramLayout` — the pure, unit-tested arrangement that seeds a fresh
   project's picture-in-picture, display, and camera shots, and — when the bars
   generator is registered — a full-frame Bars shot after them, the one

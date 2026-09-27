@@ -21,9 +21,9 @@ import TingraEventBus
 /// A menu rather than a settings pane because the format is **document
 /// state** — it saves with the project, like Keynote's slide size — and the
 /// app's settings panes hold what is set once per operator. It leads the
-/// app's own menus (before Shots and Layer) because the program is what a
-/// shot is composed onto and a layer sits in: the signal path's order, the
-/// sidebar's rule.
+/// app's own menus (before Presets, Shots, and Layer) because the program is
+/// what a shot is composed onto and a layer sits in: the signal path's order,
+/// the sidebar's rule.
 ///
 /// **Disabled while streaming or recording.** The sinks' compression
 /// sessions are open at a size; the model refuses a change then too

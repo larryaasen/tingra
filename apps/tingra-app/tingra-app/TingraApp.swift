@@ -148,6 +148,7 @@ struct TingraApp: App {
             SidebarVisibilityCommands(model: model, visibility: $sidebarVisibility)
             InspectorCommands(model: model, isPresented: $isInspectorPresented)
             ProgramCommands(model: model, isCustomSizePresented: $isCustomSizePresented)
+            PresetCommands(model: model)
             ShotCommands(model: model)
             LayerCommands(model: model)
             MultiviewCommands(model: model)

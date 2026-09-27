@@ -681,6 +681,7 @@
     },
     "Add a new empty preset to the project" : {
       "comment" : "Tooltip on the sidebar's Add Preset button",
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -4108,6 +4109,23 @@
         }
       }
     },
+    "No Presets" : {
+      "comment" : "Placeholder item in the Presets menu when the project has none",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Voreinstellungen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sin preajustes"
+          }
+        }
+      }
+    },
     "No presets in this project" : {
       "comment" : "Sidebar placeholder when the project has no presets",
       "localizations" : {
@@ -4841,7 +4859,7 @@
       }
     },
     "Presets" : {
-      "comment" : "Sidebar section heading over the project's presets",
+      "comment" : "Sidebar section heading over the project's presets\nTitle of the Presets menu, listing the project's presets",
       "localizations" : {
         "de" : {
           "stringUnit" : {

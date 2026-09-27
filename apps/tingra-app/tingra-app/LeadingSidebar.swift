@@ -68,21 +68,21 @@ import TingraPlugInKit
 /// bus. Preset *management* — duplicate, rename, reorder, remove — is the
 /// row's context menu (``PresetContextMenu``), and a shot row carries the
 /// matching one (``ShotContextMenu``: duplicate, rename, default transition,
-/// reorder, delete — the last asking first). **Adding a preset** is the one
-/// control pinned to the sidebar's bottom edge: the sidebar is the one place
-/// presets are always listed (the main window's preset switcher row was
-/// removed 2026-09-06 as a repeat of this list), so Add Preset sits where
-/// Notes puts New Folder, Reminders puts Add List, and Calendar puts its
-/// **+**: a plain, borderless `plus.circle` label across the bottom of the
-/// source list, in a bottom safe-area inset rather than a last row, so it
-/// stays put while the sections above it scroll. **Adding a shot** is the
-/// Shots section header's context menu — an **Add Shot** submenu of the same
-/// items the plus button beside the bank's Shots heading and the menu bar's
-/// Shots menu offer (``AddShotMenuItems``: an empty shot, or a full-frame
-/// shot of any camera, display, or video generator). It replaced an Add Shot
-/// row over Add Preset at the bottom edge (2026-09-07): with the bank's
-/// button and the Shots menu both in reach, a third always-visible control
-/// for the same action was one more than the sidebar needed.
+/// reorder, delete — the last asking first). **Adding a preset** is the
+/// Presets section header's context menu — an **Add Preset** item — the
+/// sidebar being the one place presets are always listed (the main window's
+/// preset switcher row was removed 2026-09-06 as a repeat of this list). It
+/// replaced a borderless `plus.circle` Add Preset button pinned to the
+/// sidebar's bottom edge (2026-09-27), so the sidebar carries no control of
+/// its own beneath the sections and both things the operator makes here are
+/// made the same way. **Adding a shot** is the Shots section header's
+/// context menu — an **Add Shot** submenu of the same items the plus button
+/// beside the bank's Shots heading and the menu bar's Shots menu offer
+/// (``AddShotMenuItems``: an empty shot, or a full-frame shot of any camera,
+/// display, or video generator). It replaced an Add Shot row over Add Preset
+/// at the bottom edge (2026-09-07): with the bank's button and the Shots
+/// menu both in reach, a third always-visible control for the same action
+/// was one more than the sidebar needed.
 ///
 /// The audio sections and the destination section stay inert, which is the
 /// same rule rather than an inconsistency: staging has no meaning for a
@@ -238,10 +238,6 @@ struct LeadingSidebar: View {
             destinationSection
         }
         .listStyle(.sidebar)
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            addPresetButton
-                .background(.bar)
-        }
         .navigationSplitViewColumnWidth(
             min: Self.minimumWidth,
             ideal: Self.idealWidth,
@@ -356,15 +352,33 @@ struct LeadingSidebar: View {
     /// Each row carries the preset context menu — duplicate, rename, reorder,
     /// remove — through ``PresetContextMenu``, with the sidebar's own `tap`
     /// names and Move Up / Move Down, since a vertical list moves things
-    /// vertically (``PresetMenuSurface``). Adding a preset is
-    /// ``addPresetButton``, below the list.
+    /// vertically (``PresetMenuSurface``).
+    ///
+    /// **Adding a preset is the header's context menu**, the Shots header's
+    /// shape one section up: a right-click on the heading that names the
+    /// presets offers **Add Preset**, a new empty one at the end of the list
+    /// (``EngineModel/addPreset()``). A plain item rather than a submenu, since
+    /// a preset has no kinds to choose among. It replaced the Add Preset
+    /// button pinned to the sidebar's bottom edge (2026-09-27, Larry). Never
+    /// disabled: a project can always hold one more preset. The whole header
+    /// row answers the right-click, not just the word.
     ///
     /// Switching **never interrupts what is on program** (GLOSSARY.md,
     /// "Preset"), so this row is safe to click while live.
     private var presetSection: some View {
         stagingSection(
             .presets,
-            header: Text("Presets", comment: "Sidebar section heading over the project's presets"),
+            header: Text("Presets", comment: "Sidebar section heading over the project's presets")
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(.rect)
+                .contextMenu {
+                    Button {
+                        model.eventBus.tap("sidebarPresetAdd.menuItem", domain: .composition)
+                        model.addPreset()
+                    } label: {
+                        Text("Add Preset", comment: "Button adding a new empty preset to the project")
+                    }
+                },
             rows: SidebarRow.rows(presets: model.presets, active: model.activePresetID),
             symbol: "square.stack",
             emptyLabel: Text(
@@ -388,74 +402,6 @@ struct LeadingSidebar: View {
         }
     }
 
-    /// The Add Preset button across the sidebar's bottom edge, adding a new
-    /// empty preset to the project (``EngineModel/addPreset()``).
-    ///
-    /// This is the standard macOS placement for "make another of the things
-    /// this sidebar lists" — Notes' New Folder, Reminders' Add List, Calendar's
-    /// **+** — and it is drawn the way those are: borderless, a `plus.circle`
-    /// beside the title, leading-aligned with the rows above, with the
-    /// system's bar material behind it. The inset keeps the control in view
-    /// while the sections scroll, but rows still scroll *under* an inset, so
-    /// without a backing of its own the last rows showed through the button
-    /// and the two labels overprinted (found 2026-09-24); the bar material is
-    /// the same backing the window's status bar uses. Never disabled: a
-    /// project can always hold one more preset. Add Shot was a second row
-    /// above it until 2026-09-07 and moved into the Shots section's context
-    /// menu, the bank's heading, and the menu bar (``AddShotMenuItems``).
-    private var addPresetButton: some View {
-        addButton(
-            Text("Add Preset", comment: "Button adding a new empty preset to the project"),
-            help: Text(
-                "Add a new empty preset to the project", comment: "Tooltip on the sidebar's Add Preset button")
-        ) {
-            model.eventBus.tap("sidebarPresetAdd.button", domain: .composition)
-            model.addPreset()
-        }
-        .padding(.horizontal, Self.addButtonsInset)
-        .padding(.vertical, Self.addButtonsInset - Self.addButtonRowPadding)
-    }
-
-    /// The ``addPresetButton``'s shape: a borderless `plus.circle` label
-    /// spanning the sidebar's width, so the whole row answers the click.
-    ///
-    /// - Parameters:
-    ///   - title: The button's title.
-    ///   - help: Its tooltip.
-    ///   - action: What a click performs, including its `tap`.
-    /// - Returns: The button.
-    private func addButton(_ title: Text, help: Text, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            addLabel(title)
-        }
-        .buttonStyle(.borderless)
-        .foregroundStyle(.secondary)
-        .help(help)
-    }
-
-    /// The label of an add control: a `plus.circle` beside the title, the
-    /// whole row wide so the whole row answers the click.
-    ///
-    /// - Parameter title: The control's title.
-    /// - Returns: The label.
-    private func addLabel(_ title: Text) -> some View {
-        Label {
-            title
-        } icon: {
-            Image(systemName: "plus.circle")
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, Self.addButtonRowPadding)
-        .contentShape(.rect)
-    }
-
-    /// The add button's inset from the sidebar's edges: the list's own row
-    /// inset, so its glyph lines up with the row glyphs above it.
-    private static let addButtonsInset: CGFloat = 10
-
-    /// The vertical padding inside the add button's row.
-    private static let addButtonRowPadding: CGFloat = 4
-
     /// The shot section: one row per **authored** shot in the active preset,
     /// staging it on preview when clicked and lit with that shot's tally.
     ///
@@ -466,11 +412,11 @@ struct LeadingSidebar: View {
     ///
     /// The header carries the section's own context menu: an **Add Shot**
     /// submenu of the shared items (``AddShotMenuItems``), so a right-click on
-    /// the heading that names the shots is a way to make one — the only
-    /// section header with a menu, because it is the only section listing
-    /// things the operator makes here (presets have their bottom-edge button,
-    /// devices are discovered). The whole header row answers the right-click,
-    /// not just the word.
+    /// the heading that names the shots is a way to make one — one of the two
+    /// section headers with a menu, beside the Presets header's Add Preset,
+    /// because they are the two sections listing things the operator makes
+    /// here (devices are discovered). The whole header row answers the
+    /// right-click, not just the word.
     private var shotSection: some View {
         stagingSection(
             .shots,
@@ -712,7 +658,7 @@ struct LeadingSidebar: View {
     /// - Parameters:
     ///   - id: Which section this is, for its expansion and its `tap` name.
     ///   - header: The section's heading — a `Text`, or one carrying the
-    ///     section's own context menu (the shots).
+    ///     section's own context menu (the shots and the presets).
     ///   - rows: The section's rows, already in row order.
     ///   - symbol: The SF Symbol each row is labeled with.
     ///   - emptyLabel: What to show when `rows` is empty.
