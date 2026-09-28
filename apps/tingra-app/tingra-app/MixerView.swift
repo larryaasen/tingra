@@ -7,6 +7,7 @@
 //  SPDX-License-Identifier: MIT
 //
 
+import AppKit
 import SwiftUI
 import TingraAudio
 import TingraEventBus
@@ -27,6 +28,9 @@ import TingraPlugInKit
 /// The strips sit side by side in a horizontal scroll view, so a show with
 /// many audio inputs grows the panel sideways rather than taller; the
 /// master column keeps its place at the trailing edge, outside the scroll.
+/// Under overlay scrollers the strips leave room at their foot for the
+/// scroller, which would otherwise be drawn over the mutes while they
+/// scroll (``scrollerClearance(for:)``).
 ///
 /// Faders read in decibels through ``FaderScale`` while the engine and the
 /// document keep linear gain. Level and pan edits apply live, tick by tick,
@@ -46,6 +50,11 @@ struct MixerView: View {
     /// The strip whose Input Settings popover is open, if any — the same
     /// view-local presentation state, one popover at a time.
     @State private var settingsStripID: InputID?
+
+    /// The system's scroller style, followed as it changes — a mouse
+    /// plugged in, or the Show scroll bars setting — since it decides
+    /// whether the strips leave room under them for the scroller.
+    @State private var scrollerStyle = NSScroller.preferredScrollerStyle
 
     /// A strip column's width in points: enough for a fader beside a meter,
     /// a short pan slider, and a truncating name.
@@ -72,6 +81,7 @@ struct MixerView: View {
                                 stripColumn(strip)
                             }
                         }
+                        .padding(.bottom, Self.scrollerClearance(for: scrollerStyle))
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -85,6 +95,31 @@ struct MixerView: View {
             // that offer is unbounded — so the row sizes to its content.
             .fixedSize(horizontal: false, vertical: true)
         }
+        .task {
+            // Made before the style is read, so a change in between is not
+            // missed.
+            let changes = NotificationCenter.default.notifications(
+                named: NSScroller.preferredScrollerStyleDidChangeNotification)
+            scrollerStyle = NSScroller.preferredScrollerStyle
+            for await _ in changes {
+                scrollerStyle = NSScroller.preferredScrollerStyle
+            }
+        }
+    }
+
+    /// The room the strips leave under them for the scroll view's scroller.
+    /// An overlay scroller is drawn over the foot of the content while it
+    /// scrolls — the mutes, on this panel — so the strips leave its
+    /// thickness free and the scroller runs under the buttons; a legacy
+    /// scroller has its own row below the content, so they leave nothing.
+    /// The thickness is AppKit's for a regular-size scroller, the size the
+    /// panel's scroll view draws.
+    ///
+    /// - Parameter style: The system's scroller style.
+    /// - Returns: The room to leave, in points.
+    static func scrollerClearance(for style: NSScroller.Style) -> CGFloat {
+        guard style != .legacy else { return 0 }
+        return NSScroller.scrollerWidth(for: .regular, scrollerStyle: style)
     }
 
     /// The master section, standing at the mixer panel's trailing edge as

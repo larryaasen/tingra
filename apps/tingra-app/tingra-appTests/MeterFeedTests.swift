@@ -110,15 +110,23 @@ struct MeterFeedTests {
         #expect(second?.strips[InputID(rawValue: "mic")]?.peak == 0.25)
     }
 
-    @Test("blocks that arrive inside the interval reach the follower as one window")
+    @Test("blocks that arrive inside the interval reach the follower as one window", .timeLimit(.minutes(1)))
     func coalescesInsideInterval() async throws {
-        let feed = MeterFeed()
+        let clock = ManualClock()
+        var sleeps = clock.sleeps.makeAsyncIterator()
+        let feed = MeterFeed(clock: clock)
         var iterator = feed.levels(every: .milliseconds(200)).makeAsyncIterator()
         feed.fold(block(at: 1, peak: 0.1, rms: 0.1))
         #expect(await iterator.next()?.time == 1)
+
+        // The follower is waiting out its interval on a clock that stands
+        // still until the test moves it, so every block below lands inside
+        // the interval however long the machine takes to fold them.
+        await sleeps.next()
         for tick in 2...9 {
             feed.fold(block(at: Double(tick), peak: tick == 5 ? 0.75 : 0.125, rms: 0.125))
         }
+        clock.advance(by: .milliseconds(200))
         let window = await iterator.next()
         #expect(window?.time == 9)
         #expect(window?.strips[InputID(rawValue: "mic")]?.peak == 0.75)

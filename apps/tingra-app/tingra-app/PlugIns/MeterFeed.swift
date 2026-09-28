@@ -138,8 +138,16 @@ nonisolated final class MeterFeed: PlugInMeterFeeding, Sendable {
     /// The followers, by id.
     private let followers = Mutex<[UUID: Follower]>([:])
 
+    /// The clock a follower waits out its interval on (a test clock under
+    /// test, so a window's pacing is the test's to decide).
+    private let clock: any Clock<Duration>
+
     /// Creates a feed with no follower.
-    init() {}
+    ///
+    /// - Parameter clock: The clock a follower waits out its interval on.
+    init(clock: any Clock<Duration> = ContinuousClock()) {
+        self.clock = clock
+    }
 
     /// Whether anyone is following — for tests, and nothing else.
     var hasFollowers: Bool {
@@ -164,11 +172,11 @@ nonisolated final class MeterFeed: PlugInMeterFeeding, Sendable {
             let signals = AsyncStream<Void>(bufferingPolicy: .bufferingNewest(1)) { signal in
                 followers.withLock { $0[id] = Follower(signal: signal) }
             }
-            let task = Task { [weak self] in
+            let task = Task { [weak self, clock] in
                 for await _ in signals {
                     guard let levels = self?.takeWindow(of: id) else { continue }
                     continuation.yield(levels)
-                    try? await Task.sleep(for: interval)
+                    try? await clock.sleep(for: interval, tolerance: nil)
                 }
                 continuation.finish()
             }
