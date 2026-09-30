@@ -24,10 +24,10 @@ import Foundation
 /// internal ones, so the rule rests on nothing Apple could rename, and
 /// `LaunchEnvironmentTests` proves the scheme still sets it.
 ///
-/// It also says whether the event log should print to standard output:
-/// `scripts/run-app.sh` sets ``consoleLogVariable`` before running the app
-/// in a terminal, the one place stdout is where the log is read (see
-/// ``ConsoleEventSink``).
+/// It also says whether the event log should print to standard output in the
+/// log file's format: the `tingra-app` scheme's Run action and
+/// `scripts/run-app.sh` set ``consoleLogVariable``, and the app then prints
+/// there instead of to OSLog (see ``ConsoleEventSink``).
 enum LaunchEnvironment {
     /// The environment variable the `tingra-app` scheme's Test action sets
     /// to `1` in the test host.
@@ -47,8 +47,9 @@ enum LaunchEnvironment {
         environment[testHostVariable] == "1"
     }
 
-    /// The environment variable `scripts/run-app.sh` sets to `1` so the app
-    /// prints its event log to standard output.
+    /// The environment variable the scheme's Run action and
+    /// `scripts/run-app.sh` set to `1` so the app prints its event log to
+    /// standard output.
     static let consoleLogVariable = "TINGRA_CONSOLE_LOG"
 
     /// Whether this process should print its event log to standard output.

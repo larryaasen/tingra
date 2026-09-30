@@ -1665,9 +1665,11 @@ or two in the doc that owns them — none need a rewrite.
         deletes an installed bundle. *Approved and built 2026-09-29.*
       - [x] Each event once, and in the unified log, in every front end
         (2026-09-29, found while reading the safe-mode log). The app's
-        stdout `ConsoleEventSink` is attached only when `run-app.sh` sets
-        `TINGRA_CONSOLE_LOG=1`, since Xcode's console already shows the
-        unified log. `tingra-cli` attaches `OSLogSink` on every run: the
+        stdout `ConsoleEventSink` is attached only when `TINGRA_CONSOLE_LOG=1`,
+        set by the scheme's Run action and `run-app.sh`, and then prints
+        every group in the log file's format while `OSLogSink` is left off,
+        since Xcode's console shows the unified log too (Larry wanted the
+        log file's format in Xcode, not the OSLog copy). `tingra-cli` attaches `OSLogSink` on every run: the
         2026-07-04 rule skipping it for a terminal rested on a mirror
         macOS does not provide (measured: only `OS_ACTIVITY_DT_MODE`
         copies `os_log` to a terminal), so interactive runs were missing
