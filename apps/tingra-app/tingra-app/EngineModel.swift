@@ -4921,8 +4921,23 @@ final class EngineModel {
         // The program's format is the project's; an absent key is the
         // 1080p30 default. The compositor may already exist (a monitor's
         // relay creates it), so it is told too — a no-op when the format is
-        // the one it was built with.
-        format = project.programFormat ?? ProgramFormat()
+        // the one it was built with. A hand-edited file's broken format
+        // (odd, too small, or a rate outside 1…240) loads as the default and
+        // is reported rather than reaching the compositor.
+        let loaded = ProgramFormatChoice.loadedFormat(project.programFormat)
+        if let problem = loaded.problem, let stored = project.programFormat {
+            eventBus.error(
+                "program.format",
+                domain: .composition,
+                params: [
+                    "resolution": .string("\(stored.width)x\(stored.height)"),
+                    "fps": .int(stored.frameRate),
+                    "reason": .string("invalid"),
+                    "problem": .string(problem.identifier),
+                ]
+            )
+        }
+        format = loaded.format
         compositor.setFormat(format)
         // The media list is the document's; its inputs register once the
         // load returns (``registerProjectMedia()``).

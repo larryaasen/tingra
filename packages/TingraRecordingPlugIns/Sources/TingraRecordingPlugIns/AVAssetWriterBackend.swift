@@ -36,6 +36,12 @@ actor AVAssetWriterBackend: RecordingWriterBackend {
     /// The pixel buffer adaptor feeding ``videoInput``.
     private var adaptor: AVAssetWriterInputPixelBufferAdaptor?
 
+    /// How often the writer lays down a movie fragment. A fragmented file stays
+    /// readable up to its last fragment if the process dies or the Mac loses
+    /// power before ``finish()`` writes the index; without fragments, such a
+    /// file has no index and will not play at all.
+    static let movieFragmentInterval = CMTime(value: 10, timescale: 1)
+
     /// Creates a backend. The writer is opened in ``open(file:configuration:)``.
     init() {}
 
@@ -55,6 +61,9 @@ actor AVAssetWriterBackend: RecordingWriterBackend {
                 "The recording could not be created at '\(file.url.path)': \(error.localizedDescription)"
             )
         }
+        // Ignored by file types that cannot carry fragments; `finishWriting`
+        // still writes the full index on a clean stop.
+        writer.movieFragmentInterval = Self.movieFragmentInterval
 
         if configuration.includesVideo {
             let input = AVAssetWriterInput(mediaType: .video, outputSettings: Self.videoSettings(configuration))
@@ -173,17 +182,19 @@ actor AVAssetWriterBackend: RecordingWriterBackend {
         ]
     }
 
-    /// `AVAssetWriter` audio output settings: mono AAC at the configured
-    /// sample rate and bitrate. Multi-channel program audio arrives with the
-    /// audio mixer (roadmap step 7); v1 records the single program channel.
+    /// `AVAssetWriter` audio output settings: stereo AAC at the configured
+    /// sample rate and bitrate. The program mix is stereo (the audio mixer
+    /// renders two channels), so the file keeps both channels; a mono input,
+    /// such as the CLI's microphone, is duplicated to both by the writer's
+    /// converter.
     static func audioSettings(_ configuration: StreamConfiguration) -> [String: Any] {
         var layout = AudioChannelLayout()
-        layout.mChannelLayoutTag = kAudioChannelLayoutTag_Mono
+        layout.mChannelLayoutTag = kAudioChannelLayoutTag_Stereo
         let layoutData = Data(bytes: &layout, count: MemoryLayout<AudioChannelLayout>.size)
         return [
             AVFormatIDKey: kAudioFormatMPEG4AAC,
             AVSampleRateKey: configuration.audioSampleRate,
-            AVNumberOfChannelsKey: 1,
+            AVNumberOfChannelsKey: 2,
             AVEncoderBitRateKey: configuration.audioBitsPerSecond,
             AVChannelLayoutKey: layoutData,
         ]

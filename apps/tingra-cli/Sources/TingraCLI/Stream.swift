@@ -117,7 +117,7 @@ struct Stream: AsyncParsableCommand {
     @Flag(help: "Emit newline delimited JSON status events instead of human readable logs.")
     var json = false
 
-    @Option(help: "How often to print bitrate/fps/dropped frame stats, in seconds (0 disables).")
+    @Option(help: "How often to print bitrate and fps stats, in seconds (0 disables).")
     var statsInterval: Int = 5
 
     @Flag(help: "Show every event group on the console.")

@@ -103,6 +103,16 @@ enum ProgramFormatProblem: Equatable, Sendable {
     /// The frame rate is outside 1…240.
     case badFrameRate
 
+    /// A stable, locale-independent name for the problem, carried as the
+    /// `problem` param of the event that reports a broken project format.
+    var identifier: String {
+        switch self {
+        case .oddDimension: "oddDimension"
+        case .tooSmall: "tooSmall"
+        case .badFrameRate: "badFrameRate"
+        }
+    }
+
     /// The message shown beneath the fields.
     var message: String {
         switch self {
@@ -176,5 +186,23 @@ enum ProgramFormatChoice {
         if !width.isMultiple(of: 2) || !height.isMultiple(of: 2) { return .oddDimension }
         if frameRate < 1 || frameRate > maximumFrameRate { return .badFrameRate }
         return nil
+    }
+
+    /// The format a project file's stored value loads as. A project file is
+    /// a document an operator can edit by hand, so the stored format meets
+    /// the sheet's rules before it reaches the compositor: an odd size or a
+    /// frame rate of 0 would otherwise build an invalid tick interval. A
+    /// broken format loads as the 1080p30 default, with the problem returned
+    /// so the caller can report it.
+    ///
+    /// - Parameter stored: The project's `programFormat`, `nil` when the key
+    ///   is absent.
+    /// - Returns: The format to use, and the problem with the stored one, if
+    ///   any. An absent key is the default and no problem.
+    static func loadedFormat(_ stored: ProgramFormat?) -> (format: ProgramFormat, problem: ProgramFormatProblem?) {
+        guard let stored else { return (ProgramFormat(), nil) }
+        let found = problem(width: stored.width, height: stored.height, frameRate: stored.frameRate)
+        guard let found else { return (stored, nil) }
+        return (ProgramFormat(), found)
     }
 }
