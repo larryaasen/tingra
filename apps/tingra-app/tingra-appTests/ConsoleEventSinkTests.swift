@@ -70,11 +70,21 @@ struct ConsoleEventSinkTests {
 
     @Test("drops events outside the printed groups")
     func dropsFilteredGroups() async {
-        // `network` is not in the default groups, so nothing is emitted.
-        let lines = await lines {
+        let lines = await lines(groups: [.error]) {
             $0.network("stream.bytes", domain: .output)
         }
         #expect(lines.isEmpty)
+    }
+
+    @Test("prints every group by default, as the log file does")
+    func printsEveryGroupByDefault() async {
+        let lines = await lines {
+            $0.network("stream.bytes", domain: .output)
+            $0.trace("input.discovered", domain: .capture)
+        }
+        #expect(ConsoleEventSink.defaultGroups == Set(EventGroup.allCases))
+        #expect(lines.count == 2)
+        #expect(lines[0].hasPrefix("DEBUG"))
     }
 
     @Test("prints a tap event by default, unlike the CLI console sink's default filter")

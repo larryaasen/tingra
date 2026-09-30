@@ -1122,10 +1122,11 @@ final class EngineModel {
     @ObservationIgnored let meterFeed = MeterFeed()
 
     /// The host event bus. Its log sinks drain it (``start(launch:)``): the
-    /// host's `OSLogSink` as the system of record, which Xcode's console also
-    /// shows, the host's `FileSink` appending every event to ``logFile``, and,
-    /// only when `scripts/run-app.sh` runs the app in a terminal, the
-    /// ``ConsoleEventSink`` printing to stdout (EVENTS.md, "Sinks").
+    /// host's `FileSink` appending every event to ``logFile``, always, and
+    /// one live view — the ``ConsoleEventSink`` printing the same lines to
+    /// stdout when a developer runs the app from Xcode or
+    /// `scripts/run-app.sh`, otherwise the host's `OSLogSink` as the system
+    /// of record (EVENTS.md, "Sinks").
     ///
     /// Not `private`: every `tap` event is reported by the UI code that
     /// executes the action (a `Button`'s action closure, a picker's
@@ -1615,17 +1616,17 @@ final class EngineModel {
         safeModeTrigger = launch.trigger
 
         // The log sinks, attached before the first event so none is missed
-        // (EVENTS.md, "Sinks"): OSLog as the system of record, which Xcode's
-        // console also shows; the log file, so a Tingra.app launched from
-        // the Finder records somewhere an operator can find and share; and
-        // stdout only when `scripts/run-app.sh` runs the app in a terminal,
-        // which the unified log never reaches (``ConsoleEventSink``).
-        logSinkTasks = [
-            eventBus.attach(OSLogSink()),
-            eventBus.attach(FileSink(url: logFile.url)),
-        ]
+        // (EVENTS.md, "Sinks"). The log file always, so every run records
+        // somewhere an operator can find and share. Then one live view: the
+        // log file's lines on stdout when a developer runs the app from Xcode
+        // or `scripts/run-app.sh` (``ConsoleEventSink``), and otherwise OSLog
+        // as the system of record. Never both: Xcode's console shows the
+        // unified log too, so both would print every event twice there.
+        logSinkTasks = [eventBus.attach(FileSink(url: logFile.url))]
         if LaunchEnvironment.logsToConsole {
             logSinkTasks.append(eventBus.attach(ConsoleEventSink()))
+        } else {
+            logSinkTasks.append(eventBus.attach(OSLogSink()))
         }
         // The first line of every log names the build it came from — the app
         // and macOS versions and the Mac's model — so a shared log can be
