@@ -219,9 +219,10 @@ internal surface a reader needs to navigate the target instead.
 ## `packages/TingraHost`
 
 - `HostClock` — the production `EngineClock`: the host time clock with a
-  `ContinuousClock`-based absolute-deadline tick loop that skips late ticks
-  (jumping to the latest due deadline, newest-only buffering) or catches up,
-  per the consumer's `LateTickPolicy`.
+  `SuspendingClock`-based absolute-deadline tick loop (the host time clock's
+  own timebase, so a system sleep pauses the grid rather than moving it) that
+  skips late ticks (jumping to the latest due deadline, newest-only buffering)
+  or catches up, per the consumer's `LateTickPolicy`.
 - `InputRegistry` — the actor where input plug-ins register the inputs they
   contribute and the engine resolves them from (by stable ID, listing index, or
   unique name substring via `resolveInput(selector:ofKind:)`); the host's
@@ -238,7 +239,11 @@ internal surface a reader needs to navigate the target instead.
   is skipped, never fatal. `activate(bundles:in:)` activates loaded bundles
   the same way, their events adding `source: "bundle"` and the `path`, and
   `activate(_:thenBundlesFrom:in:)` is what every front end calls: the
-  compiled-in plug-ins, then the bundles, compiled-in ids winning.
+  compiled-in plug-ins, then the bundles, compiled-in ids winning, each
+  bundle activated as soon as it loads and before the next one loads.
+- `PlugInActivation` — what `activate(_:thenBundlesFrom:in:)` returns: every
+  plug-in that activated, compiled-in ones first, and the bundle scan
+  (2026-09-28).
 - `PlugInBundleLoader` — the host tier's external bundle loader (2026-09-23;
   PLUGINS.md, "The bundle loader: the design"): scans the user's and the
   machine's `Tingra/Plug-ins` folders once for `*.tingraplugin` bundles and,
@@ -247,24 +252,59 @@ internal surface a reader needs to navigate the target instead.
   casts the principal class to `BundledPlugIn`, and makes one instance.
   Every problem is a `plugin.bundle` `error` event. `canLoad(builtAgainst:in:)`
   is the version rule: majors equal and the bundle's minor not newer — before
-  1.0.0, minors equal.
+  1.0.0, minors equal. `runningKitIsFramework` says whether this host's kit is
+  a framework, read from the image that defines `EventBus`: a `swift build`
+  front end carries dylibs, which no Xcode-built bundle can bind to, and its
+  refusals say so (2026-09-27, Decision 30). Since 2026-09-28 (Decisions
+  31–34) it also skips an admitted bundle the operator turned off, one whose
+  build crashed a process, or every bundle in safe mode (`safeMode`, a
+  `PlugInSafeModeTrigger`), reporting each as `plugin.skipped` and safe mode
+  once as `plugin.safeMode`. It loads one bundle at a time inside its
+  `PlugInLoadGuard` marker, handing each to an `activating` closure, and
+  recovers the markers of dead processes first. `stateDirectory` (Tingra's
+  Application Support folder, `standardStateDirectory`) holds the enablement
+  file and the markers, and `frontEnd` names the process in a crash report.
 - `PlugInBundle` — a loaded bundle: its `BundledPlugIn` instance and its
   directory.
-- `PlugInBundleScan` — one scan's result: the bundles loaded and the problems
-  found, in scan order.
+- `PlugInBundleScan` — one scan's result: the bundles loaded, the problems
+  found, and the bundles skipped, in scan order.
+- `PlugInBundleSkip` — an admitted bundle that was not loaded, with its
+  stable `Reason` (`disabled`, `crashed`, `safeMode`, `enablementUnreadable`),
+  the bundle, and its id; reported as `plugin.skipped` (2026-09-28).
+- `PlugInSafeModeTrigger` — why a launch is in safe mode: `shiftKey`,
+  `afterUncleanExit`, or `flag`, the `plugin.safeMode` event's `trigger`
+  (2026-09-28, Decisions 31 and 32).
+- `PlugInEnablement` — which bundles are off: the ids the operator turned
+  off (`disabled`) and the bundles a crash turned off (`crashed`), keyed by
+  `PlugInID`, the `plug-ins.json` document with stable keys (2026-09-28,
+  Decision 34). `CrashedPlugInBundle` is one crash: the id, the CDHash of the
+  build that crashed, its path, the front end that died, and when.
+- `PlugInEnablementStore` — reads and writes
+  `~/Library/Application Support/Tingra/plug-ins.json`, atomically and
+  uncached, never overwriting a file it cannot read
+  (`PlugInEnablementStoreError`: `unreadable`, `unwritable`).
+- `PlugInLoadGuard` — the load-crash guard's markers (2026-09-28, Decision
+  33): one `PlugInLoadMarker` per process in `Tingra/plug-in-loads/`, naming
+  the bundle it is loading (id, path, CDHash, front end), written before the
+  code loads and removed once activation returns; `abandonedMarkers()` finds
+  those whose process is gone, and a front end claims one by removing it.
+  `ProcessIdentity` is a process id with the kernel's start time, so a later
+  process reusing the id is not mistaken for it.
 - `PlugInBundleProblem` — a refusal, or a defect in a bundle that loaded
   anyway, with its stable `Reason` (`unsigned`, `notNotarized`, `kitVersion`,
   `duplicateID`, `idMismatch`, `noPrincipalClass`, `loadFailed`, and
   `embeddedKit`, the one that does not refuse), the bundle, its id when
-  known, and the developer-facing message naming the fix.
+  known, and the developer-facing message naming the fix. `crashed`
+  (2026-09-28) reports, once, a bundle a dead process was loading.
 - `PlugInBundleInfo` — what a bundle's Info.plist declares: its id, its kit
   version, and its principal class name.
 - `PlugInBundleOpening` — the seam under the loader that touches a bundle on
   disk (reads its declarations, lists its `Contents/Frameworks`, loads its
   code); `FoundationPlugInBundleOpener` is the production one, over `Bundle`.
 - `CodeSignatureChecking` — the seam under the loader that admits a bundle's
-  signature, returning a `CodeSignatureVerdict` (`valid`, `unsigned` with the
-  Security framework's detail, `notNotarized`); `StaticCodeSignatureChecker`
+  signature, returning a `CodeSignatureVerdict` (`valid` with the signature's
+  CDHash, `unsigned` with the Security framework's detail, `notNotarized`);
+  `StaticCodeSignatureChecker`
   is the production one: `SecStaticCodeCheckValidity`, ad-hoc accepted, and
   the `notarized` requirement for a quarantined bundle.
 - `AuthorizationPermission` — the three TCC grants capture depends on — `camera`,
@@ -292,9 +332,9 @@ internal surface a reader needs to navigate the target instead.
   name).
 - `OSLogSink` — the system-of-record sink: routes every event to OSLog
   (`subsystem` `com.moonwink.tingra`, `category` = domain), params `.private`.
-  `tingra-cli` skips attaching it when standard error is a terminal — the OS's
-  own terminal mirror already echoes the process's events there (see EVENTS.md,
-  "OSLog sink").
+  Every front end attaches it on every run (see EVENTS.md, "OSLog sink"); the
+  CLI's exception for a terminal on standard error was dropped 2026-09-29,
+  since macOS does not mirror `os_log` to a terminal.
 - `LogLineFormatter` — the one shared human log line format (`LEVEL MM-DD-YYYY
   HH:MM:SS.mmm TZ [SSSS] @ domain name key=value`), reused by every text sink
   so each front end logs identically — the CLI's console (human mode) and file
@@ -1136,6 +1176,10 @@ An executable, so it exposes no public types; its surface is its subcommands —
 `devices`, `stream`, `probe`, `serve`, `mcp`, and `version` (see
 [CLI.md](CLI.md) for each one's options, output, and exit codes).
 
+- `PlugInOptions` — the option group every command that loads plug-ins
+  shares: `--safe-mode`, and the bundle loader for a command, naming it as the
+  front end in a crash report (2026-09-28, PLUGINS.md, Decisions 31 and 32).
+
 ## `apps/ingest-simulator`
 
 No Swift target and no types: a pinned MediaMTX binary wrapped in `sim.sh`
@@ -1624,6 +1668,9 @@ surface is:
   log before the process exits (`EngineModel.shutDown(reason:)`, with the cause
   read from the quit Apple event through `TerminationReason`) and a recording
   open at quit is finalized into a playable file instead of truncated, and
+  decides safe mode in `applicationWillFinishLaunching` (Shift held, or the
+  offer after an unclean exit; `SafeModeLaunch`) and removes the
+  `PlugInLaunchRecord` at a clean quit (2026-09-28), and
   turns off automatic window tabbing before the first window exists — the
   one line that removes AppKit's Show Tab Bar and Show All Tabs from the View
   menu, which are the only two items in it that do nothing this app wants: the
@@ -1660,9 +1707,13 @@ surface is:
   so the assembly is tested without booting an engine.
 - `LaunchEnvironment` — whether the process is the unit tests' host: the
   `tingra-app` scheme's Test action sets `TINGRA_TEST_HOST=1`, and the main
-  window's task then skips `EngineModel.start()`, so a test run never touches
+  window's task then skips `EngineModel.start(launch:)`, so a test run never touches
   the developer's devices, project, preferences, or log (the tests build
-  their own `EngineModel` over doubles and never boot one).
+  their own `EngineModel` over doubles and never boot one). It also says
+  whether to print the event log to stdout: `scripts/run-app.sh` sets
+  `TINGRA_CONSOLE_LOG=1` (`logsToConsole`), and only then does the engine's
+  boot attach `ConsoleEventSink`, since Xcode's console already shows the
+  unified log (2026-09-29).
 - `TerminationReason` — why the app is quitting, as far as AppKit can say: the
   app's own `terminate(_:)` (the Quit item, ⌘Q), or a quit Apple event from the
   Dock, a script, or the login window on logout, restart, and shutdown, read
@@ -1943,9 +1994,19 @@ surface is:
     sent through the session's `SessionNotifier` and ended with the session,
     and events landed on the bus under the plug-in's domain. `PlugInStoring` is the storage-and-secrets seam behind it, so the
     handler is tested with an in-memory store.
+  - `SafeModeLaunch` — how this launch treats plug-in bundles, decided before
+    the engine boots: the `PlugInSafeModeTrigger`, if any, and the answer to
+    the offer after an unclean exit, reported as its button's `tap` once the
+    bus has sinks. `UncleanExitAlert` asks: "Tingra quit unexpectedly while
+    plug-ins you installed were loaded.", Open in Safe Mode the default
+    (2026-09-28, PLUGINS.md, Decisions 31 and 32).
+  - `PlugInLaunchRecord` — `loaded-plug-ins.json`, the bundles this run
+    loaded, written once they load and removed at a clean quit; one found at
+    launch is what makes the app offer safe mode.
   - `PlugInApplicationStore` — the app-scoped storage on this Mac: one JSON
-    file per plug-in under `~/Library/Application Support/Tingra/Plug-ins/<id>/`
-    (`defaultDirectory`); never secrets.
+    file per plug-in under `~/Library/Application Support/Tingra/Plug-in Data/<id>/`
+    (`defaultDirectory`), apart from the `Plug-ins` folder bundles are
+    installed in (PLUGINS.md, Decision 38); never secrets.
   - `PlugInSecretStore` — the plug-ins' secrets in the engine's own
     Keychain-backed `SecureStorage`, each under `plugin:<PlugInID>.<name>`
     (`account(named:for:)`): read, stored, or removed by name for one
@@ -2012,7 +2073,8 @@ surface is:
   - `FixturePlugIn` — the principal class, a `BundledPlugIn` registering one
     input and reporting `fixture.activated`.
   - `FixtureInput` — a generator that delivers nothing; its job is to land in
-    the host's `InputRegistry` from across the boundary.
+    the host's `InputRegistry` from across the boundary. It declares video
+    media so the registry accepts it without an `input.noMedia` report.
 - `InspectorCommands` — the View menu's Show/Hide Inspector item, ⌥⌘I, beside
   the sidebar's; `InspectorButton` is the same toggle as the toolbar's
   trailing-most item, each under its own tap.
@@ -2092,6 +2154,9 @@ surface is:
   the picture state it last drew returns without rendering; and a
   `maximumFramesPerSecond` caps how often it samples — the thumbnail tiles
   (shot bank, layer rows, input grid) pass `thumbnailFramesPerSecond`, 15.
+  Without one it asks for `displayFramesPerSecond`, the fastest program rate
+  (240), which `MTKView` lowers to its screen's own rate (since 2026-09-27;
+  a fixed 60 before, which capped a ProMotion screen).
 - `MonitorFrameSource` — the seam a monitor reads through, so those cases
   share one draw path: a bus's `ProgramFrameRelay`, an `InputFrameSource`,
   the inspector's `LayerMonitorSource`, or the shot bank's
@@ -2326,7 +2391,8 @@ surface is:
   document (with its `.unreadable` sibling), the destinations document, the
   stream keys in the Keychain, the plug-ins' app-scoped files and their
   Keychain secrets (counted apart from the keys by their `plugin:` accounts),
-  the preferences domain, the log session
+  the plug-ins turned off (`plug-ins.json`, with the launch record and the
+  load guard's markers), the preferences domain, the log session
   counter, the log file, the recordings, and the snapshots — and every place
   the app persists has an entry or the pane cannot list it. Recordings,
   snapshots, and the log file are inventoried and never removed: the

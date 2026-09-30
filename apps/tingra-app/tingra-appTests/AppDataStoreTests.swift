@@ -104,7 +104,8 @@ struct AppDataFixture {
             defaults: defaults,
             defaultsDomain: domain,
             secureStorage: secureStorage,
-            plugInDirectory: supportDirectory.appending(path: "Plug-ins"),
+            plugInDirectory: supportDirectory.appending(path: "Plug-in Data"),
+            plugInStateDirectory: supportDirectory,
             recordingFolder: { folder },
             snapshotFolder: { snapshots }
         )
@@ -289,11 +290,12 @@ struct AppDataStoreTests {
         #expect(!AppDataKind.logFile.isRemovable)
         #expect(
             AppDataKind.allCases.filter(\.isRemovable) == [
-                .project, .destinations, .streamKeys, .plugInData, .plugInSecrets, .preferences, .logSession,
+                .project, .destinations, .streamKeys, .plugInData, .plugInSecrets, .plugInEnablement, .preferences,
+                .logSession,
             ])
     }
 
-    @Test("plug-in data counts the files under the plug-ins' folder and remove all removes the folder")
+    @Test("plug-in data counts the files under the plug-in data folder and remove all removes the folder")
     func plugInDataIsCountedAndRemoved() throws {
         let fixture = try AppDataFixture()
         defer { fixture.tearDown() }
@@ -310,6 +312,39 @@ struct AppDataStoreTests {
         #expect(item.folderURL == fixture.store.plugInDirectory)
         #expect(fixture.store.removeAll().isEmpty)
         #expect(!fixture.exists(fixture.store.plugInDirectory))
+        #expect(!fixture.exists(fixture.supportDirectory))
+    }
+
+    @Test("the plug-in data folder is never the folder plug-in bundles are installed in")
+    func plugInDataIsNotTheBundleFolder() {
+        let data = PlugInApplicationStore.defaultDirectory.standardizedFileURL.path(percentEncoded: false)
+        let bundleFolders = PlugInBundleLoader.standardFolders.map {
+            $0.standardizedFileURL.path(percentEncoded: false)
+        }
+
+        #expect(data.hasSuffix("Library/Application Support/Tingra/Plug-in Data"))
+        #expect(bundleFolders.allSatisfy { !data.hasPrefix($0) && !$0.hasPrefix(data) })
+    }
+
+    @Test("the plug-ins turned off are counted with the launch record and markers, and remove all removes them")
+    func plugInEnablementIsCountedAndRemoved() throws {
+        let fixture = try AppDataFixture()
+        defer { fixture.tearDown() }
+        let empty = try #require(fixture.store.inventory().first { $0.kind == .plugInEnablement })
+        #expect(empty.count == 0)
+        try PlugInEnablementStore(directory: fixture.supportDirectory).update {
+            $0.disable(PlugInID(rawValue: "com.example.a"))
+        }
+        PlugInLaunchRecord(directory: fixture.supportDirectory).write(bundles: ["A.tingraplugin"])
+        try fixture.write(fixture.store.plugInLoadMarkerDirectory.appending(path: "123-456.json"), byteCount: 8)
+
+        let item = try #require(fixture.store.inventory().first { $0.kind == .plugInEnablement })
+        #expect(item.count == 3)
+        #expect((item.byteCount ?? 0) > 0)
+        #expect(item.kind.isRemovable)
+        #expect(fixture.store.removeAll().isEmpty)
+        #expect(!fixture.exists(PlugInEnablementStore(directory: fixture.supportDirectory).fileURL))
+        #expect(!fixture.exists(fixture.store.plugInLoadMarkerDirectory))
         #expect(!fixture.exists(fixture.supportDirectory))
     }
 

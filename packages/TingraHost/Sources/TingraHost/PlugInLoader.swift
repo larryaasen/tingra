@@ -72,21 +72,28 @@ public struct PlugInLoader: Sendable {
     ///
     /// The compiled-in plug-ins' ids are taken before the scan, so a bundle
     /// declaring one of them is refused as a duplicate: first party wins.
+    /// Each bundle is activated as soon as it loads, before the next one
+    /// loads, so a bundle that takes the process down in its `activate` is
+    /// the one the load-crash guard names (PLUGINS.md, Decision 33).
     ///
     /// - Parameters:
     ///   - plugIns: The compiled-in plug-ins.
     ///   - bundleLoader: What finds and admits the bundles.
     ///   - context: What every plug-in activates against.
-    /// - Returns: Every plug-in that activated, compiled-in ones first.
+    /// - Returns: Every plug-in that activated, compiled-in ones first, and
+    ///   what the bundle scan found.
     @discardableResult
     public func activate(
         _ plugIns: [any PlugIn],
         thenBundlesFrom bundleLoader: PlugInBundleLoader,
         in context: PlugInContext
-    ) async -> [any PlugIn] {
-        let compiledIn = await activate(plugIns, in: context)
-        let scan = bundleLoader.load(skipping: Set(plugIns.map(\.id)), reportingTo: context.eventBus)
-        return compiledIn + (await activate(bundles: scan.loaded, in: context))
+    ) async -> PlugInActivation {
+        var activated = await activate(plugIns, in: context)
+        let scan = await bundleLoader.load(skipping: Set(plugIns.map(\.id)), reportingTo: context.eventBus) {
+            bundle in
+            activated += await activate(bundles: [bundle], in: context)
+        }
+        return PlugInActivation(activated: activated, scan: scan)
     }
 
     /// Activates one plug-in and reports the outcome, adding `params` to
@@ -110,4 +117,16 @@ public struct PlugInLoader: Sendable {
             return false
         }
     }
+}
+
+/// What a front end's plug-in activation produced: the plug-ins that
+/// activated and what the bundle scan found.
+public struct PlugInActivation: Sendable {
+    /// Every plug-in that activated, compiled-in ones first, then bundles in
+    /// scan order.
+    public let activated: [any PlugIn]
+
+    /// What the bundle scan found: the bundles loaded, the problems, and the
+    /// bundles skipped.
+    public let scan: PlugInBundleScan
 }

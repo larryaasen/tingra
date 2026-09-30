@@ -129,6 +129,8 @@ struct Stream: AsyncParsableCommand {
     @Option(help: "Also write logs to a file.")
     var logFile: String?
 
+    @OptionGroup var plugIns: PlugInOptions
+
     /// Flag/option validation — syntactic and cross-flag rules; exit 64 on
     /// failure (CLI.md exit codes). Selector resolution happens later,
     /// against the registry, and reports through the event bus.
@@ -277,20 +279,17 @@ struct Stream: AsyncParsableCommand {
                 [.error]
             }
         let consoleTask = eventBus.attach(ConsoleSink(mode: json ? .json : .human, groups: consoleGroups))
-        // Skipped when standard error is a terminal — the OS's own
-        // terminal mirror already echoes this process's events there, so
-        // attaching would double them (see EVENTS.md, "OSLog sink"); it
-        // remains the system of record for non-interactive runs.
-        let osLogTask = OSLogAttachment.attachIfNeeded(to: eventBus)
+        // The system of record, attached for every run: macOS does not copy
+        // it to a terminal, so nothing prints twice (see EVENTS.md, "OSLog
+        // sink").
+        let osLogTask = eventBus.attach(OSLogSink())
         let fileTask = logFile.map { eventBus.attach(FileSink(path: $0)) }
 
         /// Drains every sink so no buffered event is lost before exit.
         func drainSinks() async {
             eventBus.shutdown()
             await consoleTask.value
-            if let osLogTask {
-                await osLogTask.value
-            }
+            await osLogTask.value
             if let fileTask {
                 await fileTask.value
             }
@@ -309,7 +308,7 @@ struct Stream: AsyncParsableCommand {
         )
         await PlugInLoader().activate(
             [AVFoundationCapturePlugIn(), GeneratorPlugIn(), HaishinKitOutputPlugIn(), RecordingPlugIn()],
-            thenBundlesFrom: PlugInBundleLoader(),
+            thenBundlesFrom: plugIns.bundleLoader(for: "stream"),
             in: context
         )
 

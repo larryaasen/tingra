@@ -44,6 +44,15 @@ enum AppDataKind: String, CaseIterable, Identifiable, Sendable {
     /// counted apart from the stream keys they share the store with.
     case plugInSecrets
 
+    /// Which plug-in bundles are turned off: `plug-ins.json`, the operator's
+    /// choices and the crashes found, read by every front end
+    /// (`PlugInEnablementStore`, PLUGINS.md, Decision 34). Listed with it,
+    /// because they say the same thing and last only from a crash to the
+    /// next launch: this run's record of the bundles it loaded
+    /// (``PlugInLaunchRecord``), and the load guard's markers
+    /// (`PlugInLoadGuard`). Removing them turns every plug-in back on.
+    case plugInEnablement
+
     /// Machine-local preferences in the app's `UserDefaults` domain:
     /// appearance, the status bar, the monitor output, the recording folder
     /// and format, the sidebar's sections, the operator's last position
@@ -87,7 +96,9 @@ enum AppDataKind: String, CaseIterable, Identifiable, Sendable {
     var isRemovable: Bool {
         switch self {
         case .recordings, .snapshots, .logFile: false
-        case .project, .destinations, .streamKeys, .plugInData, .plugInSecrets, .preferences, .logSession: true
+        case .project, .destinations, .streamKeys, .plugInData, .plugInSecrets, .plugInEnablement, .preferences,
+            .logSession:
+            true
         }
     }
 }
@@ -186,6 +197,10 @@ struct AppDataStore {
     /// per plug-in.
     let plugInDirectory: URL
 
+    /// The folder holding the plug-in enablement file, the launch record,
+    /// and the load guard's markers — Tingra's Application Support folder.
+    let plugInStateDirectory: URL
+
     /// The recordings folder, read at inventory time because the operator can
     /// change it in the recording panel.
     let recordingFolder: () -> URL
@@ -205,6 +220,8 @@ struct AppDataStore {
     ///   - secureStorage: The secret store holding the stream keys and the
     ///     plug-ins' secrets.
     ///   - plugInDirectory: The folder plug-ins' app-scoped files live in.
+    ///   - plugInStateDirectory: The folder holding the plug-in enablement
+    ///     file, the launch record, and the load guard's markers.
     ///   - recordingFolder: The recordings folder, read at inventory time.
     ///   - snapshotFolder: The snapshots folder, read at inventory time.
     init(
@@ -216,6 +233,7 @@ struct AppDataStore {
         defaultsDomain: String,
         secureStorage: any SecureStorage,
         plugInDirectory: URL,
+        plugInStateDirectory: URL,
         recordingFolder: @escaping () -> URL,
         snapshotFolder: @escaping () -> URL
     ) {
@@ -227,8 +245,23 @@ struct AppDataStore {
         self.defaultsDomain = defaultsDomain
         self.secureStorage = secureStorage
         self.plugInDirectory = plugInDirectory
+        self.plugInStateDirectory = plugInStateDirectory
         self.recordingFolder = recordingFolder
         self.snapshotFolder = snapshotFolder
+    }
+
+    /// The files saying which plug-in bundles are off: the enablement file,
+    /// the launch record, and any load markers present.
+    var plugInEnablementFiles: [URL] {
+        [
+            PlugInEnablementStore(directory: plugInStateDirectory).fileURL,
+            PlugInLaunchRecord(directory: plugInStateDirectory).fileURL,
+        ] + Self.regularFiles(under: plugInLoadMarkerDirectory)
+    }
+
+    /// The load guard's marker folder.
+    var plugInLoadMarkerDirectory: URL {
+        plugInStateDirectory.appending(path: PlugInLoadGuard.folderName, directoryHint: .isDirectory)
     }
 
     /// The `.unreadable` sibling ``ProjectStore/setAsideUnreadableFile()``
@@ -277,6 +310,8 @@ struct AppDataStore {
                     location: String(localized: "Keychain", comment: "Data settings: where the stream keys are stored"),
                     folderURL: nil
                 )
+            case .plugInEnablement:
+                return fileItem(kind, files: plugInEnablementFiles, folder: plugInStateDirectory)
             case .preferences:
                 return AppDataItem(
                     kind: kind,
@@ -341,6 +376,10 @@ struct AppDataStore {
             try Self.removeIfPresent(plugInDirectory)
         case .plugInSecrets:
             try PlugInSecretStore(secureStorage: secureStorage).removeAll()
+        case .plugInEnablement:
+            try Self.removeIfPresent(PlugInEnablementStore(directory: plugInStateDirectory).fileURL)
+            try Self.removeIfPresent(PlugInLaunchRecord(directory: plugInStateDirectory).fileURL)
+            try Self.removeIfPresent(plugInLoadMarkerDirectory)
         case .preferences:
             defaults.removePersistentDomain(forName: defaultsDomain)
         case .logSession:

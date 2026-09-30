@@ -138,13 +138,62 @@ here, under "Left open from “…”", pointing at its record there.
     shared-memory blit question still open; neither slice yet watched in the
     running app (his debug instance was up)*. Phase 2's seams are all built.
   - [ ] **Left open from “The external bundle loader”** (done; record in DONE.md):
-    - [ ] Manual check: a signed bundle in
-      `~/Library/Application Support/Tingra/Plug-ins` loads in the running
-      app and in `tingra-cli devices`, and a quarantined unnotarized one is
-      refused with its `plugin.bundle` event.
     - [ ] Follow-ups: safe mode, the Plug-ins settings pane, `tingra-cli
       plug-ins`, the `TingraPlugInSDK` release script and repo, the 1.0.0 tag
-      after NDI (Decision 29).
+      after NDI (Decision 29). *Designed 2026-09-27 as Decisions 30–37
+      (PLUGINS.md, "The bundle loader's follow-ups: the design"), awaiting
+      Larry's veto; nothing built yet.*
+      - [x] Decision 30: the CLI's release build via `xcodebuild`, kits as
+        frameworks in `Frameworks/` beside the binary, with coverage off
+        and a packaging check for `__llvm_prf` sections (the generated scheme
+        instrumented the check's Release build, which then wrote
+        `default.profraw` wherever it ran); plus the three small defects the
+        manual check found (`loadFailed` message carrying dyld's
+        unabbreviated home path, the misleading `noPrincipalClass` for a
+        second kit copy, the fixture input's missing `media`). *Built
+        2026-09-27 (PLUGINS.md, "Decision 30 built"): `CLANG_COVERAGE_MAPPING=NO`
+        because `-enableCodeCoverage` is test-only, the rpath Release-only,
+        the version read from the staged binary, the zip made with
+        `ditto --norsrc` (Homebrew's `unzip` would write `._` files into the
+        frameworks and break their seal), the `.pkg`'s framework components
+        pinned (not relocatable, not version-checked). A Developer ID signed,
+        hardened copy loaded the fixture from the user folder; the notarized
+        release and a Homebrew install of the new layout come with the next
+        release.*
+      - [x] Decisions 31–34: safe mode (Shift, the offer after an unclean
+        exit, `--safe-mode`), the load-crash guard, `plug-ins.json`.
+        *Built 2026-09-28: the loader takes one bundle at a time inside a
+        per-process marker, skips turned-off, crashed, and safe-mode
+        bundles (`plugin.skipped`), and reports `plugin.safeMode`; the app
+        reads Shift and makes the offer in `applicationWillFinishLaunching`,
+        and ends its subtitle in "Safe Mode"; the Data pane lists Plug-ins
+        Turned Off. Verified end to end in the packaged CLI with the
+        fixture (normal, safe mode, a dead process's marker, a new build,
+        turned off, an unreadable file). Decision 30's rpath moved from the
+        manifest to the packaging script. TingraHost 278, CLI 88, app 781.*
+        - [ ] Larry: check the app's half by hand — Shift at launch, the
+          offer after stopping a run from Xcode with the fixture installed,
+          and the subtitle.
+      - [x] Decision 38: move app-tier plug-ins' app-scoped files out of the
+        Plug-ins folder, into `Plug-in Data/<id>/`, so Remove All Data never
+        deletes an installed bundle. *Approved and built 2026-09-29.*
+      - [x] Each event once, and in the unified log, in every front end
+        (2026-09-29, found while reading the safe-mode log). The app's
+        stdout `ConsoleEventSink` is attached only when `run-app.sh` sets
+        `TINGRA_CONSOLE_LOG=1`, since Xcode's console already shows the
+        unified log. `tingra-cli` attaches `OSLogSink` on every run: the
+        2026-07-04 rule skipping it for a terminal rested on a mirror
+        macOS does not provide (measured: only `OS_ACTIVITY_DT_MODE`
+        copies `os_log` to a terminal), so interactive runs were missing
+        from the unified log. `OSLogAttachment` and its two tests are gone.
+        An interactive `devices` run printed its table once, and its events
+        appeared under `/usr/bin/log show --info`.
+      - [ ] Decision 35: `tingra-cli plug-ins [--json] [--safe-mode]`,
+        `plug-ins enable|disable <id>`.
+      - [ ] Decision 36: the Plug-ins settings pane.
+      - [ ] Decision 37: `scripts/release-sdk.sh`, `release-sdk.yml`,
+        `packaging/sdk/`; the repo, the token scope, and the first publish
+        are Larry's.
   - [ ] **NDI as an external plug-in bundle**, outside this repo, importing
     the closed-source SDK: an NDI input and an NDI output. Waits on the
     loader; NDI's own virtual input is the stopgap the capture plug-in

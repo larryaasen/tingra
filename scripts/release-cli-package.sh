@@ -10,10 +10,12 @@
 # Builds, signs, notarizes, and packages `tingra-cli` for distribution through
 # the Homebrew tap (see docs/CLI.md, "Distribution"). Apple Silicon (arm64)
 # only. The binary does not travel alone: the two plug-in kits are dynamic
-# libraries (docs/PLUGINS.md, Decision 22), so `libTingraEventBus.dylib` and
-# `libTingraPlugInKit.dylib` sit beside it, found through its `@loader_path`
-# rpath, and every host-tier plug-in bundle binds to that one copy. Produces
-# two artifacts from one signed set of files:
+# libraries (docs/PLUGINS.md, Decision 22), shipped as `TingraEventBus.framework`
+# and `TingraPlugInKit.framework` in a `Frameworks` folder beside it and found
+# through its `@loader_path/Frameworks` rpath. They are frameworks because every
+# plug-in bundle built in Xcode, or against TingraPlugInSDK, links the kits by
+# their framework install names, and binds to this one copy only if the names
+# match (Decision 30). Produces two artifacts from one signed set of files:
 #   - a zip the tap downloads (a bare Mach-O can't be stapled; Gatekeeper
 #     fetches the notarization ticket online on first run), and
 #   - a stapled .pkg for offline-capable direct download.
@@ -43,30 +45,107 @@ readonly ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 readonly CLI_DIR="${ROOT}/apps/tingra-cli"
 readonly ENTITLEMENTS="${CLI_DIR}/tingra-cli.entitlements"
 readonly DIST="${ROOT}/dist"
-# The dynamic libraries that ship beside the binary: the plug-in kits
-# (docs/PLUGINS.md, Decision 22). The binary cannot start without them.
-readonly KIT_DYLIBS=("libTingraEventBus.dylib" "libTingraPlugInKit.dylib")
+# Where xcodebuild builds, kept between runs so a rebuild is incremental.
+# Inside the CLI's .build folder, which git already ignores.
+readonly BUILD_DIR="${CLI_DIR}/.build/xcodebuild"
+# The frameworks that ship beside the binary: the plug-in kits
+# (docs/PLUGINS.md, Decisions 22 and 30). The binary cannot start without them.
+readonly KIT_FRAMEWORKS=("TingraEventBus" "TingraPlugInKit")
 
 log()  { echo "release-cli-package: $*"; }
 warn() { echo "release-cli-package: WARNING: $*" >&2; }
 die()  { echo "release-cli-package: ERROR: $*" >&2; exit 1; }
 
-# 1. Build the release binary (arm64 only, per Platform Support).
+# Refuses a Mach-O compiled for coverage. The profile counters live in the
+# __llvm_prf_cnts section, and a binary carrying them writes a default.profraw
+# into whatever directory it runs from — on a user's Mac, every run. The load
+# commands are read whole before grep sees them: piping otool into `grep -q`
+# under pipefail reports a match as a failure whenever grep exits first.
+assert_uninstrumented() {
+    local load_commands
+    load_commands="$(otool -l "$1")"
+    if grep -q "sectname __llvm_prf_cnts" <<<"$load_commands"; then
+        die "$1 was built with coverage instrumentation, so it would write default.profraw wherever it runs; \
+build with CLANG_COVERAGE_MAPPING=NO"
+    fi
+}
+
+# 1. Build the release binary (arm64 only, per Platform Support) with
+#    xcodebuild rather than `swift build`, over the same Package.swift. The
+#    Xcode build system builds the kits as frameworks, with the install names
+#    Tingra.app and TingraPlugInSDK carry; SwiftPM builds them as dylibs, which
+#    no Xcode-built plug-in bundle can bind to (docs/PLUGINS.md, Decision 30).
+#    Coverage is switched off explicitly with CLANG_COVERAGE_MAPPING=NO: the
+#    scheme Xcode generates for a package builds for testing under a test plan
+#    that gathers coverage, and its Release build came out instrumented
+#    (xcodebuild accepts -enableCodeCoverage only when testing). The binary
+#    finds the kits in the Frameworks folder staged beside it through an
+#    @loader_path/Frameworks rpath, added here rather than in Package.swift:
+#    SwiftPM's build applies an executable's linker flags to its test bundle
+#    in every configuration, and that bundle already carries the same rpath,
+#    so ld warns about the duplicate. Signing happens below, with the release
+#    identity, not here.
 log "building release binary…"
-( cd "$CLI_DIR" && swift build -c release --arch arm64 )
-BIN_DIR="$(cd "$CLI_DIR" && swift build -c release --arch arm64 --show-bin-path)"
+( cd "$CLI_DIR" && xcodebuild build -quiet -scheme tingra-cli -configuration Release \
+    -destination 'generic/platform=macOS' ARCHS=arm64 -derivedDataPath "$BUILD_DIR" \
+    CLANG_COVERAGE_MAPPING=NO CODE_SIGNING_ALLOWED=NO \
+    'LD_RUNPATH_SEARCH_PATHS=$(inherited) @loader_path/Frameworks' )
+readonly BIN_DIR="${BUILD_DIR}/Build/Products/Release"
 BIN="${BIN_DIR}/tingra-cli"
 [[ -f "$BIN" ]] || die "built binary not found at $BIN"
-for dylib in "${KIT_DYLIBS[@]}"; do
-    [[ -f "${BIN_DIR}/${dylib}" ]] || die "built kit library not found at ${BIN_DIR}/${dylib}; \
-the kits must be dynamic products (docs/PLUGINS.md, Decision 22)"
+[[ "$(lipo -archs "$BIN")" == "arm64" ]] || die "the binary is built for '$(lipo -archs "$BIN")'; \
+Tingra ships arm64 only"
+# A Swift package offers Mac Catalyst beside macOS, so the generic destination
+# matches both and xcodebuild warns that it took the first. It takes macOS
+# today; this makes sure a future Xcode's order cannot ship a Catalyst binary.
+BUILD_VERSION="$(vtool -show-build "$BIN")"
+[[ "$BUILD_VERSION" == *"platform MACOS"* ]] || die "the binary is not built for macOS: ${BUILD_VERSION}"
+for kit in "${KIT_FRAMEWORKS[@]}"; do
+    [[ -d "${BIN_DIR}/PackageFrameworks/${kit}.framework" ]] || die "built kit framework not found at \
+${BIN_DIR}/PackageFrameworks/${kit}.framework; the kits must be dynamic products (docs/PLUGINS.md, Decision 22)"
 done
 
-# 2. Resolve and reconcile the version (arg → `version` subcommand), and assert
+# 2. Stage a clean copy to sign and package: a `tingra-cli` folder holding the
+#    binary and, in `Frameworks`, the kit frameworks it loads. `ditto` copies a
+#    framework with its version symlinks intact, which its signature needs.
+rm -rf "$DIST"
+readonly STAGE="${DIST}/tingra-cli"
+readonly STAGE_FRAMEWORKS="${STAGE}/Frameworks"
+mkdir -p "$STAGE_FRAMEWORKS"
+STAGE_BIN="${STAGE}/tingra-cli"
+cp "$BIN" "$STAGE_BIN"
+for kit in "${KIT_FRAMEWORKS[@]}"; do
+    ditto "${BIN_DIR}/PackageFrameworks/${kit}.framework" "${STAGE_FRAMEWORKS}/${kit}.framework"
+done
+
+# The binary finds the frameworks through its @loader_path/Frameworks rpath,
+# set by the LD_RUNPATH_SEARCH_PATHS the build step above passes.
+STAGE_RPATHS="$(otool -l "$STAGE_BIN" | grep -A2 LC_RPATH || true)"
+[[ "$STAGE_RPATHS" == *"path @loader_path/Frameworks "* ]] \
+    || die "the binary has no @loader_path/Frameworks rpath (see LD_RUNPATH_SEARCH_PATHS in the build step)"
+
+# Every @rpath library the binary or a kit names must be staged in Frameworks,
+# or the packaged binary dies in dyld on a user's Mac. The smoke test below
+# would catch that too; this names the missing file.
+STAGED_IMAGES=("$STAGE_BIN")
+for kit in "${KIT_FRAMEWORKS[@]}"; do
+    STAGED_IMAGES+=("${STAGE_FRAMEWORKS}/${kit}.framework/${kit}")
+done
+for image in "${STAGED_IMAGES[@]}"; do
+    while read -r dependency; do
+        [[ -f "${STAGE_FRAMEWORKS}/${dependency#@rpath/}" ]] || die "$(basename "$image") loads \
+${dependency}, which is not staged in ${STAGE_FRAMEWORKS}; add it to KIT_FRAMEWORKS"
+    done < <(otool -L "$image" | awk '/@rpath\// {print $1}')
+    assert_uninstrumented "$image"
+done
+
+# 3. Resolve and reconcile the version (arg → `version` subcommand), and assert
 #    the embedded Info.plist agrees so the tag, binary, and plist never drift.
-VERSION="${1:-$("$BIN" version | awk '{print $2}')}"
+#    The staged binary answers, not the built one: only in the stage does it
+#    have its Frameworks folder beside it.
+VERSION="${1:-$("$STAGE_BIN" version | awk '{print $2}')}"
 [[ -n "$VERSION" ]] || die "could not determine the version"
-if ! otool -s __TEXT __info_plist "$BIN" >/dev/null 2>&1; then
+if ! otool -s __TEXT __info_plist "$STAGE_BIN" >/dev/null 2>&1; then
     die "the binary has no embedded __TEXT,__info_plist section (see Package.swift linker flags)"
 fi
 # The embedded section's bytes are the verbatim Info.plist; confirm the version
@@ -75,25 +154,6 @@ if ! grep -q "<string>${VERSION}</string>" "${CLI_DIR}/Info.plist"; then
     die "Info.plist CFBundleShortVersionString does not match version ${VERSION}; update both together"
 fi
 log "packaging tingra-cli ${VERSION} (arm64)"
-
-# 3. Stage a clean copy to sign and package: a `tingra-cli` folder holding the
-#    binary and the kit libraries it loads from beside itself.
-rm -rf "$DIST"
-readonly STAGE="${DIST}/tingra-cli"
-mkdir -p "$STAGE"
-STAGE_BIN="${STAGE}/tingra-cli"
-cp "$BIN" "$STAGE_BIN"
-for dylib in "${KIT_DYLIBS[@]}"; do
-    cp "${BIN_DIR}/${dylib}" "${STAGE}/${dylib}"
-done
-
-# Every @rpath library the binary names must be staged beside it, or the
-# packaged binary dies in dyld on a user's Mac. The smoke test below would
-# catch that too; this names the missing file.
-while read -r dependency; do
-    [[ -f "${STAGE}/${dependency#@rpath/}" ]] || die "the binary loads ${dependency}, which is not \
-staged beside it; add it to KIT_DYLIBS"
-done < <(otool -L "$STAGE_BIN" | awk '/@rpath\// {print $1}')
 
 # 4. Sign (Developer ID Application, hardened runtime, stable identifier), then
 #    verify identity, entitlements, and the embedded plist — the same checks CI
@@ -123,14 +183,15 @@ carry the provisioning profile that would authorize one, so the signed binary is
 Remove the entitlement — the CLI reads its own keychain group, not a shared one."
     fi
 
-    # The kit libraries first, with the same identity: the binary's hardened
-    # runtime loads them, and each carries its own stable identifier.
-    for dylib in "${KIT_DYLIBS[@]}"; do
+    # The kit frameworks first, with the same identity: the binary's hardened
+    # runtime loads them, and each carries its own stable identifier. Signing
+    # the .framework signs its current version and seals the bundle.
+    for kit in "${KIT_FRAMEWORKS[@]}"; do
         codesign --force --options runtime --timestamp \
             --sign "$TINGRA_SIGN_ID" \
-            --identifier "com.moonwink.tingra.${dylib%.dylib}" \
-            "${STAGE}/${dylib}"
-        codesign --verify --strict --verbose=2 "${STAGE}/${dylib}"
+            --identifier "com.moonwink.tingra.${kit}" \
+            "${STAGE_FRAMEWORKS}/${kit}.framework"
+        codesign --verify --strict --verbose=2 "${STAGE_FRAMEWORKS}/${kit}.framework"
     done
 
     codesign --force --options runtime --timestamp \
@@ -163,7 +224,7 @@ if (( SMOKE_STATUS != 0 )); then
     (( SMOKE_STATUS == 137 )) && HINT=" The binary was SIGKILLed at exec, which for a signed binary \
 means the kernel refused it: check ${ENTITLEMENTS} for a restricted entitlement (a bare executable can \
 carry no provisioning profile to authorize one). Compare against an unsigned build, which has no \
-entitlements: swift build -c release --arch arm64."
+entitlements: run this script with TINGRA_SIGN_ID unset."
     die "the signed binary does not run: 'tingra-cli version' exited ${SMOKE_STATUS}.${HINT} \
 Output: ${SMOKE_OUTPUT:-<none>}"
 fi
@@ -172,14 +233,21 @@ which does not name version ${VERSION}"
 log "smoke test passed: the packaged binary runs and reports ${VERSION}."
 
 # 6. Zip for the tap. --keepParent embeds the enclosing folder, so the archive
-#    holds a `tingra-cli/` folder with the binary and the kit libraries in it.
-#    That is deliberate: Homebrew descends into a single top-level directory
-#    when staging, so the formula's `libexec.install` sees the three files. The
+#    holds a `tingra-cli/` folder with the binary and its Frameworks folder in
+#    it; ditto stores the frameworks' version symlinks as symlinks. That is
+#    deliberate: Homebrew descends into a single top-level directory when
+#    staging, so the formula's `libexec.install` sees the two entries. The
 #    two are coupled — changing this line or the formula's install block
 #    requires changing both (packaging/README.md, "Verifying a published
 #    release").
+#    --norsrc keeps extended attributes out of the archive (it implies
+#    --noextattr and --noacl). ditto would store them as AppleDouble `._` files,
+#    which Homebrew's `unzip` writes out as real files. Inside a framework those
+#    are unsealed contents, and they break its signature. Nothing Tingra ships
+#    needs an extended attribute: a signature lives in the Mach-O and in the
+#    framework's _CodeSignature.
 ZIP="${DIST}/tingra-cli-${VERSION}-arm64.zip"
-( cd "$DIST" && ditto -c -k --keepParent "tingra-cli" "$ZIP" )
+( cd "$DIST" && ditto -c -k --norsrc --keepParent "tingra-cli" "$ZIP" )
 log "wrote $ZIP"
 
 # 7. Notarize the zip (online ticket; a bare binary can't be stapled).
@@ -203,7 +271,7 @@ fi
 SHA="$(shasum -a 256 "$ZIP" | awk '{print $1}')"
 log "zip sha256: $SHA   (paste into packaging/homebrew/tingra-cli.rb)"
 
-# 9. Build the offline .pkg: install the binary and its kit libraries to
+# 9. Build the offline .pkg: install the binary and its Frameworks folder to
 #    /usr/local/libexec/tingra-cli, with /usr/local/bin/tingra-cli a symlink to
 #    the binary — the same layout the formula gives Homebrew, and dyld resolves
 #    the symlink before it expands `@loader_path` (Homebrew's own path is
@@ -217,8 +285,25 @@ build_pkg() {
     mkdir -p "${pkg_root}/usr/local/bin" "${pkg_root}/usr/local/libexec" || return 1
     ditto "$STAGE" "${pkg_root}/usr/local/libexec/tingra-cli" || return 1
     ln -s ../libexec/tingra-cli/tingra-cli "${pkg_root}/usr/local/bin/tingra-cli" || return 1
-    pkgbuild --root "$pkg_root" --identifier "$BUNDLE_ID" --version "$VERSION" \
-        --install-location "/" "$component" || return 1
+    # pkgbuild treats each kit framework as a bundle component, and its rules
+    # for one are stated here rather than inherited. A relocatable component
+    # is installed over a copy with the same bundle identifier found elsewhere
+    # on disk, and Tingra.app embeds frameworks with the same identifiers;
+    # older pkgbuild releases marked bundles relocatable by default, and the
+    # current one version-checks them by default, which could keep an older
+    # pkg from writing its kit. So every component is pinned to its payload
+    # path and always written: the binary must get exactly the kit it shipped
+    # with.
+    local components="${DIST}/tingra-cli-components.plist"
+    pkgbuild --analyze --root "$pkg_root" "$components" >/dev/null || return 1
+    local index=0
+    while plutil -extract "$index" xml1 -o /dev/null "$components" 2>/dev/null; do
+        plutil -replace "${index}.BundleIsRelocatable" -bool NO "$components" || return 1
+        plutil -replace "${index}.BundleIsVersionChecked" -bool NO "$components" || return 1
+        index=$((index + 1))
+    done
+    pkgbuild --root "$pkg_root" --component-plist "$components" --identifier "$BUNDLE_ID" \
+        --version "$VERSION" --install-location "/" "$component" || return 1
     if [[ -n "${TINGRA_INSTALLER_SIGN_ID:-}" ]]; then
         productbuild --package "$component" --sign "$TINGRA_INSTALLER_SIGN_ID" "$PKG" || return 1
         if [[ -n "${TINGRA_NOTARY_PROFILE:-}" ]]; then
@@ -232,7 +317,7 @@ build_pkg() {
         productbuild --package "$component" "$PKG" || return 1
         warn "TINGRA_INSTALLER_SIGN_ID unset — pkg is unsigned (dev use only)."
     fi
-    rm -f "$component"
+    rm -f "$component" "$components"
 }
 if build_pkg; then
     log "wrote $PKG"

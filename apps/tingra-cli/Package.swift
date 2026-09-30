@@ -50,6 +50,18 @@ let package = Package(
             // path is resolved relative to the package root, where the linker
             // runs. unsafeFlags is sanctioned here: tingra-cli is a leaf
             // product nothing depends on.
+            //
+            // The release build (xcodebuild, scripts/release-cli-package.sh)
+            // carries the two plug-in kits as frameworks in a Frameworks
+            // folder beside the binary, so a plug-in bundle built in Xcode
+            // binds to the same copy (PLUGINS.md, Decision 30). The script
+            // adds the @loader_path/Frameworks rpath that finds them, not this
+            // manifest: SwiftPM applies an executable's linker flags to its
+            // test bundle in every configuration, a `.when(configuration:)`
+            // notwithstanding, and that bundle already has the same rpath, so
+            // ld warns about the duplicate. A `swift build` product carries
+            // the kits as dylibs beside it instead, found through
+            // @loader_path.
             linkerSettings: [
                 .unsafeFlags([
                     "-Xlinker", "-sectcreate",

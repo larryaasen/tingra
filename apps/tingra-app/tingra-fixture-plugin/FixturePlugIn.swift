@@ -50,6 +50,11 @@ struct FixtureInput: Input {
     /// A generator: no device, no authorization.
     let kind = InputKind.generator
 
+    /// Video, so the host's registry accepts the input without reporting
+    /// `input.noMedia`: a fixture should load as quietly as a well-made
+    /// plug-in does.
+    let media = InputMedia.video
+
     /// Nothing to start.
     func start() async throws {}
 

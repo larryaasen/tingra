@@ -14,14 +14,23 @@ holds the concrete recipe.
 - **`tingra-cli-<version>.pkg`** — a stapled installer for offline-capable
   direct download.
 
-Both carry the binary and, beside it, the two plug-in kit libraries it loads
-through its `@loader_path` rpath — `libTingraEventBus.dylib` and
-`libTingraPlugInKit.dylib`, dynamic so every host-tier plug-in bundle binds to
-the one copy the engine loaded ([docs/PLUGINS.md](../docs/PLUGINS.md), Decision
-22). The formula installs the three into `libexec` and links the binary into
-`bin`; the `.pkg` installs them into `/usr/local/libexec/tingra-cli` with a
-`/usr/local/bin/tingra-cli` symlink. The libraries are signed with the same
-identity, each under its own `com.moonwink.tingra.lib…` identifier.
+Both carry the binary and, beside it, a `Frameworks` folder with the two
+plug-in kit frameworks it loads through its `@loader_path/Frameworks` rpath:
+`TingraEventBus.framework` and `TingraPlugInKit.framework`. The kits are dynamic
+so that every host-tier plug-in bundle binds to the one copy the engine loaded
+([docs/PLUGINS.md](../docs/PLUGINS.md), Decision 22). They are frameworks,
+built by `xcodebuild` rather than `swift build`, because a bundle built in
+Xcode links them by their framework install names (Decision 30). The formula
+installs the binary and the folder into `libexec` and links the binary into
+`bin`. The `.pkg` installs them into `/usr/local/libexec/tingra-cli` with a
+`/usr/local/bin/tingra-cli` symlink. The frameworks are signed with the same
+identity, each under its own `com.moonwink.tingra.<kit>` identifier. The
+script refuses a binary or framework built with coverage instrumentation. The
+zip carries no extended attributes (`ditto --norsrc`), because Homebrew's
+`unzip` would write them out as `._` files inside the frameworks and break
+their signatures. The `.pkg` pins each framework to its payload path, never
+relocated onto a copy with the same bundle identifier (Tingra.app embeds
+one) and never skipped by a version check.
 
 Both come from one signed binary: Developer ID Application signature, hardened
 runtime, the stable identifier `com.moonwink.tingra.cli`, and the entitlements
@@ -121,7 +130,7 @@ xcrun stapler validate tingra-cli-<version>.pkg              # proves Apple issu
 pkgutil --check-signature tingra-cli-<version>.pkg           # "trusted by the Apple notary service"
 codesign -dv --verbose=4 dist/tingra-cli/tingra-cli          # identifier, chain, flags=0x10000(runtime)
 codesign -d --entitlements - --xml dist/tingra-cli/tingra-cli | plutil -p -
-codesign -dv dist/tingra-cli/libTingraPlugInKit.dylib         # same authority as the binary
+codesign -dv dist/tingra-cli/Frameworks/TingraPlugInKit.framework  # same authority as the binary
 ```
 
 Two results that look like problems and are not:

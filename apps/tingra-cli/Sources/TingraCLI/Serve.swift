@@ -64,11 +64,21 @@ struct Serve: AsyncParsableCommand {
     @Option(help: "Also write logs to a file.")
     var logFile: String?
 
+    @OptionGroup var plugIns: PlugInOptions
+
     /// Flag validation — exit 64 on failure (CLI.md exit codes).
     func validate() throws {
         guard idleTimeout >= 0 else { throw ValidationError("--idle-timeout cannot be negative.") }
         guard !(verbose && quiet) else { throw ValidationError("--verbose and --quiet conflict.") }
         guard !(install && uninstall) else { throw ValidationError("--install and --uninstall conflict.") }
+        // The installed daemon has no persistent safe mode (PLUGINS.md,
+        // Decision 32): one bundle is kept out with `plug-ins disable`, and
+        // the load-crash guard breaks a crash loop on its own.
+        guard !(plugIns.safeMode && (install || uninstall)) else {
+            throw ValidationError(
+                "--safe-mode applies to one run of serve and is never written into the LaunchAgent. To keep one "
+                    + "plug-in out of the installed daemon, turn it off with `tingra-cli plug-ins disable <id>`.")
+        }
     }
 
     func run() async throws {
@@ -168,10 +178,10 @@ struct Serve: AsyncParsableCommand {
                 ConsoleSink.defaultGroups
             }
         let consoleTask = eventBus.attach(ConsoleSink(mode: json ? .json : .human, groups: consoleGroups))
-        // OSLog is the system of record for a launchd-managed (non-terminal)
-        // daemon; a manual run in a terminal skips it to avoid the OS's own
-        // terminal mirror doubling every line (see EVENTS.md, "OSLog sink").
-        let osLogTask = OSLogAttachment.attachIfNeeded(to: eventBus)
+        // OSLog is the system of record, attached for every run: macOS does
+        // not copy it to a terminal, so a manual run in one prints each event
+        // once, through the console sink (see EVENTS.md, "OSLog sink").
+        let osLogTask = eventBus.attach(OSLogSink())
         let fileTask = logFile.map { eventBus.attach(FileSink(path: $0)) }
 
         // Assemble the engine: registries, the tool registry, the status sink
@@ -220,7 +230,7 @@ struct Serve: AsyncParsableCommand {
                 ControlToolsPlugIn(
                     coordinator: coordinator, inputs: inputs, outputs: outputs, destinations: destinations),
             ],
-            thenBundlesFrom: PlugInBundleLoader(),
+            thenBundlesFrom: plugIns.bundleLoader(for: "serve"),
             in: context
         )
 
@@ -301,14 +311,14 @@ struct Serve: AsyncParsableCommand {
     private func drainSinks(
         eventBus: EventBus,
         console: Task<Void, Never>,
-        osLog: Task<Void, Never>?,
+        osLog: Task<Void, Never>,
         file: Task<Void, Never>?,
         status: Task<Void, Never>
     ) async {
         eventBus.shutdown()
         await console.value
         await status.value
-        if let osLog { await osLog.value }
+        await osLog.value
         if let file { await file.value }
     }
 }

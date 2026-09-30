@@ -41,6 +41,20 @@ struct HostClockTests {
         #expect(received[1] < received[2])
     }
 
+    @Test("each tick is stamped with the master clock's time as it arrives")
+    func tickTimesTrackTheMasterClock() async throws {
+        let clock = HostClock()
+        var iterator = clock.tick(every: CMTime(value: 1, timescale: 100)).makeAsyncIterator()
+
+        for _ in 0..<3 {
+            let tick = try #require(await iterator.next())
+            // The grid and the stamp share one timebase, so a tick arrives at
+            // its own time — within scheduling slack, never hours from it (the
+            // offset a scheduler counting system sleep builds up).
+            #expect(abs(CMTimeSubtract(clock.now, tick).seconds) < 0.5)
+        }
+    }
+
     @Test("a scheduler that wakes on time delivers the tick it slept until")
     func onTimeWakeDeliversScheduledTick() {
         let interval = Duration.milliseconds(10)

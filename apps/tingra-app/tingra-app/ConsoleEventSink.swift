@@ -11,19 +11,27 @@ import TingraEventBus
 import TingraHost
 
 /// A development event sink that prints the bus events to standard output, so
-/// the event log is visible in Xcode's console when the app runs under the
-/// debugger.
+/// the event log streams to the terminal when `scripts/run-app.sh` runs the
+/// app there.
 ///
-/// The host's `OSLogSink` routes events into the unified logging system
-/// (Console.app, `log stream`), which does **not** surface in Xcode's debug
-/// console — so while developing `apps/tingra-app` this sink is attached
-/// beside it, sending one line per event to stdout where the app is actually
-/// run. It is a dev convenience, not a replacement for the OSLog
-/// system-of-record the shipping product relies on, nor for the host's
-/// `FileSink` writing the log file an operator shares — ``EngineModel/start()``
-/// attaches all three (EVENTS.md, "Sinks"). Until 2026-09-08 it was the only
-/// sink the app attached, so a Tingra.app launched from the Finder recorded
-/// nothing anywhere.
+/// **Attached only when `run-app.sh` asks for it** (decided 2026-09-29), by
+/// setting `TINGRA_CONSOLE_LOG=1` (``LaunchEnvironment/logsToConsole``). A
+/// terminal is the one place it is needed: macOS does not copy the unified
+/// log to a terminal (measured 2026-09-29; only `OS_ACTIVITY_DT_MODE` does),
+/// so there the host's `OSLogSink` shows nothing. Xcode's console, since
+/// Xcode 15, shows the app's unified-log messages itself, so attaching this
+/// sink there printed every event twice; the OSLog copy is the better one in
+/// Xcode, filterable by subsystem and category, with the time in its
+/// metadata. A scheme that wants the house format in Xcode can set the
+/// variable too. This sink was first added, 2026-07-06, on the premise that
+/// the unified log never reaches Xcode's console, which Xcode 15 ended.
+///
+/// It is a dev convenience, not a replacement for the OSLog system of record
+/// the shipping product relies on, nor for the host's `FileSink` writing the
+/// log file an operator shares; ``EngineModel/start(launch:)`` attaches those
+/// two always (EVENTS.md, "Sinks"). Until 2026-09-08 it was the only sink the
+/// app attached, so a Tingra.app launched from the Finder recorded nothing
+/// anywhere.
 ///
 /// It renders lines with the shared ``LogLineFormatter`` (the same host format
 /// the CLI's console and file sinks use) and filters to `app`/`error`/`event`/

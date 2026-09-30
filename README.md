@@ -229,7 +229,12 @@ the `*.tingraplugin` bundles in `~/Library/Application Support/Tingra/Plug-ins`
 and `/Library/Application Support/Tingra/Plug-ins` after its compiled-in
 plug-ins, checking each bundle's declared id, kit version, and signature
 before any of its code runs ([PLUGINS.md](docs/PLUGINS.md), "The bundle
-loader: the design").
+loader: the design"). The loader also keeps a bundle out when the operator
+turned it off in `plug-ins.json`, when it took a process down while loading
+(a marker names the bundle each process is loading, and the next launch
+turns that build off), and for the whole launch in safe mode, entered with
+Shift as the app opens, by the app's offer after a crash, or with
+`--safe-mode` (PLUGINS.md, Decisions 31–34).
 
 **Types:** [`TingraHost` in TYPES.md](docs/TYPES.md#packagestingrahost)
 
@@ -379,9 +384,10 @@ reporting), `probe` (validate a destination URL/key without going live), `serve`
 mode, or launchd socket-activated in the product path; `--install`/`--uninstall`
 register and remove the LaunchAgent), `mcp` (the transparent stdio↔socket proxy
 agents point at), and `version`. It ships as the binary with the two kit
-libraries beside it (`libTingraEventBus.dylib`, `libTingraPlugInKit.dylib`),
-which Homebrew installs into `libexec` (see [CLI.md](docs/CLI.md),
-"Distribution").
+frameworks beside it in `Frameworks/` (`TingraEventBus.framework`,
+`TingraPlugInKit.framework`), which Homebrew installs into `libexec`. The
+release is built by `xcodebuild` so that plug-in bundles built in Xcode bind to
+those frameworks (see [CLI.md](docs/CLI.md), "Distribution").
 
 ### `apps/ingest-simulator`
 

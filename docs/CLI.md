@@ -36,7 +36,9 @@ Signed and notarized binary for Apple Silicon (arm64) only, distributed through 
 
 **Only unrestricted entitlements, and this is a hard limit.** `tingra-cli` ships as a bare Mach-O executable, which has nowhere to embed a provisioning profile — and a provisioning profile is what authorizes a *restricted* entitlement. `codesign` does not check, so a restricted entitlement signs, verifies, and notarizes clean, then dies with SIGKILL at `exec`, before `main`, with no output and no crash report. v0.1.1 shipped that way with `keychain-access-groups` and every invocation was killed (DESTINATIONS.md, "What v0.1.1 settled about the CLI and restricted entitlements"). Adding a restricted entitlement therefore requires moving the CLI inside a bundle first — a distribution change, not an entitlements change.
 
-**The binary ships with the plug-in kits beside it.** `TingraEventBus` and `TingraPlugInKit` are dynamic libraries (PLUGINS.md, Decision 22), so a host-tier plug-in bundle binds to the one copy of the kit the engine loaded. The binary finds `libTingraEventBus.dylib` and `libTingraPlugInKit.dylib` through its `@loader_path` rpath: the formula installs all three into `libexec` and links the binary into `bin`, and the `.pkg` installs them into `/usr/local/libexec/tingra-cli` with a `/usr/local/bin/tingra-cli` symlink. dyld resolves the symlink before expanding `@loader_path`, and `serve --install` records whichever path launched it, so both layouts work. The libraries are signed with the binary's identity, and the packaging script refuses to stage a binary naming an `@rpath` library it has not copied beside it.
+**The binary ships with the plug-in kits beside it, as frameworks.** `TingraEventBus` and `TingraPlugInKit` are dynamic libraries (PLUGINS.md, Decision 22), so a host-tier plug-in bundle binds to the one copy of the kit the engine loaded. The binary loads them as `TingraEventBus.framework` and `TingraPlugInKit.framework`, from a `Frameworks` folder beside it, through its `@loader_path/Frameworks` rpath. The formula installs the binary and that folder into `libexec` and links the binary into `bin`. The `.pkg` installs both into `/usr/local/libexec/tingra-cli`, with a `/usr/local/bin/tingra-cli` symlink. dyld resolves the symlink before expanding `@loader_path`, and `serve --install` records whichever path launched it, so both layouts work. The frameworks are signed with the binary's identity. The packaging script refuses to stage a binary that names an `@rpath` library it has not copied in.
+
+**They are frameworks because every plug-in bundle links them as frameworks** (PLUGINS.md, Decision 30). Xcode builds a package's dynamic product as a framework, which is how Tingra.app, the fixture bundle, and `TingraPlugInSDK` all get the kits. A bundle names a kit by its framework install name (`@rpath/TingraPlugInKit.framework/Versions/A/TingraPlugInKit`), and dyld binds it to a copy already in the process only when the names match. SwiftPM builds the same products as `libTingraPlugInKit.dylib`, under a different install name, so a `swift build` CLI can run everything except a plug-in bundle; the loader's refusal says so. The release is therefore built by `xcodebuild build -scheme tingra-cli -configuration Release` over the same `Package.swift`, with `CLANG_COVERAGE_MAPPING=NO` and the `@loader_path/Frameworks` rpath passed as `LD_RUNPATH_SEARCH_PATHS` (not in the manifest, because SwiftPM would apply it to the test bundle too, which already has it). The scheme Xcode generates for a package builds for testing under a test plan that gathers coverage (and `xcodebuild` accepts `-enableCodeCoverage` only when testing), and an instrumented binary writes a `default.profraw` into whatever folder it runs in, so the script also refuses a binary or framework that carries a `__llvm_prf_cnts` section. `swift build` and `swift test` stay the development loop. To run a plug-in bundle under the CLI locally, run `scripts/release-cli-package.sh` without credentials: it stages an unsigned build in `dist/tingra-cli/`.
 
 **Notarization artifacts.** Each release publishes two artifacts from the same signed binary: a **zip** consumed by the Homebrew tap (a bare Mach-O cannot be stapled, so Gatekeeper fetches the notarization ticket online on first run) and a **stapled `.pkg`** for offline capable direct download.
 
@@ -113,12 +115,29 @@ SUBCOMMANDS
   version     Print version and build info
 ```
 
+### Plug-in bundles and safe mode
+
+`stream`, `probe`, `devices`, and `serve` load the plug-in bundles installed in `~/Library/Application Support/Tingra/Plug-ins` and `/Library/Application Support/Tingra/Plug-ins` after the plug-ins built into Tingra, as the app does (PLUGINS.md, Decisions 25–27). Each bundle is reported on the event bus: `plugin.activated` with `source: bundle`, a `plugin.bundle` error when it is refused, or a `plugin.skipped` event when it is kept out (PLUGINS.md, Decisions 31–34). A bundle is kept out for one of four reasons, each the `reason` param:
+
+| `reason` | Why the bundle was not loaded |
+| :------- | :---------------------------- |
+| `disabled` | The operator turned it off. |
+| `crashed` | A Tingra process died while loading or activating this build of it. It stays off until its code changes or it is turned back on. |
+| `safeMode` | This run is in safe mode. |
+| `enablementUnreadable` | `plug-ins.json` could not be read, so no bundle loads until it is repaired or removed (reported once as a `plugin.enablement` error). |
+
+**`--safe-mode`** loads no plug-in bundles for that one run. The plug-ins built into Tingra load as usual, and nothing is persisted. The run reports `plugin.safeMode` (an `app` event) with `trigger: flag` and how many bundles it `skipped`. `serve --install --safe-mode` exits 64: the installed daemon keeps no safe mode. To keep one plug-in out of it, turn that plug-in off.
+
+**Which plug-ins are off** is one file shared with the app, `~/Library/Application Support/Tingra/plug-ins.json`, keyed by plug-in id. It is never part of a project. It holds the ids the operator turned off (`disabled`) and the bundles a crash turned off (`crashed`, each with the CDHash of the build that crashed). A change takes effect at each front end's next launch.
+
+**The crash guard.** Before loading a bundle's code, every front end writes a marker naming the bundle in `~/Library/Application Support/Tingra/plug-in-loads/`, and removes it once the bundle's activation returns. The next launch of any front end that finds a marker whose process is gone turns that build off in `plug-ins.json` and reports it once as `plugin.bundle` with `reason: crashed`. This is what keeps a launchd-restarted `serve` from crashing on the same bundle again.
+
 ### `tingra-cli devices`
 
 Lists inputs available for capture (input discovery). Default output is a human readable table; `--json` emits stable identifiers for scripting.
 
 ```
-tingra-cli devices [--type camera|mic|all] [--json] [--watch]
+tingra-cli devices [--type camera|mic|all] [--json] [--watch] [--safe-mode]
 ```
 
 Example output:
@@ -271,6 +290,7 @@ Failures ride the same stream as `error` events carrying `identifier` + `message
 | `--stats-interval <sec>` | How often to print bitrate and fps stats (default 5, `0` disables). |
 | `--verbose` / `--quiet` | Log level control. |
 | `--log-file <path>` | Also write logs to a file. |
+| `--safe-mode` | Load no plug-in bundles for this run (see "Plug-in bundles and safe mode"). |
 
 #### Exit codes
 
@@ -311,6 +331,7 @@ The MCP server, not raw CLI shell invocation, is the primary AI agent interface 
 ```
 tingra-cli serve [--install | --uninstall] [--program <path>] [--socket <path>]
                  [--idle-timeout <sec>] [--json] [--verbose|--quiet] [--log-file <path>]
+                 [--safe-mode]
 ```
 
 `--install` writes and loads the launchd LaunchAgent (`~/Library/LaunchAgents/com.moonwink.tingra.serve.plist`) so the daemon becomes socket-activated, then exits; `--uninstall` unloads and removes it. `--program` overrides the absolute `tingra-cli` path written into the plist (default: this executable; pass the Homebrew `bin` path for upgrade stability). Run `serve --install` once after installing (the Homebrew formula's caveats point users here). `--socket` overrides the socket path (default: the standard per-user location); `--idle-timeout` sets the quiet period before the daemon exits (default 300 seconds, `0` disables — it never exits while a stream is active regardless). When launched by launchd the daemon adopts the launchd-owned socket automatically; run by hand it creates its own (manual mode). The daemon logs its own lifecycle to stderr (or NDJSON under `--json`); that output is separate from the MCP traffic, which flows only over the socket. Ctrl-C / SIGTERM stops it cleanly (exit 0).

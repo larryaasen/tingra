@@ -40,6 +40,11 @@ public struct PlugInBundleProblem: Sendable, Equatable {
         /// The bundle embeds its own copy of a kit. It still loads, bound to
         /// the host's copy; the problem is reported, not refused.
         case embeddedKit
+        /// A process died while loading or activating the bundle, so it is
+        /// turned off until its code changes or the operator turns it back
+        /// on (PLUGINS.md, Decision 33). Reported once, by the launch that
+        /// finds the crash; later launches report the bundle as skipped.
+        case crashed
 
         /// Whether a problem of this kind keeps the bundle from loading.
         public var refuses: Bool { self != .embeddedKit }
