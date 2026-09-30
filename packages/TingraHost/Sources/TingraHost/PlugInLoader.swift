@@ -39,11 +39,20 @@ public struct PlugInLoader: Sendable {
     /// - Returns: The plug-ins that activated successfully.
     @discardableResult
     public func activate(_ plugIns: [any PlugIn], in context: PlugInContext) async -> [any PlugIn] {
-        var activated: [any PlugIn] = []
-        for plugIn in plugIns where await activate(plugIn, params: [:], in: context) {
-            activated.append(plugIn)
+        await activateReporting(plugIns, in: context).filter { $0.error == nil }.map(\.plugIn)
+    }
+
+    /// Activates each plug-in in order, as ``activate(_:in:)`` does, keeping
+    /// every outcome for a ``PlugInLoadReport``.
+    ///
+    /// - Returns: Each plug-in with what its `activate` threw, if anything.
+    func activateReporting(_ plugIns: [any PlugIn], in context: PlugInContext) async -> [PlugInActivationOutcome] {
+        var outcomes: [PlugInActivationOutcome] = []
+        for plugIn in plugIns {
+            let error = await activate(plugIn, params: [:], in: context)
+            outcomes.append(PlugInActivationOutcome(plugIn: plugIn, url: nil, error: error))
         }
-        return activated
+        return outcomes
     }
 
     /// Activates each loaded bundle's plug-in in order, exactly as
@@ -57,13 +66,20 @@ public struct PlugInLoader: Sendable {
     @discardableResult
     public func activate(bundles: [PlugInBundle], in context: PlugInContext) async -> [any PlugIn] {
         var activated: [any PlugIn] = []
-        for bundle in bundles {
-            let params: [String: EventValue] = ["source": .string("bundle"), "path": .string(bundle.displayPath)]
-            if await activate(bundle.plugIn, params: params, in: context) {
-                activated.append(bundle.plugIn)
-            }
+        for bundle in bundles where await activate(bundle, in: context).error == nil {
+            activated.append(bundle.plugIn)
         }
         return activated
+    }
+
+    /// Activates one loaded bundle's plug-in, reporting it with its source
+    /// and path.
+    ///
+    /// - Returns: The outcome, carrying the bundle's path.
+    private func activate(_ bundle: PlugInBundle, in context: PlugInContext) async -> PlugInActivationOutcome {
+        let params: [String: EventValue] = ["source": .string("bundle"), "path": .string(bundle.displayPath)]
+        let error = await activate(bundle.plugIn, params: params, in: context)
+        return PlugInActivationOutcome(plugIn: bundle.plugIn, url: bundle.url, error: error)
     }
 
     /// Activates the compiled-in plug-ins, then loads the plug-in bundles
@@ -80,28 +96,32 @@ public struct PlugInLoader: Sendable {
     ///   - plugIns: The compiled-in plug-ins.
     ///   - bundleLoader: What finds and admits the bundles.
     ///   - context: What every plug-in activates against.
-    /// - Returns: Every plug-in that activated, compiled-in ones first, and
-    ///   what the bundle scan found.
+    /// - Returns: Every plug-in that activated, compiled-in ones first, what
+    ///   the bundle scan found, and the two joined as a report.
     @discardableResult
     public func activate(
         _ plugIns: [any PlugIn],
         thenBundlesFrom bundleLoader: PlugInBundleLoader,
         in context: PlugInContext
     ) async -> PlugInActivation {
-        var activated = await activate(plugIns, in: context)
+        let compiledIn = await activateReporting(plugIns, in: context)
+        var bundles: [PlugInActivationOutcome] = []
         let scan = await bundleLoader.load(skipping: Set(plugIns.map(\.id)), reportingTo: context.eventBus) {
             bundle in
-            activated += await activate(bundles: [bundle], in: context)
+            bundles.append(await activate(bundle, in: context))
         }
-        return PlugInActivation(activated: activated, scan: scan)
+        let activated = (compiledIn + bundles).filter { $0.error == nil }.map(\.plugIn)
+        let report = PlugInLoadReport(compiledIn: compiledIn, bundles: bundles, scan: scan, loader: bundleLoader)
+        return PlugInActivation(activated: activated, scan: scan, report: report)
     }
 
     /// Activates one plug-in and reports the outcome, adding `params` to
     /// both events.
     ///
-    /// - Returns: Whether the plug-in activated.
+    /// - Returns: What `activate` threw, described, or `nil` when the
+    ///   plug-in activated.
     private func activate(_ plugIn: any PlugIn, params: [String: EventValue], in context: PlugInContext) async
-        -> Bool
+        -> String?
     {
         var eventParams = params
         eventParams["id"] = .string(plugIn.id.rawValue)
@@ -110,17 +130,18 @@ public struct PlugInLoader: Sendable {
         do {
             try await plugIn.activate(in: context)
             context.eventBus.event("plugin.activated", domain: .plugIn, params: eventParams)
-            return true
+            return nil
         } catch {
-            eventParams["error"] = .string(String(describing: error))
+            let description = String(describing: error)
+            eventParams["error"] = .string(description)
             context.eventBus.error("plugin.activation", domain: .plugIn, params: eventParams)
-            return false
+            return description
         }
     }
 }
 
 /// What a front end's plug-in activation produced: the plug-ins that
-/// activated and what the bundle scan found.
+/// activated, what the bundle scan found, and the two joined as a report.
 public struct PlugInActivation: Sendable {
     /// Every plug-in that activated, compiled-in ones first, then bundles in
     /// scan order.
@@ -129,4 +150,8 @@ public struct PlugInActivation: Sendable {
     /// What the bundle scan found: the bundles loaded, the problems, and the
     /// bundles skipped.
     public let scan: PlugInBundleScan
+
+    /// Every plug-in met, each in one state — what `tingra-cli plug-ins`
+    /// lists (PLUGINS.md, Decision 35).
+    public let report: PlugInLoadReport
 }

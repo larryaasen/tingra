@@ -37,10 +37,34 @@ public struct PlugInBundle: Sendable {
     }
 }
 
-/// What one scan of the plug-in folders produced: the bundles that loaded,
-/// the ones admitted but skipped, and every problem found, each in the order
-/// found.
+/// One `*.tingraplugin` entry a scan met, whatever became of it, with what
+/// its Info.plist declares.
+public struct FoundPlugInBundle: Sendable, Equatable {
+    /// The bundle's directory.
+    public let url: URL
+
+    /// What the bundle declares, or `nil` when it is not a readable bundle.
+    public let info: PlugInBundleInfo?
+
+    /// Creates a found bundle.
+    ///
+    /// - Parameters:
+    ///   - url: The bundle's directory.
+    ///   - info: What the bundle declares.
+    public init(url: URL, info: PlugInBundleInfo?) {
+        self.url = url
+        self.info = info
+    }
+}
+
+/// What one scan of the plug-in folders produced: every bundle met, the ones
+/// that loaded, the ones admitted but skipped, and every problem found, each
+/// in the order found.
 public struct PlugInBundleScan: Sendable {
+    /// Every bundle the scan met, in scan order — what a listing walks
+    /// (PLUGINS.md, Decision 35).
+    public let found: [FoundPlugInBundle]
+
     /// The bundles whose code loaded and whose principal class was
     /// instantiated, each handed to activation as it loaded.
     public let loaded: [PlugInBundle]
@@ -287,6 +311,7 @@ public struct PlugInBundleLoader: Sendable {
         for id in takenIDs {
             owners[id] = "a plug-in compiled into Tingra"
         }
+        var found: [FoundPlugInBundle] = []
         var loaded: [PlugInBundle] = []
         var skipped: [PlugInBundleSkip] = []
         /// Records and reports problems as they are found.
@@ -298,7 +323,9 @@ public struct PlugInBundleLoader: Sendable {
         }
 
         for url in folders.flatMap(bundleURLs(in:)) {
-            let admission = admit(url, owners: owners)
+            let info = opener.info(ofBundleAt: url)
+            found.append(FoundPlugInBundle(url: url, info: info))
+            let admission = admit(url, info: info, owners: owners)
             report(admission.problems)
             guard let candidate = admission.candidate else { continue }
             owners[candidate.id] = "the bundle at \(Self.displayPath(of: url))"
@@ -331,7 +358,7 @@ public struct PlugInBundleLoader: Sendable {
                     "skipped": .int(skipped.count { $0.reason == .safeMode }),
                 ])
         }
-        return PlugInBundleScan(loaded: loaded, problems: problems, skipped: skipped)
+        return PlugInBundleScan(found: found, loaded: loaded, problems: problems, skipped: skipped)
     }
 
     /// Finds the markers left by processes that died while loading a
@@ -390,6 +417,14 @@ public struct PlugInBundleLoader: Sendable {
         return safeMode == nil ? nil : .safeMode
     }
 
+    /// The plug-in ids the bundles in the folders declare, read from their
+    /// Info.plists without loading any code — what `tingra-cli plug-ins
+    /// enable|disable` checks an id against (PLUGINS.md, Decision 35).
+    public func declaredIDs() -> Set<PlugInID> {
+        let declared = folders.flatMap(bundleURLs(in:)).compactMap { opener.info(ofBundleAt: $0)?.id }
+        return Set(declared.filter { !$0.isEmpty }.map(PlugInID.init(rawValue:)))
+    }
+
     /// The plug-in bundles directly inside a folder, sorted by name so every
     /// launch meets them in the same order. A missing folder holds none —
     /// the normal case until the first plug-in is installed. A symbolic link
@@ -411,11 +446,13 @@ public struct PlugInBundleLoader: Sendable {
     ///
     /// - Parameters:
     ///   - url: The bundle's directory.
+    ///   - info: What the bundle declares, or `nil` when it has no
+    ///     Info.plist.
     ///   - owners: Who holds each id taken so far, for the duplicate rule's
     ///     message.
     /// - Returns: The admitted bundle, if any, and every problem found —
     ///   including an embedded kit, which does not refuse it.
-    func admit(_ url: URL, owners: [PlugInID: String]) -> (
+    func admit(_ url: URL, info: PlugInBundleInfo?, owners: [PlugInID: String]) -> (
         candidate: PlugInBundleCandidate?, problems: [PlugInBundleProblem]
     ) {
         let name = url.lastPathComponent
@@ -426,7 +463,7 @@ public struct PlugInBundleLoader: Sendable {
             (nil, [PlugInBundleProblem(reason: reason, url: url, id: id, message: message)])
         }
 
-        guard let info = opener.info(ofBundleAt: url) else {
+        guard let info else {
             return refusal(
                 .loadFailed, id: nil,
                 "'\(name)' is not a readable bundle: it has no Contents/Info.plist. Build it as a macOS bundle "

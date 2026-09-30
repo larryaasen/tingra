@@ -26,6 +26,7 @@ struct TingraCLI: AsyncParsableCommand {
             Probe.self,
             Serve.self,
             Mcp.self,
+            PlugIns.self,
             Version.self,
         ]
     )

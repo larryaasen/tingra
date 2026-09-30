@@ -21,6 +21,7 @@ struct PlugInOptionsTests {
         #expect(try Probe.parse(["--url", "rtmp://localhost/live", "--safe-mode"]).plugIns.safeMode)
         #expect(try Stream.parse(["--url", "rtmp://localhost/live", "--dry-run", "--safe-mode"]).plugIns.safeMode)
         #expect(try Serve.parse(["--safe-mode"]).plugIns.safeMode)
+        #expect(try PlugIns.List.parse(["--safe-mode"]).plugIns.safeMode)
     }
 
     @Test("without --safe-mode a command loads bundles normally")

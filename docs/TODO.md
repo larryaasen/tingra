@@ -182,9 +182,9 @@ here, under "Left open from “…”", pointing at its record there.
         fixture (normal, safe mode, a dead process's marker, a new build,
         turned off, an unreadable file). Decision 30's rpath moved from the
         manifest to the packaging script. TingraHost 278, CLI 88, app 781.*
-        - [ ] Larry: check the app's half by hand — Shift at launch, the
+        - [x] Larry: check the app's half by hand — Shift at launch, the
           offer after stopping a run from Xcode with the fixture installed,
-          and the subtitle.
+          and the subtitle. *Done 2026-09-29.*
       - [x] Decision 38: move app-tier plug-ins' app-scoped files out of the
         Plug-ins folder, into `Plug-in Data/<id>/`, so Remove All Data never
         deletes an installed bundle. *Approved and built 2026-09-29.*
@@ -201,8 +201,15 @@ here, under "Left open from “…”", pointing at its record there.
         from the unified log. `OSLogAttachment` and its two tests are gone.
         An interactive `devices` run printed its table once, and its events
         appeared under `/usr/bin/log show --info`.
-      - [ ] Decision 35: `tingra-cli plug-ins [--json] [--safe-mode]`,
-        `plug-ins enable|disable <id>`.
+      - [x] Decision 35: `tingra-cli plug-ins [--json] [--safe-mode]`,
+        `plug-ins enable|disable <id>`. *Built 2026-09-29 (PLUGINS.md,
+        "Decision 35 built"): `PlugInLoadReport` joined in the host
+        (`PlugInActivation.report`, the scan's `found`), bundle name and
+        version from the Info.plist, a `message` on every skip, `serve`'s
+        engine factored into `DaemonEngine` so the listing matches the
+        daemon, `list` the default subcommand. Verified end to end in the
+        packaged CLI with the fixture (active, refused, disabled, safe mode,
+        a crash, enable). TingraHost 293, CLI 99.*
       - [ ] Decision 36: the Plug-ins settings pane.
       - [ ] Decision 37: `scripts/release-sdk.sh`, `release-sdk.yml`,
         `packaging/sdk/`; the repo, the token scope, and the first publish

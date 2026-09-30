@@ -14,7 +14,7 @@ import TingraHost
 /// (PLUGINS.md, Decisions 31 and 32).
 ///
 /// One option group rather than a flag per command, so `stream`, `probe`,
-/// `devices`, and `serve` spell it and document it the same way.
+/// `devices`, `serve`, and `plug-ins` spell it and document it the same way.
 struct PlugInOptions: ParsableArguments {
     @Flag(help: "Safe mode: load no plug-in bundles for this run. Plug-ins built into Tingra still load.")
     var safeMode = false

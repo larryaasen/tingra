@@ -59,6 +59,25 @@ public struct PlugInBundleSkip: Sendable, Equatable {
         (url.path(percentEncoded: false) as NSString).abbreviatingWithTildeInPath
     }
 
+    /// What a listing says about the skip: why the bundle did not load, and
+    /// how to load it.
+    public var message: String {
+        let name = url.lastPathComponent
+        let enable = "`tingra-cli plug-ins enable \(id.rawValue)` or Settings > Plug-ins"
+        switch reason {
+        case .disabled:
+            return "'\(name)' is turned off. Turn it back on with \(enable)."
+        case .crashed:
+            return "'\(name)' is turned off because a Tingra process ended while loading this build of it. It stays "
+                + "off until its code changes or it is turned back on with \(enable)."
+        case .safeMode:
+            return "'\(name)' was not loaded because this run is in safe mode."
+        case .enablementUnreadable:
+            return "'\(name)' was not loaded because the file recording which plug-ins are turned off, "
+                + "plug-ins.json, could not be read. Repair or remove it; removing it turns every plug-in back on."
+        }
+    }
+
     /// The `plugin.skipped` event's params.
     var eventParams: [String: EventValue] {
         [

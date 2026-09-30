@@ -22,16 +22,30 @@ public struct PlugInBundleInfo: Sendable, Equatable {
     /// developer sees what the loader looked for.
     public var principalClassName: String?
 
+    /// The bundle's name for a listing — `CFBundleDisplayName`, else
+    /// `CFBundleName` — when present. A loaded plug-in's own `name` wins
+    /// over it; this names a bundle whose code never ran.
+    public var name: String?
+
+    /// The bundle's `CFBundleShortVersionString`, when present.
+    public var version: String?
+
     /// Creates a bundle's declarations.
     ///
     /// - Parameters:
     ///   - id: The declared plug-in id.
     ///   - kitVersion: The declared kit version.
     ///   - principalClassName: The declared principal class name.
-    public init(id: String?, kitVersion: String?, principalClassName: String?) {
+    ///   - name: The bundle's display name.
+    ///   - version: The bundle's version.
+    public init(
+        id: String?, kitVersion: String?, principalClassName: String?, name: String? = nil, version: String? = nil
+    ) {
         self.id = id
         self.kitVersion = kitVersion
         self.principalClassName = principalClassName
+        self.name = name
+        self.version = version
     }
 }
 
@@ -75,14 +89,16 @@ public struct FoundationPlugInBundleOpener: PlugInBundleOpening {
     /// Creates the opener. Stateless.
     public init() {}
 
-    /// Reads the three declarations from `Bundle.infoDictionary`, which
-    /// parses the Info.plist without loading the bundle's executable.
+    /// Reads the declarations from `Bundle.infoDictionary`, which parses the
+    /// Info.plist without loading the bundle's executable.
     public func info(ofBundleAt url: URL) -> PlugInBundleInfo? {
         guard let info = Bundle(url: url)?.infoDictionary else { return nil }
         return PlugInBundleInfo(
             id: info[PlugInBundleLoader.idKey] as? String,
             kitVersion: info[PlugInBundleLoader.kitVersionKey] as? String,
-            principalClassName: info["NSPrincipalClass"] as? String
+            principalClassName: info["NSPrincipalClass"] as? String,
+            name: (info["CFBundleDisplayName"] as? String) ?? (info["CFBundleName"] as? String),
+            version: info["CFBundleShortVersionString"] as? String
         )
     }
 

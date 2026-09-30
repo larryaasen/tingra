@@ -112,12 +112,13 @@ SUBCOMMANDS
   probe       Validate a destination URL/key without going live
   serve       Run the persistent engine process (session survives across calls)
   mcp         MCP entry point for agents (thin stdio client of the serve process)
+  plug-ins    List the plug-ins the engine loads; turn a plug-in bundle off or on
   version     Print version and build info
 ```
 
 ### Plug-in bundles and safe mode
 
-`stream`, `probe`, `devices`, and `serve` load the plug-in bundles installed in `~/Library/Application Support/Tingra/Plug-ins` and `/Library/Application Support/Tingra/Plug-ins` after the plug-ins built into Tingra, as the app does (PLUGINS.md, Decisions 25–27). Each bundle is reported on the event bus: `plugin.activated` with `source: bundle`, a `plugin.bundle` error when it is refused, or a `plugin.skipped` event when it is kept out (PLUGINS.md, Decisions 31–34). A bundle is kept out for one of four reasons, each the `reason` param:
+`stream`, `probe`, `devices`, `serve`, and `plug-ins` load the plug-in bundles installed in `~/Library/Application Support/Tingra/Plug-ins` and `/Library/Application Support/Tingra/Plug-ins` after the plug-ins built into Tingra, as the app does (PLUGINS.md, Decisions 25–27). Each bundle is reported on the event bus: `plugin.activated` with `source: bundle`, a `plugin.bundle` error when it is refused, or a `plugin.skipped` event when it is kept out (PLUGINS.md, Decisions 31–34). A bundle is kept out for one of four reasons, each the `reason` param:
 
 | `reason` | Why the bundle was not loaded |
 | :------- | :---------------------------- |
@@ -127,6 +128,36 @@ SUBCOMMANDS
 | `enablementUnreadable` | `plug-ins.json` could not be read, so no bundle loads until it is repaired or removed (reported once as a `plugin.enablement` error). |
 
 **`--safe-mode`** loads no plug-in bundles for that one run. The plug-ins built into Tingra load as usual, and nothing is persisted. The run reports `plugin.safeMode` (an `app` event) with `trigger: flag` and how many bundles it `skipped`. `serve --install --safe-mode` exits 64: the installed daemon keeps no safe mode. To keep one plug-in out of it, turn that plug-in off.
+
+**`tingra-cli plug-ins`** lists every plug-in the engine loads, and why a bundle was not loaded (PLUGINS.md, Decision 35). It covers what `serve` runs: the plug-ins built into Tingra (`source: compiledIn`) and every bundle in the two folders (`source: bundle`). It loads and activates the bundles against scratch registries, as `devices` does, never the running daemon's. "Loaded" is only true once dyld and the plug-in's `activate` agree, so reading the Info.plists alone is not enough. Each plug-in is in one `state`:
+
+| `state` | Meaning |
+| :------ | :------ |
+| `active` | Loaded and activated. |
+| `failed` | Loaded, but its `activate` threw; `message` is the error. |
+| `refused` | Not loaded: `reason` and `message` are the `plugin.bundle` refusal's. |
+| `skipped` | Not loaded: `reason` is the `plugin.skipped` reason, and `message` says how to load it. |
+
+A bundle that embeds its own kit (`embeddedKit`) loads anyway, and the problem rides on its entry in `warnings`. `--safe-mode` lists the plug-ins as a safe-mode run would see them. `--json` prints one document with stable camelCase keys, with every key present and `null` for an absent value:
+
+```json
+{
+  "folders" : [ "~/Library/Application Support/Tingra/Plug-ins", "/Library/Application Support/Tingra/Plug-ins" ],
+  "kitVersion" : "0.1.0",
+  "plugIns" : [
+    { "id" : "com.moonwink.tingra.generators", "message" : null, "name" : "Generators", "path" : null,
+      "reason" : null, "source" : "compiledIn", "state" : "active", "version" : null, "warnings" : [ ] },
+    { "id" : "com.example.lower-thirds", "message" : "'LowerThirds.tingraplugin' is turned off. …",
+      "name" : "LowerThirds", "path" : "~/Library/Application Support/Tingra/Plug-ins/LowerThirds.tingraplugin",
+      "reason" : "disabled", "source" : "bundle", "state" : "skipped", "version" : "1.2.0", "warnings" : [ ] }
+  ],
+  "safeMode" : false
+}
+```
+
+`version` is the bundle's `CFBundleShortVersionString`; a compiled-in plug-in has none of its own. The listing exits 0 whatever the states, because a refused bundle is data, not a failed command. App-tier plug-ins are not listed: the CLI cannot ask the system for the app's extensions, and the app's Plug-ins pane shows both tiers.
+
+**`tingra-cli plug-ins disable <id>`** and **`enable <id>`** turn a plug-in bundle off and back on, in the file every front end reads. `enable` also clears a crash record. Each exits 64 for a plug-in built into Tingra, which is always on, or for an id no installed bundle declares; `enable` still accepts an id the file records whose bundle has since been removed, so the entry can be cleared. Turning on a plug-in already on, or off one already off, changes nothing and exits 0. A file that cannot be read or written exits 70 and is never overwritten. A running `serve` keeps its plug-ins until it restarts.
 
 **Which plug-ins are off** is one file shared with the app, `~/Library/Application Support/Tingra/plug-ins.json`, keyed by plug-in id. It is never part of a project. It holds the ids the operator turned off (`disabled`) and the bundles a crash turned off (`crashed`, each with the CDHash of the build that crashed). A change takes effect at each front end's next launch.
 

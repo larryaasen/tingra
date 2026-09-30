@@ -31,6 +31,20 @@ private final class BetaPlugIn: BundledPlugIn {
     func activate(in context: PlugInContext) async throws {}
 }
 
+/// A bundled plug-in whose id is `com.example.gamma` and whose `activate`
+/// throws.
+private final class ThrowingPlugIn: BundledPlugIn {
+    /// The error its activation throws.
+    struct ActivationError: Error, CustomStringConvertible {
+        var description: String { "the gamma device is missing" }
+    }
+
+    let id = PlugInID(rawValue: "com.example.gamma")
+    let name = "Gamma"
+    init() {}
+    func activate(in context: PlugInContext) async throws { throw ActivationError() }
+}
+
 /// A class that is not a plug-in, named as a bundle's principal class.
 private final class NotAPlugIn {}
 
@@ -42,13 +56,14 @@ private let symbolNotFound = NSError(
 
 /// What a fake bundle's principal class resolves to.
 private enum FakePrincipal: Sendable {
-    case alpha, beta, notAPlugIn, none, throwsSymbolNotFound
+    case alpha, beta, throwing, notAPlugIn, none, throwsSymbolNotFound
 
     /// The class the fake load returns.
     func load() throws -> AnyClass? {
         switch self {
         case .alpha: AlphaPlugIn.self
         case .beta: BetaPlugIn.self
+        case .throwing: ThrowingPlugIn.self
         case .notAPlugIn: NotAPlugIn.self
         case .none: nil
         case .throwsSymbolNotFound: throw symbolNotFound
@@ -67,10 +82,12 @@ private struct FakeBundle: Sendable {
 
     /// A well-formed bundle declaring `id` against the given kit version.
     static func declaring(
-        _ id: String?, kitVersion: String? = "0.1.0", principal: FakePrincipal = .alpha, embedded: [String] = []
+        _ id: String?, kitVersion: String? = "0.1.0", principal: FakePrincipal = .alpha, embedded: [String] = [],
+        name: String? = nil, version: String? = nil
     ) -> FakeBundle {
         FakeBundle(
-            info: PlugInBundleInfo(id: id, kitVersion: kitVersion, principalClassName: "Fake.Principal"),
+            info: PlugInBundleInfo(
+                id: id, kitVersion: kitVersion, principalClassName: "Fake.Principal", name: name, version: version),
             embedded: embedded, principal: principal)
     }
 }
@@ -856,5 +873,157 @@ struct PlugInBundleLoaderTests {
         }
         #expect(cdHash.count == 40)
         #expect(cdHash.allSatisfy { $0.isHexDigit && !$0.isUppercase })
+    }
+
+    // MARK: - The load report (Decision 35)
+
+    /// A context over fresh registries on `eventBus`.
+    private func context(_ eventBus: EventBus) -> PlugInContext {
+        PlugInContext(
+            eventBus: eventBus, clock: HostClock(), inputs: InputRegistry(), outputs: OutputRegistry(),
+            effects: EffectRegistry(), tools: ToolRegistry())
+    }
+
+    @Test("the report lists compiled-in plug-ins, then each bundle in scan order, each in one state")
+    func reportListsEveryPlugInInOneState() async throws {
+        let folder = try PlugInFolder([
+            "A-Active.tingraplugin", "B-Failed.tingraplugin", "C-Refused.tingraplugin", "D-Off.tingraplugin",
+        ])
+        defer { folder.remove() }
+        try PlugInEnablementStore(directory: folder.stateDirectory).update {
+            $0.disable(PlugInID(rawValue: "com.example.delta"))
+        }
+        let opener = FakeOpener([
+            "A-Active.tingraplugin": .declaring(
+                "com.example.alpha", embedded: ["TingraPlugInKit"], name: "Alpha Bundle", version: "1.2.0"),
+            "B-Failed.tingraplugin": .declaring("com.example.gamma", principal: .throwing, version: "0.3"),
+            "C-Refused.tingraplugin": .declaring("com.example.charlie", name: "Charlie"),
+            "D-Off.tingraplugin": .declaring("com.example.delta", name: "Delta"),
+        ])
+        let signatures = FakeSignatures(verdicts: ["C-Refused.tingraplugin": .unsigned(detail: "no signature")])
+
+        let report = await PlugInLoader().activate(
+            [BetaPlugIn()], thenBundlesFrom: loader(folder, opener, signatures: signatures), in: context(EventBus())
+        ).report
+
+        #expect(
+            report.plugIns.map(\.id) == [
+                "com.example.beta", "com.example.alpha", "com.example.gamma", "com.example.charlie",
+                "com.example.delta",
+            ])
+        #expect(report.plugIns.map(\.state) == [.active, .active, .failed, .refused, .skipped])
+        #expect(report.plugIns.map(\.source) == [.compiledIn, .bundle, .bundle, .bundle, .bundle])
+        #expect(report.plugIns.map(\.reason) == [nil, nil, nil, "unsigned", "disabled"])
+
+        let compiledIn = try #require(report.plugIns.first)
+        #expect(compiledIn.name == "Beta")
+        #expect(compiledIn.path == nil)
+        #expect(compiledIn.version == nil)
+        #expect(compiledIn.message == nil)
+
+        let active = report.plugIns[1]
+        #expect(active.name == "Alpha", "a loaded plug-in's own name wins over the bundle's")
+        #expect(active.version == "1.2.0")
+        #expect(active.path?.hasSuffix("A-Active.tingraplugin") == true)
+        #expect(active.warnings.count == 1)
+        #expect(active.warnings.first?.contains("embeds its own copy") == true)
+
+        #expect(report.plugIns[2].message == "the gamma device is missing")
+        #expect(report.plugIns[2].version == "0.3")
+        #expect(report.plugIns[3].name == "Charlie")
+        #expect(report.plugIns[3].message?.contains("no valid code signature") == true)
+        #expect(report.plugIns[4].message?.contains("tingra-cli plug-ins enable com.example.delta") == true)
+    }
+
+    @Test("the report carries the kit version, the folders with a tilde, and whether safe mode was on")
+    func reportCarriesTheLaunch() async throws {
+        let folder = try PlugInFolder(["Alpha.tingraplugin"])
+        defer { folder.remove() }
+        let loader = PlugInBundleLoader(
+            folders: [folder.url, URL.homeDirectory.appending(path: "Plug-ins")],
+            kitVersion: PlugInKitVersion(major: 0, minor: 1, patch: 0), stateDirectory: folder.stateDirectory,
+            safeMode: .flag, opener: FakeOpener(["Alpha.tingraplugin": .declaring("com.example.alpha")]),
+            signatures: FakeSignatures())
+
+        let report = await PlugInLoader().activate([], thenBundlesFrom: loader, in: context(EventBus())).report
+
+        #expect(report.kitVersion == "0.1.0")
+        #expect(report.safeMode)
+        #expect(report.folders.last == "~/Plug-ins")
+        #expect(report.plugIns.map(\.state) == [.skipped])
+        #expect(report.plugIns.first?.reason == "safeMode")
+    }
+
+    @Test("a refused bundle with no plist is named by its directory, and a duplicate is not read as loaded")
+    func reportNamesUnreadableAndDuplicateBundles() async throws {
+        let folder = try PlugInFolder(["A.tingraplugin", "B.tingraplugin", "Broken.tingraplugin"])
+        defer { folder.remove() }
+        let opener = FakeOpener([
+            "A.tingraplugin": .declaring("com.example.alpha"), "B.tingraplugin": .declaring("com.example.alpha"),
+            "Broken.tingraplugin": FakeBundle(info: nil),
+        ])
+
+        let report = await PlugInLoader().activate([], thenBundlesFrom: loader(folder, opener), in: context(EventBus()))
+            .report
+
+        #expect(report.plugIns.map(\.state) == [.active, .refused, .refused])
+        #expect(report.plugIns.map(\.reason) == [nil, "duplicateID", "loadFailed"])
+        #expect(report.plugIns[1].id == "com.example.alpha")
+        #expect(report.plugIns[2].id == nil)
+        #expect(report.plugIns[2].name == "Broken")
+        #expect(report.safeMode == false)
+    }
+
+    @Test("a bundle turned off by a crash found this launch carries the crash's message")
+    func reportCarriesTheCrashMessage() async throws {
+        let folder = try PlugInFolder(["Alpha.tingraplugin"])
+        defer { folder.remove() }
+        let bundleURL = folder.url.appending(path: "Alpha.tingraplugin").resolvingSymlinksInPath()
+        try write(
+            PlugInLoadMarker(
+                id: PlugInID(rawValue: "com.example.alpha"), path: PlugInBundleLoader.displayPath(of: bundleURL),
+                cdHash: "cdhash-Alpha.tingraplugin", frontEnd: "tingra-cli serve",
+                process: ProcessIdentity(processID: getpid(), startTime: 1)),
+            in: folder)
+        let opener = FakeOpener(["Alpha.tingraplugin": .declaring("com.example.alpha")])
+
+        let report = await PlugInLoader().activate([], thenBundlesFrom: loader(folder, opener), in: context(EventBus()))
+            .report
+
+        #expect(report.plugIns.map(\.state) == [.skipped])
+        #expect(report.plugIns.first?.reason == "crashed")
+        #expect(report.plugIns.first?.message?.contains("was loading in tingra-cli serve") == true)
+    }
+
+    @Test("every skip reason explains itself, naming the bundle")
+    func everySkipReasonHasAMessage() {
+        for reason in PlugInBundleSkip.Reason.allCases {
+            let skip = PlugInBundleSkip(
+                reason: reason, url: URL(filePath: "/tmp/Alpha.tingraplugin"), id: PlugInID(rawValue: "com.example.a"))
+            #expect(skip.message.contains("'Alpha.tingraplugin'"), "\(reason)")
+        }
+    }
+
+    @Test("the declared ids are read from the plists without loading any code")
+    func declaredIDsLoadNoCode() throws {
+        let folder = try PlugInFolder(["A.tingraplugin", "B.tingraplugin", "C.tingraplugin", "D.tingraplugin"])
+        defer { folder.remove() }
+        let opener = FakeOpener([
+            "A.tingraplugin": .declaring("com.example.alpha"), "B.tingraplugin": .declaring("com.example.beta"),
+            "C.tingraplugin": .declaring(nil), "D.tingraplugin": FakeBundle(info: nil),
+        ])
+
+        let ids = loader(folder, opener).declaredIDs()
+
+        #expect(ids == [PlugInID(rawValue: "com.example.alpha"), PlugInID(rawValue: "com.example.beta")])
+        #expect(opener.loadedNames.withLock { $0 }.isEmpty)
+    }
+
+    @Test("paths match whatever their trailing slash")
+    func samePathIgnoresTrailingSlash() {
+        #expect(
+            PlugInLoadReport.samePath(
+                URL(filePath: "/a/B.tingraplugin", directoryHint: .isDirectory), URL(filePath: "/a/B.tingraplugin")))
+        #expect(!PlugInLoadReport.samePath(URL(filePath: "/a/B.tingraplugin"), URL(filePath: "/a/C.tingraplugin")))
     }
 }

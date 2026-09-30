@@ -477,9 +477,31 @@ Four follow-ups, taken in the order the loader needs them, after one correction 
   - A corrupt `plug-ins.json` gave `plugin.enablement` and `enablementUnreadable`.
   - Everything the check wrote was removed afterwards.
 
-**Not yet seen in the app:** Shift at launch, the offer after an unclean exit, and the Safe Mode subtitle. They wait for Larry's relaunch, since a session cannot drive them while his debug instance runs.
+**Not yet seen in the app:** Shift at launch, the offer after an unclean exit, and the Safe Mode subtitle. They wait for Larry's relaunch, since a session cannot drive them while his debug instance runs. *(Larry checked all three by hand on 2026-09-29.)*
 
-The build order after approval: Decision 30 with the three small defects (built), then 31–34 (safe mode, the crash guard, and the enablement file share the loader's new seams; built), then 35, then 36, then 37. Each slice is verified the usual way.
+**Decision 35 built 2026-09-29.** The build settled these details:
+
+- **The report is joined in the host.** `PlugInLoader.activate(_:thenBundlesFrom:in:)` keeps each plug-in's activation outcome, and `PlugInActivation` gains `report`, a `PlugInLoadReport`. The scan gains `found`, every `*.tingraplugin` it met with its Info.plist, so each bundle becomes exactly one entry: the first unclaimed outcome at its path, loaded (then `active` or `failed`), else skipped, else refused. Claiming keeps a symbolic link to a bundle in the other folder from reading as loaded twice. A crash found this launch gives its skip the crash's own message.
+- **A bundle's name and version come from its Info.plist.** `PlugInBundleInfo` gains `name` (`CFBundleDisplayName`, else `CFBundleName`) and `version` (`CFBundleShortVersionString`). A loaded plug-in's own `name` wins. A bundle with no Info.plist is named by its directory. A compiled-in plug-in has no `version`, since it is the front end's.
+- **Every skip explains itself.** `PlugInBundleSkip.message` says why the bundle did not load and how to load it, naming `tingra-cli plug-ins enable <id>` and Settings > Plug-ins. The table prints it after the reason, and `--json` carries it as `message`.
+- **The listing uses `serve`'s own engine.** `DaemonEngine`, new in the CLI, assembles what `serve` ran inline: the registries, the status sink, the stream coordinator, and the five compiled-in plug-ins. `serve` and `plug-ins` both build it, so the listing cannot drift from what the daemon loads.
+- **The listing's console shows no plug-in events.** The report already carries each one as data. Other errors still reach standard error, and OSLog records everything.
+- **`list` is the default subcommand.** `tingra-cli plug-ins --json` is the listing, and `tingra-cli plug-ins list` is the same thing spelled out.
+- **`enable` accepts one id no bundle declares:** an id the file still records. A bundle removed while turned off would otherwise leave an entry nobody can clear. `disable` of such an id is still exit 64.
+- **An unusable file exits 70.** A usage error is the caller's fault and 64. A `plug-ins.json` that cannot be read or written is not, and the file is never overwritten.
+
+**Verified:**
+
+- `TingraHost` went from 278 to 293 tests, and the CLI from 88 to 99. All pass, with no new warnings, `check-format` clean, and the app building.
+- End to end, with the unsigned packaged release binary and a Release-built fixture in the user folder, ad-hoc signed, beside an unsigned copy named to sort first:
+  - The listing showed the five built-in plug-ins, the unsigned copy `refused` as `unsigned` with its message, and the fixture `active`, as `Fixture 1.0`.
+  - `disable` turned it off, a second `disable` said it was already off, and the listing showed it `skipped` as `disabled` with the enable command.
+  - `--safe-mode` headed the table with SAFE MODE and skipped the fixture as `safeMode`. `--json` carried `safeMode`, and each bundle's `state`, `reason`, and `version`.
+  - A dead process's marker made the next listing report the fixture `skipped` as `crashed`, with the crash's own message. The listing after that gave the standing crashed message. `enable` cleared the record, and the fixture was `active` again.
+  - `disable` of a compiled-in id, and `enable` of an unknown one, each exited 64 with the fix.
+  - Everything the check wrote was removed afterwards.
+
+The build order after approval: Decision 30 with the three small defects (built), then 31–34 (safe mode, the crash guard, and the enablement file share the loader's new seams; built), then 35 (built), then 36, then 37. Each slice is verified the usual way.
 
 ## Phase 4 — breadth: the host seams still missing
 

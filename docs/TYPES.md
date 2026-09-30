@@ -243,7 +243,14 @@ internal surface a reader needs to navigate the target instead.
   bundle activated as soon as it loads and before the next one loads.
 - `PlugInActivation` — what `activate(_:thenBundlesFrom:in:)` returns: every
   plug-in that activated, compiled-in ones first, and the bundle scan
-  (2026-09-28).
+  (2026-09-28), and since 2026-09-29 the two joined as a `PlugInLoadReport`.
+- `PlugInLoadReport` — every host-tier plug-in a launch met, each in one
+  state (2026-09-29, PLUGINS.md, Decision 35): the `kitVersion`, `safeMode`,
+  the `folders`, and `plugIns`, one `PlugInLoadReport.Entry` each — `id`,
+  `name`, `version`, `source` (`compiledIn`, `bundle`), `path`, `state`
+  (`active`, `failed`, `refused`, `skipped`), `reason`, `message`, and
+  `warnings`. It is the `tingra-cli plug-ins --json` document, with stable
+  keys and explicit nulls.
 - `PlugInBundleLoader` — the host tier's external bundle loader (2026-09-23;
   PLUGINS.md, "The bundle loader: the design"): scans the user's and the
   machine's `Tingra/Plug-ins` folders once for `*.tingraplugin` bundles and,
@@ -266,11 +273,16 @@ internal surface a reader needs to navigate the target instead.
   file and the markers, and `frontEnd` names the process in a crash report.
 - `PlugInBundle` — a loaded bundle: its `BundledPlugIn` instance and its
   directory.
-- `PlugInBundleScan` — one scan's result: the bundles loaded, the problems
-  found, and the bundles skipped, in scan order.
+- `PlugInBundleScan` — one scan's result: every bundle met (`found`, since
+  2026-09-29), the bundles loaded, the problems found, and the bundles
+  skipped, in scan order. `declaredIDs()` on the loader reads the ids the
+  installed bundles declare without loading any code.
+- `FoundPlugInBundle` — one `*.tingraplugin` entry a scan met, with its
+  `PlugInBundleInfo` or `nil` when unreadable (2026-09-29).
 - `PlugInBundleSkip` — an admitted bundle that was not loaded, with its
   stable `Reason` (`disabled`, `crashed`, `safeMode`, `enablementUnreadable`),
-  the bundle, and its id; reported as `plugin.skipped` (2026-09-28).
+  the bundle, and its id; reported as `plugin.skipped` (2026-09-28). Its
+  `message` says why, and how to load it, for a listing (2026-09-29).
 - `PlugInSafeModeTrigger` — why a launch is in safe mode: `shiftKey`,
   `afterUncleanExit`, or `flag`, the `plugin.safeMode` event's `trigger`
   (2026-09-28, Decisions 31 and 32).
@@ -297,7 +309,9 @@ internal surface a reader needs to navigate the target instead.
   known, and the developer-facing message naming the fix. `crashed`
   (2026-09-28) reports, once, a bundle a dead process was loading.
 - `PlugInBundleInfo` — what a bundle's Info.plist declares: its id, its kit
-  version, and its principal class name.
+  version, and its principal class name; since 2026-09-29 also its name
+  (`CFBundleDisplayName`, else `CFBundleName`) and version
+  (`CFBundleShortVersionString`), for a listing.
 - `PlugInBundleOpening` — the seam under the loader that touches a bundle on
   disk (reads its declarations, lists its `Contents/Frameworks`, loads its
   code); `FoundationPlugInBundleOpener` is the production one, over `Bundle`.
@@ -1174,12 +1188,22 @@ internal surface a reader needs to navigate the target instead.
 ## `apps/tingra-cli`
 
 An executable, so it exposes no public types; its surface is its subcommands —
-`devices`, `stream`, `probe`, `serve`, `mcp`, and `version` (see
+`devices`, `stream`, `probe`, `serve`, `mcp`, `plug-ins`, and `version` (see
 [CLI.md](CLI.md) for each one's options, output, and exit codes).
 
 - `PlugInOptions` — the option group every command that loads plug-ins
   shares: `--safe-mode`, and the bundle loader for a command, naming it as the
   front end in a crash report (2026-09-28, PLUGINS.md, Decisions 31 and 32).
+- `PlugIns` — `tingra-cli plug-ins` (2026-09-29, PLUGINS.md, Decision 35):
+  `PlugIns.List`, the default, loads `serve`'s plug-ins and the bundles against
+  scratch registries and prints the `PlugInLoadReport` as a table (its `table`)
+  or `--json`; `PlugIns.Enable` and `PlugIns.Disable` run a `PlugInSwitch`.
+- `PlugInSwitch` — turns one bundle on or off in `plug-ins.json`, refusing a
+  compiled-in id or one no bundle declares (exit 64) and an unusable file
+  (exit 70) as a `PlugInSwitch.Refusal`.
+- `DaemonEngine` — `serve`'s engine assembled in one place: the registries,
+  the status sink, the stream coordinator, and the compiled-in plug-ins, so
+  `plug-ins` lists exactly what the daemon runs (2026-09-29).
 
 ## `apps/ingest-simulator`
 

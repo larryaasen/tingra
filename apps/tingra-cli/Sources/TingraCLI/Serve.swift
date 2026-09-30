@@ -9,14 +9,10 @@
 
 import ArgumentParser
 import Foundation
-import TingraCapturePlugIns
 import TingraEventBus
-import TingraGeneratorPlugIns
 import TingraHost
 import TingraMCP
-import TingraOutputPlugIns
 import TingraPlugInKit
-import TingraRecordingPlugIns
 
 /// `tingra-cli serve` — run the persistent engine process, the daemon (CLI.md
 /// and MCP.md). It owns the engine (session, pipeline, plug-ins, TCC
@@ -184,55 +180,15 @@ struct Serve: AsyncParsableCommand {
         let osLogTask = eventBus.attach(OSLogSink())
         let fileTask = logFile.map { eventBus.attach(FileSink(path: $0)) }
 
-        // Assemble the engine: registries, the tool registry, the status sink
-        // that feeds stream_status and the MCP notifications, and the clock.
-        let clock = HostClock()
-        let inputs = InputRegistry(eventBus: eventBus)
-        let outputs = OutputRegistry()
-        let tools = ToolRegistry()
-        let status = StatusSink()
+        let engine = DaemonEngine(eventBus: eventBus)
+        let tools = engine.tools
+        let status = engine.status
+        let coordinator = engine.coordinator
         let statusTask = eventBus.attach(status)
 
-        // The operator's saved destinations, so an agent can name "my Twitch"
-        // instead of carrying a URL and key (DESTINATIONS.md). The daemon
-        // reads its own keychain group, not the app's: sharing one needs a
-        // restricted entitlement this bare executable cannot carry (0.1.2 —
-        // see the entitlements file). So names and URLs resolve, and a key
-        // filed in the app is reported absent with the reason in the message.
-        let destinations = DestinationStore(eventBus: eventBus)
-
-        let coordinator = StreamCoordinator(
-            inputs: inputs,
-            outputs: outputs,
-            status: status,
-            eventBus: eventBus,
-            clock: clock,
-            defaults: StreamDefaults(
-                cameraID: { SystemDefaultInputs.cameraID },
-                microphoneID: { SystemDefaultInputs.microphoneID }
-            ),
-            destinationStore: destinations
-        )
-
-        // First-party plug-ins load through the same path a third party's
-        // does, including the control tools that expose the CLI surface as
-        // MCP tools (MCP.md, "Tool surface"); the plug-in bundles installed
-        // in the plug-in folders load after them (PLUGINS.md, Decision 27).
-        let context = PlugInContext(
-            eventBus: eventBus, clock: clock, inputs: inputs, outputs: outputs, effects: EffectRegistry(),
-            tools: tools)
-        await PlugInLoader().activate(
-            [
-                AVFoundationCapturePlugIn(),
-                GeneratorPlugIn(),
-                HaishinKitOutputPlugIn(),
-                RecordingPlugIn(),
-                ControlToolsPlugIn(
-                    coordinator: coordinator, inputs: inputs, outputs: outputs, destinations: destinations),
-            ],
-            thenBundlesFrom: plugIns.bundleLoader(for: "serve"),
-            in: context
-        )
+        // The compiled-in plug-ins load first, then the plug-in bundles
+        // installed in the plug-in folders (PLUGINS.md, Decision 27).
+        await engine.activatePlugIns(bundlesFrom: plugIns.bundleLoader(for: "serve"))
 
         let info = DaemonInfo(name: "tingra", version: TingraCLIVersion.current)
         let timeout: Duration? = idleTimeout > 0 ? .seconds(idleTimeout) : nil
