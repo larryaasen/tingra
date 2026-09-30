@@ -3648,6 +3648,15 @@ there.
     unfragmented file. By hand in the app (Larry): a recording force-quit
     at about 33 s plays to 30.0 s, one `moov` plus two `moof`. Its dropped
     frames are left open in TODO.md.
+  - **A Retina display was captured at half its pixels — fixed and seen
+    working 2026-09-29.** A tile snapshot of the built-in display (3024 ×
+    1964 Retina) came out 1512 × 982: `DisplayDiscovery` sized the capture
+    from `CGDisplayPixelsWide`/`High`, which answer in points in a HiDPI
+    mode. It now reads the display mode's pixel size (point size only when
+    there is no mode), and the capture queue depth dropped from 6 to 3 to
+    offset the 4× larger frames (ARCHITECTURE.md, "ScreenCaptureKit").
+    `TingraCapturePlugIns` 60 → 64 tests. The same snapshot from the new
+    build is 3024 × 1964.
 
 - [x] **Commit the doc baseline** (the full doc set plus the LICENSE change is
   staged but uncommitted) so scaffolding diffs cleanly. *(Checkbox corrected
