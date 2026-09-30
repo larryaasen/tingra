@@ -84,6 +84,7 @@ The package names are **finalized** (reviewed 2026-07-03; also recorded in "Repo
 
 ## General Guidelines
 - Summary documents after changes are never needed.
+- **No Swift code changes in a cloud session.** Cloud sessions run on Linux with no Swift toolchain, so they cannot build or test. Make Swift changes only in a local session on a Mac; a cloud session may change docs and other non-Swift files.
 - Always verify compilation after making changes. Use whichever method fits the environment:
   - **IDE-integrated agents**: use the `get_errors` tool for fast diagnostics.
   - **CLI/headless agents** (no `get_errors` available): for changes scoped to a single package, run `swift build` in that package (fast, no simulator/device needed). Once an app/UI target exists, use the equivalent `xcodebuild` build command for app-target changes. Pure string-literal or resource-only edits that can't affect compilation may be verified by the relevant package build.
