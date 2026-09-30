@@ -129,6 +129,8 @@ struct Stream: AsyncParsableCommand {
     @Option(help: "Also write logs to a file.")
     var logFile: String?
 
+    @OptionGroup var plugIns: PlugInOptions
+
     /// Flag/option validation — syntactic and cross-flag rules; exit 64 on
     /// failure (CLI.md exit codes). Selector resolution happens later,
     /// against the registry, and reports through the event bus.
@@ -309,7 +311,7 @@ struct Stream: AsyncParsableCommand {
         )
         await PlugInLoader().activate(
             [AVFoundationCapturePlugIn(), GeneratorPlugIn(), HaishinKitOutputPlugIn(), RecordingPlugIn()],
-            thenBundlesFrom: PlugInBundleLoader(),
+            thenBundlesFrom: plugIns.bundleLoader(for: "stream"),
             in: context
         )
 

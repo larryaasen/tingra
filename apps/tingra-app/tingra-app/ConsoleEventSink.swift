@@ -20,7 +20,7 @@ import TingraHost
 /// beside it, sending one line per event to stdout where the app is actually
 /// run. It is a dev convenience, not a replacement for the OSLog
 /// system-of-record the shipping product relies on, nor for the host's
-/// `FileSink` writing the log file an operator shares — ``EngineModel/start()``
+/// `FileSink` writing the log file an operator shares — ``EngineModel/start(launch:)``
 /// attaches all three (EVENTS.md, "Sinks"). Until 2026-09-08 it was the only
 /// sink the app attached, so a Tingra.app launched from the Finder recorded
 /// nothing anywhere.

@@ -11,9 +11,13 @@ import Foundation
 import TingraPlugInKit
 
 /// The app-scoped storage of app-tier plug-ins on this Mac: one JSON file
-/// per plug-in under `~/Library/Application Support/Tingra/Plug-ins/<id>/`
-/// (PLUGINS.md, Decision 7). Never secrets — those are Keychain items
+/// per plug-in under `~/Library/Application Support/Tingra/Plug-in Data/<id>/`
+/// (PLUGINS.md, Decisions 7 and 38). Never secrets — those are Keychain items
 /// through ``PlugInSecretStore``.
+///
+/// Not the `Plug-ins` folder beside it: that one holds the host-tier bundles
+/// the operator installs (Decision 25), and Remove All Data deletes this
+/// folder whole, which must never take an installed plug-in with it.
 struct PlugInApplicationStore: Sendable {
     /// The folder holding one subfolder per plug-in.
     let directory: URL
@@ -21,10 +25,10 @@ struct PlugInApplicationStore: Sendable {
     /// The file name inside a plug-in's folder.
     static let fileName = "application.json"
 
-    /// The production folder, `~/Library/Application Support/Tingra/Plug-ins`
+    /// The production folder, `~/Library/Application Support/Tingra/Plug-in Data`
     /// — named once, so the Data settings pane lists the folder the store
     /// writes.
-    static let defaultDirectory = URL.applicationSupportDirectory.appending(path: "Tingra/Plug-ins")
+    static let defaultDirectory = URL.applicationSupportDirectory.appending(path: "Tingra/Plug-in Data")
 
     /// Creates a store.
     ///

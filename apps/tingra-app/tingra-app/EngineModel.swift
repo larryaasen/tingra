@@ -1121,7 +1121,7 @@ final class EngineModel {
     /// PLUGINS.md, Decision 18). With no follower a block costs it one lock.
     @ObservationIgnored let meterFeed = MeterFeed()
 
-    /// The host event bus. Three sinks drain it (``start()``): the
+    /// The host event bus. Three sinks drain it (``start(launch:)``): the
     /// ``ConsoleEventSink`` printing to stdout for the Xcode console, the
     /// host's `OSLogSink` as the system of record, and the host's `FileSink`
     /// appending every event to ``logFile`` (EVENTS.md, "Sinks").
@@ -1295,7 +1295,7 @@ final class EngineModel {
     }
 
     /// Whether the project's presets exist yet — loaded from the project file
-    /// in ``start()``, or seeded from ``ProgramLayout`` on the first
+    /// in ``start(launch:)``, or seeded from ``ProgramLayout`` on the first
     /// configuration pass. Nothing saves before they do.
     private var hasSessionPreset: Bool { !presets.isEmpty }
 
@@ -1352,7 +1352,7 @@ final class EngineModel {
     private(set) var recentProjectURLs: [URL] = []
 
     /// A project the Finder asked the app to open while the engine was still
-    /// booting — a double-clicked document — opened once ``start()`` has
+    /// booting — a double-clicked document — opened once ``start(launch:)`` has
     /// the show up (``openProjectWhenReady(_:)``).
     @ObservationIgnored private var pendingProjectURL: URL?
 
@@ -1397,6 +1397,7 @@ final class EngineModel {
             defaultsDomain: Bundle.main.bundleIdentifier ?? ProcessInfo.processInfo.processName,
             secureStorage: secureStorage,
             plugInDirectory: PlugInApplicationStore.defaultDirectory,
+            plugInStateDirectory: PlugInBundleLoader.standardStateDirectory,
             recordingFolder: { [recordingPreferences] in recordingPreferences.folder },
             snapshotFolder: { [snapshotPreferences] in snapshotPreferences.folder }
         ),
@@ -1511,8 +1512,14 @@ final class EngineModel {
     /// any (see ``scheduleTallyRefresh(after:)``).
     @ObservationIgnored private var tallyRefreshTask: Task<Void, Never>?
 
-    /// Whether ``start()`` has run, so it boots the engine once.
+    /// Whether ``start(launch:)`` has run, so it boots the engine once.
     @ObservationIgnored private var started = false
+
+    /// Why this launch is in safe mode, which loads no plug-in bundles, or
+    /// `nil` for a normal launch (PLUGINS.md, Decision 31). Set once, as the
+    /// engine boots; the main window's subtitle ends in "Safe Mode" while it
+    /// is set.
+    private(set) var safeModeTrigger: PlugInSafeModeTrigger?
 
     /// Whether any ``applyConfiguration()`` pass has completed, so the first
     /// pass establishes the session preset — seeding a fresh project around
@@ -1552,7 +1559,7 @@ final class EngineModel {
     /// running (see ``reconfigureRequested``).
     @ObservationIgnored private var audioReconfigureRequested = false
 
-    /// Creates the model. The engine boots in ``start()`` when the window
+    /// Creates the model. The engine boots in ``start(launch:)`` when the window
     /// appears, not here.
     ///
     /// - Parameters:
@@ -1596,9 +1603,15 @@ final class EngineModel {
     /// Boots the engine: attaches the log sinks and records the launch,
     /// activates the capture and generator plug-ins, discovers inputs, starts
     /// the compositor, and begins feeding the preview. Idempotent.
-    func start() async {
+    ///
+    /// - Parameter launch: Whether this launch is in safe mode, which loads
+    ///   no plug-in bundles, and the operator's answer to the offer made
+    ///   after an unclean exit, when one was made (PLUGINS.md, Decisions 31
+    ///   and 32).
+    func start(launch: SafeModeLaunch = .normal) async {
         guard !started else { return }
         started = true
+        safeModeTrigger = launch.trigger
 
         // The three log sinks, attached before the first event so none is
         // missed (EVENTS.md, "Sinks"): stdout for the Xcode console, which
@@ -1616,6 +1629,9 @@ final class EngineModel {
         // and macOS versions and the Mac's model — so a shared log can be
         // lined up with the report it arrived with (``LaunchDiagnostics``).
         eventBus.app(LaunchDiagnostics.eventName, domain: .platform, params: LaunchDiagnostics().params)
+        // The safe-mode offer's click happened before there was anywhere to
+        // record it, so it goes on the bus now, ahead of its effect.
+        launch.reportOfferTap(on: eventBus)
         // Observe the bus for `stream.*` status changes before anything can
         // stream, so no status event is missed (event-driven, never polled).
         // One consumer, two handlers. Attached here — before the plug-ins
@@ -1647,15 +1663,22 @@ final class EngineModel {
             tools: toolRegistry,
             media: mediaRegistry
         )
-        await PlugInLoader().activate(
+        let activation = await PlugInLoader().activate(
             [
                 AVFoundationCapturePlugIn(), ScreenCaptureKitCapturePlugIn(), GeneratorPlugIn(),
                 HaishinKitOutputPlugIn(), EffectPlugIn(), RecordingPlugIn(), MediaPlugIn(),
                 ProgramToolsPlugIn(program: self, outputs: self),
             ],
-            thenBundlesFrom: PlugInBundleLoader(),
+            thenBundlesFrom: PlugInBundleLoader(frontEnd: "Tingra", safeMode: launch.trigger),
             in: context
         )
+        // Once bundles have loaded, a run that ends without terminating is
+        // one the next launch offers safe mode after (PLUGINS.md, Decision
+        // 32); ``TingraAppDelegate`` removes the record at a clean quit.
+        let loadedBundles = activation.scan.loaded.map(\.url.lastPathComponent)
+        if !loadedBundles.isEmpty {
+            PlugInLaunchRecord().write(bundles: loadedBundles)
+        }
         for resource in EngineResources.all(for: self) {
             do {
                 try await resourceRegistry.register(resource)
@@ -5023,7 +5046,7 @@ final class EngineModel {
     /// Opens a project the Finder handed the app, whenever the engine is
     /// ready for it: a document double-clicked while the app runs opens at
     /// once; one that launched the app becomes the project the boot loads,
-    /// and one arriving mid-boot waits for ``start()`` to finish.
+    /// and one arriving mid-boot waits for ``start(launch:)`` to finish.
     ///
     /// - Parameter url: The project document to open.
     func openProjectWhenReady(_ url: URL) async {

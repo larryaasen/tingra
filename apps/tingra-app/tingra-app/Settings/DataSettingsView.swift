@@ -255,6 +255,10 @@ struct AppDataRow: View {
         case .plugInSecrets:
             LocalizedStringResource(
                 "Plug-in Secrets", comment: "Data settings: the name of the secrets plug-ins keep in the Keychain")
+        case .plugInEnablement:
+            LocalizedStringResource(
+                "Plug-ins Turned Off",
+                comment: "Data settings: the name of the file recording which installed plug-ins are turned off")
         case .preferences:
             LocalizedStringResource("Preferences", comment: "Data settings: the preferences' name")
         case .logSession:
@@ -288,7 +292,8 @@ struct AppDataRow: View {
                 String(localized: "\(item.count) keys", comment: "Data settings: a count of stream keys")
             case .preferences:
                 String(localized: "\(item.count) entries", comment: "Data settings: a count of preference entries")
-            case .project, .destinations, .plugInData, .logSession, .logFile, .recordings, .snapshots:
+            case .project, .destinations, .plugInData, .plugInEnablement, .logSession, .logFile, .recordings,
+                .snapshots:
                 String(localized: "\(item.count) files", comment: "Data settings: a count of files")
             }
         guard let byteCount = item.byteCount else { return count }

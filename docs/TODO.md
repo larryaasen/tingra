@@ -1415,7 +1415,14 @@ or two in the doc that owns them — none need a rewrite.
       whole core, since nearly every source is live at the program rate. So
       the thumbnail tiles (shot bank, layer rows, input grid) now sample at
       15 frames a second (Larry, 2026-09-26); program, preview, and the
-      layer monitor keep the display's rate.
+      layer monitor keep the display's rate. *Corrected 2026-09-27:* that
+      "display's rate" was a fixed 60, taken for `MTKView`'s default, which
+      capped a 120 Hz ProMotion screen at half its refreshes — and the
+      default itself is not fixed (60 in one run on the built-in display, 0
+      in another). A monitor with no maximum now asks for
+      the fastest program rate, 240, which `MTKView` lowers to its screen's
+      own: 121 draws a second on the built-in display, the same idle CPU as
+      at 60.
     - [ ] **What grew main-thread load over the first eleven minutes** of
       both leaking sessions is not known; with the streams bounded it is a
       performance question, not a memory one. Measure with the log window
@@ -1601,13 +1608,67 @@ or two in the doc that owns them — none need a rewrite.
       carried in the test bundle's `Contents/PlugIns` and loaded by the app's
       tests: activated, its input in the host's registry, and an unsigned
       copy refused.
-    - [ ] Manual check: a signed bundle in
+    - [x] Manual check: a signed bundle in
       `~/Library/Application Support/Tingra/Plug-ins` loads in the running
       app and in `tingra-cli devices`, and a quarantined unnotarized one is
-      refused with its `plugin.bundle` event.
+      refused with its `plugin.bundle` event. *App half passed 2026-09-28:
+      `plugin.activated … source=bundle tier=host` after the eight
+      compiled-in plug-ins, and `notNotarized` for the quarantined copy.
+      The bundles add about 30 ms to a CLI launch.* *CLI half run 2026-09-27
+      (PLUGINS.md, "The bundle loader: the manual check"): the quarantined
+      copy was refused `notNotarized` as designed, but the signed one was
+      refused `loadFailed`. SwiftPM builds the CLI's kits as dylibs, and
+      every Xcode-built bundle links them as frameworks (Decision 30). A
+      CLI built by `xcodebuild` loaded the fixture (`plugin.activated
+      source=bundle`), which proves the fix. The app half waits for Larry's
+      relaunch, since his debug instance was up. Rerun after Decision 30
+      was built: the packaged CLI, signed with Developer ID, loads the
+      fixture and refuses the quarantined copy.* *Both halves are done.*
     - [ ] Follow-ups: safe mode, the Plug-ins settings pane, `tingra-cli
       plug-ins`, the `TingraPlugInSDK` release script and repo, the 1.0.0 tag
-      after NDI (Decision 29).
+      after NDI (Decision 29). *Designed 2026-09-27 as Decisions 30–37
+      (PLUGINS.md, "The bundle loader's follow-ups: the design"), awaiting
+      Larry's veto; nothing built yet.*
+      - [x] Decision 30: the CLI's release build via `xcodebuild`, kits as
+        frameworks in `Frameworks/` beside the binary, with coverage off
+        and a packaging check for `__llvm_prf` sections (the generated scheme
+        instrumented the check's Release build, which then wrote
+        `default.profraw` wherever it ran); plus the three small defects the
+        manual check found (`loadFailed` message carrying dyld's
+        unabbreviated home path, the misleading `noPrincipalClass` for a
+        second kit copy, the fixture input's missing `media`). *Built
+        2026-09-27 (PLUGINS.md, "Decision 30 built"): `CLANG_COVERAGE_MAPPING=NO`
+        because `-enableCodeCoverage` is test-only, the rpath Release-only,
+        the version read from the staged binary, the zip made with
+        `ditto --norsrc` (Homebrew's `unzip` would write `._` files into the
+        frameworks and break their seal), the `.pkg`'s framework components
+        pinned (not relocatable, not version-checked). A Developer ID signed,
+        hardened copy loaded the fixture from the user folder; the notarized
+        release and a Homebrew install of the new layout come with the next
+        release.*
+      - [x] Decisions 31–34: safe mode (Shift, the offer after an unclean
+        exit, `--safe-mode`), the load-crash guard, `plug-ins.json`.
+        *Built 2026-09-28: the loader takes one bundle at a time inside a
+        per-process marker, skips turned-off, crashed, and safe-mode
+        bundles (`plugin.skipped`), and reports `plugin.safeMode`; the app
+        reads Shift and makes the offer in `applicationWillFinishLaunching`,
+        and ends its subtitle in "Safe Mode"; the Data pane lists Plug-ins
+        Turned Off. Verified end to end in the packaged CLI with the
+        fixture (normal, safe mode, a dead process's marker, a new build,
+        turned off, an unreadable file). Decision 30's rpath moved from the
+        manifest to the packaging script. TingraHost 278, CLI 88, app 781.*
+        - [ ] Larry: check the app's half by hand — Shift at launch, the
+          offer after stopping a run from Xcode with the fixture installed,
+          and the subtitle.
+      - [x] Decision 38: move app-tier plug-ins' app-scoped files out of the
+        Plug-ins folder, into `Plug-in Data/<id>/`, so Remove All Data never
+        deletes an installed bundle. *Approved and built 2026-09-29.*
+      - [ ] Decision 35: `tingra-cli plug-ins [--json] [--safe-mode]`,
+        `plug-ins enable|disable <id>`.
+      - [ ] Decision 36: the Plug-ins settings pane.
+      - [ ] Decision 37: `scripts/release-sdk.sh`, `release-sdk.yml`,
+        `packaging/sdk/`; the repo, the token scope, and the first publish
+        are Larry's.
   - [ ] **NDI as an external plug-in bundle**, outside this repo, importing
     the closed-source SDK: an NDI input and an NDI output. Waits on the
     loader; NDI's own virtual input is the stopgap the capture plug-in
@@ -3602,6 +3663,20 @@ fixed together on 2026-08-06.
   `BarsGenerator` takes an injectable `wallClock` and `timeZone`. A time of day
   also lets a viewer estimate the stream's delay against any clock.
   `TingraGeneratorPlugIns` 82 → 85.
+  - [x] **The time of day ran hours ahead after the Mac slept** *(Larry,
+    2026-09-29)*. Bars read 06:11:53 at 8:49 PM, advancing at real time: a
+    constant 9 h 22 min ahead, against 9 h 27 min the Mac had slept since the
+    app launched. Not the bars: `HostClock.tick` scheduled its deadlines on
+    `ContinuousClock`, which counts sleep, while stamping ticks in host time,
+    which does not, so each wake jumped every skipping tick grid ahead of the
+    master clock by the sleep (and handed the catching-up mix and tone ticks
+    every deadline slept through). The time of day is the first thing that
+    reads a tick against the master clock, so it was the first to show it.
+    The loop now runs on `SuspendingClock`, the host time clock's own
+    timebase (CLOCK.md, "Scheduler implementation"). `TingraHost` 278 → 279.
+    Verified by measurement, not by sleeping the Mac: `SuspendingClock` read
+    the host time to the microsecond, `ContinuousClock` 206.7 hours ahead
+    (the Mac's sleep since boot).
 
   Tests: `TingraGeneratorPlugIns` 46 → 77 (the new `StallReporter`,
   `GeneratorSynthesisFailure`, coordinator-stall, rollback, and timecode suites)

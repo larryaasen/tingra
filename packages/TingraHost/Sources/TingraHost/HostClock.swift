@@ -25,7 +25,7 @@ public struct HostClock: EngineClock {
         CMClockGetTime(CMClockGetHostTimeClock())
     }
 
-    /// A `ContinuousClock`-based deadline loop with absolute deadlines
+    /// A `SuspendingClock`-based deadline loop with absolute deadlines
     /// (`T0 + n × duration`), per CLOCK.md's scheduler options. Late ticks
     /// are skipped, never burst — see ``tick(every:lateTicks:)``.
     ///
@@ -35,9 +35,20 @@ public struct HostClock: EngineClock {
         tick(every: duration, lateTicks: .skip)
     }
 
-    /// A `ContinuousClock`-based deadline loop with absolute deadlines
+    /// A `SuspendingClock`-based deadline loop with absolute deadlines
     /// (`T0 + n × duration`), delivering late ticks per `lateTicks`
     /// (CLOCK.md, "Late ticks").
+    ///
+    /// `SuspendingClock` because it is the one Swift clock on the host time
+    /// clock's own timebase: both read `mach_absolute_time`, which stops
+    /// while the Mac sleeps, so a deadline and the tick time stamped for it
+    /// are the same instant. A system sleep pauses the grid and it resumes
+    /// where it stopped, on time. The loop ran on `ContinuousClock` until
+    /// 2026-09-29, and that clock counts sleep: every wake found the sleep's
+    /// deadlines due, so a skipping stream jumped its grid ahead of the
+    /// master clock by the sleep's length for good, and a catching-up one
+    /// delivered every deadline slept through. After a working day of the
+    /// Mac sleeping, the bars' time of day read 9 hours 22 minutes ahead.
     ///
     /// A tick can be late two ways, and ``LateTickPolicy/skip`` closes both:
     /// the scheduler itself wakes past later deadlines (the process was
@@ -63,18 +74,18 @@ public struct HostClock: EngineClock {
             }
         return AsyncStream(bufferingPolicy: skipsLateTicks ? .bufferingNewest(1) : .unbounded) { continuation in
             let task = Task {
-                let start = ContinuousClock.now
+                let start = SuspendingClock.now
                 let t0 = now
                 let interval = Duration.seconds(duration.seconds)
                 var n = 1
                 while !Task.isCancelled {
                     do {
-                        try await Task.sleep(until: start + interval * n, clock: .continuous)
+                        try await Task.sleep(until: start + interval * n, clock: .suspending)
                     } catch {
                         break
                     }
                     if skipsLateTicks {
-                        n = Self.latestDueTick(after: n, elapsed: ContinuousClock.now - start, interval: interval)
+                        n = Self.latestDueTick(after: n, elapsed: SuspendingClock.now - start, interval: interval)
                     }
                     continuation.yield(t0 + CMTimeMultiply(duration, multiplier: Int32(n)))
                     n += 1

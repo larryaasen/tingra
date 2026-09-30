@@ -46,6 +46,8 @@ struct Probe: AsyncParsableCommand {
     @Option(help: "Also write logs to a file.")
     var logFile: String?
 
+    @OptionGroup var plugIns: PlugInOptions
+
     /// Flag/option validation — syntactic and cross-flag rules; exit 64 on
     /// failure (CLI.md exit codes).
     func validate() throws {
@@ -112,7 +114,8 @@ struct Probe: AsyncParsableCommand {
             effects: EffectRegistry(),
             tools: ToolRegistry()
         )
-        await PlugInLoader().activate([HaishinKitOutputPlugIn()], thenBundlesFrom: PlugInBundleLoader(), in: context)
+        await PlugInLoader().activate(
+            [HaishinKitOutputPlugIn()], thenBundlesFrom: plugIns.bundleLoader(for: "probe"), in: context)
 
         do {
             guard let destinationURL = URL(string: url), let scheme = destinationURL.scheme?.lowercased()

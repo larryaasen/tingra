@@ -7738,6 +7738,142 @@
           }
         }
       }
+    },
+    "Safe Mode" : {
+      "comment" : "Main window subtitle for a launch that loaded no plug-in bundles, before a preset is active",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sicherer Modus"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modo seguro"
+          }
+        }
+      }
+    },
+    "%@ preset — Safe Mode" : {
+      "comment" : "Main window subtitle naming the active preset in a launch that loaded no plug-in bundles; the placeholder is the preset's name",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Voreinstellung „%@“ — Sicherer Modus"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Preajuste %@ — Modo seguro"
+          }
+        }
+      }
+    },
+    "Tingra quit unexpectedly while plug-ins you installed were loaded." : {
+      "comment" : "Launch alert title after the app's last run ended while plug-in bundles were loaded",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tingra wurde unerwartet beendet, während von Ihnen installierte Plug-ins geladen waren."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tingra se cerró inesperadamente mientras había complementos que instalaste cargados."
+          }
+        }
+      }
+    },
+    "Open in Safe Mode" : {
+      "comment" : "Launch alert button: open the app without the plug-ins the operator installed",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Im sicheren Modus öffnen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abrir en modo seguro"
+          }
+        }
+      }
+    },
+    "Open Normally" : {
+      "comment" : "Launch alert button: open the app with its plug-ins as usual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Normal öffnen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abrir normalmente"
+          }
+        }
+      }
+    },
+    "Safe mode opens Tingra without the plug-ins you installed, for this launch only. Nothing is removed." : {
+      "comment" : "Launch alert text explaining safe mode",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Im sicheren Modus öffnet Tingra ohne die von Ihnen installierten Plug-ins, nur für diesen Start. Es wird nichts entfernt."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El modo seguro abre Tingra sin los complementos que instalaste, solo en este inicio. No se elimina nada."
+          }
+        }
+      }
+    },
+    "Loaded plug-ins: %@." : {
+      "comment" : "Launch alert text naming the plug-in bundles the last run loaded; the placeholder is their names",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Geladene Plug-ins: %@."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Complementos cargados: %@."
+          }
+        }
+      }
+    },
+    "Plug-ins Turned Off" : {
+      "comment" : "Data settings: the name of the file recording which installed plug-ins are turned off",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deaktivierte Plug-ins"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Complementos desactivados"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

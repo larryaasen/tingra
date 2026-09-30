@@ -17,7 +17,7 @@ import Foundation
 /// displays, load and autosave their real project, record their session
 /// position, and append to their real log, none of which any test uses: the
 /// tests build their own ``EngineModel`` over test doubles and never call
-/// ``EngineModel/start()``. The scheme's Test action sets
+/// ``EngineModel/start(launch:)``. The scheme's Test action sets
 /// ``testHostVariable``, and the app skips the boot when it is set.
 ///
 /// An explicit variable of Tingra's own rather than one of the test runner's

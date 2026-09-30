@@ -182,11 +182,14 @@ struct MonitorViewTests {
         #expect(second.frameReads == 1)
     }
 
-    @Test("a thumbnail samples at 15 frames a second, and a monitor with no maximum at the display's rate")
+    @Test(
+        "a thumbnail samples at 15 frames a second, and a monitor with no maximum asks for the fastest program's rate, above a ProMotion display's"
+    )
     func samplingRates() {
         #expect(MonitorView.framesPerSecond(maximum: MonitorView.thumbnailFramesPerSecond) == 15)
         #expect(MonitorView.framesPerSecond(maximum: nil) == MonitorView.displayFramesPerSecond)
-        #expect(MTKView().preferredFramesPerSecond == MonitorView.displayFramesPerSecond)
+        #expect(MonitorView.displayFramesPerSecond == ProgramFormatChoice.maximumFrameRate)
+        #expect(MonitorView.displayFramesPerSecond >= 120)
     }
 
     @Test("an input tile's and the layer monitor's picture states hold while nothing is delivering")

@@ -103,13 +103,14 @@ private final class FakeOpener: PlugInBundleOpening {
 }
 
 /// A ``CodeSignatureChecking`` answering scripted verdicts by directory
-/// name, `.valid` for any other.
+/// name, and for any other a valid signature whose CDHash is
+/// `cdhash-<name>`.
 private struct FakeSignatures: CodeSignatureChecking {
     /// The verdicts by directory name.
     var verdicts: [String: CodeSignatureVerdict] = [:]
 
     func verdict(forBundleAt url: URL) -> CodeSignatureVerdict {
-        verdicts[url.lastPathComponent] ?? .valid
+        verdicts[url.lastPathComponent] ?? .valid(cdHash: "cdhash-\(url.lastPathComponent)")
     }
 }
 
@@ -127,6 +128,13 @@ private struct PlugInFolder {
                 at: url.appending(path: name, directoryHint: .isDirectory), withIntermediateDirectories: true)
         }
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+    }
+
+    /// Where the loader keeps the enablement file and its load markers for
+    /// this test, inside the folder so it goes when the folder does. It is
+    /// not named like a bundle, so the scan never meets it.
+    var stateDirectory: URL {
+        url.appending(path: "state", directoryHint: .isDirectory)
     }
 
     /// Deletes the folder and everything in it.
@@ -148,24 +156,27 @@ private func drain(_ eventBus: EventBus, _ events: AsyncStream<EventBusEvent>) a
 @Suite("PlugInBundleLoader")
 struct PlugInBundleLoaderTests {
     /// Scans one folder of fake bundles with the given signatures and taken
-    /// ids.
+    /// ids. The host's kit is a framework unless a test says otherwise, so
+    /// no result depends on how `swift test` itself linked the kit.
     private func scan(
         _ bundles: [String: FakeBundle],
         signatures: FakeSignatures = FakeSignatures(),
         taken: Set<PlugInID> = [],
-        kitVersion: PlugInKitVersion = PlugInKitVersion(major: 0, minor: 1, patch: 0)
-    ) throws -> (scan: PlugInBundleScan, opener: FakeOpener) {
+        kitVersion: PlugInKitVersion = PlugInKitVersion(major: 0, minor: 1, patch: 0),
+        kitIsFramework: Bool = true
+    ) async throws -> (scan: PlugInBundleScan, opener: FakeOpener) {
         let folder = try PlugInFolder(Array(bundles.keys))
         defer { folder.remove() }
         let opener = FakeOpener(bundles)
         let loader = PlugInBundleLoader(
-            folders: [folder.url], kitVersion: kitVersion, opener: opener, signatures: signatures)
-        return (loader.load(skipping: taken, reportingTo: EventBus()), opener)
+            folders: [folder.url], kitVersion: kitVersion, kitIsFramework: kitIsFramework,
+            stateDirectory: folder.stateDirectory, opener: opener, signatures: signatures)
+        return (await loader.load(skipping: taken, reportingTo: EventBus()), opener)
     }
 
     @Test("a well-formed, signed bundle loads as one instance of its principal class")
-    func loadsAWellFormedBundle() throws {
-        let (scan, _) = try scan(["Alpha.tingraplugin": .declaring("com.example.alpha")])
+    func loadsAWellFormedBundle() async throws {
+        let (scan, _) = try await scan(["Alpha.tingraplugin": .declaring("com.example.alpha")])
 
         #expect(scan.loaded.map(\.plugIn.id) == [PlugInID(rawValue: "com.example.alpha")])
         #expect(scan.loaded.first?.url.lastPathComponent == "Alpha.tingraplugin")
@@ -173,11 +184,13 @@ struct PlugInBundleLoaderTests {
     }
 
     @Test("a folder that does not exist holds no bundles and reports nothing")
-    func missingFolderHoldsNothing() {
+    func missingFolderHoldsNothing() async {
         let missing = FileManager.default.temporaryDirectory.appending(path: "no-such-\(UUID().uuidString)")
-        let loader = PlugInBundleLoader(folders: [missing], opener: FakeOpener([:]), signatures: FakeSignatures())
+        let loader = PlugInBundleLoader(
+            folders: [missing], stateDirectory: missing.appending(path: "state"), opener: FakeOpener([:]),
+            signatures: FakeSignatures())
 
-        let scan = loader.load(skipping: [], reportingTo: EventBus())
+        let scan = await loader.load(skipping: [], reportingTo: EventBus())
 
         #expect(scan.loaded.isEmpty)
         #expect(scan.problems.isEmpty)
@@ -187,13 +200,15 @@ struct PlugInBundleLoaderTests {
     func onlyPlugInBundlesInNameOrder() throws {
         let folder = try PlugInFolder(["b.tingraplugin", "a.tingraplugin", "c.bundle", "notes.txt"])
         defer { folder.remove() }
-        let loader = PlugInBundleLoader(folders: [folder.url], opener: FakeOpener([:]), signatures: FakeSignatures())
+        let loader = PlugInBundleLoader(
+            folders: [folder.url], stateDirectory: folder.stateDirectory, opener: FakeOpener([:]),
+            signatures: FakeSignatures())
 
         #expect(loader.bundleURLs(in: folder.url).map(\.lastPathComponent) == ["a.tingraplugin", "b.tingraplugin"])
     }
 
     @Test("a symbolic link named *.tingraplugin is followed to the bundle it points at")
-    func followsSymbolicLinks() throws {
+    func followsSymbolicLinks() async throws {
         let folder = try PlugInFolder([])
         let elsewhere = try PlugInFolder(["Alpha.tingraplugin"])
         defer {
@@ -204,18 +219,18 @@ struct PlugInBundleLoaderTests {
             at: folder.url.appending(path: "Alpha.tingraplugin"),
             withDestinationURL: elsewhere.url.appending(path: "Alpha.tingraplugin"))
         let loader = PlugInBundleLoader(
-            folders: [folder.url], opener: FakeOpener(["Alpha.tingraplugin": .declaring("com.example.alpha")]),
-            signatures: FakeSignatures())
+            folders: [folder.url], stateDirectory: folder.stateDirectory,
+            opener: FakeOpener(["Alpha.tingraplugin": .declaring("com.example.alpha")]), signatures: FakeSignatures())
 
-        let scan = loader.load(skipping: [], reportingTo: EventBus())
+        let scan = await loader.load(skipping: [], reportingTo: EventBus())
 
         #expect(scan.loaded.count == 1)
         #expect(scan.loaded.first?.url.path().hasPrefix(elsewhere.url.resolvingSymlinksInPath().path()) == true)
     }
 
     @Test("a directory with no Info.plist is refused as loadFailed")
-    func unreadableBundleIsRefused() throws {
-        let (scan, opener) = try scan(["Broken.tingraplugin": FakeBundle(info: nil)])
+    func unreadableBundleIsRefused() async throws {
+        let (scan, opener) = try await scan(["Broken.tingraplugin": FakeBundle(info: nil)])
 
         #expect(scan.loaded.isEmpty)
         #expect(scan.problems.map(\.reason) == [.loadFailed])
@@ -224,8 +239,8 @@ struct PlugInBundleLoaderTests {
     }
 
     @Test("a bundle declaring no plug-in id is refused as idMismatch, naming the key to add")
-    func missingIDIsRefused() throws {
-        let (scan, opener) = try scan(["Alpha.tingraplugin": .declaring(nil)])
+    func missingIDIsRefused() async throws {
+        let (scan, opener) = try await scan(["Alpha.tingraplugin": .declaring(nil)])
 
         #expect(scan.problems.map(\.reason) == [.idMismatch])
         #expect(scan.problems.first?.message.contains(PlugInBundleLoader.idKey) == true)
@@ -233,8 +248,8 @@ struct PlugInBundleLoaderTests {
     }
 
     @Test("a bundle declaring a compiled-in plug-in's id is refused as a duplicate, before its code loads")
-    func compiledInIDWins() throws {
-        let (scan, opener) = try scan(
+    func compiledInIDWins() async throws {
+        let (scan, opener) = try await scan(
             ["Alpha.tingraplugin": .declaring("com.example.alpha")], taken: [PlugInID(rawValue: "com.example.alpha")])
 
         #expect(scan.loaded.isEmpty)
@@ -244,7 +259,7 @@ struct PlugInBundleLoaderTests {
     }
 
     @Test("the user folder wins a collision over the machine folder, and the refusal names the winner")
-    func userFolderWinsOverMachineFolder() throws {
+    func userFolderWinsOverMachineFolder() async throws {
         let user = try PlugInFolder(["Alpha.tingraplugin"])
         let machine = try PlugInFolder(["Alpha.tingraplugin"])
         defer {
@@ -252,11 +267,11 @@ struct PlugInBundleLoaderTests {
             machine.remove()
         }
         let loader = PlugInBundleLoader(
-            folders: [user.url, machine.url],
+            folders: [user.url, machine.url], stateDirectory: user.stateDirectory,
             opener: FakeOpener(["Alpha.tingraplugin": .declaring("com.example.alpha")]),
             signatures: FakeSignatures())
 
-        let scan = loader.load(skipping: [], reportingTo: EventBus())
+        let scan = await loader.load(skipping: [], reportingTo: EventBus())
 
         #expect(scan.loaded.count == 1)
         #expect(scan.loaded.first?.url.path().hasPrefix(user.url.resolvingSymlinksInPath().path()) == true)
@@ -266,8 +281,8 @@ struct PlugInBundleLoaderTests {
     }
 
     @Test("an id refused for another reason stays free for a later bundle")
-    func refusedBundleDoesNotTakeItsID() throws {
-        let (scan, _) = try scan(
+    func refusedBundleDoesNotTakeItsID() async throws {
+        let (scan, _) = try await scan(
             ["A.tingraplugin": .declaring("com.example.alpha"), "B.tingraplugin": .declaring("com.example.alpha")],
             signatures: FakeSignatures(verdicts: ["A.tingraplugin": .unsigned(detail: "no signature")]))
 
@@ -278,8 +293,10 @@ struct PlugInBundleLoaderTests {
     @Test(
         "a bundle declaring no kit version, or one that is not a version, is refused as kitVersion",
         arguments: [nil, "", "latest", "1"] as [String?])
-    func unusableKitVersionIsRefused(_ declared: String?) throws {
-        let (scan, opener) = try scan(["Alpha.tingraplugin": .declaring("com.example.alpha", kitVersion: declared)])
+    func unusableKitVersionIsRefused(_ declared: String?) async throws {
+        let (scan, opener) = try await scan([
+            "Alpha.tingraplugin": .declaring("com.example.alpha", kitVersion: declared)
+        ])
 
         #expect(scan.problems.map(\.reason) == [.kitVersion])
         #expect(scan.problems.first?.message.contains(PlugInBundleLoader.kitVersionKey) == true)
@@ -287,8 +304,8 @@ struct PlugInBundleLoaderTests {
     }
 
     @Test("a bundle built against a kit this host cannot load is refused, naming both versions")
-    func incompatibleKitVersionIsRefused() throws {
-        let (scan, opener) = try scan(
+    func incompatibleKitVersionIsRefused() async throws {
+        let (scan, opener) = try await scan(
             ["Alpha.tingraplugin": .declaring("com.example.alpha", kitVersion: "1.3.0")],
             kitVersion: PlugInKitVersion(major: 1, minor: 2, patch: 0))
 
@@ -330,8 +347,8 @@ struct PlugInBundleLoaderTests {
     }
 
     @Test("an unsigned bundle is refused with the signature detail, and its code never loads")
-    func unsignedBundleIsRefused() throws {
-        let (scan, opener) = try scan(
+    func unsignedBundleIsRefused() async throws {
+        let (scan, opener) = try await scan(
             ["Alpha.tingraplugin": .declaring("com.example.alpha")],
             signatures: FakeSignatures(verdicts: ["Alpha.tingraplugin": .unsigned(detail: "code object is not signed")])
         )
@@ -342,8 +359,8 @@ struct PlugInBundleLoaderTests {
     }
 
     @Test("a quarantined bundle that is not notarized is refused, and its code never loads")
-    func unnotarizedDownloadIsRefused() throws {
-        let (scan, opener) = try scan(
+    func unnotarizedDownloadIsRefused() async throws {
+        let (scan, opener) = try await scan(
             ["Alpha.tingraplugin": .declaring("com.example.alpha")],
             signatures: FakeSignatures(verdicts: ["Alpha.tingraplugin": .notNotarized]))
 
@@ -352,8 +369,8 @@ struct PlugInBundleLoaderTests {
     }
 
     @Test("code that will not load is refused as loadFailed, carrying dyld's explanation")
-    func loadErrorIsRefused() throws {
-        let (scan, _) = try scan(
+    func loadErrorIsRefused() async throws {
+        let (scan, _) = try await scan(
             ["Alpha.tingraplugin": .declaring("com.example.alpha", principal: .throwsSymbolNotFound)])
 
         #expect(scan.loaded.isEmpty)
@@ -362,23 +379,99 @@ struct PlugInBundleLoaderTests {
     }
 
     @Test("a principal class that is not a BundledPlugIn is refused, naming the class the plist declares")
-    func nonPlugInPrincipalClassIsRefused() throws {
-        let (scan, _) = try scan(["Alpha.tingraplugin": .declaring("com.example.alpha", principal: .notAPlugIn)])
+    func nonPlugInPrincipalClassIsRefused() async throws {
+        let (scan, _) = try await scan(["Alpha.tingraplugin": .declaring("com.example.alpha", principal: .notAPlugIn)])
 
         #expect(scan.problems.map(\.reason) == [.noPrincipalClass])
         #expect(scan.problems.first?.message.contains("Fake.Principal") == true)
     }
 
+    @Test("a principal class that exists but is not a BundledPlugIn names a second kit copy as a cause")
+    func nonConformingClassNamesASecondKitCopy() async throws {
+        let (scan, _) = try await scan(["Alpha.tingraplugin": .declaring("com.example.alpha", principal: .notAPlugIn)])
+        let message = try #require(scan.problems.first?.message)
+
+        #expect(message.contains("has a principal class, 'Fake.Principal'"))
+        #expect(message.contains("second copy of the plug-in kit"))
+        #expect(message.contains("without embedding"))
+        #expect(!message.contains("swift build"))
+    }
+
+    @Test("in a host whose kit is a dylib, a non-conforming principal class blames the host's own build")
+    func nonConformingClassInASwiftBuildHostNamesTheHost() async throws {
+        let (scan, _) = try await scan(
+            ["Alpha.tingraplugin": .declaring("com.example.alpha", principal: .notAPlugIn)], kitIsFramework: false)
+
+        #expect(scan.problems.map(\.reason) == [.noPrincipalClass])
+        #expect(scan.problems.first?.message.contains("was built by `swift build`") == true)
+    }
+
+    @Test("a missing principal class is explained without the second-copy cause")
+    func missingPrincipalClassMessageNamesTheKey() {
+        let message = PlugInBundleLoader.noPrincipalClassMessage(
+            name: "Alpha.tingraplugin", declared: nil, found: nil, kitIsFramework: true)
+
+        #expect(message.contains("it sets no NSPrincipalClass"))
+        #expect(!message.contains("second copy"))
+    }
+
+    @Test("in a host whose kit is a dylib, code that will not load is explained by the host's own build")
+    func loadErrorInASwiftBuildHostNamesTheHost() async throws {
+        let (scan, _) = try await scan(
+            ["Alpha.tingraplugin": .declaring("com.example.alpha", principal: .throwsSymbolNotFound)],
+            kitIsFramework: false)
+        let message = try #require(scan.problems.first?.message)
+
+        #expect(scan.problems.map(\.reason) == [.loadFailed])
+        #expect(message.contains("Symbol not found"))
+        #expect(message.contains("was built by `swift build`"))
+        #expect(message.contains("scripts/release-cli-package.sh"))
+        #expect(!message.contains("newer than this Tingra's"))
+    }
+
+    @Test("dyld's paths under the home folder are abbreviated, wherever they appear in its text")
+    func loadErrorAbbreviatesHome() {
+        let detail =
+            "Library not loaded: @rpath/TingraPlugInKit.framework/Versions/A/TingraPlugInKit\n"
+            + "  Referenced from: <UUID> /Users/someone/Library/Application Support/Tingra/Plug-ins/A.tingraplugin\n"
+            + "  Reason: tried: '/System/Volumes/Preboot/Cryptexes/OS/Users/someone/Projects/x' (no such file), "
+            + "'/Users/someoneelse/y' (no such file)"
+        let error = NSError(domain: NSCocoaErrorDomain, code: 3588, userInfo: [NSDebugDescriptionErrorKey: detail])
+
+        let message = PlugInBundleLoader.loadFailedMessage(
+            name: "A.tingraplugin", error: error, kitIsFramework: true, home: "/Users/someone/")
+
+        #expect(!message.contains("/Users/someone/"))
+        #expect(message.contains("Referenced from: <UUID> ~/Library/Application Support/Tingra/Plug-ins"))
+        #expect(message.contains("/Cryptexes/OS~/Projects/x"))
+        #expect(message.contains("'/Users/someoneelse/y'"))
+    }
+
+    @Test("an image path inside a framework is a framework; a dylib is not; an unknown one counts as a framework")
+    func frameworkImagePaths() {
+        #expect(
+            PlugInBundleLoader.isFramework(
+                imagePath:
+                    "/Applications/Tingra.app/Contents/Frameworks/TingraEventBus.framework/Versions/A/TingraEventBus"))
+        #expect(!PlugInBundleLoader.isFramework(imagePath: "/usr/local/libexec/tingra-cli/libTingraEventBus.dylib"))
+        #expect(PlugInBundleLoader.isFramework(imagePath: nil))
+    }
+
+    @Test("the running kit's image is the event bus's own")
+    func runningKitImageIsTheEventBus() {
+        #expect(PlugInBundleLoader.runningKitImagePath?.contains("TingraEventBus") == true)
+    }
+
     @Test("a bundle whose principal class the runtime cannot find is refused as noPrincipalClass")
-    func missingPrincipalClassIsRefused() throws {
-        let (scan, _) = try scan(["Alpha.tingraplugin": .declaring("com.example.alpha", principal: .none)])
+    func missingPrincipalClassIsRefused() async throws {
+        let (scan, _) = try await scan(["Alpha.tingraplugin": .declaring("com.example.alpha", principal: .none)])
 
         #expect(scan.problems.map(\.reason) == [.noPrincipalClass])
     }
 
     @Test("a principal class reporting a different id from the plist's is refused as idMismatch")
-    func instanceIDMismatchIsRefused() throws {
-        let (scan, _) = try scan(["Alpha.tingraplugin": .declaring("com.example.alpha", principal: .beta)])
+    func instanceIDMismatchIsRefused() async throws {
+        let (scan, _) = try await scan(["Alpha.tingraplugin": .declaring("com.example.alpha", principal: .beta)])
 
         #expect(scan.loaded.isEmpty)
         #expect(scan.problems.map(\.reason) == [.idMismatch])
@@ -386,8 +479,8 @@ struct PlugInBundleLoaderTests {
     }
 
     @Test("a bundle embedding its own kit loads anyway, and the embedded copy is reported")
-    func embeddedKitLoadsAndIsReported() throws {
-        let (scan, _) = try scan([
+    func embeddedKitLoadsAndIsReported() async throws {
+        let (scan, _) = try await scan([
             "Alpha.tingraplugin": .declaring(
                 "com.example.alpha", embedded: ["TingraPlugInKit", "TingraEventBus", "SomethingElse"])
         ])
@@ -411,10 +504,11 @@ struct PlugInBundleLoaderTests {
         let eventBus = EventBus()
         let events = eventBus.events()
         let loader = PlugInBundleLoader(
-            folders: [folder.url], opener: FakeOpener(["Alpha.tingraplugin": .declaring("com.example.alpha")]),
+            folders: [folder.url], stateDirectory: folder.stateDirectory,
+            opener: FakeOpener(["Alpha.tingraplugin": .declaring("com.example.alpha")]),
             signatures: FakeSignatures(verdicts: ["Alpha.tingraplugin": .notNotarized]))
 
-        _ = loader.load(skipping: [], reportingTo: eventBus)
+        _ = await loader.load(skipping: [], reportingTo: eventBus)
         let received = await drain(eventBus, events)
 
         let reports = received.filter { $0.name == "plugin.bundle" }
@@ -442,14 +536,14 @@ struct PlugInBundleLoaderTests {
             eventBus: eventBus, clock: HostClock(), inputs: InputRegistry(), outputs: OutputRegistry(),
             effects: EffectRegistry(), tools: ToolRegistry())
         let loader = PlugInBundleLoader(
-            folders: [folder.url],
+            folders: [folder.url], stateDirectory: folder.stateDirectory,
             opener: FakeOpener([
                 "Alpha.tingraplugin": .declaring("com.example.alpha"),
                 "Beta.tingraplugin": .declaring("com.example.beta", principal: .beta),
             ]),
             signatures: FakeSignatures())
 
-        let activated = await PlugInLoader().activate([BetaPlugIn()], thenBundlesFrom: loader, in: context)
+        let activated = await PlugInLoader().activate([BetaPlugIn()], thenBundlesFrom: loader, in: context).activated
         let received = await drain(eventBus, events)
 
         #expect(activated.map(\.id.rawValue) == ["com.example.beta", "com.example.alpha"])
@@ -478,5 +572,289 @@ struct PlugInBundleLoaderTests {
         #expect(folders.first?.hasSuffix("Library/Application Support/Tingra/Plug-ins/") == true)
         #expect(folders.first?.hasPrefix(URL.homeDirectory.path(percentEncoded: false)) == true)
         #expect(folders.last == "/Library/Application Support/Tingra/Plug-ins/")
+    }
+
+    // MARK: - Turned off, crashed, and safe mode (Decisions 31–34)
+
+    /// A loader over one folder of fake bundles, keeping its state in the
+    /// folder.
+    private func loader(
+        _ folder: PlugInFolder, _ opener: FakeOpener, signatures: FakeSignatures = FakeSignatures(),
+        safeMode: PlugInSafeModeTrigger? = nil
+    ) -> PlugInBundleLoader {
+        PlugInBundleLoader(
+            folders: [folder.url], stateDirectory: folder.stateDirectory, frontEnd: "tingra-cli serve",
+            safeMode: safeMode, opener: opener, signatures: signatures)
+    }
+
+    /// A marker for a process that is gone: this process's id with a start
+    /// time it never had.
+    private func deadProcessMarker(id: String, name: String, cdHash: String) -> PlugInLoadMarker {
+        PlugInLoadMarker(
+            id: PlugInID(rawValue: id), path: "~/Library/Application Support/Tingra/Plug-ins/\(name)",
+            cdHash: cdHash, frontEnd: "tingra-cli serve",
+            process: ProcessIdentity(processID: getpid(), startTime: 1))
+    }
+
+    /// Writes a marker file as a process would have.
+    private func write(_ marker: PlugInLoadMarker, in folder: PlugInFolder) throws {
+        let guardian = PlugInLoadGuard(directory: folder.stateDirectory.appending(path: PlugInLoadGuard.folderName))
+        try FileManager.default.createDirectory(at: guardian.directory, withIntermediateDirectories: true)
+        try JSONEncoder().encode(marker).write(to: guardian.markerURL(for: marker.process))
+    }
+
+    @Test("a bundle the operator turned off is skipped and reported, and its code never loads")
+    func disabledBundleIsSkipped() async throws {
+        let folder = try PlugInFolder(["Alpha.tingraplugin"])
+        defer { folder.remove() }
+        try PlugInEnablementStore(directory: folder.stateDirectory).update {
+            $0.disable(PlugInID(rawValue: "com.example.alpha"))
+        }
+        let opener = FakeOpener(["Alpha.tingraplugin": .declaring("com.example.alpha")])
+        let eventBus = EventBus()
+        let events = eventBus.events()
+
+        let scan = await loader(folder, opener).load(skipping: [], reportingTo: eventBus)
+        let received = await drain(eventBus, events)
+
+        #expect(scan.loaded.isEmpty)
+        #expect(scan.problems.isEmpty)
+        #expect(scan.skipped.map(\.reason) == [.disabled])
+        #expect(opener.loadedNames.withLock { $0 }.isEmpty)
+        let skips = received.filter { $0.name == "plugin.skipped" }
+        #expect(skips.count == 1)
+        #expect(skips.first?.group == .event)
+        #expect(skips.first?.domain == .plugIn)
+        #expect(skips.first?.params?["reason"] == .string("disabled"))
+        #expect(skips.first?.params?["id"] == .string("com.example.alpha"))
+        #expect(skips.first?.params?["tier"] == .string("host"))
+        guard case .string(let path) = skips.first?.params?["path"] else {
+            Issue.record("the skip carries no path")
+            return
+        }
+        #expect(path.hasSuffix("Alpha.tingraplugin"))
+    }
+
+    @Test("a turned-off bundle still holds its id, so a second copy is refused as a duplicate")
+    func skippedBundleHoldsItsID() async throws {
+        let folder = try PlugInFolder(["A.tingraplugin", "B.tingraplugin"])
+        defer { folder.remove() }
+        try PlugInEnablementStore(directory: folder.stateDirectory).update {
+            $0.disable(PlugInID(rawValue: "com.example.alpha"))
+        }
+        let opener = FakeOpener([
+            "A.tingraplugin": .declaring("com.example.alpha"), "B.tingraplugin": .declaring("com.example.alpha"),
+        ])
+
+        let scan = await loader(folder, opener).load(skipping: [], reportingTo: EventBus())
+
+        #expect(scan.skipped.map(\.url.lastPathComponent) == ["A.tingraplugin"])
+        #expect(scan.problems.map(\.reason) == [.duplicateID])
+        #expect(opener.loadedNames.withLock { $0 }.isEmpty)
+    }
+
+    @Test("safe mode loads no bundle's code, still reports refusals, and reports itself once")
+    func safeModeSkipsEveryBundle() async throws {
+        let folder = try PlugInFolder(["Alpha.tingraplugin", "Beta.tingraplugin"])
+        defer { folder.remove() }
+        let opener = FakeOpener([
+            "Alpha.tingraplugin": .declaring("com.example.alpha"),
+            "Beta.tingraplugin": .declaring("com.example.beta", principal: .beta),
+        ])
+        let signatures = FakeSignatures(verdicts: ["Beta.tingraplugin": .unsigned(detail: "no signature")])
+        let eventBus = EventBus()
+        let events = eventBus.events()
+
+        let scan = await loader(folder, opener, signatures: signatures, safeMode: .shiftKey)
+            .load(skipping: [], reportingTo: eventBus)
+        let received = await drain(eventBus, events)
+
+        #expect(scan.loaded.isEmpty)
+        #expect(scan.skipped.map(\.reason) == [.safeMode])
+        #expect(scan.problems.map(\.reason) == [.unsigned])
+        #expect(opener.loadedNames.withLock { $0 }.isEmpty)
+        let reports = received.filter { $0.name == "plugin.safeMode" }
+        #expect(reports.count == 1)
+        #expect(reports.first?.group == .app)
+        #expect(reports.first?.domain == .plugIn)
+        #expect(reports.first?.params?["trigger"] == .string("shiftKey"))
+        #expect(reports.first?.params?["skipped"] == .int(1))
+    }
+
+    @Test("a normal launch does not report safe mode")
+    func normalLaunchReportsNoSafeMode() async throws {
+        let folder = try PlugInFolder(["Alpha.tingraplugin"])
+        defer { folder.remove() }
+        let eventBus = EventBus()
+        let events = eventBus.events()
+
+        _ = await loader(folder, FakeOpener(["Alpha.tingraplugin": .declaring("com.example.alpha")]))
+            .load(skipping: [], reportingTo: eventBus)
+        let received = await drain(eventBus, events)
+
+        #expect(!received.contains { $0.name == "plugin.safeMode" })
+    }
+
+    @Test("a bundle activates inside its marker, and the marker is gone once activation returns")
+    func activationRunsInsideTheMarker() async throws {
+        let folder = try PlugInFolder(["Alpha.tingraplugin"])
+        defer { folder.remove() }
+        let loader = loader(folder, FakeOpener(["Alpha.tingraplugin": .declaring("com.example.alpha")]))
+        let markerURL = loader.loadGuard.markerURL(for: .current)
+        var markerDuringActivation: PlugInLoadMarker?
+
+        let scan = await loader.load(skipping: [], reportingTo: EventBus()) { _ in
+            markerDuringActivation = (try? Data(contentsOf: markerURL)).flatMap {
+                try? JSONDecoder().decode(PlugInLoadMarker.self, from: $0)
+            }
+        }
+
+        #expect(scan.loaded.count == 1)
+        #expect(markerDuringActivation?.id == PlugInID(rawValue: "com.example.alpha"))
+        #expect(markerDuringActivation?.cdHash == "cdhash-Alpha.tingraplugin")
+        #expect(markerDuringActivation?.frontEnd == "tingra-cli serve")
+        #expect(markerDuringActivation?.process == .current)
+        #expect(!FileManager.default.fileExists(atPath: markerURL.path(percentEncoded: false)))
+    }
+
+    @Test("a marker left by a dead process turns that build off, reports it once as crashed, then skips it")
+    func deadProcessMarkerTurnsTheBundleOff() async throws {
+        let folder = try PlugInFolder(["Alpha.tingraplugin"])
+        defer { folder.remove() }
+        let marker = deadProcessMarker(
+            id: "com.example.alpha", name: "Alpha.tingraplugin", cdHash: "cdhash-Alpha.tingraplugin")
+        try write(marker, in: folder)
+        let opener = FakeOpener(["Alpha.tingraplugin": .declaring("com.example.alpha")])
+        let eventBus = EventBus()
+        let events = eventBus.events()
+
+        let first = await loader(folder, opener).load(skipping: [], reportingTo: eventBus)
+        let second = await loader(folder, opener).load(skipping: [], reportingTo: eventBus)
+        let received = await drain(eventBus, events)
+
+        #expect(first.problems.map(\.reason) == [.crashed])
+        #expect(first.problems.first?.id == "com.example.alpha")
+        #expect(first.problems.first?.message.contains("'Alpha.tingraplugin' was loading in tingra-cli serve") == true)
+        #expect(first.problems.first?.message.contains("tingra-cli plug-ins enable com.example.alpha") == true)
+        #expect(first.skipped.map(\.reason) == [.crashed])
+        #expect(second.problems.isEmpty)
+        #expect(second.skipped.map(\.reason) == [.crashed])
+        #expect(opener.loadedNames.withLock { $0 }.isEmpty)
+        let crash = try PlugInEnablementStore(directory: folder.stateDirectory).read()
+            .crash(of: PlugInID(rawValue: "com.example.alpha"))
+        #expect(crash?.cdHash == "cdhash-Alpha.tingraplugin")
+        #expect(crash?.frontEnd == "tingra-cli serve")
+        #expect(crash?.path == marker.path)
+        let reports = received.filter { $0.name == "plugin.bundle" }
+        #expect(reports.map { $0.params?["reason"] } == [.string("crashed")])
+        #expect(received.filter { $0.name == "plugin.skipped" }.count == 2)
+        let guardian = PlugInLoadGuard(directory: folder.stateDirectory.appending(path: PlugInLoadGuard.folderName))
+        #expect(guardian.abandonedMarkers().isEmpty)
+    }
+
+    @Test("a bundle turned off by a crash loads again once its code changes, and the crash is forgotten")
+    func changedCodeLoadsAgain() async throws {
+        let folder = try PlugInFolder(["Alpha.tingraplugin"])
+        defer { folder.remove() }
+        let store = PlugInEnablementStore(directory: folder.stateDirectory)
+        try store.update {
+            $0.recordCrash(
+                CrashedPlugInBundle(
+                    id: PlugInID(rawValue: "com.example.alpha"), cdHash: "an-older-build", path: "~/A",
+                    frontEnd: "Tingra", date: .now))
+        }
+
+        let scan = await loader(folder, FakeOpener(["Alpha.tingraplugin": .declaring("com.example.alpha")]))
+            .load(skipping: [], reportingTo: EventBus())
+
+        #expect(scan.loaded.count == 1)
+        #expect(scan.skipped.isEmpty)
+        #expect(try store.read().crashed.isEmpty)
+    }
+
+    @Test("a bundle turned back on after a crash loads")
+    func enabledAfterACrashLoads() async throws {
+        let folder = try PlugInFolder(["Alpha.tingraplugin"])
+        defer { folder.remove() }
+        let store = PlugInEnablementStore(directory: folder.stateDirectory)
+        let id = PlugInID(rawValue: "com.example.alpha")
+        try store.update {
+            $0.recordCrash(
+                CrashedPlugInBundle(
+                    id: id, cdHash: "cdhash-Alpha.tingraplugin", path: "~/A", frontEnd: "Tingra", date: .now))
+        }
+        try store.update { $0.enable(id) }
+
+        let scan = await loader(folder, FakeOpener(["Alpha.tingraplugin": .declaring("com.example.alpha")]))
+            .load(skipping: [], reportingTo: EventBus())
+
+        #expect(scan.loaded.count == 1)
+    }
+
+    @Test("a marker left by a process that is still running is left alone")
+    func runningProcessMarkerIsLeftAlone() async throws {
+        let folder = try PlugInFolder(["Alpha.tingraplugin"])
+        defer { folder.remove() }
+        let launchd = try #require(ProcessIdentity.startTime(of: 1))
+        let marker = PlugInLoadMarker(
+            id: PlugInID(rawValue: "com.example.alpha"), path: "~/A.tingraplugin", cdHash: "cdhash-Alpha.tingraplugin",
+            frontEnd: "Tingra", process: ProcessIdentity(processID: 1, startTime: launchd))
+        try write(marker, in: folder)
+
+        let scan = await loader(folder, FakeOpener(["Alpha.tingraplugin": .declaring("com.example.alpha")]))
+            .load(skipping: [], reportingTo: EventBus())
+
+        #expect(scan.loaded.count == 1)
+        #expect(scan.problems.isEmpty)
+        let guardian = PlugInLoadGuard(directory: folder.stateDirectory.appending(path: PlugInLoadGuard.folderName))
+        #expect(FileManager.default.fileExists(atPath: guardian.markerURL(for: marker.process).path()))
+    }
+
+    @Test("an unreadable enablement file loads no bundles, is reported, and is left untouched")
+    func unreadableEnablementFileLoadsNothing() async throws {
+        let folder = try PlugInFolder(["Alpha.tingraplugin"])
+        defer { folder.remove() }
+        let store = PlugInEnablementStore(directory: folder.stateDirectory)
+        try FileManager.default.createDirectory(at: folder.stateDirectory, withIntermediateDirectories: true)
+        try Data("not json".utf8).write(to: store.fileURL)
+        let opener = FakeOpener(["Alpha.tingraplugin": .declaring("com.example.alpha")])
+        let eventBus = EventBus()
+        let events = eventBus.events()
+
+        let scan = await loader(folder, opener).load(skipping: [], reportingTo: eventBus)
+        let received = await drain(eventBus, events)
+
+        #expect(scan.loaded.isEmpty)
+        #expect(scan.skipped.map(\.reason) == [.enablementUnreadable])
+        #expect(opener.loadedNames.withLock { $0 }.isEmpty)
+        let reports = received.filter { $0.name == "plugin.enablement" }
+        #expect(reports.count == 1)
+        #expect(reports.first?.group == .error)
+        #expect(try Data(contentsOf: store.fileURL) == Data("not json".utf8))
+    }
+
+    @Test("a crash that cannot be recorded says so, and how to keep the bundle from loading")
+    func unrecordedCrashMessage() {
+        let marker = deadProcessMarker(id: "com.example.alpha", name: "Alpha.tingraplugin", cdHash: "x")
+
+        let message = PlugInBundleLoader.crashedMessage(
+            for: marker, recordError: .unreadable(path: "~/plug-ins.json", reason: "not json"))
+
+        #expect(message.contains("'Alpha.tingraplugin' was loading in tingra-cli serve"))
+        #expect(message.contains("could not turn it off"))
+        #expect(message.contains("Remove the bundle from the plug-in folder"))
+        #expect(!message.contains("plug-ins enable"))
+    }
+
+    @Test("a real signature's verdict carries its CDHash, as 40 lowercase hex digits")
+    func realSignatureCarriesItsCDHash() {
+        let verdict = StaticCodeSignatureChecker().verdict(forBundleAt: URL(filePath: "/bin/ls"))
+
+        guard case .valid(let cdHash) = verdict else {
+            Issue.record("/bin/ls did not validate: \(verdict)")
+            return
+        }
+        #expect(cdHash.count == 40)
+        #expect(cdHash.allSatisfy { $0.isHexDigit && !$0.isUppercase })
     }
 }

@@ -54,7 +54,7 @@ struct ProgramToolsTests {
 
     @Test("the plug-in registers the switcher's tools, then the stream and recording tools")
     func registers() async throws {
-        let program = await FakeProgram(shots: shots)
+        let program = FakeProgram(shots: shots)
         let tools = ToolRegistry()
         let context = PlugInContext(
             eventBus: EventBus(), clock: HostClock(), inputs: InputRegistry(), outputs: OutputRegistry(),
@@ -71,28 +71,28 @@ struct ProgramToolsTests {
 
     @Test("shot_take by id takes the shot and returns it")
     func takesByID() async throws {
-        let program = await FakeProgram(shots: shots)
+        let program = FakeProgram(shots: shots)
         let result = try await ShotTakeTool(program: program).call(.object(["shot": .string("shot-wide")]))
         #expect(result["shot"]?["id"]?.stringValue == "shot-wide")
         #expect(result["shot"]?["name"]?.stringValue == "Wide")
-        #expect(await program.activeShotID?.rawValue == "shot-wide")
-        #expect(await program.previewShotID == nil)
+        #expect(program.activeShotID?.rawValue == "shot-wide")
+        #expect(program.previewShotID == nil)
     }
 
     @Test("an exact id wins over a name, and a unique name matches case-insensitively")
     func selectorRule() async throws {
-        let program = await FakeProgram(shots: shots + [Shot(id: ShotID(rawValue: "Wide"), name: "Other")])
+        let program = FakeProgram(shots: shots + [Shot(id: ShotID(rawValue: "Wide"), name: "Other")])
         let byID = try await PreviewSetTool(program: program).call(.object(["shot": .string("Wide")]))
         #expect(byID["shot"]?["id"]?.stringValue == "Wide")
         let byName = try await PreviewSetTool(program: program).call(.object(["shot": .string("wide")]))
         #expect(byName["shot"]?["id"]?.stringValue == "shot-wide")
-        #expect(await program.previewShotID?.rawValue == "shot-wide")
-        #expect(await program.activeShotID == nil)
+        #expect(program.previewShotID?.rawValue == "shot-wide")
+        #expect(program.activeShotID == nil)
     }
 
     @Test("a selector matching nothing is shotNotFound and one matching two is shotAmbiguous")
     func selectorErrors() async throws {
-        let program = await FakeProgram(shots: shots)
+        let program = FakeProgram(shots: shots)
         let tool = ShotTakeTool(program: program)
         await #expect(throws: ToolError.self) {
             try await tool.call(.object(["shot": .string("Tight")]))
@@ -109,12 +109,12 @@ struct ProgramToolsTests {
             #expect(error.identifier == .shotAmbiguous)
             #expect(error.message.contains("shot-close-2"))
         }
-        #expect(await program.activeShotID == nil)
+        #expect(program.activeShotID == nil)
     }
 
     @Test("a missing, empty, or non-string shot is invalidArgument")
     func missingSelector() async throws {
-        let program = await FakeProgram(shots: shots)
+        let program = FakeProgram(shots: shots)
         for arguments in [JSONValue.object([:]), .object(["shot": .string("")]), .object(["shot": .int(1)]), .null] {
             do {
                 _ = try await ShotTakeTool(program: program).call(arguments)
@@ -127,18 +127,18 @@ struct ProgramToolsTests {
 
     @Test("fade_to_black fades and restores, with the default and a given duration")
     func fades() async throws {
-        let program = await FakeProgram(shots: shots)
+        let program = FakeProgram(shots: shots)
         let tool = FadeToBlackTool(program: program)
         let down = try await tool.call(.object(["faded": .bool(true)]))
         #expect(down["fadedToBlack"] == .bool(true))
         let up = try await tool.call(.object(["faded": .bool(false), "duration": .double(1.5)]))
         #expect(up["fadedToBlack"] == .bool(false))
-        #expect(await program.fadeDurations == [Transition.defaultDissolveDuration, 1.5])
+        #expect(program.fadeDurations == [Transition.defaultDissolveDuration, 1.5])
     }
 
     @Test("fade_to_black refuses a missing faded and a non-positive duration")
     func fadeErrors() async throws {
-        let program = await FakeProgram(shots: shots)
+        let program = FakeProgram(shots: shots)
         let tool = FadeToBlackTool(program: program)
         for arguments in [
             JSONValue.object([:]), .object(["faded": .string("yes")]),
@@ -152,7 +152,7 @@ struct ProgramToolsTests {
                 #expect(error.identifier == .invalidArgument)
             }
         }
-        #expect(await program.fadeDurations.isEmpty)
+        #expect(program.fadeDurations.isEmpty)
     }
 
     @Test("the tools' schemas require their arguments")

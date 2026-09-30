@@ -184,11 +184,26 @@ struct MonitorView: NSViewRepresentable {
     var maximumFramesPerSecond: Int?
 
     /// The rate a thumbnail tile samples at: enough to read as live, a
-    /// quarter of the display's refreshes.
+    /// quarter of a 60 Hz display's refreshes and an eighth of a ProMotion
+    /// display's.
     static let thumbnailFramesPerSecond = 15
 
-    /// `MTKView`'s own sampling rate, used when no maximum is given.
-    static let displayFramesPerSecond = 60
+    /// The rate a monitor with no maximum asks for, which samples at the
+    /// display's own rate: the fastest program Tingra makes,
+    /// ``ProgramFormatChoice/maximumFrameRate``, which `MTKView` lowers to
+    /// the closest rate the screen it is on supports — 120 on a ProMotion
+    /// screen, 60 on a 60 Hz one. A display faster than the fastest program
+    /// is sampled at the program's rate, all a monitor can show.
+    ///
+    /// Not `MTKView`'s default, which is not the display's rate: on the
+    /// built-in 120 Hz display it read 60, capping program at half the
+    /// screen's refreshes, and in another run 0, which stops the view
+    /// drawing. Measured 2026-09-27 on that display: asking for 60, 120, and
+    /// 240 drew 60, 121, and 120 times a second. The refreshes a faster rate
+    /// adds cost nothing when the picture has not changed (``MonitorView``,
+    /// "Drawing only a changed picture"): three idle views used the same CPU
+    /// at 60 and at 120.
+    static let displayFramesPerSecond = ProgramFormatChoice.maximumFrameRate
 
     /// Builds the drawing coordinator.
     func makeCoordinator() -> Coordinator {

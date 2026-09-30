@@ -44,6 +44,8 @@ struct Devices: AsyncParsableCommand {
     @Flag(help: "Keep running, printing device connection and disconnection events until Ctrl-C.")
     var watch = false
 
+    @OptionGroup var plugIns: PlugInOptions
+
     func run() async throws {
         let eventBus = EventBus()
         // The listing itself is the command result on standard output; the
@@ -66,7 +68,7 @@ struct Devices: AsyncParsableCommand {
             tools: ToolRegistry()
         )
         await PlugInLoader().activate(
-            [AVFoundationCapturePlugIn()], thenBundlesFrom: PlugInBundleLoader(), in: context)
+            [AVFoundationCapturePlugIn()], thenBundlesFrom: plugIns.bundleLoader(for: "devices"), in: context)
 
         let listing = await DeviceList(inputs: registry.allInputs, type: type)
         if json {

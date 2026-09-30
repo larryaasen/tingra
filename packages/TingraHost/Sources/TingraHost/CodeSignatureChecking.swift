@@ -14,7 +14,12 @@ import Security
 public enum CodeSignatureVerdict: Sendable, Equatable {
     /// The bundle carries a valid signature — ad-hoc counts — and, when it
     /// arrived through a download, is notarized.
-    case valid
+    ///
+    /// - Parameter cdHash: The signature's code directory hash, as lowercase
+    ///   hex: what identifies this build of the bundle's code, so a bundle
+    ///   turned off after a crash stays off until its code changes
+    ///   (PLUGINS.md, Decision 33).
+    case valid(cdHash: String)
 
     /// The bundle has no signature, or one that does not validate (its
     /// contents changed after signing, say).
@@ -64,7 +69,12 @@ public struct StaticCodeSignatureChecker: CodeSignatureChecking {
         guard validity == errSecSuccess else {
             return .unsigned(detail: Self.message(for: validity))
         }
-        guard Self.isQuarantined(url) else { return .valid }
+        // A valid signature always has a code directory; one without a hash
+        // to read is not a signature this checker can vouch for.
+        guard let cdHash = Self.cdHash(of: staticCode) else {
+            return .unsigned(detail: "the signature carries no code directory hash")
+        }
+        guard Self.isQuarantined(url) else { return .valid(cdHash: cdHash) }
 
         var requirement: SecRequirement?
         guard SecRequirementCreateWithString("notarized" as CFString, [], &requirement) == errSecSuccess,
@@ -72,7 +82,24 @@ public struct StaticCodeSignatureChecker: CodeSignatureChecking {
         else {
             return .notNotarized
         }
-        return SecStaticCodeCheckValidity(staticCode, flags, requirement) == errSecSuccess ? .valid : .notNotarized
+        return SecStaticCodeCheckValidity(staticCode, flags, requirement) == errSecSuccess
+            ? .valid(cdHash: cdHash) : .notNotarized
+    }
+
+    /// The code directory hash of validated code, as lowercase hex, read
+    /// from its signing information (`kSecCodeInfoUnique`).
+    static func cdHash(of staticCode: SecStaticCode) -> String? {
+        var information: CFDictionary?
+        guard SecCodeCopySigningInformation(staticCode, [], &information) == errSecSuccess,
+            let values = information as? [String: Any],
+            let unique = values[kSecCodeInfoUnique as String] as? Data, !unique.isEmpty
+        else {
+            return nil
+        }
+        return unique.map { byte in
+            let digits = String(byte, radix: 16)
+            return digits.count == 1 ? "0" + digits : digits
+        }.joined()
     }
 
     /// Whether the bundle carries the quarantine attribute a download sets.

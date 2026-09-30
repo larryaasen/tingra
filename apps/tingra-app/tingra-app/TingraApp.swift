@@ -10,6 +10,7 @@
 import SwiftUI
 import TingraAppPlugInKit
 import TingraEventBus
+import TingraHost
 
 /// The Tingra app entry point (phase 3, scaffolded at roadmap step 6).
 ///
@@ -124,8 +125,11 @@ struct TingraApp: App {
             .navigationTitle(model.projectName)
             // Beneath it, the active preset, labeled as one: a bare preset
             // name under a project's name reads as a second name for the
-            // project (Larry, 2026-09-27). Follows a switch or a rename.
-            .navigationSubtitle(presetSubtitle)
+            // project (Larry, 2026-09-27). Follows a switch or a rename, and
+            // ends in "Safe Mode" for a launch that loaded no plug-in
+            // bundles — the subtitle shows even with the status bar hidden
+            // (PLUGINS.md, Decision 31).
+            .navigationSubtitle(windowSubtitle)
             .navigationDocument(model.projectURL)
             .task {
                 // The unit tests' host launches the app only so the test
@@ -140,7 +144,7 @@ struct TingraApp: App {
                 for url in appDelegate.takePendingProjectURLs() {
                     await model.openProjectWhenReady(url)
                 }
-                await model.start()
+                await model.start(launch: appDelegate.safeModeLaunch)
                 plugInHost.start(model: model)
             }
             .environment(plugInHost)
@@ -244,12 +248,26 @@ struct TingraApp: App {
     }
 
     /// The main window's subtitle: the active preset's name labeled as a
-    /// preset — "Main preset" — or nothing before a preset is active.
-    private var presetSubtitle: Text {
-        guard let name = model.activePresetName else { return Text(verbatim: "") }
+    /// preset — "Main preset" — or nothing before a preset is active, ending
+    /// in "Safe Mode" when this launch is in safe mode.
+    private var windowSubtitle: Text {
+        let inSafeMode = model.safeModeTrigger != nil
+        guard let name = model.activePresetName else {
+            guard inSafeMode else { return Text(verbatim: "") }
+            return Text(
+                "Safe Mode",
+                comment: "Main window subtitle for a launch that loaded no plug-in bundles, before a preset is active")
+        }
+        guard inSafeMode else {
+            return Text(
+                "\(name) preset",
+                comment: "Main window subtitle naming the active preset; the placeholder is the preset's name")
+        }
         return Text(
-            "\(name) preset",
-            comment: "Main window subtitle naming the active preset; the placeholder is the preset's name")
+            "\(name) preset — Safe Mode",
+            comment:
+                "Main window subtitle naming the active preset in a launch that loaded no plug-in bundles; the placeholder is the preset's name"
+        )
     }
 }
 
@@ -267,6 +285,10 @@ struct TingraApp: App {
 final class TingraAppDelegate: NSObject, NSApplicationDelegate {
     /// The engine model, handed over once the main window's task runs.
     var model: EngineModel?
+
+    /// How this launch treats plug-in bundles, decided before any window
+    /// exists and before the engine boots (``SafeModeLaunch``).
+    private(set) var safeModeLaunch = SafeModeLaunch.normal
 
     /// Project documents the Finder asked the app to open before the main
     /// window's task handed the model over — a document double-clicked to
@@ -314,9 +336,32 @@ final class TingraAppDelegate: NSObject, NSApplicationDelegate {
     /// `applicationDidFinishLaunching`: the setting is read as each window is
     /// created, and by "did" the first window already exists.
     ///
+    /// Safe mode is decided here too, for the same reason: before the main
+    /// window exists, so its task boots the engine with the answer, and
+    /// early enough to read Shift while the operator is still holding it
+    /// (PLUGINS.md, Decision 32). The unit tests' host skips it, so a test
+    /// run never reads the developer's record or asks a question.
+    ///
     /// - Parameter notification: The launch notification (unused).
     func applicationWillFinishLaunching(_ notification: Notification) {
         NSWindow.allowsAutomaticWindowTabbing = false
+        guard !LaunchEnvironment.isTestHost else { return }
+        let record = PlugInLaunchRecord()
+        let lastRunBundles = record.read()
+        // Read once: this run writes its own record when its bundles load.
+        record.remove()
+        safeModeLaunch = SafeModeLaunch.decide(
+            shiftHeld: NSEvent.modifierFlags.contains(.shift), lastRunBundles: lastRunBundles,
+            ask: UncleanExitAlert.ask(bundles:))
+    }
+
+    /// Removes the record of this run's plug-in bundles: a run that reaches
+    /// here ended cleanly, so the next launch has nothing to offer.
+    ///
+    /// - Parameter notification: The termination notification (unused).
+    func applicationWillTerminate(_ notification: Notification) {
+        guard !LaunchEnvironment.isTestHost else { return }
+        PlugInLaunchRecord().remove()
     }
 
     /// Holds every quit open just long enough to record it and to finalize a

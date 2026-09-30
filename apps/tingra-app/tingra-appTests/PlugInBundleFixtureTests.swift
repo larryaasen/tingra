@@ -59,6 +59,14 @@ struct PlugInBundleFixtureTests {
         return folder
     }
 
+    /// Where a loader keeps its enablement file and load markers for one
+    /// test: inside the staged folder, so it goes when the folder does and
+    /// never touches the developer's own. Not named like a bundle, so the
+    /// scan never meets it.
+    private func stateDirectory(in folder: URL) -> URL {
+        folder.appending(path: "state", directoryHint: .isDirectory)
+    }
+
     /// A context over fresh registries and the given bus.
     private func context(eventBus: EventBus, inputs: InputRegistry) -> PlugInContext {
         PlugInContext(
@@ -75,8 +83,9 @@ struct PlugInBundleFixtureTests {
         let inputs = InputRegistry()
 
         let activated = await PlugInLoader().activate(
-            [], thenBundlesFrom: PlugInBundleLoader(folders: [folder]),
-            in: context(eventBus: eventBus, inputs: inputs))
+            [], thenBundlesFrom: PlugInBundleLoader(folders: [folder], stateDirectory: stateDirectory(in: folder)),
+            in: context(eventBus: eventBus, inputs: inputs)
+        ).activated
         eventBus.shutdown()
         var received: [EventBusEvent] = []
         for await event in events {
@@ -102,11 +111,12 @@ struct PlugInBundleFixtureTests {
     }
 
     @Test("an unsigned copy of the fixture is refused before any of its code loads")
-    func unsignedFixtureIsRefused() throws {
+    func unsignedFixtureIsRefused() async throws {
         let folder = try stagedFolder(codesignArguments: ["--remove-signature"])
         defer { try? FileManager.default.removeItem(at: folder) }
 
-        let scan = PlugInBundleLoader(folders: [folder]).load(skipping: [], reportingTo: EventBus())
+        let scan = await PlugInBundleLoader(folders: [folder], stateDirectory: stateDirectory(in: folder))
+            .load(skipping: [], reportingTo: EventBus())
 
         #expect(scan.loaded.isEmpty)
         #expect(scan.problems.map(\.reason) == [.unsigned])
