@@ -499,6 +499,121 @@ The Audio Unit row rides on the plan's earlier decisions: AUv3 units run out of 
 
 Each follows the established pattern exactly: capability protocol plus registering protocol in `TingraPlugInKit`, registry in `TingraHost`, declared parameters per Decision 15, a first-party plug-in that dogfoods it, rows in the ARCHITECTURE.md tables.
 
+## Phase 5 — the plug-in gallery
+
+*Proposed 2026-09-30, from Larry's request for a place inside the app to find free plug-ins, modelled on VS Code's Extensions view. Nothing here is approved yet; the decisions are 39–50 below.*
+
+### Why, and why not yet
+
+A plug-in nobody can find does not drive adoption. Today a third party would ship a bundle or a container app from their own site, and an operator would hear of it by word of mouth, download it, and drop it in a folder. VS Code's Extensions view shows the other way: search inside the app, read what an extension adds, install it with one click, and let updates arrive on their own. Every plug-in in the gallery is free. Nothing here takes payment, issues licences, or asks the operator to sign in.
+
+The gallery waits for three things, each already on the roadmap:
+
+- **Both kits at 1.0.0** (Decision 29). At 0.x the minors must match, so each 0.x release would leave every listed plug-in unable to load.
+- **Tingra.app shipping** (the cask). A gallery in an app nobody can install helps no one.
+- **Decisions 35–37 built**: the `plug-ins` command, the Plug-ins pane, and the SDK. The gallery extends the first two, and without the third there are no authors.
+
+### What VS Code and Obsidian do
+
+| | VS Code | Obsidian | Tingra (proposed) |
+|---|---|---|---|
+| **Where the list lives** | Microsoft's hosted Marketplace: accounts, uploads, search, counts, ratings | One JSON file in a public GitHub repo | One signed JSON index in a public GitHub repo, served by GitHub Pages |
+| **Where the files live** | The Marketplace | Each author's GitHub releases | Each author's GitHub releases, pinned by SHA-256 |
+| **Review** | None by a person. Microsoft scans uploads for malware and removes bad extensions after the fact | A person reviews the first submission, not later updates | A person reviews a publisher's first plug-in. Later versions from the same Developer ID team merge once CI's checks pass |
+| **Publisher identity** | A badge for publishers who prove they own a domain | A GitHub account | The Apple Developer ID team in the signature |
+| **In the app** | The Extensions view: search, sort by installs, Installed, Recommended; a detail page with the README, Feature Contributions, and the changelog | A browser in Settings: search, README, install, enable | A Plug-in Gallery window: search, sort, Installed, Updates, Recommended for This Project; a detail page with the README, What It Adds, the changes, and what it can reach |
+| **Compatibility** | `engines.vscode`; the newest version that fits | `minAppVersion` | The bundle's kit version, through the loader's own rule |
+| **Updates** | On their own by default | By hand, from the list | On their own by default, applied at the next launch |
+| **Recommendations** | `.vscode/extensions.json` in the workspace | None | The project records the plug-ins it uses |
+| **Removing a bad one** | A list VS Code checks, uninstalling what it names | Taken off the list | A blocklist in the signed index, checked by the loader at every launch |
+
+The lesson: copy VS Code's *app*, not its *server*. A hosted marketplace is months of work and a service to run for good. Everything VS Code's app does except ratings works from a static index. Obsidian proved that, and the Homebrew tap already does it for the CLI.
+
+### The design
+
+- **The gallery is a signed static index** *(Decisions 40 and 42)*. A public repo, `larryaasen/tingra-plug-in-gallery` (spelled the glossary's way, like the SDK's), holds `gallery.json` and its signature, served by GitHub Pages. There is one entry per `PlugInID`: the name, a one-line summary, the author, the Developer ID team, the source repo, and the tiers. Each version records its kit version, its asset's URL and SHA-256, the registrations it declares (host tier), and the descriptors from its manifest (app tier). A `blocked` list names the ids or CDHashes the loader must refuse. The keys are camelCase and stable, a scripting contract like `--json`. CI signs the file with an Ed25519 key (CryptoKit's `Curve25519.Signing`) held in Actions secrets. The app and the CLI carry the public key, refuse an index whose signature fails, and keep their last good copy. HTTPS alone trusts whoever controls the repo, and the blocklist is only worth obeying if it can't be forged. They carry a short list of public keys, not one, so a new key can ship a release before the old one retires.
+- **A submission is a pull request, and CI checks it before any person looks** *(Decision 41)*. An author adds an entry. A macOS workflow downloads the asset and checks:
+  - the SHA-256;
+  - a valid Developer ID signature, and notarization;
+  - the Info.plist id and kit version;
+  - the team, against the entry's, and for an update, against the team the id was first listed under;
+  - an arm64 slice, and no embedded kit (`embeddedKit`);
+  - that it loads: the workflow puts it in the runner's plug-in folder and runs the released `tingra-cli plug-ins --json` (Decision 35), which must report it `active` with the registrations it declares.
+
+  A person reviews a team's first plug-in: what it registers, what its source does, and whether its README says so. Later versions from the same team merge once the checks pass. The `com.moonwink.tingra.*` ids are kept for first-party plug-ins.
+- **Every listed version is Developer ID signed and notarized, and the team is the publisher** *(Decision 41)*. That settles the cost question: an author pays Apple's yearly fee to list, as they would to ship any Mac software. In return Apple has checked who they are, the detail page shows the team's name as VS Code shows a verified publisher, and an id can't change hands without a person noticing. Ad-hoc bundles still load from the folder for an author's own testing, but are never listed.
+- **A new package, `TingraGallery`, UI-free** *(Decision 46)*. It depends on `TingraHost`, `TingraPlugInKit`, and `TingraEventBus`, and uses URLSession and CryptoKit, nothing third-party. It fetches, verifies, and caches the index. It shows only versions the running kit can load, through `PlugInBundleLoader.canLoad(builtAgainst:in:)`, the loader's own rule. It installs, updates, and removes. The app and the CLI link it. It is not in `TingraHost`, because the host has no feature a user would see, and it is not a plug-in, because a plug-in can't install plug-ins. The cache is `~/Library/Application Support/Tingra/gallery.json`, listed in the Data pane. Its events use the `plugIn` domain: `plugin.installed`, `plugin.updated`, and `plugin.removed`; `plugin.install`, an `error` with a stable `reason`; and `plugin.gallery`, an `error` for an index that fails its signature or does not decode.
+- **Fetches happen when asked, never on a timer** *(Decision 46)*. The app fetches when the Gallery window opens, and once after each launch, after the engine has booted and without holding it up. The CLI fetches for its gallery verbs. `serve` never fetches; it reads only the cached blocklist. A fetch sends nothing but the request: no id, and no list of what is installed. Install counts come from GitHub's own download counts, not from Tingra.
+- **Installing a host-tier plug-in** *(Decision 43)* takes these steps:
+  1. Download the asset.
+  2. Check its SHA-256 against the index.
+  3. Unpack it with `ditto`, as the release scripts do.
+  4. Check its signature's team against the index's, its kit version, and its notarization.
+  5. Mark the bundle quarantined.
+  6. Move it into the user folder in one rename.
+
+  The quarantine mark closes a gap. Files `URLSession` writes carry no quarantine attribute, since Tingra.app does not set `LSFileQuarantineEnabled`, and the loader asks for notarization only from a quarantined bundle (Decision 26). Without the mark, a download that is only ad-hoc signed would load. With it, the gallery's installs meet the same rule as a download from a browser.
+
+  The gallery installs into the user folder only, never `/Library`. A new plug-in takes effect at the next launch, like every bundle change (Decision 27), and its row says so. A refusal reports `plugin.install` with a `reason`: `hashMismatch`, `teamMismatch`, `notNotarized`, `kitVersion`, `download`, or `unpack`, with the fix.
+
+  **One check comes first:** whether the loader's `notarized` check needs the network at launch when a bundle carries no stapled ticket. A venue with no network must not lose its plug-ins. If the check needs the network, the gallery requires a stapled ticket. If a bundle can't carry one, the installer checks notarization itself at install time and does not mark the bundle quarantined, and the blocklist covers revocation.
+- **Removing** moves the bundle to the Trash and clears its `plug-ins.json` entry, and takes effect at the next launch. Its data and secrets stay, listed in the Data pane, as a Mac app's do when it goes to the Trash.
+- **Updates arrive on their own and apply at the next launch** *(Decision 44)*. They are on by default, as in VS Code, and a switch in the Plug-ins pane turns them off. An update is downloaded and checked like an install, into `~/Library/Application Support/Tingra/Plug-in Updates/<id>/`. The next front end to launch swaps it in by rename before its scan. Loaded code is never touched, so an update can't land mid-show, and the row reads "Updated to 1.3. Takes effect the next time Tingra opens." A new build is a new CDHash, so the crash guard (Decision 33) watches it afresh. The operator's on/off choice survives, because `plug-ins.json` is keyed by id (Decision 34).
+- **The loader checks the blocklist at every launch** *(Decision 45)*. It reads the cached index's `blocked` list during its scan and skips a listed bundle with a new skip reason, `blocked`, beside `disabled`, `crashed`, `safeMode`, and `enablementUnreadable`. A bundle blocked while it is loaded stays loaded until its process ends (Decision 27). The app reports `plugin.blocked` (an `error`), the Plug-ins pane shows the index's reason on the row, and the next launch skips it. An index that fails to verify blocks nothing new, and the last good copy stays in force.
+- **What a plug-in adds, and what it can reach** *(Decision 47)*. VS Code's Feature Contributions tab reads `package.json`. The app tier already declares its panes, commands, settings panes, windows, status items, and activation conditions in its manifest. The host tier declares only an id and a kit version. So a bundle gains a third Info.plist key, `com.moonwink.tingra.plug-in.registers`: each kind it registers (input, generator, media provider, effect, output, recording service, tool), with a short name for what it adds, such as "NDI sources". It lists kinds, not each input, because an NDI plug-in finds its sources only at run time.
+  - The key is optional, so no bundle breaks, but the gallery refuses a listing without it.
+  - The loader compares the declared kinds with what `activate` actually registered, and a difference shows as a warning on the bundle's row.
+  - To compare, the host must know which plug-in made each registration. Today every plug-in gets the same `PlugInContext`, and the registries record no owner. So the loader hands each plug-in a context whose registries note its id and pass each call on. The wrapper is host-side, with no kit change.
+
+  The detail page also says what a plug-in can reach, which VS Code does not. A host-tier plug-in "runs inside Tingra: it can use the camera, microphone, and screen access you gave Tingra, and read your stream keys." An app-tier plug-in "runs in its own sandbox and sees only what Tingra sends it."
+- **Recommended for this project** *(Decision 48)*. A project records the plug-ins it uses in a new optional key, `plugIns`: each `PlugInID` whose registrations the project refers to, from an input in a layer to an effect in a chain, plus the keys of `plugInData`. It is built on save, from the owners the registries now record. When a project names a plug-in this Mac lacks, the Gallery lists it under Recommended for This Project, and the app says so once, in a notice the operator can dismiss. The key is optional, never a version bump, and an unknown id round-trips as `plugInData`'s do. This matters more for Tingra than for VS Code, because operators hand projects to each other.
+- **The CLI** *(Decision 49)*. Decision 35's command gains `search <text>`, `install <id>`, `update [<id>]`, and `remove <id>`, for the host tier only, with `--json` on `search`. They use the same package, checks, and events. **No MCP tool installs, updates, or removes a plug-in.** Loading someone's code into the engine is the operator's act, like granting camera access. An agent can read the listing (`plug-ins --json`) and suggest a plug-in.
+- **The app** *(Decisions 39 and 47)*. The **Plug-in Gallery** is one window, in the Window menu, and **Browse the Gallery…** in the Plug-ins settings pane also opens it.
+  - A sidebar lists Popular, Recently Updated, Recommended for This Project, Installed, and Updates.
+  - A search field matches name, summary, author, and id with `localizedStandardContains`.
+  - Each row shows the name, the team, the summary, the install count, and an Install button.
+  - The detail page has Details (the README's text and links; images wait), What It Adds, Changes, and the line saying what the plug-in can reach.
+  - The Plug-ins settings pane's rows gain their update state.
+  - Every button emits its `tap`.
+  - The app's own strings are localized `de`/`es`. A plug-in's name, summary, and README are the author's, and are shown as written.
+- **Install counts come from GitHub**, which counts each release asset's downloads. A daily scheduled workflow in the gallery repo adds them up per plug-in and writes them into the index. That schedule runs on GitHub, not in Tingra, so nothing in Tingra polls.
+- **App-tier plug-ins wait for a spike** *(Decision 50)*. An app-tier plug-in ships as a container app, so installing one means Tingra putting another company's app in `~/Applications`. No part of that path has yet run with a third-party bundle (Phase 3). The host-tier slices ship first. The app tier is listed only once the spike below passes and Decision 21's blit question is settled, since a stranger's pane may ask for program frames. For a plug-in with both halves, the gallery installs both, so the container app's first-run copy (Phase 3) is not needed.
+
+  | # | Question | Pass condition | If it does not pass |
+  |---|---|---|---|
+  | 1 | Does registering a downloaded, quarantined container app with Launch Services, without launching it, make its extension discoverable? | `AppExtensionIdentity.matching` sees it within seconds | The Gallery asks the operator to open the container app once |
+  | 2 | Will the system run that extension when the container app has never launched? | It launches from Manage… with no prompt beyond the system's own first-use check | The same fallback as row 1 |
+  | 3 | Does `EXAppExtensionBrowserViewController` turn it on in one step? | One switch in Manage… | Tingra explains the System Settings route |
+  | 4 | Does moving the container app to the Trash take the extension away? | Discovery drops it, and Tingra's registries follow the change notification | Tingra unregisters it with Launch Services before moving it |
+
+### What it costs to run
+
+Building is done once. Running is not:
+
+- **Review.** Each new team's first plug-in needs a person, Larry, to read it. VS Code skips this and removes malicious extensions after users find them. For code that runs inside the process holding the stream keys, a first look is worth the wait.
+- **The blocklist.** Someone has to act on reports quickly.
+- **The signing key.** It lives in Actions secrets, and replacing it needs a Tingra release first.
+- **The gallery repo's CI.** Its checks run on a macOS runner for each pull request.
+
+### Work list
+
+Sizes are in days of focused work. The slices elsewhere in this plan went faster than sizes like these suggest, but the review load won't shrink with them.
+
+| # | Slice | Size |
+|---|---|---|
+| 1 | The gallery repo: the schema, signing, the submission checks, the blocklist, and the counts workflow | 5–7 days |
+| 2 | `TingraGallery`: Codable models with round-trip and missing-key tests; fetch, verify, and cache; compatibility; host-tier install, staged updates, and removal; events; the loader's `blocked` skip; the offline notarization check first | 7–10 days |
+| 3 | The CLI's `search`, `install`, `update`, and `remove` | 2–3 days |
+| 4 | The app: the Gallery window and detail page, the Plug-ins pane's update state, `de`/`es` | 7–10 days |
+| 5 | Declared registrations: the Info.plist key, the per-plug-in registry wrapper, the loader's comparison | 3–4 days |
+| 6 | Recommended for this project: `Project.plugIns` and the Recommended section | 3–5 days |
+| 7 | The app-tier spike, then app-tier installs | 5–10 days |
+| 8 | Docs: GLOSSARY (gallery), TYPES, README (the package), ARCHITECTURE, EVENTS, CLI | 2 days |
+
+That comes to about 7–10 weeks. Slices 1–4 and 8 give a working gallery for host-tier plug-ins and ship first, 5 and 6 follow, and 7 waits for its spike.
+
+**Not in these slices:** ratings and reviews, which need a server (the detail page links to the author's issues instead); screenshots on the detail page; a pre-release channel; rolling an update back (the crash guard turns a bad update off but does not restore the old version); and a bisect, VS Code's way of finding the plug-in at fault by halves, which safe mode makes possible at the cost of one relaunch per step.
+
 ## What does not change
 
 - The host/plug-in boundary test (ARCHITECTURE.md): if removing it breaks plug-ins in general it is host; the app-tier registries and the extension host model are host in that sense, and the panes are plug-ins.
@@ -547,3 +662,15 @@ Each follows the established pattern exactly: capability protocol plus registeri
 36. Settings gains a built-in Plug-ins pane: one row per `PlugInID` across both tiers, Installed and Built In sections, Tingra's toggle for a bundle (next launch), refusals with their message, the system's `EXAppExtensionBrowserViewController` behind Manage… as the only switch for an app-tier half, Open Plug-ins Folder, and the Shift hint; no Relaunch button. The source-list section over plug-ins' own settings panes becomes Plug-in Settings *(approved 2026-09-27)*.
 37. `scripts/release-sdk.sh` (row G's recipe, arm64, signed, checksummed) publishes `TingraPlugInSDK` to the public `larryaasen/tingra-plug-in-sdk` through `release-sdk.yml`; both kits share the SDK's version, tagged `plugin-kit-X` and `event-bus-X`, amending CLI.md's independent SemVer *(approved 2026-09-27)*.
 38. App-tier plug-ins' app-scoped files move from `Plug-ins/<id>/` to `Plug-in Data/<id>/` in Tingra's Application Support folder, so the Plug-ins folder holds only installed bundles and Remove All Data never deletes one; no migration *(approved and built 2026-09-29)*.
+39. The place inside the app to find plug-ins is the **plug-in gallery**, shown as **Plug-in Gallery**: free plug-ins only, with no payments, licences, or sign-in. Not "store" (it sells nothing), "directory" (a folder, in these docs), "catalog" (the string catalog), "marketplace", or "Library" (the app's Library pane). "Gallery" is Apple's word for a free collection (the Shortcuts Gallery) and VS Code's internal name for its Marketplace. It opens after both kits tag 1.0.0 and Tingra.app ships *(proposed 2026-09-30)*.
+40. The gallery is a static index, `gallery.json` in the public `larryaasen/tingra-plug-in-gallery` repo, served by GitHub Pages; plug-in files stay on their authors' GitHub releases, pinned by SHA-256; Tingra runs no server *(proposed 2026-09-30)*.
+41. Every listed version is Developer ID signed and notarized, and its Developer ID team is the publisher, bound to the id at first listing. CI checks each pull request, including a load by `tingra-cli plug-ins --json`. A person reviews a team's first plug-in, and later versions from the same team merge once the checks pass *(proposed 2026-09-30)*.
+42. The index is signed with an Ed25519 key held in Actions secrets; the app and the CLI carry the public keys, refuse an index that does not verify, and keep their last good copy *(proposed 2026-09-30)*.
+43. The installer checks the hash, the team, the kit version, and notarization, marks the bundle quarantined so Decision 26 applies at every launch, and installs into the user folder only, taking effect at the next launch. First, measure whether the launch-time notarization check needs the network; if it does, require a stapled ticket, or check notarization only at install time *(proposed 2026-09-30)*.
+44. Updates download on their own by default, wait in `Plug-in Updates/<id>/`, and are swapped in by the next front end to launch, before its scan; loaded code is never touched *(proposed 2026-09-30)*.
+45. The signed index carries a blocklist; the loader skips a listed bundle at every scan with the skip reason `blocked`; a bundle blocked while loaded is reported as `plugin.blocked` and skipped from the next launch *(proposed 2026-09-30)*.
+46. A new UI-free package, `TingraGallery` (→ `TingraHost` + `TingraPlugInKit` + `TingraEventBus`; URLSession and CryptoKit), linked by the app and the CLI. It fetches only when asked (the Gallery opening, once after the app's launch, the CLI's gallery verbs), never on a timer and never in `serve`, and a fetch sends nothing but the request *(proposed 2026-09-30)*.
+47. A host-tier bundle declares what it registers in `com.moonwink.tingra.plug-in.registers`; the loader gives each plug-in a context whose registries record its id, and reports a difference from the declaration as a warning; the detail page shows what a plug-in adds and what it can reach *(proposed 2026-09-30)*.
+48. A project records the plug-ins it uses in an optional `plugIns` key; opening a project that names a plug-in this Mac lacks recommends it from the gallery *(proposed 2026-09-30)*.
+49. `tingra-cli plug-ins` gains `search`, `install`, `update`, and `remove`, for the host tier only; no MCP tool installs, updates, or removes a plug-in *(proposed 2026-09-30)*.
+50. App-tier plug-ins join the gallery only after a spike on installing a container app passes and Decision 21's blit question is settled *(proposed 2026-09-30)*.
