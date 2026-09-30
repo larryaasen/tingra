@@ -22,6 +22,17 @@ here, under "Left open from “…”", pointing at its record there.
   command-line process receives no screen wake notification) — decide
   whether that wants `caffeinate -d` guidance in CLI.md or more.
 
+- [ ] **SRT reconnect on a mid-stream loss.** HaishinKit 2.x's SRT publish
+  path pushes no event when a live link dies (`SRTConnection.connected` flips
+  false only on our own `close()`), so an SRT leg reports start-time failures
+  but never `connectionLost`, and the reconnect machinery never fires for it.
+  SRT's own retransmission covers ordinary packet loss; the gap is the
+  hard-timeout case. It also blinds the last-live-leg rule: a mixed RTMP + SRT
+  run whose RTMP leg dies keeps going on an SRT leg that may be dead. Waits on
+  a HaishinKit surface that pushes the loss, or a sanctioned liveness read —
+  never a poll loop. Records: DONE.md, "Step 8, SRT output" and "SRT ships the
+  prebuilt libsrt"; ARCHITECTURE.md, "How HaishinKit is incorporated".
+
 - [ ] **Two small defects seen while building the stream's Stopping state
   (2026-09-26), not fixed.** (1) Record has the gap Stop Streaming had: while
   a recording is finishing (`RecordingStatus.finalizing`) `RecordButton`
