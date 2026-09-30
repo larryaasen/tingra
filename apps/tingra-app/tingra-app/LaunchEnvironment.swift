@@ -23,6 +23,11 @@ import Foundation
 /// An explicit variable of Tingra's own rather than one of the test runner's
 /// internal ones, so the rule rests on nothing Apple could rename, and
 /// `LaunchEnvironmentTests` proves the scheme still sets it.
+///
+/// It also says whether the event log should print to standard output:
+/// `scripts/run-app.sh` sets ``consoleLogVariable`` before running the app
+/// in a terminal, the one place stdout is where the log is read (see
+/// ``ConsoleEventSink``).
 enum LaunchEnvironment {
     /// The environment variable the `tingra-app` scheme's Test action sets
     /// to `1` in the test host.
@@ -40,5 +45,23 @@ enum LaunchEnvironment {
     /// - Returns: True only when ``testHostVariable`` is exactly `1`.
     static func isTestHost(_ environment: [String: String]) -> Bool {
         environment[testHostVariable] == "1"
+    }
+
+    /// The environment variable `scripts/run-app.sh` sets to `1` so the app
+    /// prints its event log to standard output.
+    static let consoleLogVariable = "TINGRA_CONSOLE_LOG"
+
+    /// Whether this process should print its event log to standard output.
+    static var logsToConsole: Bool {
+        logsToConsole(ProcessInfo.processInfo.environment)
+    }
+
+    /// Whether an environment asks its process to print the event log to
+    /// standard output.
+    ///
+    /// - Parameter environment: The process environment to read.
+    /// - Returns: True only when ``consoleLogVariable`` is exactly `1`.
+    static func logsToConsole(_ environment: [String: String]) -> Bool {
+        environment[consoleLogVariable] == "1"
     }
 }

@@ -37,4 +37,17 @@ struct LaunchEnvironmentTests {
         #expect(!LaunchEnvironment.isTestHost(["TINGRA_TEST_HOST": ""]))
         #expect(!LaunchEnvironment.isTestHost(["TINGRA_TEST_HOST": "yes"]))
     }
+
+    @Test("the event log prints to standard output only when TINGRA_CONSOLE_LOG is 1")
+    func consoleLogVariable() {
+        #expect(LaunchEnvironment.logsToConsole(["TINGRA_CONSOLE_LOG": "1"]))
+        #expect(!LaunchEnvironment.logsToConsole([:]))
+        #expect(!LaunchEnvironment.logsToConsole(["TINGRA_CONSOLE_LOG": "0"]))
+        #expect(!LaunchEnvironment.logsToConsole(["TINGRA_CONSOLE_LOG": "yes"]))
+    }
+
+    @Test("a test run does not print the event log to standard output")
+    func testRunDoesNotLogToConsole() {
+        #expect(!LaunchEnvironment.logsToConsole)
+    }
 }

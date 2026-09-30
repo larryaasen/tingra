@@ -86,18 +86,16 @@ struct Probe: AsyncParsableCommand {
                 [.error]
             }
         let consoleTask = eventBus.attach(ConsoleSink(mode: json ? .json : .human, groups: consoleGroups))
-        // Skipped when standard error is a terminal (see EVENTS.md, "OSLog
-        // sink"); it remains the system of record for non-interactive runs.
-        let osLogTask = OSLogAttachment.attachIfNeeded(to: eventBus)
+        // The system of record, attached for every run (see EVENTS.md,
+        // "OSLog sink").
+        let osLogTask = eventBus.attach(OSLogSink())
         let fileTask = logFile.map { eventBus.attach(FileSink(path: $0)) }
 
         /// Drains every sink so no buffered event is lost before exit.
         func drainSinks() async {
             eventBus.shutdown()
             await consoleTask.value
-            if let osLogTask {
-                await osLogTask.value
-            }
+            await osLogTask.value
             if let fileTask {
                 await fileTask.value
             }

@@ -15,8 +15,11 @@
 # signature, so none of that is scripted here any more. What `xcodebuild`
 # alone does not do is run the app attached to this terminal. Launching the
 # bundle's executable directly (rather than `open`ing the app) keeps the
-# process in the foreground so the event log streams here — the app logs to
-# stdout via ConsoleEventSink — and Ctrl-C stops it.
+# process in the foreground so the event log streams here, and Ctrl-C stops
+# it. The app prints its log to stdout (ConsoleEventSink) only when
+# TINGRA_CONSOLE_LOG=1, which this script sets: macOS does not copy the
+# unified log to a terminal, and Xcode's console already shows it, so the
+# app leaves stdout quiet everywhere else.
 #
 # The build goes to Xcode's own DerivedData — the same Tingra.app ⌘R builds —
 # and the product's path is read from the build settings. It used a private
@@ -108,4 +111,4 @@ if [[ "$run" == "no" ]]; then
 fi
 
 echo "run-app: launching $app (Ctrl-C to quit)…"
-exec "$executable"
+TINGRA_CONSOLE_LOG=1 exec "$executable"

@@ -50,13 +50,11 @@ struct Devices: AsyncParsableCommand {
         let eventBus = EventBus()
         // The listing itself is the command result on standard output; the
         // console sink carries only errors here, so `devices --json | jq`
-        // sees one JSON document on a clean run. OSLog is skipped when
-        // standard error is a terminal — the OS's own terminal mirror
-        // already echoes this process's events there, so attaching would
-        // double them (see EVENTS.md, "OSLog sink"); it remains the system
-        // of record for non-interactive runs.
+        // sees one JSON document on a clean run. OSLog is the system of
+        // record for every run, a terminal's included: macOS does not copy it
+        // to one (see EVENTS.md, "OSLog sink").
         let consoleTask = eventBus.attach(ConsoleSink(mode: json ? .json : .human, groups: [.error]))
-        let osLogTask = OSLogAttachment.attachIfNeeded(to: eventBus)
+        let osLogTask = eventBus.attach(OSLogSink())
 
         let registry = InputRegistry(eventBus: eventBus)
         let context = PlugInContext(
@@ -123,9 +121,7 @@ struct Devices: AsyncParsableCommand {
         // Drain the sinks before exiting so no buffered event is lost.
         eventBus.shutdown()
         await consoleTask.value
-        if let osLogTask {
-            await osLogTask.value
-        }
+        await osLogTask.value
         if let watchTask {
             await watchTask.value
         }

@@ -332,9 +332,9 @@ internal surface a reader needs to navigate the target instead.
   name).
 - `OSLogSink` — the system-of-record sink: routes every event to OSLog
   (`subsystem` `com.moonwink.tingra`, `category` = domain), params `.private`.
-  `tingra-cli` skips attaching it when standard error is a terminal — the OS's
-  own terminal mirror already echoes the process's events there (see EVENTS.md,
-  "OSLog sink").
+  Every front end attaches it on every run (see EVENTS.md, "OSLog sink"); the
+  CLI's exception for a terminal on standard error was dropped 2026-09-29,
+  since macOS does not mirror `os_log` to a terminal.
 - `LogLineFormatter` — the one shared human log line format (`LEVEL MM-DD-YYYY
   HH:MM:SS.mmm TZ [SSSS] @ domain name key=value`), reused by every text sink
   so each front end logs identically — the CLI's console (human mode) and file
@@ -1709,7 +1709,11 @@ surface is:
   `tingra-app` scheme's Test action sets `TINGRA_TEST_HOST=1`, and the main
   window's task then skips `EngineModel.start(launch:)`, so a test run never touches
   the developer's devices, project, preferences, or log (the tests build
-  their own `EngineModel` over doubles and never boot one).
+  their own `EngineModel` over doubles and never boot one). It also says
+  whether to print the event log to stdout: `scripts/run-app.sh` sets
+  `TINGRA_CONSOLE_LOG=1` (`logsToConsole`), and only then does the engine's
+  boot attach `ConsoleEventSink`, since Xcode's console already shows the
+  unified log (2026-09-29).
 - `TerminationReason` — why the app is quitting, as far as AppKit can say: the
   app's own `terminate(_:)` (the Quit item, ⌘Q), or a quit Apple event from the
   Dock, a script, or the login window on logout, restart, and shutdown, read

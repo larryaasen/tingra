@@ -1663,6 +1663,17 @@ or two in the doc that owns them — none need a rewrite.
       - [x] Decision 38: move app-tier plug-ins' app-scoped files out of the
         Plug-ins folder, into `Plug-in Data/<id>/`, so Remove All Data never
         deletes an installed bundle. *Approved and built 2026-09-29.*
+      - [x] Each event once, and in the unified log, in every front end
+        (2026-09-29, found while reading the safe-mode log). The app's
+        stdout `ConsoleEventSink` is attached only when `run-app.sh` sets
+        `TINGRA_CONSOLE_LOG=1`, since Xcode's console already shows the
+        unified log. `tingra-cli` attaches `OSLogSink` on every run: the
+        2026-07-04 rule skipping it for a terminal rested on a mirror
+        macOS does not provide (measured: only `OS_ACTIVITY_DT_MODE`
+        copies `os_log` to a terminal), so interactive runs were missing
+        from the unified log. `OSLogAttachment` and its two tests are gone.
+        An interactive `devices` run printed its table once, and its events
+        appeared under `/usr/bin/log show --info`.
       - [ ] Decision 35: `tingra-cli plug-ins [--json] [--safe-mode]`,
         `plug-ins enable|disable <id>`.
       - [ ] Decision 36: the Plug-ins settings pane.
