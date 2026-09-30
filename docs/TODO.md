@@ -211,6 +211,12 @@ here, under "Left open from “…”", pointing at its record there.
     the closed-source SDK: an NDI input and an NDI output. Waits on the
     loader; NDI's own virtual input is the stopgap the capture plug-in
     already sees as a camera.
+  - [ ] **Plug-ins Phase 5, the plug-in gallery** (PLUGINS.md, "Phase 5 —
+    the plug-in gallery"): a Plug-in Gallery window listing free plug-ins,
+    modelled on VS Code's Extensions view over a signed static index in a
+    public repo. *Proposed 2026-09-30 as Decisions 39–50, awaiting
+    approval.* Waits on both kits at 1.0.0 (after NDI), Tingra.app
+    shipping, and Decisions 35–37.
 
 ## Decisions to settle
 
