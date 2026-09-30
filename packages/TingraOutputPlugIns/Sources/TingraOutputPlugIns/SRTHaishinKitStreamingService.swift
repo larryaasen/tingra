@@ -36,7 +36,7 @@ import TingraPlugInKit
 ///    private. So this service reports start-time failures (thrown), but its
 ///    ``events`` stream never yields ``StreamingServiceEvent/connectionLost``
 ///    — the session's reconnect machinery therefore does not fire on an SRT
-///    outage in this iteration. Deferred, recorded in TODO.md; SRT's own ARQ
+///    outage in this iteration. Deferred, recorded in DONE.md; SRT's own ARQ
 ///    retransmission already rides out ordinary packet loss below this layer,
 ///    so the gap is only the hard-timeout case. Never a poll loop
 ///    (CLAUDE.md).
