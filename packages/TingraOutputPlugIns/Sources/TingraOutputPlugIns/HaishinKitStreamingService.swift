@@ -18,7 +18,7 @@ import TingraPlugInKit
 /// (ARCHITECTURE.md, "How HaishinKit is incorporated").
 ///
 /// The seam facts this implementation builds on were verified by the
-/// de-risking spike (TODO.md): uncompressed video enters as a
+/// de-risking spike (DONE.md): uncompressed video enters as a
 /// `CMSampleBuffer` and keeps its session-timeline PTS through the
 /// encoder; LPCM audio must enter as `AVAudioPCMBuffer` + `AVAudioTime`
 /// (HaishinKit's `CMSampleBuffer` audio path drops LPCM when the output
@@ -127,7 +127,7 @@ public actor HaishinKitStreamingService: StreamingService {
 
     /// Appends program audio: converted to `AVAudioPCMBuffer` +
     /// `AVAudioTime` (the form HaishinKit's AAC path requires — see the
-    /// spike findings in TODO.md), the PTS carried as host time. Dropped
+    /// spike findings in DONE.md), the PTS carried as host time. Dropped
     /// silently while not publishing.
     public func send(audio buffer: CapturedAudio) async {
         guard active, let stream else { return }

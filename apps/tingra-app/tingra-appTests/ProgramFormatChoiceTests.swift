@@ -90,4 +90,31 @@ struct ProgramFormatChoiceTests {
             #expect(!problem.message.isEmpty)
         }
     }
+
+    @Test("a project's stored format loads as itself when valid, and as the default with its problem when broken")
+    func loadedFormat() {
+        let absent = ProgramFormatChoice.loadedFormat(nil)
+        #expect(absent.format == ProgramFormat())
+        #expect(absent.problem == nil)
+
+        let vertical = ProgramFormat(width: 1080, height: 1920, frameRate: 60)
+        let valid = ProgramFormatChoice.loadedFormat(vertical)
+        #expect(valid.format == vertical)
+        #expect(valid.problem == nil)
+
+        let zeroRate = ProgramFormatChoice.loadedFormat(ProgramFormat(width: 1920, height: 1080, frameRate: 0))
+        #expect(zeroRate.format == ProgramFormat())
+        #expect(zeroRate.problem == .badFrameRate)
+
+        let odd = ProgramFormatChoice.loadedFormat(ProgramFormat(width: 1921, height: 1080, frameRate: 30))
+        #expect(odd.format == ProgramFormat())
+        #expect(odd.problem == .oddDimension)
+    }
+
+    @Test("every problem has a distinct, stable identifier")
+    func problemIdentifiers() {
+        #expect(ProgramFormatProblem.oddDimension.identifier == "oddDimension")
+        #expect(ProgramFormatProblem.tooSmall.identifier == "tooSmall")
+        #expect(ProgramFormatProblem.badFrameRate.identifier == "badFrameRate")
+    }
 }

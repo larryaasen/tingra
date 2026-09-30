@@ -1374,7 +1374,7 @@ surface is:
   while silencing playback, the same control as a strip's mute). A
   double-click returns a fader to unity. There is deliberately no master
   fader — the engine has no master gain of the operator's, and the monitor
-  level scales only what the operator hears (TODO.md, "Does the recorded mix
+  level scales only what the operator hears (DONE.md, "Does the recorded mix
   need a master fader?").
 - `FaderScale` — the pure, unit-tested mapping between a fader's travel and
   the linear gain it stands for (2026-09-12): a breakpoint table linear in

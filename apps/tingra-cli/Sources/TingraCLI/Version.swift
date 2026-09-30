@@ -10,7 +10,7 @@
 import ArgumentParser
 
 /// The product version and the monorepo's versioning scheme (see CLI.md,
-/// "Distribution" and docs/TODO.md, "Release mechanics").
+/// "Distribution" and docs/DONE.md, "Release mechanics").
 ///
 /// - **Product releases** are tagged `v<MAJOR>.<MINOR>.<PATCH>` (e.g.
 ///   `v0.1.0`); ``current`` holds that number without the `v`, and

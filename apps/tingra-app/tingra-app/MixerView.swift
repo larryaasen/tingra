@@ -132,7 +132,7 @@ struct MixerView: View {
     /// device and level while silencing playback, the same control as a
     /// strip's mute. The groups are divided and headed separately so a fader
     /// standing near the master meter never reads as a master fader
-    /// (TODO.md, "Does the recorded mix need a master fader?").
+    /// (DONE.md, "Does the recorded mix need a master fader?").
     ///
     /// **There is deliberately no master fader**: the engine has no master
     /// gain of the operator's, and the monitor level is not one — it scales

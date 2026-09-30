@@ -65,7 +65,7 @@ packages/                       # Engine libraries
   (UI packages)                 # Phase 2 — arrive once the engine is proven
 docs/                           # The project documentation set (ARCHITECTURE.md, GLOSSARY.md, CLI.md,
                                 #   SIMULATOR.md, CLOCK.md, EVENTS.md, MCP.md, DESTINATIONS.md,
-                                #   TYPES.md, TODO.md)
+                                #   TYPES.md, TODO.md, DONE.md)
                                 #   and screenshots
 scripts/                        # Formatting scripts (format-swift.sh, check-format.sh) and the
                                 #   streaming integration tests (integration-test.sh)
@@ -84,6 +84,7 @@ The package names are **finalized** (reviewed 2026-07-03; also recorded in "Repo
 
 ## General Guidelines
 - Summary documents after changes are never needed.
+- **No Swift code changes in a cloud session.** Cloud sessions run on Linux with no Swift toolchain, so they cannot build or test. Make Swift changes only in a local session on a Mac; a cloud session may change docs and other non-Swift files.
 - Always verify compilation after making changes. Use whichever method fits the environment:
   - **IDE-integrated agents**: use the `get_errors` tool for fast diagnostics.
   - **CLI/headless agents** (no `get_errors` available): for changes scoped to a single package, run `swift build` in that package (fast, no simulator/device needed). Once an app/UI target exists, use the equivalent `xcodebuild` build command for app-target changes. Pure string-literal or resource-only edits that can't affect compilation may be verified by the relevant package build.
@@ -154,7 +155,7 @@ This repository is public, so **no app secret and nothing personal to one develo
 
 ## Toolchain & CI
 - **Toolchain floor: Xcode 26.6 and Swift 6.3.3.** Develop and build with these minimums; every `Package.swift` declares `swift-tools-version: 6.3.3` (see Swift Language & Idioms). This is the *development* toolchain floor — the *deployment* target (macOS 15.0+, Apple Silicon only) is separate; see Platform Support.
-- **CI runs on GitHub Actions (macOS runners).** Every workflow runs on the `macos-26` arm64 image with `DEVELOPER_DIR` pinned to Xcode 26.6 — the image ships 26.6 but defaults to an older version (verified 2026-07-04; see [TODO.md](docs/TODO.md)). There are three, each named for what it does:
+- **CI runs on GitHub Actions (macOS runners).** Every workflow runs on the `macos-26` arm64 image with `DEVELOPER_DIR` pinned to Xcode 26.6 — the image ships 26.6 but defaults to an older version (verified 2026-07-04; see [DONE.md](docs/DONE.md)). There are three, each named for what it does:
   - **`format-test.yml`** — the every-push/every-PR workflow: **formatting verification** (`scripts/check-format.sh`), **unit tests** (`swift test` per package, Swift Testing; generators and mocks mean no camera, microphone, or TCC authorization is needed on runners), and **warning-clean builds** of every package and app (see Other Rules, Strict Compilation). Also `workflow_call`-able, which is how the release workflow gates on it.
   - **`integration.yml`** — **integration tests** against the local ingest simulator ([SIMULATOR.md](docs/SIMULATOR.md)); a separate workflow, run on streaming/output changes rather than blocking every PR.
   - **`release-cli.yml`** — the **whole `tingra-cli` release**, on manual dispatch: gate on `format-test.yml`, bump the version, build, sign, notarize, tag, publish the GitHub release, and push the rendered formula to the Homebrew tap. Apple Silicon (arm64) only. Release artifacts are Developer ID signed (hardened runtime; identifiers under `com.moonwink.tingra.*`) and notarized via `notarytool`; each release ships a zip for the Homebrew tap (bare binaries can't be stapled — Gatekeeper checks the ticket online) plus a stapled `.pkg` for offline installs. It is a thin wrapper over `scripts/release-cli.sh --yes`, the same script used locally, so the two paths cannot drift. See [CLI.md](docs/CLI.md) "Distribution" for the full recipe (embedded `__info_plist`, entitlements, CI verification) and the workflow's own header for the secrets it needs. Signing certificates, the notarization API key, and the release token live in GitHub Actions secrets, never in the repo.

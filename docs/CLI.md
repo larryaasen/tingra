@@ -209,7 +209,7 @@ The budget and the stability window are **per destination**: with several `--url
 
 Note that no reconnect attempt is ever made for the **initial** connection, on any transport: a destination that refuses the first handshake is reported straight away rather than retried.
 
-*RTMP(S) only in this iteration.* A **bad SRT connection is still caught at start** — a rejected handshake (bad `streamid`, unreachable host) is reported at once, and fails the command (exit 75) when it is the only destination. What SRT lacks is the **mid-stream** loss signal: HaishinKit 2.x's SRT publish path exposes no event when an already-established link later dies, so a hard SRT timeout is not auto-reconnected the way an RTMP drop is (SRT's own ARQ retransmission already rides out ordinary packet loss below this layer). Recorded in TODO.md as a deferral; never worked around with a poll loop. **With several destinations this has a further consequence:** an SRT leg never reports a mid-stream loss, so it counts as healthy for the whole run — a mixed RTMP + SRT run whose RTMP leg dies keeps going and exits 0 on the strength of an SRT leg that may already be dead.
+*RTMP(S) only in this iteration.* A **bad SRT connection is still caught at start** — a rejected handshake (bad `streamid`, unreachable host) is reported at once, and fails the command (exit 75) when it is the only destination. What SRT lacks is the **mid-stream** loss signal: HaishinKit 2.x's SRT publish path exposes no event when an already-established link later dies, so a hard SRT timeout is not auto-reconnected the way an RTMP drop is (SRT's own ARQ retransmission already rides out ordinary packet loss below this layer). Recorded as a deferral (DONE.md, "Step 8, SRT output"); never worked around with a poll loop. **With several destinations this has a further consequence:** an SRT leg never reports a mid-stream loss, so it counts as healthy for the whole run — a mixed RTMP + SRT run whose RTMP leg dies keeps going and exits 0 on the strength of an SRT leg that may already be dead.
 
 #### Input selection
 
@@ -230,7 +230,7 @@ Note that no reconnect attempt is ever made for the **initial** connection, on a
 
 | Option | Description |
 | :----- | :---------- |
-| `--resolution <WxH>` | Program resolution (default `1920x1080`). Captured frames are scaled if needed. |
+| `--resolution <WxH>` | Program resolution (default `1920x1080`). The CLI has no compositor, so it does not scale captured frames itself: a camera or generator whose native size differs is resized by the compression session (HaishinKit for the stream, `AVAssetWriter` for `--record`). Match the input's size to be sure of the result. |
 | `--fps <n>` | Frame rate (default 30). |
 | `--video-codec h264\|hevc` | Default `h264` (broadest destination support; Twitch RTMP is H.264 only). |
 | `--video-bitrate <rate>` | e.g. `6000k` (default `4500k`). |
@@ -287,7 +287,7 @@ Failures ride the same stream as `error` events carrying `identifier` + `message
 | Option | Description |
 | :----- | :---------- |
 | `--json` | Emit newline delimited JSON status events (started, stats, reconnecting, stopped, error) instead of human readable logs. |
-| `--stats-interval <sec>` | How often to print bitrate/fps/dropped frame stats (default 5, `0` disables). |
+| `--stats-interval <sec>` | How often to print bitrate and fps stats (default 5, `0` disables). |
 | `--verbose` / `--quiet` | Log level control. |
 | `--log-file <path>` | Also write logs to a file. |
 | `--safe-mode` | Load no plug-in bundles for this run (see "Plug-in bundles and safe mode"). |
@@ -349,7 +349,7 @@ The MCP tool surface is plug-in defined: plug-ins contribute tools to the host's
 | `devices_list` | `devices --json` | Same identifiers, same JSON shape. |
 | `probe` | `probe` | Validate URL/key without going live. |
 | `stream_start` | `stream` options | Input schema mirrors the flags (url, key, camera, mic, resolution, bitrate, ...). Returns a session id. |
-| `stream_status` | `--json` status events | Bitrate, fps, dropped frames, and a derived per-leg connection state. `sessionId` optional: omitted addresses the active stream. The session's own `state` is derived from its legs — `idle`, `pending`, `live`, `degraded`, `lost` (MCP.md, "Tool surface"). |
+| `stream_status` | `--json` status events | Bitrate, fps, and a derived per-leg connection state. `sessionId` optional: omitted addresses the active stream. The session's own `state` is derived from its legs — `idle`, `pending`, `live`, `degraded`, `lost` (MCP.md, "Tool surface"). |
 | `stream_stop` | Ctrl-C | Clean stop: flush compression, close connection, finalize any recording. `sessionId` optional: omitted stops the active stream; nothing active is a `noActiveStream` error. |
 
 The app's own MCP endpoint — the one its app-tier plug-ins speak to (MCP.md, "The app tier") — adds the program tools `shot_take`, `preview_set`, and `fade_to_black`, and serves the `tingra://session`, `tingra://program`, and `tingra://inputs` resources; neither is the daemon's, because only the app has a program (MCP.md, "Resources and the program tools").
