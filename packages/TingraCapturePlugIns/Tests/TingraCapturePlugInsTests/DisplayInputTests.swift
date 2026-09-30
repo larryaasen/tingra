@@ -378,3 +378,35 @@ struct DisplayEventReporterTests {
         #expect(changes.allSatisfy { $0.kind == .disconnected })
     }
 }
+
+@Suite("DisplayDiscovery sizing")
+struct DisplayDiscoverySizingTests {
+    @Test("a Retina display is sized by its mode's pixels, not the point size CoreGraphics reports")
+    func retinaUsesModePixels() {
+        let size = DisplayDiscovery.pixelSize(
+            modePixelWidth: 3024, modePixelHeight: 1964, pointWidth: 1512, pointHeight: 982)
+        #expect(size.width == 3024)
+        #expect(size.height == 1964)
+    }
+
+    @Test("a display at 1× is sized the same either way")
+    func standardDisplayMatches() {
+        let size = DisplayDiscovery.pixelSize(
+            modePixelWidth: 1920, modePixelHeight: 1080, pointWidth: 1920, pointHeight: 1080)
+        #expect(size.width == 1920)
+        #expect(size.height == 1080)
+    }
+
+    @Test("a display reporting no mode falls back to its point size")
+    func missingModeFallsBack() {
+        let size = DisplayDiscovery.pixelSize(
+            modePixelWidth: 0, modePixelHeight: 0, pointWidth: 1512, pointHeight: 982)
+        #expect(size.width == 1512)
+        #expect(size.height == 982)
+    }
+
+    @Test("the capture queue holds three frames")
+    func captureQueueDepth() {
+        #expect(DisplayInput.captureQueueDepth == 3)
+    }
+}

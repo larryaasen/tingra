@@ -328,6 +328,12 @@ final class DisplayInput: Input, Sendable {
         }
     }
 
+    /// How many frames ScreenCaptureKit may hold for a display capture. The
+    /// compositor takes the latest frame on each tick, so frames queued past
+    /// a few are never shown and only hold memory — 24 MB each on a
+    /// 3024 × 1964 Retina panel captured at its pixels.
+    static let captureQueueDepth = 3
+
     /// Builds, configures, and starts the capture stream for a display.
     ///
     /// Resolves the display's current `CGDirectDisplayID` from its stable
@@ -376,8 +382,9 @@ final class DisplayInput: Input, Sendable {
         configuration.height = display.pixelHeight
         configuration.pixelFormat = kCVPixelFormatType_32BGRA
         // Frames leave through the delivery closure; the tick paces the
-        // program, so a generous queue depth only buffers native frames.
-        configuration.queueDepth = 6
+        // program and takes the latest frame, so queued frames beyond a few
+        // only hold native-size surfaces.
+        configuration.queueDepth = Self.captureQueueDepth
 
         let output = DisplayStreamOutput(deliver: deliver, ended: ended)
         let stream = SCStream(filter: filter, configuration: configuration, delegate: output)
@@ -475,13 +482,51 @@ enum DisplayDiscovery {
     static func connectedDisplays() -> [DisplayDevice] {
         activeDisplayIDs().enumerated().compactMap { index, displayID in
             guard let uuid = displayUUIDString(for: displayID) else { return nil }
+            let size = pixelSize(of: displayID)
             return DisplayDevice(
                 uniqueID: uuid,
                 name: displayName(for: displayID, index: index),
-                pixelWidth: CGDisplayPixelsWide(displayID),
-                pixelHeight: CGDisplayPixelsHigh(displayID)
+                pixelWidth: size.width,
+                pixelHeight: size.height
             )
         }
+    }
+
+    /// A display's current size in physical pixels. `CGDisplayPixelsWide`
+    /// and `CGDisplayPixelsHigh` answer in points in a HiDPI mode — 1512 × 982
+    /// on a 3024 × 1964 Retina panel — which would capture the screen at half
+    /// its pixels, so the size comes from the display mode instead.
+    ///
+    /// - Parameter displayID: The display to measure.
+    /// - Returns: The pixel size.
+    private static func pixelSize(of displayID: CGDirectDisplayID) -> (width: Int, height: Int) {
+        let mode = CGDisplayCopyDisplayMode(displayID)
+        return pixelSize(
+            modePixelWidth: mode?.pixelWidth ?? 0,
+            modePixelHeight: mode?.pixelHeight ?? 0,
+            pointWidth: CGDisplayPixelsWide(displayID),
+            pointHeight: CGDisplayPixelsHigh(displayID)
+        )
+    }
+
+    /// Chooses a display's capture size: the mode's pixel size, or the point
+    /// size when the display reports no mode (a zero from a display that is
+    /// going away), so a display is never sized to nothing.
+    ///
+    /// - Parameters:
+    ///   - modePixelWidth: The mode's width in pixels, 0 when there is no mode.
+    ///   - modePixelHeight: The mode's height in pixels, 0 when there is no mode.
+    ///   - pointWidth: The display's width in points.
+    ///   - pointHeight: The display's height in points.
+    /// - Returns: The size to capture at.
+    static func pixelSize(
+        modePixelWidth: Int,
+        modePixelHeight: Int,
+        pointWidth: Int,
+        pointHeight: Int
+    ) -> (width: Int, height: Int) {
+        guard modePixelWidth > 0, modePixelHeight > 0 else { return (pointWidth, pointHeight) }
+        return (modePixelWidth, modePixelHeight)
     }
 
     /// A user-facing display name. CoreGraphics exposes no localized name

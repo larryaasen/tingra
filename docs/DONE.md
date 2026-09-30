@@ -3623,6 +3623,32 @@ there.
 
 ## Housekeeping
 
+- [x] **Build, test, and check by hand the cloud session's untested Swift
+  (commit 44bec71, merged with PR #3)** *(verified 2026-09-29)*. A session
+  with no Swift toolchain wrote three changes: stereo AAC and 10-second movie
+  fragments in `AVAssetWriterBackend`, `ProgramFormatChoice.loadedFormat`
+  checking a project file's stored program format at load, and one
+  `--stats-interval` help string. Verified locally:
+  - Clean builds of `TingraRecordingPlugIns` and `tingra-cli`, warning-free;
+    `TingraRecordingPlugIns` 26 tests, the app 787, `check-format.sh` clean,
+    `integration-test.sh` all 40 checks.
+  - `ffprobe` on CLI recordings: tone to `.mp4` and `.mov` is `channels=2`,
+    stereo, both channels at the same level (-8.76 dB peak).
+  - **One defect found and fixed: a mono microphone recorded on the left
+    channel only.** The built-in microphone (1 channel) came out with the
+    right channel at -inf, because `MicrophoneInput.tapFormat` tagged every
+    device `DiscreteInOrder | N`, and a discrete channel claims no speaker
+    role, so the writer's converter routed it to the left alone. A
+    one-channel device is now tagged `Mono` (two or more stay discrete); the
+    mixer spreads by channel count, so the app is unaffected. Re-recorded:
+    both channels at -26.1 dB peak. `TingraCapturePlugIns` 58 → 60 tests.
+  - A crash leaves a playable file. `kill -9` of the CLI 25 s into a
+    recording left `.mov` and `.mp4` files playing to 20.0 s (the last
+    fragment), both tracks, a clean decode; a clean stop still writes an
+    unfragmented file. By hand in the app (Larry): a recording force-quit
+    at about 33 s plays to 30.0 s, one `moov` plus two `moof`. Its dropped
+    frames are left open in TODO.md.
+
 - [x] **Commit the doc baseline** (the full doc set plus the LICENSE change is
   staged but uncommitted) so scaffolding diffs cleanly. *(Checkbox corrected
   2026-08-30: long done — the doc set and the LICENSE have been committed

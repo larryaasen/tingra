@@ -113,6 +113,18 @@ struct MicrophoneInputTests {
         #expect(MicrophoneInput.tapFormat(sampleRate: sampleRate, channels: channels) == nil)
     }
 
+    @Test("a one-channel device is tagged mono, so a stereo recording carries it on both channels")
+    func oneChannelTapIsMono() throws {
+        let format = try #require(MicrophoneInput.tapFormat(sampleRate: 48_000, channels: 1))
+        #expect(format.channelLayout?.layoutTag == kAudioChannelLayoutTag_Mono)
+    }
+
+    @Test("a device of two or more channels keeps its channels discrete, in hardware order")
+    func multiChannelTapIsDiscrete() throws {
+        let format = try #require(MicrophoneInput.tapFormat(sampleRate: 48_000, channels: 10))
+        #expect(format.channelLayout?.layoutTag == kAudioChannelLayoutTag_DiscreteInOrder | 10)
+    }
+
     @Test("a tapped PCM buffer converts with its AVAudioTime host time as the PTS")
     func conversionKeepsHostTimePTS() throws {
         let format = try #require(AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 1))

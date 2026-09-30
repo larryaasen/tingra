@@ -33,6 +33,27 @@ here, under "Left open from “…”", pointing at its record there.
   never a poll loop. Records: DONE.md, "Step 8, SRT output" and "SRT ships the
   prebuilt libsrt"; ARCHITECTURE.md, "How HaishinKit is incorporated".
 
+- [ ] **Left open from “Build, test, and check by hand the cloud session's
+  untested Swift”** (done; record in DONE.md, "Housekeeping"):
+  - **Dropped frames in a recording.** The app recording force-quit on
+    2026-09-29 holds 897 of 900 video frames: two missing at exactly 10.0 s
+    (the first fragment boundary) and three at 12.0 s (not a boundary); the
+    20 s boundary is clean. `AVAssetWriterBackend` drops a frame whenever
+    `isReadyForMoreMediaData` is false, and writing a fragment may be what
+    makes it briefly false, but the 12 s gap shows frames drop without one.
+    Measure over a longer take (count frames and DTS steps with `ffprobe`)
+    before changing anything.
+  - **A Retina display was captured at half its pixels — fixed 2026-09-29,
+    not yet seen in the running app.** A tile snapshot of the built-in
+    display (3024 × 1964 Retina) came out 1512 × 982: `DisplayDiscovery`
+    sized the capture from `CGDisplayPixelsWide`/`High`, which answer in
+    points in a HiDPI mode. It now reads the display mode's pixel size (point
+    size only when there is no mode), and the capture queue depth dropped
+    from 6 to 3 to offset the 4× larger frames (ARCHITECTURE.md,
+    "ScreenCaptureKit"). `TingraCapturePlugIns` 60 → 64 tests. Remaining:
+    run the new build, snapshot the display's tile in Multiview (⌥⌘M), and
+    confirm 3024 × 1964.
+
 - [ ] **Two small defects seen while building the stream's Stopping state
   (2026-09-26), not fixed.** (1) Record has the gap Stop Streaming had: while
   a recording is finishing (`RecordingStatus.finalizing`) `RecordButton`

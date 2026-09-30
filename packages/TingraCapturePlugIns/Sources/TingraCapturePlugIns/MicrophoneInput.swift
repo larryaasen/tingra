@@ -449,8 +449,13 @@ final class MicrophoneInput: Input, Sendable {
     /// that matters here (a Vocaster One presents 10 input channels: its mic
     /// pair plus loopback and show-mix feeds). `DiscreteInOrder` is the right
     /// tag for that: the device's channels in hardware order, claiming no
-    /// surround roles the mixer would misread. It is equally correct for mono
-    /// and stereo, so there is one path rather than a special case.
+    /// surround roles the mixer would misread.
+    ///
+    /// A one-channel device is the exception: it is tagged `Mono`. A discrete
+    /// channel claims no speaker role, so a converter writing a stereo file
+    /// (the recording's AAC is stereo) routes discrete channel 0 to the left
+    /// channel and leaves the right silent; a `Mono` channel is spread to both.
+    /// The mixer spreads by channel count and is unaffected either way.
     ///
     /// - Parameters:
     ///   - sampleRate: The device's nominal sample rate in hertz.
@@ -459,10 +464,8 @@ final class MicrophoneInput: Input, Sendable {
     ///   count.
     static func tapFormat(sampleRate: Double, channels: AVAudioChannelCount) -> AVAudioFormat? {
         guard sampleRate > 0, channels > 0 else { return nil }
-        guard
-            let layout = AVAudioChannelLayout(
-                layoutTag: kAudioChannelLayoutTag_DiscreteInOrder | channels)
-        else { return nil }
+        let tag = channels == 1 ? kAudioChannelLayoutTag_Mono : kAudioChannelLayoutTag_DiscreteInOrder | channels
+        guard let layout = AVAudioChannelLayout(layoutTag: tag) else { return nil }
         return AVAudioFormat(standardFormatWithSampleRate: sampleRate, channelLayout: layout)
     }
 
