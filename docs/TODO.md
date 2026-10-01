@@ -210,7 +210,19 @@ here, under "Left open from “…”", pointing at its record there.
         daemon, `list` the default subcommand. Verified end to end in the
         packaged CLI with the fixture (active, refused, disabled, safe mode,
         a crash, enable). TingraHost 293, CLI 99.*
-      - [ ] Decision 36: the Plug-ins settings pane.
+      - [x] Decision 36: the Plug-ins settings pane. *Built 2026-09-30
+        (PLUGINS.md, "Decision 36 built"): `PlugInsSettingsView` after
+        Logging, one row per plug-in over the launch's `PlugInLoadReport`
+        (`EngineModel.plugInReport`) joined to the app tier
+        (`PlugInListing`), Tingra's toggle writing `plug-ins.json` through
+        `PlugInEnablementModel` with "Takes effect the next time Tingra
+        opens", refusals with Show in Finder, Manage… presenting
+        `EXAppExtensionBrowserViewController`, Open Plug-ins Folder, the
+        Shift hint, and the safe-mode banner; the plug-ins' settings panes
+        are under Plug-in Settings. App 807 tests.*
+        - [ ] Larry: look at the pane in the running app — a toggle and its
+          line, a refused bundle's Show in Finder, the Manage… sheet, and
+          the banner in safe mode.
       - [ ] Decision 37: `scripts/release-sdk.sh`, `release-sdk.yml`,
         `packaging/sdk/`; the repo, the token scope, and the first publish
         are Larry's.

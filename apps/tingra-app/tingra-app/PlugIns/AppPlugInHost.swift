@@ -39,6 +39,15 @@ final class AppPlugInHost {
         /// The manifest read from its Info.plist.
         let manifest: PlugInManifest
 
+        /// The extension bundle's `CFBundleShortVersionString`, or `nil`
+        /// when it declares none.
+        let version: String?
+
+        /// Whether the extension is embedded in Tingra.app itself — a
+        /// first-party plug-in the Plug-ins pane lists under Built In —
+        /// rather than shipped in another app (PLUGINS.md, Decision 36).
+        let isBuiltIn: Bool
+
         /// The plug-in's identifier.
         var id: PlugInID { manifest.id }
     }
@@ -59,6 +68,11 @@ final class AppPlugInHost {
     /// The discovered plug-ins, in discovery order.
     private(set) var plugIns: [DiscoveredPlugIn] = []
 
+    /// The system's latest count of the app's extensions in each approval
+    /// state, or `nil` before it has reported one. The Plug-ins pane shows
+    /// how many are off beside the Manage… button (PLUGINS.md, Decision 36).
+    private(set) var availability: AvailabilityCounts?
+
     /// Which panes are open, mirrored from ``PanePreferences`` so the
     /// sidebar and a command's `showsPane` share one observable answer.
     private(set) var expandedPanes: Set<PaneID> = []
@@ -67,7 +81,7 @@ final class AppPlugInHost {
     /// ``PanePreferences`` like ``expandedPanes``.
     private(set) var closedPanes: Set<PaneID> = []
 
-    /// Whether the Settings window's Plug-ins section — the collapsible
+    /// Whether the Settings window's Plug-in Settings section — the collapsible
     /// heading over the plug-ins' settings panes — is open, mirrored from
     /// ``PanePreferences`` like ``expandedPanes``.
     private(set) var isSettingsSectionExpanded: Bool
@@ -116,6 +130,11 @@ final class AppPlugInHost {
 
         /// Extensions still awaiting the operator's approval.
         let unapproved: Int
+
+        /// Extensions that are off: the ones the operator turned off and
+        /// the ones never yet turned on. An extension shipped in another
+        /// app starts unapproved, so both read as "off" to the operator.
+        var off: Int { disabled + unapproved }
 
         /// The `plugin.availability` event's params.
         var params: [String: EventValue] {
@@ -182,6 +201,7 @@ final class AppPlugInHost {
                     unapproved: availability.unapprovedCount)
                 guard counts != reported else { continue }
                 reported = counts
+                self.availability = counts
                 services.eventBus.event("plugin.availability", domain: .plugIn, params: counts.params)
             }
         }
@@ -229,8 +249,10 @@ final class AppPlugInHost {
     /// Reads an identity's manifest and fills the registries from it.
     private func register(_ identity: AppExtensionIdentity, services: AppPlugInServices) {
         let manifest: PlugInManifest
+        let extensionBundle: Bundle
         do {
-            manifest = try PlugInManifest(bundle: try bundle(for: identity))
+            extensionBundle = try bundle(for: identity)
+            manifest = try PlugInManifest(bundle: extensionBundle)
         } catch {
             services.eventBus.error(
                 "plugin.manifest", domain: .plugIn,
@@ -249,7 +271,10 @@ final class AppPlugInHost {
                 ])
             return
         }
-        let plugIn = DiscoveredPlugIn(identity: identity, manifest: manifest)
+        let plugIn = DiscoveredPlugIn(
+            identity: identity, manifest: manifest,
+            version: extensionBundle.infoDictionary?["CFBundleShortVersionString"] as? String,
+            isBuiltIn: Self.isEmbedded(extensionBundle.bundleURL, in: extensionsDirectory))
         plugIns.append(plugIn)
         links[manifest.id] = AppPlugInLink(plugIn: plugIn, services: services)
         for pane in manifest.panes {
@@ -330,6 +355,18 @@ final class AppPlugInHost {
         throw PlugInHostError.bundleNotFound(identity.bundleIdentifier, extensionsDirectory)
     }
 
+    /// Whether an extension bundle lies inside the app's own extensions
+    /// folder, which makes it a built-in plug-in.
+    ///
+    /// - Parameters:
+    ///   - bundleURL: The extension bundle's location.
+    ///   - extensionsDirectory: The app's `Contents/Extensions` folder.
+    nonisolated static func isEmbedded(_ bundleURL: URL, in extensionsDirectory: URL) -> Bool {
+        let folder = extensionsDirectory.standardizedFileURL.resolvingSymlinksInPath().pathComponents
+        let bundle = bundleURL.standardizedFileURL.resolvingSymlinksInPath().pathComponents
+        return bundle.count > folder.count && Array(bundle.prefix(folder.count)) == folder
+    }
+
     // MARK: - Panes
 
     /// Whether a pane is open in its sidebar.
@@ -365,7 +402,7 @@ final class AppPlugInHost {
         if !isClosed { setExpanded(true, for: pane) }
     }
 
-    /// Opens or closes the Settings window's Plug-ins section, persisting
+    /// Opens or closes the Settings window's Plug-in Settings section, persisting
     /// the choice.
     ///
     /// - Parameter isExpanded: Whether the section is open.

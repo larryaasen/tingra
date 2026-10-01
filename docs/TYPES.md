@@ -1949,8 +1949,12 @@ surface is:
     after its process dies.
     `AvailabilityCounts` is the system's enabled/disabled/unapproved counts,
     compared so `plugin.availability` is reported only when they change
-    (Launch Services re-announces the same counts on every record update).
-    `DiscoveredPlugIn` is an identity with its manifest; `AppPlugInServices`
+    (Launch Services re-announces the same counts on every record update),
+    and kept as `availability` for the Plug-ins pane, whose `off` is the
+    disabled and unapproved together.
+    `DiscoveredPlugIn` is an identity with its manifest, its extension's
+    version, and `isBuiltIn` (embedded in Tingra.app, `isEmbedded(_:in:)`;
+    2026-09-30, PLUGINS.md, Decision 36); `AppPlugInServices`
     is what every link needs (the bus, the tool registry, the status sink and
     identity the session serves, the storage, the status items — whose texts
     the link drops when the plug-in's last connection closes); `AppPlugInStorage` is the
@@ -2343,13 +2347,13 @@ surface is:
   beside the ⌘W every window has, since nothing here is committed for Escape to
   cancel.
 - `SettingsPane` — the closed list of panes — General, Streaming, Recording,
-  Permissions, Shortcuts, Data, Logging, About — each deriving its own name and
-  symbol, so the sidebar's label and the window's title cannot drift.
+  Permissions, Shortcuts, Data, Logging, Plug-ins, About — each deriving its own
+  name and symbol, so the sidebar's label and the window's title cannot drift.
 - `SettingsSelection` — what the source list selects: `builtIn(SettingsPane)`,
   or `plugIn(PaneID)` for a settings pane an app-tier plug-in registered, which
-  the list appends below the built-in eight — identifier-backed for plug-ins
-  while the built-in panes keep their closed enum (2026-09-13; PLUGINS.md,
-  "The app side").
+  the list appends below the built-in nine under a Plug-in Settings heading —
+  identifier-backed for plug-ins while the built-in panes keep their closed
+  enum (2026-09-13; PLUGINS.md, "The app side").
 - `SettingsCommands` — the app-menu Settings… item that opens it, replacing the
   one the `Settings` scene would have contributed.
 - `GeneralSettingsView` — the General pane: the app's Appearance and a Show
@@ -2448,6 +2452,35 @@ surface is:
   (`log.cleared` with `previousBytes`, or a `log.clear` error whose reason the
   pane shows). The host's `LogFile` emits nothing; the app is what knows a
   clear was the operator's.
+- `PlugInsSettingsView` — the Plug-ins pane (2026-09-30; PLUGINS.md,
+  Decision 36): one row per plug-in across both tiers, under Installed (the
+  bundles from both folders, then the app-tier plug-ins shipped in other
+  apps, then the Plug-ins in Other Apps row whose Manage… presents the
+  system's switches) and Built In (the compiled-in plug-ins and the embedded
+  extensions, no toggles); a safe-mode banner (`SafeModeBanner`) tops it in
+  safe mode, and the last row opens the user's plug-in folder, creating it
+  first, above the Shift hint. `PlugInRow` draws one row — the name, version,
+  and id, a warning symbol for a problem, Tingra's toggle for a switchable
+  bundle with "Takes effect the next time Tingra opens" once it differs from
+  how the launch found it, or the refusal and Show in Finder.
+  `ManagePlugInsSheet` hosts `AppExtensionBrowser`, the
+  `EXAppExtensionBrowserViewController` wrapper, with a Done button. No
+  Relaunch button: relaunching quits a live show.
+- `PlugInListing` — the pane's rows as a value: the launch's
+  `PlugInLoadReport` (kept on `EngineModel.plugInReport`) joined to the
+  app-tier plug-ins by `PlugInID`, so a plug-in with both halves is one row.
+  A second bundle declaring a listed id, and a bundle declaring none, is keyed
+  by its path. `BundleStanding` is what a bundle's row offers: `switchable`
+  with whether the launch found it on (loaded, or kept out only by safe mode),
+  `refused` with the message and location, or `undetermined` when
+  `plug-ins.json` could not be read.
+- `PlugInEnablementModel` — the `@Observable @MainActor` model behind the
+  toggles, owned by `EngineModel` over `plug-ins.json`: read when the pane
+  appears (never polled), `setOn(_:for:)` writes through
+  `PlugInEnablementStore.update` — turning one on forgets its crash — and
+  reports `plugin.enablementChanged`, or a `plugin.enablement` error whose
+  message the pane shows; an unreadable file disables the toggles and is
+  never overwritten.
 - `LogFileCommands` — the Help menu's Share Log File… item, beneath the
   system's Tingra Help: the same dated snapshot, handed to
   `NSSharingServicePicker` over the key window (a `ShareLink` cannot sit in a

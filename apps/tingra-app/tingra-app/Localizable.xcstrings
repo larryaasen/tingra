@@ -4842,7 +4842,7 @@
       }
     },
     "Plug-ins" : {
-      "comment" : "Title of the Plug-ins menu (one submenu per plug-in with commands) and of the Settings source list's section over the plug-ins' settings panes\nTitle of the Plug-ins menu, one submenu per plug-in with commands",
+      "comment" : "Settings window pane: every plug-in and which ones load\nTitle of the Plug-ins menu, one submenu per plug-in with commands",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -7740,7 +7740,7 @@
       }
     },
     "Safe Mode" : {
-      "comment" : "Main window subtitle for a launch that loaded no plug-in bundles, before a preset is active",
+      "comment" : "Main window subtitle for a launch that loaded no plug-in bundles, before a preset is active\nPlug-ins settings: title of the safe-mode banner",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -7871,6 +7871,388 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Complementos desactivados"
+          }
+        }
+      }
+    },
+    "Plug-in Settings" : {
+      "comment" : "Settings source list: heading over the settings panes plug-ins registered",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Plug-in-Einstellungen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ajustes de complementos"
+          }
+        }
+      }
+    },
+    "No plug-ins installed." : {
+      "comment" : "Plug-ins settings: shown under Installed when there are none",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Plug-ins installiert."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No hay complementos instalados."
+          }
+        }
+      }
+    },
+    "Installed" : {
+      "comment" : "Plug-ins settings: heading over the plug-ins the operator installed",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Installiert"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Instalados"
+          }
+        }
+      }
+    },
+    "Built In" : {
+      "comment" : "Plug-ins settings: heading over the plug-ins that come with Tingra",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Integriert"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Integrados"
+          }
+        }
+      }
+    },
+    "Hold Shift while opening Tingra to open it without the plug-ins you installed." : {
+      "comment" : "Plug-ins settings: footer teaching the safe-mode key",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Halte beim Öffnen von Tingra die Umschalttaste gedrückt, um es ohne die von dir installierten Plug-ins zu öffnen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mantén pulsada la tecla Mayúsculas al abrir Tingra para abrirlo sin los complementos que instalaste."
+          }
+        }
+      }
+    },
+    "Manage…" : {
+      "comment" : "Plug-ins settings: button presenting the system's switches for app extensions",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verwalten…"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gestionar…"
+          }
+        }
+      }
+    },
+    "Plug-ins in Other Apps" : {
+      "comment" : "Plug-ins settings: label of the row managing app extensions",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Plug-ins in anderen Apps"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Complementos de otras apps"
+          }
+        }
+      }
+    },
+    "%lld plug-ins in other apps are off" : {
+      "comment" : "Plug-ins settings: how many app extensions are off; the placeholder is the count",
+      "localizations" : {
+        "de" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld Plug-in in anderen Apps ist aus"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld Plug-ins in anderen Apps sind aus"
+                }
+              }
+            }
+          }
+        },
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "new",
+                  "value" : "%lld plug-in in other apps is off"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "new",
+                  "value" : "%lld plug-ins in other apps are off"
+                }
+              }
+            }
+          }
+        },
+        "es" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld complemento de otras apps está desactivado"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld complementos de otras apps están desactivados"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Turn their panes and commands on and off in Manage…" : {
+      "comment" : "Plug-ins settings: shown under Plug-ins in Other Apps when none are off",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schalte ihre Bereiche und Befehle unter „Verwalten…“ ein und aus"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Activa y desactiva sus paneles y comandos en Gestionar…"
+          }
+        }
+      }
+    },
+    "Open Plug-ins Folder" : {
+      "comment" : "Plug-ins settings: button opening the plug-ins folder",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Plug-ins-Ordner öffnen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abrir carpeta de complementos"
+          }
+        }
+      }
+    },
+    "Plug-ins Folder" : {
+      "comment" : "Plug-ins settings: label of the row naming the plug-ins folder",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Plug-ins-Ordner"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Carpeta de complementos"
+          }
+        }
+      }
+    },
+    "You chose to open Tingra without the plug-ins you installed after it quit unexpectedly. They load again the next time Tingra opens." : {
+      "comment" : "Plug-ins settings: safe-mode banner text after the operator chose Open in Safe Mode",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Du hast Tingra nach einem unerwarteten Beenden ohne die von dir installierten Plug-ins geöffnet. Sie werden beim nächsten Öffnen von Tingra wieder geladen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Elegiste abrir Tingra sin los complementos que instalaste después de que se cerrara inesperadamente. Se cargarán de nuevo la próxima vez que abras Tingra."
+          }
+        }
+      }
+    },
+    "Shift was held as Tingra opened, so the plug-ins you installed were not loaded. They load again the next time Tingra opens." : {
+      "comment" : "Plug-ins settings: safe-mode banner text after Shift was held at launch",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beim Öffnen von Tingra war die Umschalttaste gedrückt, daher wurden die von dir installierten Plug-ins nicht geladen. Sie werden beim nächsten Öffnen von Tingra wieder geladen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se mantuvo pulsada la tecla Mayúsculas al abrir Tingra, así que no se cargaron los complementos que instalaste. Se cargarán de nuevo la próxima vez que abras Tingra."
+          }
+        }
+      }
+    },
+    "Warning" : {
+      "comment" : "Plug-ins settings: accessibility label of a row's warning symbol",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Warnung"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Advertencia"
+          }
+        }
+      }
+    },
+    "Turned off because Tingra quit unexpectedly while loading it." : {
+      "comment" : "Plug-ins settings: a bundle the load-crash guard turned off",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ausgeschaltet, weil Tingra beim Laden unerwartet beendet wurde."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Desactivado porque Tingra se cerró inesperadamente mientras lo cargaba."
+          }
+        }
+      }
+    },
+    "Takes effect the next time Tingra opens" : {
+      "comment" : "Plug-ins settings: a changed toggle applies at the next launch",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wird beim nächsten Öffnen von Tingra wirksam"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se aplica la próxima vez que se abra Tingra"
+          }
+        }
+      }
+    },
+    "Turned on and off in Manage…" : {
+      "comment" : "Plug-ins settings: an installed app extension, switched in the system's browser",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wird unter „Verwalten…“ ein- und ausgeschaltet"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se activa y desactiva en Gestionar…"
+          }
+        }
+      }
+    },
+    "Its panes and commands are turned on and off in Manage…" : {
+      "comment" : "Plug-ins settings: a plug-in with both halves, whose app half the system's browser switches",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seine Bereiche und Befehle werden unter „Verwalten…“ ein- und ausgeschaltet"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sus paneles y comandos se activan y desactivan en Gestionar…"
+          }
+        }
+      }
+    },
+    "Show in Finder" : {
+      "comment" : "Plug-ins settings: button revealing a refused plug-in bundle",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Im Finder anzeigen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostrar en el Finder"
+          }
+        }
+      }
+    },
+    "Done" : {
+      "comment" : "Plug-ins settings: button closing the Manage sheet",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fertig"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OK"
           }
         }
       }

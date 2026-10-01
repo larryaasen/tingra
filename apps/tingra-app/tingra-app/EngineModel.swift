@@ -1411,6 +1411,13 @@ final class EngineModel {
     /// the file sink appends to (``LogFileModel``).
     @ObservationIgnored private(set) lazy var logFileModel = LogFileModel(logFile: logFile, eventBus: eventBus)
 
+    /// Which installed plug-ins are turned off — the Plug-ins settings
+    /// pane's model, over the same `plug-ins.json` the bundle loader reads
+    /// at every launch (``PlugInEnablementModel``, PLUGINS.md, Decisions 34
+    /// and 36).
+    @ObservationIgnored private(set) lazy var plugInEnablement = PlugInEnablementModel(
+        store: PlugInEnablementStore(), eventBus: eventBus)
+
     /// The Log window's model — the log file's recent lines, followed live
     /// while the window is open — over the same ``logFile`` the file sink
     /// appends to (``LogWindowModel``).
@@ -1522,6 +1529,14 @@ final class EngineModel {
     /// engine boots; the main window's subtitle ends in "Safe Mode" while it
     /// is set.
     private(set) var safeModeTrigger: PlugInSafeModeTrigger?
+
+    /// Every host-tier plug-in this launch met — the compiled-in ones and
+    /// each bundle in the plug-in folders, in one state apiece — or `nil`
+    /// until the engine has booted. The same report `tingra-cli plug-ins`
+    /// prints; the Plug-ins settings pane lists it (PLUGINS.md, Decisions
+    /// 35 and 36). Set once, as the plug-ins activate: what loaded cannot
+    /// change until the next launch.
+    private(set) var plugInReport: PlugInLoadReport?
 
     /// Whether any ``applyConfiguration()`` pass has completed, so the first
     /// pass establishes the session preset — seeding a fresh project around
@@ -1678,6 +1693,7 @@ final class EngineModel {
         // Once bundles have loaded, a run that ends without terminating is
         // one the next launch offers safe mode after (PLUGINS.md, Decision
         // 32); ``TingraAppDelegate`` removes the record at a clean quit.
+        plugInReport = activation.report
         let loadedBundles = activation.scan.loaded.map(\.url.lastPathComponent)
         if !loadedBundles.isEmpty {
             PlugInLaunchRecord().write(bundles: loadedBundles)

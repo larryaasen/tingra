@@ -40,6 +40,11 @@ enum SettingsPane: String, CaseIterable, Hashable, Sendable {
     /// The log file: where it is, how big it is, and sharing or clearing it.
     case logging
 
+    /// Every plug-in, both tiers: which installed ones load at the next
+    /// launch, which were refused and why, and the system's switch for the
+    /// app-tier ones (PLUGINS.md, Decision 36).
+    case plugIns
+
     /// The app's version.
     case about
 
@@ -58,6 +63,7 @@ enum SettingsPane: String, CaseIterable, Hashable, Sendable {
         case .shortcuts: Text("Shortcuts", comment: "Settings window pane: the keyboard shortcuts listing")
         case .data: Text("Data", comment: "Settings window pane: what the app has saved on this Mac")
         case .logging: Text("Logging", comment: "Settings window pane: the log file and what to do with it")
+        case .plugIns: Text("Plug-ins", comment: "Settings window pane: every plug-in and which ones load")
         case .about: Text("About", comment: "Settings window pane: the app's version")
         }
     }
@@ -72,6 +78,7 @@ enum SettingsPane: String, CaseIterable, Hashable, Sendable {
         case .shortcuts: "keyboard"
         case .data: "internaldrive"
         case .logging: "doc.text.magnifyingglass"
+        case .plugIns: "puzzlepiece.extension"
         case .about: "info.circle"
         }
     }
@@ -99,8 +106,8 @@ nonisolated enum SettingsSelection: Hashable, Sendable {
 }
 
 /// The settings window, reached from the app menu with ⌘, the way macOS
-/// reserves — eight panes for now: General, Streaming, Recording,
-/// Permissions, Shortcuts, Data, Logging, and About.
+/// reserves — nine panes for now: General, Streaming, Recording,
+/// Permissions, Shortcuts, Data, Logging, Plug-ins, and About.
 ///
 /// It is a `Window` scene with its own Settings… command (``TingraApp``)
 /// rather than SwiftUI's `Settings` scene, for a reason that is only visible
@@ -165,7 +172,7 @@ struct SettingsView: View {
     /// window with those buttons sitting on it.
     private static let minimumSize = CGSize(width: 700, height: 460)
 
-    /// The Plug-ins section's expansion, persisted through the plug-in
+    /// The Plug-in Settings section's expansion, persisted through the plug-in
     /// host. The `tap` rides the binding setter, the rule the main window's
     /// sections follow: a setter runs only when the operator works the
     /// disclosure, so restoring the persisted state records no tap nobody
@@ -236,9 +243,11 @@ struct SettingsView: View {
                     .tag(SettingsSelection.builtIn(pane))
                 }
                 // Plug-in settings panes follow the built-in ones under a
-                // collapsible Plug-ins heading (absent while no plug-in has
-                // one, like the menu), each a remote view hosted like a
-                // sidebar pane.
+                // collapsible Plug-in Settings heading (absent while no
+                // plug-in has one, like the menu), each a remote view hosted
+                // like a sidebar pane. The heading is not "Plug-ins", so the
+                // list never reads "Plug-ins" twice beside the built-in
+                // Plug-ins pane (PLUGINS.md, Decision 36).
                 if let plugInHost, !plugInHost.panes.settingsPanes.isEmpty {
                     Section(isExpanded: plugInsExpansion(of: plugInHost)) {
                         ForEach(plugInHost.panes.settingsPanes) { pane in
@@ -251,10 +260,8 @@ struct SettingsView: View {
                         }
                     } header: {
                         Text(
-                            "Plug-ins",
-                            comment:
-                                "Title of the Plug-ins menu (one submenu per plug-in with commands) and of the Settings source list's section over the plug-ins' settings panes"
-                        )
+                            "Plug-in Settings",
+                            comment: "Settings source list: heading over the settings panes plug-ins registered")
                     }
                 }
             }
@@ -341,6 +348,7 @@ struct SettingsView: View {
         case .shortcuts: ShortcutsSettingsView()
         case .data: DataSettingsView(model: model)
         case .logging: LoggingSettingsView(model: model)
+        case .plugIns: PlugInsSettingsView(model: model)
         case .about: AboutSettingsView(uptime: uptime)
         }
     }

@@ -13,11 +13,11 @@ import Testing
 
 @Suite("SettingsPane")
 struct SettingsPaneTests {
-    @Test("the eight panes are listed in the sidebar's order, General first and About last")
+    @Test("the nine panes are listed in the sidebar's order, General first, Plug-ins after Logging, and About last")
     func panesInOrder() {
         #expect(
             SettingsPane.allCases == [
-                .general, .streaming, .recording, .permissions, .shortcuts, .data, .logging, .about,
+                .general, .streaming, .recording, .permissions, .shortcuts, .data, .logging, .plugIns, .about,
             ])
     }
 
@@ -37,5 +37,10 @@ struct SettingsPaneTests {
     @Test("the Logging pane's symbol is a document under a magnifier")
     func loggingSymbol() {
         #expect(SettingsPane.logging.systemImage == "doc.text.magnifyingglass")
+    }
+
+    @Test("the Plug-ins pane's symbol is the extension puzzle piece")
+    func plugInsSymbol() {
+        #expect(SettingsPane.plugIns.systemImage == "puzzlepiece.extension")
     }
 }

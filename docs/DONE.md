@@ -1650,7 +1650,9 @@ there.
         appeared under `/usr/bin/log show --info`.
       - *(Open: tracked in TODO.md.)* Decision 35: `tingra-cli plug-ins [--json] [--safe-mode]`,
         `plug-ins enable|disable <id>`.
-      - *(Open: tracked in TODO.md.)* Decision 36: the Plug-ins settings pane.
+      - [x] Decision 36: the Plug-ins settings pane. *Built 2026-09-30
+        (PLUGINS.md, "Decision 36 built"); the look in the running app is
+        tracked in TODO.md.*
       - *(Open: tracked in TODO.md.)* Decision 37: `scripts/release-sdk.sh`, `release-sdk.yml`,
         `packaging/sdk/`; the repo, the token scope, and the first publish
         are Larry's.

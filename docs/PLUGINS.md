@@ -501,7 +501,23 @@ Four follow-ups, taken in the order the loader needs them, after one correction 
   - `disable` of a compiled-in id, and `enable` of an unknown one, each exited 64 with the fix.
   - Everything the check wrote was removed afterwards.
 
-The build order after approval: Decision 30 with the three small defects (built), then 31–34 (safe mode, the crash guard, and the enablement file share the loader's new seams; built), then 35 (built), then 36, then 37. Each slice is verified the usual way.
+**Decision 36 built 2026-09-30.** The build settled these details:
+
+- **The pane lists the launch's report.** `EngineModel.plugInReport` keeps the `PlugInLoadReport` the loader returned, set once as the plug-ins activate, since what loaded cannot change until the next launch. `PlugInListing` joins it to the app-tier plug-ins by `PlugInID`. A second bundle declaring an id already listed (a `duplicateID` refusal), and a bundle declaring none, is its own row keyed by its path, and the app-tier half merges onto the first.
+- **"Takes effect the next time Tingra opens" compares against the launch.** A bundle that loaded, or that only safe mode kept out, was on at this launch; one skipped as `disabled` or `crashed` was off. The line shows while the toggle differs from that, so turning a bundle off and back on clears it.
+- **The file is read when the pane appears.** `tingra-cli plug-ins enable|disable` can change `plug-ins.json` while the app runs. `PlugInEnablementModel` reads it on appearing and writes through `PlugInEnablementStore.update`, so a toggle never writes back a stale record. Turning a bundle on also forgets its crash, as `enable` does. A bundle is shown as turned off by a crash from the file, not the report, so the line goes as soon as the operator turns it back on.
+- **An unreadable file disables the toggles.** Its message shows under Installed, and a bundle the launch skipped as `enablementUnreadable` shows the skip's message with no toggle. The store never overwrites the file, so the pane cannot either.
+- **Built In means embedded in Tingra.app.** `DiscoveredPlugIn` gains `isBuiltIn` (the extension lies inside `Contents/Extensions`) and the extension's `version`. The app tier still locates only embedded extensions (a third-party container is Phase 3's question), so today Installed lists bundles only.
+- **"Off" is disabled plus unapproved.** An extension shipped in another app starts unapproved, which the operator reads as off. `AppPlugInHost.availability` keeps the system's latest counts. With none off, the row reads "Turn their panes and commands on and off in Manage…". On a development Mac, the Notes copies inside other test builds count too (see "A test build elsewhere registers another Notes").
+- **An installed app-tier plug-in with no bundle** reads "Turned on and off in Manage…", beside the both-halves line the design named.
+- **Events.** The toggle's change is `plugin.enablementChanged` (`event`, domain `plugIn`, with `id`, `enabled`, and `tier: host`), and a file that cannot be read or written is a `plugin.enablement` error. A plug-in folder that cannot be created is a `plugin.folder` error. The taps are `plugInEnabled.toggle`, `plugInShowInFinder.button`, `plugInsManage.button`, `plugInsManageDone.button`, and `plugInsOpenFolder.button`, all domain `plugIn`. The renamed Plug-in Settings heading keeps its `settingsPlugIns.section` tap.
+- **Twenty strings** were added to the catalog with `de` and `es`, the off count with plural variations. "Plug-ins" stays one key, shared by the menu and the pane.
+
+**Verified:** the app builds with no new warnings, `check-format` is clean, and the app runs 807 tests in 104 suites, all passing. Twenty are new: `PlugInListingTests` (12), `PlugInEnablementModelTests` (5), two in `PlugInAvailabilityCountsTests`, and one in `SettingsPaneTests`.
+
+**Not yet seen in the running app:** Larry's debug instance was running, so a session could not open the pane without taking over his show. The pane, the toggle's line, Show in Finder on a refused bundle, and the Manage… sheet with the system's browser wait for his next launch.
+
+The build order after approval: Decision 30 with the three small defects (built), then 31–34 (safe mode, the crash guard, and the enablement file share the loader's new seams; built), then 35 (built), then 36 (built), then 37. Each slice is verified the usual way.
 
 ## Phase 4 — breadth: the host seams still missing
 
