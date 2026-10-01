@@ -220,9 +220,9 @@ here, under "Left open from “…”", pointing at its record there.
         `EXAppExtensionBrowserViewController`, Open Plug-ins Folder, the
         Shift hint, and the safe-mode banner; the plug-ins' settings panes
         are under Plug-in Settings. App 807 tests.*
-        - [ ] Larry: look at the pane in the running app — a toggle and its
+        - [x] Larry: look at the pane in the running app — a toggle and its
           line, a refused bundle's Show in Finder, the Manage… sheet, and
-          the banner in safe mode.
+          the banner in safe mode. *Done 2026-09-30.*
       - [ ] Decision 37: `scripts/release-sdk.sh`, `release-sdk.yml`,
         `packaging/sdk/`; the repo, the token scope, and the first publish
         are Larry's.

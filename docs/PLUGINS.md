@@ -515,7 +515,7 @@ Four follow-ups, taken in the order the loader needs them, after one correction 
 
 **Verified:** the app builds with no new warnings, `check-format` is clean, and the app runs 807 tests in 104 suites, all passing. Twenty are new: `PlugInListingTests` (12), `PlugInEnablementModelTests` (5), two in `PlugInAvailabilityCountsTests`, and one in `SettingsPaneTests`.
 
-**Not yet seen in the running app:** Larry's debug instance was running, so a session could not open the pane without taking over his show. The pane, the toggle's line, Show in Finder on a refused bundle, and the Manage… sheet with the system's browser wait for his next launch.
+**Not yet seen in the running app:** Larry's debug instance was running, so a session could not open the pane without taking over his show. The pane, the toggle's line, Show in Finder on a refused bundle, and the Manage… sheet with the system's browser wait for his next launch. *(Larry checked the pane in the running app on 2026-09-30.)*
 
 The build order after approval: Decision 30 with the three small defects (built), then 31–34 (safe mode, the crash guard, and the enablement file share the loader's new seams; built), then 35 (built), then 36 (built), then 37. Each slice is verified the usual way.
 
