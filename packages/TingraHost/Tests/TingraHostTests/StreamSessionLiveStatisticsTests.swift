@@ -17,7 +17,7 @@ import TingraPlugInKit
 
 /// The live statistics readout and the window-summarized `stream.stats` it
 /// brings: every live leg read once a second onto
-/// ``StreamSession/liveStatistics``, the log line one second after the start
+/// ``StreamSession/liveStatistics``, the log line ten seconds after the start
 /// and every interval after it, each summarizing its window (EVENTS.md,
 /// "Stream statistics: the readout and the log").
 @Suite("StreamSession live statistics")
@@ -111,14 +111,13 @@ struct StreamSessionLiveStatisticsTests {
             legs: [try Self.makeLeg(id: "twitch", service: service)],
             clock: clock,
             eventBus: eventBus,
-            policy: StreamSession.Policy(statsIntervalSeconds: 3, liveStatistics: true)
+            policy: StreamSession.Policy(statsIntervalSeconds: 3, liveStatistics: true, statsFirstWindowSeconds: 1)
         )
         var readout = session.liveStatistics.makeAsyncIterator()
         let runTask = Task { try await session.run() }
         #expect(await eventually { !events.named("stream.started").isEmpty && clock.subscriberCount == 1 })
 
-        // The first reading closes a one-second window, so the log has the
-        // stream's opening figures at once.
+        // With a one-second first window, the first reading closes it.
         service.setStatistics(Self.counters(bytesSent: 1000, fps: 30))
         let first = try #require(await Self.reading(at: 1, clock: clock, from: &readout))
         #expect(
@@ -161,7 +160,7 @@ struct StreamSessionLiveStatisticsTests {
         #expect(await readout.next() == nil)
     }
 
-    @Test("The first log line comes one second after the start and the next one interval after it")
+    @Test("The first log line comes ten seconds after the start and the next one interval after it")
     func logCadence() async throws {
         let clock = ManualClock()
         let eventBus = EventBus()
@@ -180,15 +179,19 @@ struct StreamSessionLiveStatisticsTests {
         #expect(await eventually { !events.named("stream.started").isEmpty && clock.subscriberCount == 1 })
 
         var readings = 0
-        for second in 1...122 {
+        for second in 1...131 {
             if await Self.reading(at: second, clock: clock, from: &readout) != nil {
                 readings += 1
             }
         }
-        #expect(readings == 122)
+        #expect(readings == 131)
         #expect(await eventually { events.named("stream.stats").count == 3 })
+        // The default first window is ten seconds: long enough for delivery
+        // to settle before the log's first figures.
+        #expect(StreamSession.Policy().statsFirstWindowSeconds == 10)
         let elapsed = events.named("stream.stats").compactMap { $0.params?["elapsed"] }
-        #expect(elapsed == [.double(1), .double(61), .double(121)])
+        #expect(elapsed == [.double(10), .double(70), .double(130)])
+        #expect(events.named("stream.stats").first?.params?["window"] == .double(10))
         #expect(events.named("stream.stats").last?.params?["window"] == .double(60))
 
         await session.stop()
@@ -208,7 +211,7 @@ struct StreamSessionLiveStatisticsTests {
             legs: [try Self.makeLeg(id: "twitch", service: service)],
             clock: clock,
             eventBus: eventBus,
-            policy: StreamSession.Policy(statsIntervalSeconds: 2, liveStatistics: true)
+            policy: StreamSession.Policy(statsIntervalSeconds: 2, liveStatistics: true, statsFirstWindowSeconds: 1)
         )
         var readout = session.liveStatistics.makeAsyncIterator()
         let runTask = Task { try await session.run() }
@@ -290,7 +293,8 @@ struct StreamSessionLiveStatisticsTests {
             ],
             clock: clock,
             eventBus: eventBus,
-            policy: StreamSession.Policy(reconnectAttempts: 0, statsIntervalSeconds: 1, liveStatistics: true)
+            policy: StreamSession.Policy(
+                reconnectAttempts: 0, statsIntervalSeconds: 1, liveStatistics: true, statsFirstWindowSeconds: 1)
         )
         var readout = session.liveStatistics.makeAsyncIterator()
         let runTask = Task { try await session.run() }

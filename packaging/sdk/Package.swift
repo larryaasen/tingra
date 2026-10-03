@@ -18,8 +18,9 @@ import PackageDescription
 // packaging/sdk/Package.swift, which carries @-delimited placeholders in place
 // of the version and the checksums. Change the template there, never this copy.
 //
-// Link the product, never embed it: Tingra already loaded the one copy of each
-// kit that every plug-in shares.
+// A bundle binds to the one copy of each kit Tingra already loaded. The copy
+// Xcode embeds in the bundle is never loaded (README.md, "The copy Xcode
+// embeds").
 let package = Package(
     name: "TingraPlugInSDK",
     platforms: [.macOS(.v15)],

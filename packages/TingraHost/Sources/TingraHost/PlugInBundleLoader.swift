@@ -134,11 +134,36 @@ public struct PlugInBundleLoader: Sendable {
     /// against, as `MAJOR.MINOR.PATCH`.
     public static let kitVersionKey = "com.moonwink.tingra.plug-in.kit-version"
 
-    /// The kit libraries a bundle must link without embedding: the host
+    /// The names a kit copy inside a bundle's `Contents/Frameworks` can
+    /// have: as a framework, and as the dylib SwiftPM builds. The host
     /// supplies the one copy every bundle binds to.
     static let kitLibraryNames: Set<String> = [
         "TingraPlugInKit", "TingraEventBus", "libTingraPlugInKit", "libTingraEventBus",
     ]
+
+    /// The embedded kit copies worth reporting: the ones in another form
+    /// than this host's own kit (PLUGINS.md, Decision 51).
+    ///
+    /// Xcode copies the frameworks of TingraPlugInSDK into every bundle
+    /// built against it, and offers no way to turn that off. Such a copy
+    /// has the install name of the host's own kit, so dyld binds the bundle
+    /// to the host's image and never loads the copy: it is the normal shape
+    /// of a bundle, and reporting it would warn about every one. A copy in
+    /// the other form (a dylib where the host loads a framework, or the
+    /// reverse) was built some other way than against the SDK, and its
+    /// install name cannot match the host's.
+    ///
+    /// - Parameters:
+    ///   - embedded: The names in the bundle's `Contents/Frameworks`,
+    ///     without extensions.
+    ///   - kitIsFramework: Whether this host's kit is a framework.
+    /// - Returns: The mismatched kit copies, sorted.
+    static func mismatchedKitCopies(among embedded: [String], kitIsFramework: Bool) -> [String] {
+        embedded.filter { name in
+            guard kitLibraryNames.contains(name) else { return false }
+            return name.hasPrefix("lib") == kitIsFramework
+        }.sorted()
+    }
 
     /// The two plug-in folders, in precedence order: the user's
     /// (`~/Library/Application Support/Tingra/Plug-ins`), then the one a
@@ -511,15 +536,18 @@ public struct PlugInBundleLoader: Sendable {
         }
 
         var problems: [PlugInBundleProblem] = []
-        let embeddedKits = opener.embeddedLibraryNames(inBundleAt: url).filter(Self.kitLibraryNames.contains).sorted()
+        let embeddedKits = Self.mismatchedKitCopies(
+            among: opener.embeddedLibraryNames(inBundleAt: url), kitIsFramework: kitIsFramework)
         if !embeddedKits.isEmpty {
+            let (theirs, ours) = kitIsFramework ? ("a dylib", "a framework") : ("a framework", "a dylib")
             problems.append(
                 PlugInBundleProblem(
                     reason: .embeddedKit, url: url, id: declaredID,
                     message:
-                        "'\(name)' embeds its own copy of \(embeddedKits.joined(separator: " and ")). It loads, "
-                        + "bound to Tingra's copy, so the embedded one is never used and only adds a signature to "
-                        + "maintain. Link TingraPlugInSDK without embedding it (Do Not Embed)."))
+                        "'\(name)' embeds its own copy of \(embeddedKits.joined(separator: " and ")) as \(theirs), "
+                        + "where this host loads the kit as \(ours). A bundle works only bound to the host's copy, "
+                        + "which that one cannot stand in for. Build the bundle against TingraPlugInSDK; the "
+                        + "framework copy Xcode embeds from it is expected and never loaded."))
         }
         return (PlugInBundleCandidate(url: url, id: id, info: info, cdHash: cdHash), problems)
     }

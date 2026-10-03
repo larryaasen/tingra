@@ -66,7 +66,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+  DEVELOPER_DIR: /Applications/Xcode_27.0.app/Contents/Developer
 
 jobs:
   verify:
@@ -80,7 +80,7 @@ jobs:
     # `needs` alone would skip this job when the gate is skipped, so accept both
     # a green gate and a deliberately skipped one.
     if: ${{ always() && (needs.verify.result == 'success' || needs.verify.result == 'skipped') }}
-    runs-on: macos-26
+    runs-on: xcode-27
     permissions:
       contents: write
     steps:

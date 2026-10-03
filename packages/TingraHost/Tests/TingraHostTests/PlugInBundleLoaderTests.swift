@@ -495,17 +495,39 @@ struct PlugInBundleLoaderTests {
         #expect(scan.problems.first?.message.contains("com.example.beta") == true)
     }
 
-    @Test("a bundle embedding its own kit loads anyway, and the embedded copy is reported")
-    func embeddedKitLoadsAndIsReported() async throws {
+    @Test("a bundle carrying the kit copies Xcode embeds from the SDK loads with nothing reported")
+    func sdkEmbeddedKitIsNotReported() async throws {
         let (scan, _) = try await scan([
             "Alpha.tingraplugin": .declaring(
                 "com.example.alpha", embedded: ["TingraPlugInKit", "TingraEventBus", "SomethingElse"])
         ])
 
         #expect(scan.loaded.count == 1)
+        #expect(scan.problems.isEmpty)
+    }
+
+    @Test("a bundle embedding the kit as a dylib in a framework host loads anyway, and the copy is reported")
+    func mismatchedEmbeddedKitLoadsAndIsReported() async throws {
+        let (scan, _) = try await scan([
+            "Alpha.tingraplugin": .declaring(
+                "com.example.alpha",
+                embedded: ["libTingraPlugInKit", "libTingraEventBus", "TingraPlugInKit", "SomethingElse"])
+        ])
+
+        #expect(scan.loaded.count == 1)
         #expect(scan.problems.map(\.reason) == [.embeddedKit])
-        #expect(scan.problems.first?.message.contains("TingraEventBus and TingraPlugInKit") == true)
+        #expect(scan.problems.first?.message.contains("libTingraEventBus and libTingraPlugInKit as a dylib") == true)
+        #expect(scan.problems.first?.message.contains("TingraPlugInSDK") == true)
         #expect(!PlugInBundleProblem.Reason.embeddedKit.refuses)
+    }
+
+    @Test("a mismatched kit copy is the other form than the host's own kit")
+    func mismatchedKitCopiesFollowTheHostsForm() {
+        let embedded = ["TingraPlugInKit", "libTingraEventBus", "SomethingElse", "libSomethingElse"]
+
+        #expect(PlugInBundleLoader.mismatchedKitCopies(among: embedded, kitIsFramework: true) == ["libTingraEventBus"])
+        #expect(PlugInBundleLoader.mismatchedKitCopies(among: embedded, kitIsFramework: false) == ["TingraPlugInKit"])
+        #expect(PlugInBundleLoader.mismatchedKitCopies(among: [], kitIsFramework: true).isEmpty)
     }
 
     @Test("every reason but embeddedKit refuses the bundle")
@@ -594,14 +616,15 @@ struct PlugInBundleLoaderTests {
     // MARK: - Turned off, crashed, and safe mode (Decisions 31–34)
 
     /// A loader over one folder of fake bundles, keeping its state in the
-    /// folder.
+    /// folder. The host's kit is a framework, as in `scan`, so no result
+    /// depends on how `swift test` itself linked the kit.
     private func loader(
         _ folder: PlugInFolder, _ opener: FakeOpener, signatures: FakeSignatures = FakeSignatures(),
         safeMode: PlugInSafeModeTrigger? = nil
     ) -> PlugInBundleLoader {
         PlugInBundleLoader(
-            folders: [folder.url], stateDirectory: folder.stateDirectory, frontEnd: "tingra-cli serve",
-            safeMode: safeMode, opener: opener, signatures: signatures)
+            folders: [folder.url], kitIsFramework: true, stateDirectory: folder.stateDirectory,
+            frontEnd: "tingra-cli serve", safeMode: safeMode, opener: opener, signatures: signatures)
     }
 
     /// A marker for a process that is gone: this process's id with a start
@@ -895,7 +918,7 @@ struct PlugInBundleLoaderTests {
         }
         let opener = FakeOpener([
             "A-Active.tingraplugin": .declaring(
-                "com.example.alpha", embedded: ["TingraPlugInKit"], name: "Alpha Bundle", version: "1.2.0"),
+                "com.example.alpha", embedded: ["libTingraPlugInKit"], name: "Alpha Bundle", version: "1.2.0"),
             "B-Failed.tingraplugin": .declaring("com.example.gamma", principal: .throwing, version: "0.3"),
             "C-Refused.tingraplugin": .declaring("com.example.charlie", name: "Charlie"),
             "D-Off.tingraplugin": .declaring("com.example.delta", name: "Delta"),

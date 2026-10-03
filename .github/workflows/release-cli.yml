@@ -101,7 +101,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+  DEVELOPER_DIR: /Applications/Xcode_27.0.app/Contents/Developer
   # A local label for the keychain profile this job creates — not a secret, and
   # unrelated to the developer's own profile name.
   TINGRA_NOTARY_PROFILE: tingra-ci-notary
@@ -118,7 +118,7 @@ jobs:
     # `needs` alone would skip this job when the gate is skipped, so accept both
     # a green gate and a deliberately skipped one.
     if: ${{ always() && (needs.verify.result == 'success' || needs.verify.result == 'skipped') }}
-    runs-on: macos-26
+    runs-on: xcode-27
     permissions:
       contents: write
     steps:

@@ -178,8 +178,9 @@ final class EngineModel {
     }
 
     /// How often the app's stream writes `stream.stats` to the log, in
-    /// seconds — each line the average of the minute it covers, the first one
-    /// second after going live. The panel reads the session's once-a-second
+    /// seconds — each line the average of the minute it covers, the first ten
+    /// seconds after going live (the session's default first window, once
+    /// delivery has settled). The panel reads the session's once-a-second
     /// live statistics instead, so this sets the log's cadence alone
     /// (EVENTS.md, "Stream statistics: the readout and the log").
     static let streamStatsLogIntervalSeconds = 60

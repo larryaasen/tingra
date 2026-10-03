@@ -235,15 +235,21 @@ here, under "Left open from “…”", pointing at its record there.
         `dist/sdk` and publishes nothing. Run with `--build-only` and
         `--dry-run` only. An Xcode bundle built against the development
         package loaded in the packaged CLI.*
-        - [ ] Larry: decide Decision 51 (proposed 2026-09-30): Xcode embeds
-          the SDK's binary frameworks into a bundle and nothing can stop it,
-          so every SDK-built bundle draws `embeddedKit`. The SDK's README
-          says Do Not Embed until this is settled, so it must not be
-          published first.
+        - [x] Decision 51 (approved and built 2026-10-03): Xcode embeds the
+          SDK's binary frameworks into a bundle and nothing can stop it, so
+          the loader reports `embeddedKit` only for a kit copy in another
+          form than the host's, and the SDK's README explains the copy
+          instead of saying Do Not Embed. TingraHost 302.
+        - [x] Xcode pinned at 27.0 (2026-10-03): every workflow runs on the
+          `xcode-27` image with `DEVELOPER_DIR` at Xcode 27.0, the new
+          toolchain floor, and `release-sdk.sh` reads its floor from the
+          workflow.
+        - [ ] Larry: watch the first Format & Test run on the `xcode-27`
+          image, which GitHub still marks as a preview.
         - [ ] Larry: create the public `larryaasen/tingra-plug-in-sdk`
           (empty is fine) and extend `TINGRA_RELEASE_TOKEN` to it.
         - [ ] Larry: the first publish, through Actions → Release
-          TingraPlugInSDK (Xcode 26.6; a local build is Swift 6.4 here).
+          TingraPlugInSDK (Xcode 27.0, the same as a local build here).
         - [ ] Larry: run the app half of the end-to-end check — an
           SDK-built bundle in the user folder, loaded by Tingra.app. His
           debug instance was running, so a session could not.

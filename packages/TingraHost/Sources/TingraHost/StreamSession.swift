@@ -243,9 +243,10 @@ public actor StreamSession {
         /// How often `stream.stats` events are emitted, in seconds (0
         /// disables).
         ///
-        /// With ``liveStatistics`` on, the first line comes one second after
-        /// the start and the rest every this many seconds after it, each
-        /// summarizing the readings since the line before.
+        /// With ``liveStatistics`` on, the first line comes
+        /// ``statsFirstWindowSeconds`` after the start and the rest every
+        /// this many seconds after it, each summarizing the readings since
+        /// the line before.
         public var statsIntervalSeconds: Int
 
         /// Automatic stop after this many seconds, if set.
@@ -270,6 +271,14 @@ public actor StreamSession {
         /// `stream.stats` exactly as CLI.md defines it; the app turns it on.
         public var liveStatistics: Bool
 
+        /// How long after the start the first `stream.stats` window closes,
+        /// in seconds, when ``liveStatistics`` is on. Long enough for
+        /// delivery to settle — a connection's first seconds carry its
+        /// handshake and its first keyframe, and would misstate the stream —
+        /// and short enough that the log has the stream's opening figures
+        /// without waiting out a whole interval. Values below 1 read as 1.
+        public var statsFirstWindowSeconds: Int
+
         /// Creates a policy. Defaults mirror CLI.md's option defaults.
         ///
         /// - Parameters:
@@ -281,13 +290,16 @@ public actor StreamSession {
         ///     count as recovered.
         ///   - liveStatistics: Whether to read every live leg's counters
         ///     once a second onto ``StreamSession/liveStatistics``.
+        ///   - statsFirstWindowSeconds: How long after the start the first
+        ///     `stream.stats` window closes, with live statistics on.
         public init(
             reconnectAttempts: Int = 3,
             reconnectDelaySeconds: Int = 2,
             statsIntervalSeconds: Int = 5,
             durationSeconds: Int? = nil,
             stabilitySeconds: Int = 10,
-            liveStatistics: Bool = false
+            liveStatistics: Bool = false,
+            statsFirstWindowSeconds: Int = 10
         ) {
             self.reconnectAttempts = reconnectAttempts
             self.reconnectDelaySeconds = reconnectDelaySeconds
@@ -295,6 +307,7 @@ public actor StreamSession {
             self.durationSeconds = durationSeconds
             self.stabilitySeconds = stabilitySeconds
             self.liveStatistics = liveStatistics
+            self.statsFirstWindowSeconds = statsFirstWindowSeconds
         }
     }
 
@@ -1127,8 +1140,8 @@ public actor StreamSession {
 
     /// Reads every live leg's counters once a second onto
     /// ``liveStatistics``, and closes a `stream.stats` window on the
-    /// policy's cadence: the first one second after the start, so the log
-    /// has the stream's opening figures at once, then every
+    /// policy's cadence: the first ``Policy/statsFirstWindowSeconds`` after
+    /// the start, once delivery has settled, then every
     /// ``Policy/statsIntervalSeconds`` after it. One tick feeds both, so the
     /// readout and the log never disagree about a reading.
     private func watchLiveStatistics(t0: CMTime) -> Task<Void, Never> {
@@ -1143,15 +1156,17 @@ public actor StreamSession {
     }
 
     /// Whether the given once-a-second reading (counting from 1) closes a
-    /// `stream.stats` window: the first does, then every
-    /// ``Policy/statsIntervalSeconds``-th after it. Never, when the interval
-    /// is 0 — the readout runs without a log line.
+    /// `stream.stats` window: the ``Policy/statsFirstWindowSeconds``-th
+    /// does, then every ``Policy/statsIntervalSeconds``-th after it. Never,
+    /// when the interval is 0 — the readout runs without a log line.
     ///
     /// - Parameter reading: The reading's number since the start.
     /// - Returns: Whether to emit `stream.stats` at this reading.
     private func closesStatsWindow(atReading reading: Int) -> Bool {
         guard policy.statsIntervalSeconds > 0 else { return false }
-        return (reading - 1) % policy.statsIntervalSeconds == 0
+        let first = max(1, policy.statsFirstWindowSeconds)
+        guard reading >= first else { return false }
+        return (reading - first) % policy.statsIntervalSeconds == 0
     }
 
     /// Takes one reading of every live leg: folds it into the leg's window,

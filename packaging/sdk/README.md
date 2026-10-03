@@ -11,7 +11,7 @@ The SDK is two binary frameworks, `TingraPlugInKit` (the plug-in protocols) and
 with Library Evolution, so a bundle built against one release keeps loading in
 later Tingra releases with the same major version.
 
-**Requirements:** Xcode 26.6 or later, macOS 15 or later, Apple silicon (arm64).
+**Requirements:** Xcode 27.0 or later, macOS 15 or later, Apple silicon (arm64).
 
 ## Adding the SDK
 
@@ -29,21 +29,20 @@ Or, in a manifest:
 
 Then link the `TingraPlugInSDK` product into your bundle target.
 
-## Do Not Embed
+## The copy Xcode embeds
 
-**Link the SDK; never copy it into your bundle.** Tingra has already loaded one
-copy of each kit before it loads your bundle, and your bundle binds to that copy
-by its install name, `@rpath/TingraPlugInKit.framework/Versions/A/TingraPlugInKit`.
-That shared copy is what lets your types cross into Tingra: one `BundledPlugIn`,
-one `Input`, on both sides.
+Tingra has already loaded one copy of each kit before it loads your bundle, and
+your bundle binds to that copy by its install name,
+`@rpath/TingraPlugInKit.framework/Versions/A/TingraPlugInKit`. That shared copy
+is what lets your types cross into Tingra: one `BundledPlugIn`, one `Input`, on
+both sides.
 
-A copy of either framework inside your bundle's `Contents/Frameworks` is dead
-weight that dyld never uses and a second thing to sign. Tingra still loads the
-bundle, and reports it once as `embeddedKit`. Check your built product:
-
-```sh
-ls MyPlugIn.tingraplugin/Contents/Frameworks   # must not list TingraPlugInKit or TingraEventBus
-```
+Xcode also copies both frameworks into your bundle's `Contents/Frameworks`, as
+it does for every package of binary frameworks, and offers no setting to stop
+it. **Leave the copy alone.** Tingra never loads it, Xcode signs it with the
+rest of the bundle, and Tingra does not report it. Do not add a runpath to
+your bundle's own `Frameworks` folder for the kits, and do not build the kits
+from source: a bundle works only when it is bound to Tingra's copy.
 
 ## The bundle
 

@@ -1655,7 +1655,8 @@ there.
         app the same day.*
       - [x] Decision 37: `scripts/release-sdk.sh`, `release-sdk.yml`,
         `packaging/sdk/`. *Built 2026-09-30 (PLUGINS.md, "Decision 37
-        built"); Decision 51, the repo, the token, the first publish, and
+        built"); Decision 51 approved and built 2026-10-03, with Xcode pinned
+        at 27.0 the same day; the repo, the token, the first publish, and
         the app half of the check are tracked in TODO.md.*
 
 ## Decisions to settle

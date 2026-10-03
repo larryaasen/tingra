@@ -37,8 +37,11 @@ public struct PlugInBundleProblem: Sendable, Equatable {
         case noPrincipalClass
         /// Not a readable bundle, or its code would not load.
         case loadFailed
-        /// The bundle embeds its own copy of a kit. It still loads, bound to
-        /// the host's copy; the problem is reported, not refused.
+        /// The bundle embeds its own copy of a kit in another form than the
+        /// host's (a dylib where the host loads a framework, or the
+        /// reverse). It is reported, not refused. The framework copy Xcode
+        /// embeds from TingraPlugInSDK is not a problem and is not reported
+        /// (PLUGINS.md, Decision 51).
         case embeddedKit
         /// A process died while loading or activating the bundle, so it is
         /// turned off until its code changes or the operator turns it back

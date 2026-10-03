@@ -305,7 +305,8 @@ internal surface a reader needs to navigate the target instead.
 - `PlugInBundleProblem` — a refusal, or a defect in a bundle that loaded
   anyway, with its stable `Reason` (`unsigned`, `notNotarized`, `kitVersion`,
   `duplicateID`, `idMismatch`, `noPrincipalClass`, `loadFailed`, and
-  `embeddedKit`, the one that does not refuse), the bundle, its id when
+  `embeddedKit`, the one that does not refuse: a kit copy in another form
+  than the host's, never the copy Xcode embeds from the SDK), the bundle, its id when
   known, and the developer-facing message naming the fix. `crashed`
   (2026-09-28) reports, once, a bundle a dead process was loading.
 - `PlugInBundleInfo` — what a bundle's Info.plist declares: its id, its kit

@@ -138,7 +138,7 @@ SUBCOMMANDS
 | `refused` | Not loaded: `reason` and `message` are the `plugin.bundle` refusal's. |
 | `skipped` | Not loaded: `reason` is the `plugin.skipped` reason, and `message` says how to load it. |
 
-A bundle that embeds its own kit (`embeddedKit`) loads anyway, and the problem rides on its entry in `warnings`. `--safe-mode` lists the plug-ins as a safe-mode run would see them. `--json` prints one document with stable camelCase keys, with every key present and `null` for an absent value:
+A bundle that embeds its own kit in another form than the CLI's (`embeddedKit`: a dylib copy, where the released CLI loads frameworks) loads anyway, and the problem rides on its entry in `warnings`. The framework copy Xcode embeds from `TingraPlugInSDK` is expected and draws no warning (PLUGINS.md, Decision 51). `--safe-mode` lists the plug-ins as a safe-mode run would see them. `--json` prints one document with stable camelCase keys, with every key present and `null` for an absent value:
 
 ```json
 {
@@ -286,7 +286,7 @@ The `--json` status events are bus events on the standard NDJSON stream (EVENTS.
 | :---- | :--- | :----- |
 | `stream.started` | At least one destination connected and published; media is flowing. | `url` (the **first live** destination's), `destinations` (how many went live), `destinationsRejected` (how many were refused), plus the resolved video block (`videoInput`, `videoInputName`, `resolution`, `fps`, `videoCodec`, `videoBitrate`, `keyframeInterval`) and audio block (`audioInput`, `audioInputName`, `audioCodec`, `audioBitrate`, `audioSamplerate`); a disabled side omits its block. |
 | `stream.destination.started` | One destination went live (one per live destination, after `stream.started`). | `destination`, `destinationUrl`. |
-| `stream.stats` | Every `--stats-interval` seconds, **once per live destination**. | `destination`, `destinationUrl`, `elapsed`, `bytesSent`, `bitrate` (bits/second), `fps`. A session with live statistics on (the app's; never the CLI's or the daemon's) emits a window summary instead — first one second after the start, then every interval — where `bitrate` and `fps` are the window's averages and two params are added: `minFps` (the window's lowest) and `window` (the seconds it covers). See EVENTS.md, "Stream statistics: the readout and the log". |
+| `stream.stats` | Every `--stats-interval` seconds, **once per live destination**. | `destination`, `destinationUrl`, `elapsed`, `bytesSent`, `bitrate` (bits/second), `fps`. A session with live statistics on (the app's; never the CLI's or the daemon's) emits a window summary instead — first ten seconds after the start, then every interval — where `bitrate` and `fps` are the window's averages and two params are added: `minFps` (the window's lowest) and `window` (the seconds it covers). See EVENTS.md, "Stream statistics: the readout and the log". |
 | `stream.reconnecting` | A reconnect attempt is starting for one destination. | `destination`, `destinationUrl`, `attempt`, `maxAttempts`, `delay`, `reason`. |
 | `stream.reconnected` | A reconnect attempt succeeded for one destination. | `destination`, `destinationUrl`, `attempt`. |
 | `stream.stopped` | The stream ended, however it ended. | `reason`: `stopRequested` (Ctrl-C/SIGTERM), `durationElapsed`, `connectionLost`, or `recordingFailed`. Optional `session`: present only when the caller labelled the session, so a caller running two at once can tell their events apart (the app's record-only session; never set by the CLI). |

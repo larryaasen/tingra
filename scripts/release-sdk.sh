@@ -62,6 +62,7 @@ readonly ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 readonly KIT_DIR="${ROOT}/packages/TingraPlugInKit"
 readonly VERSION_SWIFT="${KIT_DIR}/Sources/TingraPlugInKit/PlugInKitVersion.swift"
 readonly TEMPLATE_DIR="${ROOT}/packaging/sdk"
+readonly WORKFLOW="${ROOT}/.github/workflows/release-sdk.yml"
 readonly OUT="${ROOT}/dist/sdk"
 # Where xcodebuild archives, kept between runs so a rebuild is incremental.
 # Inside the kit's .build folder, which git already ignores.
@@ -101,10 +102,21 @@ kit_version() {
         "$VERSION_SWIFT"
 }
 
-# Reads the swift-tools-version the kit's manifest declares: the toolchain
-# floor (CLAUDE.md, "Toolchain & CI").
-toolchain_floor() {
+# Reads the swift-tools-version the kit's manifest declares, which the probe
+# plug-in's manifest declares too.
+tools_version() {
     sed -nE '1s|// swift-tools-version: *([0-9.]+).*|\1|p' "${KIT_DIR}/Package.swift"
+}
+
+# Reads the Xcode version the SDK's workflow pins with DEVELOPER_DIR: the
+# toolchain floor (CLAUDE.md, "Toolchain & CI"), and the one place it is set.
+toolchain_floor() {
+    sed -nE 's|.*DEVELOPER_DIR: /Applications/Xcode_([0-9.]+)\.app/.*|\1|p' "$WORKFLOW" | sed -n 1p
+}
+
+# Reads the version of the Xcode that xcodebuild belongs to.
+xcode_version() {
+    xcodebuild -version 2>/dev/null | sed -nE '/^Xcode /{s/^Xcode ([0-9.]+).*/\1/p;q;}'
 }
 
 # Reads the version of the Swift compiler xcodebuild will use.
@@ -112,7 +124,7 @@ compiler_version() {
     xcrun swift --version 2>/dev/null | sed -nE '/Swift version/{s/.*Swift version ([0-9]+\.[0-9]+(\.[0-9]+)?).*/\1/p;q;}'
 }
 
-# Trims a version to MAJOR.MINOR: "6.3.3" -> "6.3".
+# Trims a version to MAJOR.MINOR: "27.0.1" -> "27.0".
 major_minor() {
     local major minor
     IFS='.' read -r major minor _ <<< "$1"
@@ -199,7 +211,7 @@ for template in Package.swift README.md; do
     [[ -f "${TEMPLATE_DIR}/${template}" ]] || die "SDK template not found: ${TEMPLATE_DIR}/${template}"
 done
 [[ -f "${ROOT}/LICENSE" ]] || die "not found: ${ROOT}/LICENSE"
-command -v xcodebuild >/dev/null || die "xcodebuild is required (Xcode $(toolchain_floor) toolchain or later)."
+command -v xcodebuild >/dev/null || die "xcodebuild is required (Xcode $(toolchain_floor))."
 command -v git >/dev/null || die "git is required."
 
 VERSION="$(kit_version)"
@@ -209,8 +221,11 @@ readonly KIT_TAG="plugin-kit-${VERSION}"
 readonly BUS_TAG="event-bus-${VERSION}"
 
 FLOOR="$(toolchain_floor)"
+XCODE="$(xcode_version)"
 COMPILER="$(compiler_version)"
-[[ -n "$FLOOR" && -n "$COMPILER" ]] || die "could not read the toolchain floor or the compiler version."
+TOOLS_VERSION="$(tools_version)"
+[[ -n "$FLOOR" ]] || die "could not read the pinned Xcode version from DEVELOPER_DIR in ${WORKFLOW}."
+[[ -n "$XCODE" && -n "$COMPILER" && -n "$TOOLS_VERSION" ]] || die "could not read the Xcode, compiler, or tools version."
 
 # Unsigned means a development SDK, never a published one: Xcode flags an
 # unsigned XCFramework to everyone who adds the package.
@@ -229,12 +244,12 @@ fi
 # The interface records the compiler that wrote it, and an older compiler may
 # not read a newer one's. A published SDK is built at the floor, so every
 # author on a supported Xcode can build against it.
-if [[ "$(major_minor "$COMPILER")" != "$(major_minor "$FLOOR")" ]]; then
-    warn "the compiler is Swift ${COMPILER}, but the toolchain floor is ${FLOOR}: an interface written by \
-Swift ${COMPILER} may not build under an older Xcode. Select the floor's Xcode with DEVELOPER_DIR, as CI does."
+if [[ "$(major_minor "$XCODE")" != "$(major_minor "$FLOOR")" ]]; then
+    warn "this is Xcode ${XCODE} (Swift ${COMPILER}), but the toolchain floor is Xcode ${FLOOR}: an interface \
+written by a newer compiler may not build under the floor's. Select the floor's Xcode with DEVELOPER_DIR, as CI does."
     if $PUBLISH && ! $DRY_RUN; then
-        $ASSUME_YES && die "refusing to publish unattended an SDK built by Swift ${COMPILER} instead of ${FLOOR}."
-        confirm "Publish an SDK built by Swift ${COMPILER} anyway?" || die "aborted."
+        $ASSUME_YES && die "refusing to publish unattended an SDK built by Xcode ${XCODE} instead of ${FLOOR}."
+        confirm "Publish an SDK built by Xcode ${XCODE} anyway?" || die "aborted."
     fi
 fi
 
@@ -278,7 +293,7 @@ fi
 echo
 log "plan:"
 echo "  version:   ${VERSION} (PlugInKitVersion.current; the event bus rides at the same number)"
-echo "  compiler:  Swift ${COMPILER} (floor ${FLOOR})"
+echo "  toolchain: Xcode ${XCODE}, Swift ${COMPILER} (floor: Xcode ${FLOOR})"
 # Never the identity itself: its common name carries the Team ID.
 if [[ -n "${TINGRA_SIGN_ID:-}" ]]; then
     echo "  signing:   Developer ID Application (TINGRA_SIGN_ID)"
@@ -390,7 +405,7 @@ check the binaryTarget layout in ${TEMPLATE_DIR}/Package.swift"
 readonly PROBE="${WORK}/Probe"
 mkdir -p "${PROBE}/Sources/Probe"
 cat > "${PROBE}/Package.swift" <<EOF
-// swift-tools-version: ${FLOOR}
+// swift-tools-version: ${TOOLS_VERSION}
 import PackageDescription
 
 let package = Package(
@@ -545,8 +560,8 @@ done
 gh release create "$VERSION" "${assets[@]}" --repo "$SDK_REPO" --target "$SDK_SHA" --draft \
     --title "TingraPlugInSDK ${VERSION}" \
     --notes "TingraPlugInKit and TingraEventBus ${VERSION}: arm64 XCFrameworks, built with Library Evolution \
-by Swift ${COMPILER} from ${REPO} at ${HEAD_SHA:0:12} (tags \`${KIT_TAG}\` and \`${BUS_TAG}\`). Add \
-\`.package(url: \"https://github.com/${SDK_REPO}\", from: \"${VERSION}\")\` and link \`TingraPlugInSDK\` without embedding it."
+by Xcode ${XCODE} (Swift ${COMPILER}) from ${REPO} at ${HEAD_SHA:0:12} (tags \`${KIT_TAG}\` and \`${BUS_TAG}\`). Add \
+\`.package(url: \"https://github.com/${SDK_REPO}\", from: \"${VERSION}\")\` and link \`TingraPlugInSDK\` into a bundle target."
 gh release edit "$VERSION" --repo "$SDK_REPO" --draft=false >/dev/null
 log "published release ${VERSION} on ${SDK_REPO}."
 
