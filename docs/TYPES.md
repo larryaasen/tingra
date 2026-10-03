@@ -430,6 +430,12 @@ internal surface a reader needs to navigate the target instead.
   mirrors it: `.input` (a pass-through microphone at capture cadence,
   session-owned) or `.program` (the mixer's already-paced program mix, reported
   as the stable `"mix"` identity); everything downstream is identical.
+  With `Policy.liveStatistics` on (the app's), it also reads every live leg's
+  counters once a second onto `liveStatistics` — the panel's readout, kept
+  off the bus — and its `stream.stats` becomes a window summary (EVENTS.md,
+  "Stream statistics: the readout and the log").
+- `StreamSession.LegStatistics` — one destination's counters at one reading of
+  `StreamSession.liveStatistics`: the leg's id and its `StreamingStatistics`.
 - `StreamSession.DestinationLeg` — one destination the program fans out to: a
   caller-minted stable id (the `destination` param on every per-leg status
   event), the `Destination` it streams to, and the `StreamingService` taking

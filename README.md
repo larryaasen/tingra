@@ -215,6 +215,11 @@ no UI ([PLUGINS.md](docs/PLUGINS.md), Decision 15). A dynamic library built
 with Library Evolution (Decision 22): a third party's host-tier plug-in, a
 `*.tingraplugin` bundle whose principal class is a `BundledPlugIn`, binds to
 the one copy the running engine loaded, and keeps loading in a newer Tingra.
+Third parties build against it, and the event bus beside it, as binaries:
+`scripts/release-sdk.sh` publishes the two as `TingraPlugInSDK`, a Swift
+package of arm64 XCFrameworks in the public `larryaasen/tingra-plug-in-sdk`
+repo, under one version, `PlugInKitVersion.current` (Decisions 28 and 37;
+[packaging/README.md](packaging/README.md), "The plug-in SDK").
 
 **Types:** [`TingraPlugInKit` in TYPES.md](docs/TYPES.md#packagestingrapluginkit)
 

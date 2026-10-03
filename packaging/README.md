@@ -1,8 +1,10 @@
 # Packaging
 
-How `tingra-cli` is built, signed, notarized, and distributed. The full
-rationale lives in [docs/CLI.md](../docs/CLI.md) "Distribution"; this directory
-holds the concrete recipe.
+How `tingra-cli` is built, signed, notarized, and distributed, and how
+`TingraPlugInSDK` is built and published. The full rationale lives in
+[docs/CLI.md](../docs/CLI.md) "Distribution" and
+[docs/PLUGINS.md](../docs/PLUGINS.md), Decision 37; this directory holds the
+concrete recipe. The SDK's part is at the end, in "The plug-in SDK".
 
 ## Artifacts
 
@@ -66,7 +68,7 @@ remembers how they were made — so here is the whole recipe.
 
 | Secret | Where it comes from |
 |--------|---------------------|
-| `TINGRA_RELEASE_TOKEN` | a fine-grained PAT, **Contents: Read and write**, scoped to **both** `larryaasen/tingra` and `larryaasen/homebrew-tingra` |
+| `TINGRA_RELEASE_TOKEN` | a fine-grained PAT, **Contents: Read and write**, scoped to `larryaasen/tingra`, `larryaasen/homebrew-tingra`, and `larryaasen/tingra-plug-in-sdk` (the SDK release, below) |
 | `TINGRA_CERT_P12` | `base64 -i` of a `.p12` exported from Keychain Access |
 | `TINGRA_CERT_PASSWORD` | that export's password |
 | `TINGRA_SIGN_ID` | `Developer ID Application: … (TEAMID)` |
@@ -115,7 +117,7 @@ gh secret set TINGRA_CERT_PASSWORD --repo larryaasen/tingra          # prompts
 **Expiry.** A fine-grained PAT lasts at most 366 days. When
 `TINGRA_RELEASE_TOKEN` expires the release fails at `actions/checkout` with a git
 authentication error that does not mention the token — regenerate it with the
-same two repositories and the same single permission.
+same three repositories and the same single permission.
 
 ## Verifying a published release
 
@@ -211,3 +213,76 @@ To run any step by hand instead of `release-cli-publish.sh`:
 `.github/workflows/release-cli.yml` automates all three in CI, including the tap
 push — it holds a PAT with write access to both repositories, which is what
 `GITHUB_TOKEN` alone could not give it.
+
+## The plug-in SDK
+
+`TingraPlugInSDK` is what third parties build host-tier plug-in bundles
+against: `TingraPlugInKit` and `TingraEventBus` as arm64 XCFrameworks, built
+with Library Evolution and carrying their `.swiftinterface`, served by a
+`Package.swift` of two URL `binaryTarget`s
+([docs/PLUGINS.md](../docs/PLUGINS.md), Decisions 28 and 37). It lives in its
+own public repo, **`larryaasen/tingra-plug-in-sdk`**, because a URL
+`binaryTarget` pins a checksum the monorepo shouldn't carry. That repo holds only
+`Package.swift`, `README.md`, and `LICENSE`, rendered from
+[`sdk/Package.swift`](sdk/Package.swift), [`sdk/README.md`](sdk/README.md), and
+the root `LICENSE`. The zips are its GitHub release assets, and its tags are
+bare versions (`0.1.0`), as SwiftPM expects. Edit the templates here, never the
+SDK repo's copies; their `@VERSION@`-style placeholders are filled at release.
+
+**The version is `PlugInKitVersion.current`**, and the event bus rides at the
+same number. Nothing bumps it at release: raise it in the change that alters a
+kit's API, and the next SDK release carries it. A release tags
+`plugin-kit-<x.y.z>` and `event-bus-<x.y.z>` here, at one commit.
+
+**Normally, in CI:** Actions → **Release TingraPlugInSDK** → *Run workflow*
+(`.github/workflows/release-sdk.yml`), a thin wrapper over
+`scripts/release-sdk.sh --yes`. It reads `TINGRA_RELEASE_TOKEN`,
+`TINGRA_CERT_P12`, `TINGRA_CERT_PASSWORD`, and `TINGRA_SIGN_ID`, the same
+secrets as the CLI's release. A library nobody launches is not notarized.
+
+**Locally:**
+
+```sh
+scripts/release-sdk.sh --build-only   # build and verify into dist/sdk, publish nothing
+scripts/release-sdk.sh --dry-run      # preflight and the plan
+scripts/release-sdk.sh                # with TINGRA_SIGN_ID exported: build, ask, publish
+```
+
+Without `TINGRA_SIGN_ID` the script builds an unsigned **development SDK** and
+publishes nothing. `dist/sdk/TingraPlugInSDK` is then a local package with
+`binaryTarget(path:)`s: add it to a bundle target as a local package to build
+a plug-in against the SDK exactly as a third party will, with no kit source.
+`dist/sdk/repo` holds the files the release would push.
+
+**What the script checks before anything leaves the Mac:** one arm64 macOS
+slice per kit; each framework's install name,
+`@rpath/<kit>.framework/Versions/A/<kit>`, the name every Tingra front end loads
+it by and a bundle binds to; no coverage instrumentation; a `.swiftinterface`
+in each framework's `Modules`; a probe plug-in built against the rendered
+development package with `SWIFT_FORCE_MODULE_LOADING=only-interface`, so the
+compiler reads only the interfaces, as an author's newer compiler would, and
+links both kits by their framework install names; and the Developer ID
+signature on each XCFramework. After publishing it downloads the zips back and
+checks them against the checksums the pushed manifest pins.
+
+**Build it at the toolchain floor.** Each `.swiftinterface` records the
+compiler that wrote it, and an older compiler may not read a newer one's. CI
+pins Xcode 26.6; locally, point `DEVELOPER_DIR` at it. The script warns when
+the compiler is not the floor's, asks before publishing such a build, and
+refuses to publish one unattended.
+
+**Before the first release (Larry's steps):** create
+`larryaasen/tingra-plug-in-sdk` (public; empty is fine), and extend
+`TINGRA_RELEASE_TOKEN` to it. A published version is final, since SwiftPM
+caches a version by its tag: a run that stops before the SDK repo's release is
+published can be run again, but once it is out, the next SDK needs a new kit
+version.
+
+**Verifying a published SDK:**
+
+```sh
+gh release view <version> --repo larryaasen/tingra-plug-in-sdk      # both zips, not a draft
+gh release download <version> --repo larryaasen/tingra-plug-in-sdk --pattern '*.zip'
+swift package compute-checksum TingraPlugInKit-<version>.xcframework.zip  # equals Package.swift's
+codesign -dv --verbose=2 TingraPlugInKit.xcframework                # Authority=Developer ID Application
+```

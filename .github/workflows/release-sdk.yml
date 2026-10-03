@@ -1,0 +1,180 @@
+# The TingraPlugInSDK release, run in CI (see docs/PLUGINS.md, Decision 37, and
+# packaging/README.md, "The plug-in SDK"). One manual dispatch:
+#
+#   1. gates on the Format & Test workflow (reused via `workflow_call`),
+#   2. archives TingraPlugInKit and TingraEventBus (arm64, Library Evolution),
+#      wraps each in an XCFramework carrying its .swiftinterface, and builds a
+#      probe plug-in against them with the compiler reading only the
+#      interfaces,
+#   3. signs each XCFramework with the Developer ID Application identity,
+#      zips it, and computes its SwiftPM checksum,
+#   4. tags plugin-kit-<x.y.z> and event-bus-<x.y.z> on this repo, and
+#   5. pushes the rendered Package.swift, README.md, and LICENSE to
+#      larryaasen/tingra-plug-in-sdk and releases the zips there under the
+#      bare version tag, then downloads them back and checks them against the
+#      manifest's checksums.
+#
+# The job is a thin wrapper over `scripts/release-sdk.sh --yes`, the same script
+# used locally, so CI and a hand-cut SDK cannot drift. The version is
+# PlugInKitVersion.current; the workflow takes none, because a kit version is
+# raised in the change that alters the kit's API. Re-running resumes: the tags
+# are reused when they name the same commit, and an unpublished draft release is
+# replaced.
+#
+# The toolchain is pinned to the floor, as in format-test.yml, and that matters
+# more here than anywhere: each .swiftinterface records the compiler that wrote
+# it, and an older compiler may not read a newer one's. Built at the floor, the
+# SDK builds under every supported Xcode. The script refuses to publish
+# unattended from any other compiler.
+#
+# Required repository secrets (Settings → Secrets and variables → Actions):
+#
+#   TINGRA_RELEASE_TOKEN   PAT with Contents: read/write on larryaasen/tingra
+#                          (the tags) and larryaasen/tingra-plug-in-sdk (its
+#                          files and release). The CLI release's token, with
+#                          its scope extended to the SDK repo.
+#   TINGRA_CERT_P12        base64 of the Developer ID Application .p12
+#   TINGRA_CERT_PASSWORD   its export password
+#   TINGRA_SIGN_ID         "Developer ID Application: … (TEAMID)"
+#
+# No notarization credentials: a library nobody launches is not notarized.
+#
+# Nothing personal is committed (CLAUDE.md "Signing"): the Team ID reaches the
+# job only inside TINGRA_SIGN_ID, which Actions masks in the public log. Never
+# echo an identity list.
+
+name: Release TingraPlugInSDK
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Rehearse: run every preflight and print the plan, change nothing"
+        required: false
+        default: false
+        type: boolean
+      skip_tests:
+        description: "Skip the Format & Test gate (for resuming a release that already passed it)"
+        required: false
+        default: false
+        type: boolean
+
+# One release at a time; never cancel one in flight, since a cancelled run can
+# leave pushed tags without a published SDK.
+concurrency:
+  group: release-sdk
+  cancel-in-progress: false
+
+env:
+  DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+
+jobs:
+  verify:
+    name: Pre-release gate
+    if: ${{ !inputs.skip_tests }}
+    uses: ./.github/workflows/format-test.yml
+
+  release:
+    name: Build, sign & publish the SDK
+    needs: verify
+    # `needs` alone would skip this job when the gate is skipped, so accept both
+    # a green gate and a deliberately skipped one.
+    if: ${{ always() && (needs.verify.result == 'success' || needs.verify.result == 'skipped') }}
+    runs-on: macos-26
+    permissions:
+      contents: write
+    steps:
+      # First, before the checkout: an absent TINGRA_RELEASE_TOKEN would
+      # otherwise surface as an opaque git authentication failure.
+      - name: Check the release secrets are configured
+        env:
+          TINGRA_RELEASE_TOKEN: ${{ secrets.TINGRA_RELEASE_TOKEN }}
+          TINGRA_CERT_P12: ${{ secrets.TINGRA_CERT_P12 }}
+          TINGRA_CERT_PASSWORD: ${{ secrets.TINGRA_CERT_PASSWORD }}
+          TINGRA_SIGN_ID: ${{ secrets.TINGRA_SIGN_ID }}
+        run: |
+          # Without a signing identity the script builds an unsigned
+          # development SDK, which must never be published, so stop here.
+          missing=()
+          for name in TINGRA_RELEASE_TOKEN TINGRA_CERT_P12 TINGRA_CERT_PASSWORD TINGRA_SIGN_ID; do
+            [ -n "${!name}" ] || missing+=("$name")
+          done
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::missing required repository secrets: ${missing[*]} — see the header of .github/workflows/release-sdk.yml"
+            exit 1
+          fi
+          echo "all required release secrets are present."
+
+      - uses: actions/checkout@v4
+        with:
+          # Tags are needed: the script refuses a kit version already tagged on
+          # another commit, and a shallow clone has none of them to check.
+          fetch-depth: 0
+          # The PAT, not GITHUB_TOKEN — the same credential pushes the tags
+          # here and the SDK's files and release to the SDK repo.
+          token: ${{ secrets.TINGRA_RELEASE_TOKEN }}
+
+      - name: Configure git and gh
+        env:
+          GH_TOKEN: ${{ secrets.TINGRA_RELEASE_TOKEN }}
+        run: |
+          # The Actions bot identity, not a person's (CLAUDE.md "Signing").
+          # release-sdk.sh authors the SDK repo's commit with it.
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # The SDK repo is a second clone in a temp directory, which does not
+          # inherit the per-repo credentials actions/checkout wrote.
+          gh auth setup-git --hostname github.com
+
+      - name: Prepare the signing keychain
+        env:
+          CERT_P12: ${{ secrets.TINGRA_CERT_P12 }}
+          CERT_PASSWORD: ${{ secrets.TINGRA_CERT_PASSWORD }}
+        run: |
+          set -euo pipefail
+          KEYCHAIN="$RUNNER_TEMP/tingra-signing.keychain-db"
+          KEYCHAIN_PW="$(uuidgen)"
+          security create-keychain -p "$KEYCHAIN_PW" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PW" "$KEYCHAIN"
+
+          # Never print the identity the .p12 contains — the certificate's
+          # common name carries the Team ID and this log is public.
+          P12="$RUNNER_TEMP/application.p12"
+          printf '%s' "$CERT_P12" | base64 --decode > "$P12"
+          security import "$P12" -k "$KEYCHAIN" -P "$CERT_PASSWORD" -T /usr/bin/codesign
+          rm -f "$P12"
+          echo "imported the application identity."
+
+          # Let codesign use the imported key without a UI prompt, and put the
+          # keychain in the search list ahead of the existing ones.
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PW" "$KEYCHAIN" > /dev/null
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+
+      - name: Build, sign and publish the SDK
+        env:
+          GH_TOKEN: ${{ secrets.TINGRA_RELEASE_TOKEN }}
+          TINGRA_SIGN_ID: ${{ secrets.TINGRA_SIGN_ID }}
+          TINGRA_RELEASE_BRANCH: ${{ github.ref_name }}
+          # Read into the shell rather than interpolated into it.
+          INPUT_DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          args=(--yes)
+          if [ "$INPUT_DRY_RUN" = "true" ]; then
+            args+=(--dry-run)
+          fi
+          scripts/release-sdk.sh "${args[@]}"
+
+      # A copy of what shipped, kept with the run for after-the-fact inspection.
+      # The SDK repo's release already carries the zips; `dist/sdk` is empty on
+      # a dry run.
+      - name: Upload the artifacts
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: tingra-plug-in-sdk-arm64
+          if-no-files-found: ignore
+          path: |
+            dist/sdk/*.zip
+            dist/sdk/repo/

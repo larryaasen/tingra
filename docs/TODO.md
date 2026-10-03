@@ -223,9 +223,30 @@ here, under "Left open from “…”", pointing at its record there.
         - [x] Larry: look at the pane in the running app — a toggle and its
           line, a refused bundle's Show in Finder, the Manage… sheet, and
           the banner in safe mode. *Done 2026-09-30.*
-      - [ ] Decision 37: `scripts/release-sdk.sh`, `release-sdk.yml`,
-        `packaging/sdk/`; the repo, the token scope, and the first publish
-        are Larry's.
+      - [x] Decision 37: `scripts/release-sdk.sh`, `release-sdk.yml`,
+        `packaging/sdk/`. *Built 2026-09-30 (PLUGINS.md, "Decision 37
+        built"): one archive of the kit builds both frameworks, each
+        XCFramework carries its `.swiftinterface` and dSYM, a probe plug-in
+        builds against the rendered development package with the compiler
+        reading only the interfaces, the install names are checked, the
+        XCFrameworks are Developer ID signed, publishing tags here then
+        releases a draft on the SDK repo and checks the published zips'
+        checksums. Without `TINGRA_SIGN_ID` it builds a development SDK into
+        `dist/sdk` and publishes nothing. Run with `--build-only` and
+        `--dry-run` only. An Xcode bundle built against the development
+        package loaded in the packaged CLI.*
+        - [ ] Larry: decide Decision 51 (proposed 2026-09-30): Xcode embeds
+          the SDK's binary frameworks into a bundle and nothing can stop it,
+          so every SDK-built bundle draws `embeddedKit`. The SDK's README
+          says Do Not Embed until this is settled, so it must not be
+          published first.
+        - [ ] Larry: create the public `larryaasen/tingra-plug-in-sdk`
+          (empty is fine) and extend `TINGRA_RELEASE_TOKEN` to it.
+        - [ ] Larry: the first publish, through Actions → Release
+          TingraPlugInSDK (Xcode 26.6; a local build is Swift 6.4 here).
+        - [ ] Larry: run the app half of the end-to-end check — an
+          SDK-built bundle in the user folder, loaded by Tingra.app. His
+          debug instance was running, so a session could not.
   - [ ] **NDI as an external plug-in bundle**, outside this repo, importing
     the closed-source SDK: an NDI input and an NDI output. Waits on the
     loader; NDI's own virtual input is the stopgap the capture plug-in

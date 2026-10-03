@@ -67,10 +67,13 @@ docs/                           # The project documentation set (ARCHITECTURE.md
                                 #   SIMULATOR.md, CLOCK.md, EVENTS.md, MCP.md, DESTINATIONS.md,
                                 #   TYPES.md, TODO.md, DONE.md)
                                 #   and screenshots
-scripts/                        # Formatting scripts (format-swift.sh, check-format.sh) and the
-                                #   streaming integration tests (integration-test.sh)
+scripts/                        # Formatting scripts (format-swift.sh, check-format.sh), the
+                                #   streaming integration tests (integration-test.sh), and the
+                                #   release scripts (release-cli*.sh, release-sdk.sh)
+packaging/                      # Release templates: the Homebrew formula (homebrew/) and the
+                                #   TingraPlugInSDK repo's manifest and README (sdk/)
 .github/workflows/              # GitHub Actions CI: format-test.yml, integration.yml,
-                                #   release-cli.yml (see Toolchain & CI)
+                                #   release-cli.yml, release-sdk.yml (see Toolchain & CI)
 ```
 
 The package names are **finalized** (reviewed 2026-07-03; also recorded in "Repository structure" in [ARCHITECTURE.md](docs/ARCHITECTURE.md)): `TingraEventBus`, `TingraPlugInKit`, and `TingraHost` under `packages/`, and `apps/tingra-cli` (executable product `tingra-cli`, module `TingraCLI` — module names can't contain a hyphen).
@@ -155,10 +158,11 @@ This repository is public, so **no app secret and nothing personal to one develo
 
 ## Toolchain & CI
 - **Toolchain floor: Xcode 26.6 and Swift 6.3.3.** Develop and build with these minimums; every `Package.swift` declares `swift-tools-version: 6.3.3` (see Swift Language & Idioms). This is the *development* toolchain floor — the *deployment* target (macOS 15.0+, Apple Silicon only) is separate; see Platform Support.
-- **CI runs on GitHub Actions (macOS runners).** Every workflow runs on the `macos-26` arm64 image with `DEVELOPER_DIR` pinned to Xcode 26.6 — the image ships 26.6 but defaults to an older version (verified 2026-07-04; see [DONE.md](docs/DONE.md)). There are three, each named for what it does:
+- **CI runs on GitHub Actions (macOS runners).** Every workflow runs on the `macos-26` arm64 image with `DEVELOPER_DIR` pinned to Xcode 26.6 — the image ships 26.6 but defaults to an older version (verified 2026-07-04; see [DONE.md](docs/DONE.md)). There are four, each named for what it does:
   - **`format-test.yml`** — the every-push/every-PR workflow: **formatting verification** (`scripts/check-format.sh`), **unit tests** (`swift test` per package, Swift Testing; generators and mocks mean no camera, microphone, or TCC authorization is needed on runners), and **warning-clean builds** of every package and app (see Other Rules, Strict Compilation). Also `workflow_call`-able, which is how the release workflow gates on it.
   - **`integration.yml`** — **integration tests** against the local ingest simulator ([SIMULATOR.md](docs/SIMULATOR.md)); a separate workflow, run on streaming/output changes rather than blocking every PR.
   - **`release-cli.yml`** — the **whole `tingra-cli` release**, on manual dispatch: gate on `format-test.yml`, bump the version, build, sign, notarize, tag, publish the GitHub release, and push the rendered formula to the Homebrew tap. Apple Silicon (arm64) only. Release artifacts are Developer ID signed (hardened runtime; identifiers under `com.moonwink.tingra.*`) and notarized via `notarytool`; each release ships a zip for the Homebrew tap (bare binaries can't be stapled — Gatekeeper checks the ticket online) plus a stapled `.pkg` for offline installs. It is a thin wrapper over `scripts/release-cli.sh --yes`, the same script used locally, so the two paths cannot drift. See [CLI.md](docs/CLI.md) "Distribution" for the full recipe (embedded `__info_plist`, entitlements, CI verification) and the workflow's own header for the secrets it needs. Signing certificates, the notarization API key, and the release token live in GitHub Actions secrets, never in the repo.
+  - **`release-sdk.yml`** — the **`TingraPlugInSDK` release**, on manual dispatch: gate on `format-test.yml`, archive the two kits as arm64 XCFrameworks with Library Evolution and their `.swiftinterface`, build a probe plug-in against the interfaces alone, sign each with the Developer ID Application identity (a library is not notarized), tag `plugin-kit-<x.y.z>` and `event-bus-<x.y.z>` here, and publish the manifest and zips to the public `larryaasen/tingra-plug-in-sdk` (see [PLUGINS.md](docs/PLUGINS.md), Decision 37). The version is `PlugInKitVersion.current`, never bumped by the workflow. A thin wrapper over `scripts/release-sdk.sh --yes`; without `TINGRA_SIGN_ID` the script builds an unsigned development SDK into `dist/sdk` and publishes nothing. Built at the toolchain floor, because a `.swiftinterface` written by a newer compiler may not build under an older Xcode.
   - Any other CI needs as they arise.
 - PRs must pass formatting, build, and unit tests before merge.
 

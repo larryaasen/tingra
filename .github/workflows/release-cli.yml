@@ -25,7 +25,9 @@
 #
 #   TINGRA_RELEASE_TOKEN           PAT with Contents: read/write on BOTH
 #                                  larryaasen/tingra and larryaasen/homebrew-tingra.
-#                                  GITHUB_TOKEN cannot reach the second repo.
+#                                  GITHUB_TOKEN cannot reach the second repo. The
+#                                  SDK release (release-sdk.yml) reads the same
+#                                  secret, scoped to larryaasen/tingra-plug-in-sdk too.
 #   TINGRA_CERT_P12                base64 of the Developer ID Application .p12
 #   TINGRA_CERT_PASSWORD           its export password
 #   TINGRA_SIGN_ID                 "Developer ID Application: … (TEAMID)"

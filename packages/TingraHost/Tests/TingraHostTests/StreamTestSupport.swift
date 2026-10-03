@@ -105,6 +105,10 @@ final class ManualClock: EngineClock, Sendable {
     /// The most recently advanced-to time.
     var now: CMTime { currentTime.withLock { $0 } }
 
+    /// How many tick streams are live — how a test waits for a component to
+    /// subscribe before it advances, so no tick is lost to the race.
+    var subscriberCount: Int { continuations.withLock { $0.count } }
+
     /// A stream fed only by ``advance(to:)``.
     func tick(every duration: CMTime) -> AsyncStream<CMTime> {
         AsyncStream { continuation in
@@ -266,6 +270,10 @@ final class MockStreamingService: StreamingService, Sendable {
 
         /// Errors the next starts throw, consumed front-first.
         var startErrors: [StreamingServiceError] = []
+
+        /// The snapshot ``statistics()`` returns, changed by
+        /// ``setStatistics(_:)``.
+        var statistics = StreamingStatistics(bytesSent: 0, bytesPerSecond: 0, framesPerSecond: 0)
     }
 
     /// The mock's state.
@@ -277,13 +285,10 @@ final class MockStreamingService: StreamingService, Sendable {
     /// Feeds ``eventStream``; tests emit losses through it.
     private let eventContinuation: AsyncStream<StreamingServiceEvent>.Continuation
 
-    /// The statistics snapshot ``statistics()`` returns.
-    let fixedStatistics: StreamingStatistics
-
     /// Creates a mock with the given statistics snapshot.
     init(statistics: StreamingStatistics = StreamingStatistics(bytesSent: 0, bytesPerSecond: 0, framesPerSecond: 0)) {
-        self.fixedStatistics = statistics
         (self.eventStream, self.eventContinuation) = AsyncStream.makeStream(of: StreamingServiceEvent.self)
+        state.withLock { $0.statistics = statistics }
     }
 
     /// The service's events, fed by ``reportConnectionLost(reason:)``.
@@ -318,9 +323,15 @@ final class MockStreamingService: StreamingService, Sendable {
         state.withLock { $0.audioTimes.append(buffer.presentationTime) }
     }
 
-    /// Returns the fixed snapshot.
+    /// Returns the current snapshot.
     func statistics() async -> StreamingStatistics {
-        fixedStatistics
+        state.withLock { $0.statistics }
+    }
+
+    /// Replaces the snapshot later ``statistics()`` calls return — a test
+    /// scripting the counters a reading sees.
+    func setStatistics(_ statistics: StreamingStatistics) {
+        state.withLock { $0.statistics = statistics }
     }
 
     /// Records the stop and finishes the events stream.

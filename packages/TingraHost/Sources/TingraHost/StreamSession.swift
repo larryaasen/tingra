@@ -119,6 +119,88 @@ public actor StreamSession {
 
         /// The reconnect attempts left for this leg's current outage.
         var remainingReconnectAttempts = 0
+
+        /// Whether this leg is between a connection loss and its recovery.
+        /// A reconnecting leg is still live (its budget is not spent), but
+        /// its counters describe a connection that is gone, so it is left out
+        /// of ``StreamSession/liveStatistics`` until it recovers.
+        var isReconnecting = false
+
+        /// The leg's live statistics gathered since its last `stream.stats`
+        /// line — what that line summarizes when ``Policy/liveStatistics`` is
+        /// on.
+        var statsWindow = StatsWindow()
+    }
+
+    /// One leg's live statistics folded between two `stream.stats` lines, so
+    /// a line covering a whole window reports the window rather than the one
+    /// reading that happened to land on its tick.
+    private struct StatsWindow {
+        /// The leg's cumulative `bytesSent` at its previous reading, the base
+        /// the next reading's delivery is measured from.
+        var lastBytesSent = 0
+
+        /// Bytes delivered in this window.
+        var bytes = 0
+
+        /// How many readings this window holds.
+        var readings = 0
+
+        /// The sum of this window's frame rates, for their average.
+        var framesPerSecondTotal = 0
+
+        /// The lowest frame rate in this window, or nil before its first
+        /// reading.
+        var minimumFramesPerSecond: Int?
+
+        /// Folds one reading into the window.
+        ///
+        /// A fresh connection — a reconnect — restarts the service's
+        /// `bytesSent`, so a counter that went down is a reset, and
+        /// everything it now holds was delivered since the last reading.
+        ///
+        /// - Parameter statistics: The leg's counters at this reading.
+        mutating func add(_ statistics: StreamingStatistics) {
+            let delivered =
+                statistics.bytesSent >= lastBytesSent
+                ? statistics.bytesSent - lastBytesSent
+                : statistics.bytesSent
+            bytes += delivered
+            lastBytesSent = statistics.bytesSent
+            readings += 1
+            framesPerSecondTotal += statistics.framesPerSecond
+            minimumFramesPerSecond = min(
+                minimumFramesPerSecond ?? statistics.framesPerSecond,
+                statistics.framesPerSecond
+            )
+        }
+
+        /// Starts the next window, keeping the counter base so the next
+        /// reading measures from where this one ended.
+        mutating func reset() {
+            self = StatsWindow(lastBytesSent: lastBytesSent)
+        }
+    }
+
+    /// One destination's delivery counters at one reading of
+    /// ``StreamSession/liveStatistics``.
+    public struct LegStatistics: Sendable, Equatable {
+        /// The leg's stable identity — the `destination` param its status
+        /// events carry.
+        public let destination: String
+
+        /// The leg's counters at this reading.
+        public let statistics: StreamingStatistics
+
+        /// Creates a reading.
+        ///
+        /// - Parameters:
+        ///   - destination: The leg's stable identity.
+        ///   - statistics: The leg's counters at this reading.
+        public init(destination: String, statistics: StreamingStatistics) {
+            self.destination = destination
+            self.statistics = statistics
+        }
     }
 
     /// How the session's program video is produced.
@@ -160,6 +242,10 @@ public actor StreamSession {
 
         /// How often `stream.stats` events are emitted, in seconds (0
         /// disables).
+        ///
+        /// With ``liveStatistics`` on, the first line comes one second after
+        /// the start and the rest every this many seconds after it, each
+        /// summarizing the readings since the line before.
         public var statsIntervalSeconds: Int
 
         /// Automatic stop after this many seconds, if set.
@@ -173,6 +259,17 @@ public actor StreamSession {
         /// rejected-stream-key shape) would reconnect forever.
         public var stabilitySeconds: Int
 
+        /// Whether the session reads every live leg's counters once a second
+        /// onto ``StreamSession/liveStatistics`` — a display's readout, kept
+        /// off the event bus so it never sets how often the log is written.
+        ///
+        /// When on, `stream.stats` stops being a single reading: each line
+        /// summarizes the readings since the previous one (the window's
+        /// average `bitrate` and `fps`, its `minFps`, and its length as
+        /// `window`). Off by default, which keeps the CLI's and the daemon's
+        /// `stream.stats` exactly as CLI.md defines it; the app turns it on.
+        public var liveStatistics: Bool
+
         /// Creates a policy. Defaults mirror CLI.md's option defaults.
         ///
         /// - Parameters:
@@ -182,18 +279,22 @@ public actor StreamSession {
         ///   - durationSeconds: Automatic stop after this many seconds.
         ///   - stabilitySeconds: How long a reconnect must survive to
         ///     count as recovered.
+        ///   - liveStatistics: Whether to read every live leg's counters
+        ///     once a second onto ``StreamSession/liveStatistics``.
         public init(
             reconnectAttempts: Int = 3,
             reconnectDelaySeconds: Int = 2,
             statsIntervalSeconds: Int = 5,
             durationSeconds: Int? = nil,
-            stabilitySeconds: Int = 10
+            stabilitySeconds: Int = 10,
+            liveStatistics: Bool = false
         ) {
             self.reconnectAttempts = reconnectAttempts
             self.reconnectDelaySeconds = reconnectDelaySeconds
             self.statsIntervalSeconds = statsIntervalSeconds
             self.durationSeconds = durationSeconds
             self.stabilitySeconds = stabilitySeconds
+            self.liveStatistics = liveStatistics
         }
     }
 
@@ -297,6 +398,28 @@ public actor StreamSession {
     /// Whether the session has already finished, so a duplicate trigger
     /// (a signal racing the duration timer) cannot double-finish.
     private var finished = false
+
+    /// Every live leg's counters, read once a second while the session is
+    /// live — the streaming panel's readout. Empty unless the policy turns on
+    /// ``Policy/liveStatistics``.
+    ///
+    /// Each element is one reading of every leg that is delivering, in the
+    /// order the legs were given; a leg that is reconnecting or lost is left
+    /// out. It keeps only the newest reading, so a reader that falls behind
+    /// skips to the present instead of piling readings up, and it finishes
+    /// when ``run()`` returns. One reader.
+    ///
+    /// This is deliberately not the event bus: a once-a-second readout is a
+    /// display's cadence, and putting it on the bus would make it the log's
+    /// too (EVENTS.md, "Stream statistics: the readout and the log").
+    public nonisolated let liveStatistics: AsyncStream<[LegStatistics]>
+
+    /// Feeds ``liveStatistics``.
+    private let liveStatisticsContinuation: AsyncStream<[LegStatistics]>.Continuation
+
+    /// Where the current `stream.stats` window began on the master clock —
+    /// the session start, then each line's tick.
+    private var statsWindowStart = CMTime.zero
 
     /// Creates a session from a single capture input (the CLI's one-camera
     /// pipeline). At least one media side should be present; the caller has
@@ -518,6 +641,10 @@ public actor StreamSession {
         self.recordingFile = recordingFile
         self.label = label
         (self.outcome, self.outcomeContinuation) = AsyncStream.makeStream(of: Outcome.self)
+        (self.liveStatistics, self.liveStatisticsContinuation) = AsyncStream.makeStream(
+            of: [LegStatistics].self,
+            bufferingPolicy: .bufferingNewest(1)
+        )
     }
 
     /// Requests a clean stop: flush compression, close the connection,
@@ -538,6 +665,10 @@ public actor StreamSession {
     /// on the legs that connected. Once live, problems surface as events and
     /// an eventual outcome, never a throw.
     public func run() async throws -> Outcome {
+        // However the run ends — a start-time throw or an outcome — the
+        // readout has nothing more to say.
+        defer { liveStatisticsContinuation.finish() }
+
         // Only a session-owned capture input is started here; a program
         // source is driven by the caller's compositor or mixer, already
         // running.
@@ -918,6 +1049,7 @@ public actor StreamSession {
         if !isSameOutage {
             legStates[index].remainingReconnectAttempts = policy.reconnectAttempts
         }
+        legStates[index].isReconnecting = true
         while legStates[index].remainingReconnectAttempts > 0 {
             guard !finished else { return }
             let attempt = policy.reconnectAttempts - legStates[index].remainingReconnectAttempts + 1
@@ -933,6 +1065,7 @@ public actor StreamSession {
             do {
                 try await legs[index].service.start(to: legs[index].destination)
                 legStates[index].lastRecoveryTime = clock.now
+                legStates[index].isReconnecting = false
                 var recovered = legParams(index)
                 recovered["attempt"] = .int(attempt)
                 eventBus.event("stream.reconnected", domain: .output, params: recovered)
@@ -945,6 +1078,7 @@ public actor StreamSession {
             }
         }
         legStates[index].isLive = false
+        legStates[index].isReconnecting = false
         reportDestinationLost(index, reason: reason)
         // The run survives a partial loss and ends only when nothing is left
         // to stream to (CLI.md, "Multiple destinations").
@@ -962,6 +1096,9 @@ public actor StreamSession {
     /// reads each leg's delivery rather than an average that describes none
     /// of them. A dead leg reports nothing.
     private func watchStats(t0: CMTime) -> Task<Void, Never>? {
+        if policy.liveStatistics {
+            return watchLiveStatistics(t0: t0)
+        }
         guard policy.statsIntervalSeconds > 0 else { return nil }
         let interval = CMTime(value: CMTimeValue(policy.statsIntervalSeconds), timescale: 1)
         return Task {
@@ -986,6 +1123,98 @@ public actor StreamSession {
             params["fps"] = .int(statistics.framesPerSecond)
             eventBus.event("stream.stats", domain: .output, params: params)
         }
+    }
+
+    /// Reads every live leg's counters once a second onto
+    /// ``liveStatistics``, and closes a `stream.stats` window on the
+    /// policy's cadence: the first one second after the start, so the log
+    /// has the stream's opening figures at once, then every
+    /// ``Policy/statsIntervalSeconds`` after it. One tick feeds both, so the
+    /// readout and the log never disagree about a reading.
+    private func watchLiveStatistics(t0: CMTime) -> Task<Void, Never> {
+        statsWindowStart = t0
+        return Task {
+            var reading = 0
+            for await tickTime in clock.tick(every: CMTime(value: 1, timescale: 1)) {
+                reading += 1
+                await readLiveStatistics(at: tickTime, t0: t0, closesWindow: closesStatsWindow(atReading: reading))
+            }
+        }
+    }
+
+    /// Whether the given once-a-second reading (counting from 1) closes a
+    /// `stream.stats` window: the first does, then every
+    /// ``Policy/statsIntervalSeconds``-th after it. Never, when the interval
+    /// is 0 — the readout runs without a log line.
+    ///
+    /// - Parameter reading: The reading's number since the start.
+    /// - Returns: Whether to emit `stream.stats` at this reading.
+    private func closesStatsWindow(atReading reading: Int) -> Bool {
+        guard policy.statsIntervalSeconds > 0 else { return false }
+        return (reading - 1) % policy.statsIntervalSeconds == 0
+    }
+
+    /// Takes one reading of every live leg: folds it into the leg's window,
+    /// emits the window's `stream.stats` when this reading closes it, and
+    /// yields the delivering legs' readings to ``liveStatistics``.
+    ///
+    /// A reconnecting leg still counts toward its window — the outage is
+    /// part of what the window delivered — but is left out of the readout,
+    /// whose counters would describe a connection that is gone.
+    ///
+    /// - Parameters:
+    ///   - tickTime: The reading's tick on the master clock.
+    ///   - t0: The session start, so `elapsed` is session relative.
+    ///   - closesWindow: Whether this reading ends a `stream.stats` window.
+    private func readLiveStatistics(at tickTime: CMTime, t0: CMTime, closesWindow: Bool) async {
+        var readout: [LegStatistics] = []
+        for index in legs.indices where legStates[index].isLive {
+            let statistics = await legs[index].service.statistics()
+            // The read suspended the actor; the leg may have been lost since.
+            guard legStates[index].isLive else { continue }
+            legStates[index].statsWindow.add(statistics)
+            if !legStates[index].isReconnecting {
+                readout.append(LegStatistics(destination: legs[index].id, statistics: statistics))
+            }
+            if closesWindow {
+                emitWindowStats(index, bytesSent: statistics.bytesSent, at: tickTime, t0: t0)
+            }
+        }
+        if closesWindow {
+            statsWindowStart = tickTime
+        }
+        liveStatisticsContinuation.yield(readout)
+    }
+
+    /// Emits one leg's `stream.stats` summarizing its window, then starts the
+    /// leg's next window.
+    ///
+    /// `bitrate` is the window's delivered bytes over its length on the
+    /// master clock, and `fps` the average of its readings, so a line that
+    /// covers a minute describes the minute; `minFps` keeps a dip the
+    /// average would hide, and `window` says how long the line covers.
+    ///
+    /// - Parameters:
+    ///   - index: The leg.
+    ///   - bytesSent: The leg's cumulative bytes at this reading.
+    ///   - tickTime: The reading's tick on the master clock.
+    ///   - t0: The session start, so `elapsed` is session relative.
+    private func emitWindowStats(_ index: Int, bytesSent: Int, at tickTime: CMTime, t0: CMTime) {
+        let window = legStates[index].statsWindow
+        legStates[index].statsWindow.reset()
+        let seconds = CMTimeSubtract(tickTime, statsWindowStart).seconds
+        var params = legParams(index)
+        params["elapsed"] = .double(CMTimeSubtract(tickTime, t0).seconds)
+        params["window"] = .double(seconds)
+        params["bytesSent"] = .int(bytesSent)
+        params["bitrate"] = .int(seconds > 0 ? Int(Double(window.bytes * 8) / seconds) : 0)
+        params["fps"] = .int(
+            window.readings > 0
+                ? Int((Double(window.framesPerSecondTotal) / Double(window.readings)).rounded())
+                : 0
+        )
+        params["minFps"] = .int(window.minimumFramesPerSecond ?? 0)
+        eventBus.event("stream.stats", domain: .output, params: params)
     }
 
     /// Ends the session with ``Outcome/durationElapsed`` when the

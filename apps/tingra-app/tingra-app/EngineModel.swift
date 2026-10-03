@@ -166,8 +166,9 @@ final class EngineModel {
         case error(String)
     }
 
-    /// A snapshot of the live stream's delivery counters, from a `stream.stats`
-    /// event — what the panel shows beside the Live label.
+    /// A snapshot of the live stream's delivery counters, from a reading of
+    /// the session's live statistics — what the panel shows beside the Live
+    /// label.
     struct StreamStats: Equatable {
         /// The current send bitrate in kilobits per second.
         let bitrateKbps: Int
@@ -175,6 +176,13 @@ final class EngineModel {
         /// The current delivered frame rate.
         let fps: Int
     }
+
+    /// How often the app's stream writes `stream.stats` to the log, in
+    /// seconds — each line the average of the minute it covers, the first one
+    /// second after going live. The panel reads the session's once-a-second
+    /// live statistics instead, so this sets the log's cadence alone
+    /// (EVENTS.md, "Stream statistics: the readout and the log").
+    static let streamStatsLogIntervalSeconds = 60
 
     /// One destination leg's live state, derived from its own share of the
     /// session's per-leg status events — what each row of the streaming panel
@@ -336,16 +344,16 @@ final class EngineModel {
     /// the bus (never a poll) — what the Start/Stop control reflects.
     private(set) var streamStatus: StreamStatus = .idle
 
-    /// The latest delivery stats from the last `stream.stats` event while
-    /// live, or nil when not streaming — the panel shows them beside the Live
-    /// label. Event-driven, like ``streamStatus``. With several destinations
+    /// The latest delivery stats from the session's once-a-second live
+    /// statistics while live, or nil when not streaming — the panel shows
+    /// them beside the Live label. With several destinations
     /// this is the **first live leg's**, never an average across legs that
     /// describes none of them; each leg's own is in ``destinationStats``.
     private(set) var streamStats: StreamStats?
 
     /// Each streaming destination's latest delivery stats, keyed by
     /// destination id — what the panel's per-destination rows show. Driven by
-    /// the session's per-leg `stream.stats` events; cleared when the stream
+    /// the session's once-a-second live statistics; cleared when the stream
     /// ends.
     private(set) var destinationStats: [ProjectDestinationID: StreamStats] = [:]
 
@@ -1213,6 +1221,12 @@ final class EngineModel {
     /// The task running the active session's `run()`, retained so its outcome
     /// resolves the status and cleans up.
     @ObservationIgnored private var streamTask: Task<Void, Never>?
+
+    /// The task reading the active session's live statistics into
+    /// ``streamStats`` and ``destinationStats``. One reading a second, kept
+    /// newest-only by the session, so it runs on the main actor without
+    /// anything queuing behind it.
+    @ObservationIgnored private var streamStatisticsTask: Task<Void, Never>?
 
     /// The program tee: the one program drain (``programTask``) and the one
     /// program-audio drain (``programAudioTask``) hand every composited frame
@@ -4034,7 +4048,10 @@ final class EngineModel {
             programAudio: programAudioStream,
             destinations: legs,
             configuration: configuration,
-            policy: StreamSession.Policy(),
+            policy: StreamSession.Policy(
+                statsIntervalSeconds: Self.streamStatsLogIntervalSeconds,
+                liveStatistics: true
+            ),
             clock: clock,
             eventBus: eventBus
         )
@@ -4043,6 +4060,14 @@ final class EngineModel {
         streamStats = nil
         destinationStats = [:]
         destinationStates = [:]
+
+        // The panel's figures come from the session's live statistics, not
+        // from `stream.stats`: the bus line is the log's, once a minute.
+        streamStatisticsTask = Task { [weak self] in
+            for await readings in session.liveStatistics {
+                self?.applyLiveStatistics(readings)
+            }
+        }
 
         streamTask = Task { [weak self] in
             do {
@@ -4555,8 +4580,64 @@ final class EngineModel {
     /// and drops the session references so a new stream can start.
     private func teardownStream() {
         tee.detachStream()
+        streamStatisticsTask?.cancel()
+        streamStatisticsTask = nil
         streamSession = nil
         streamTask = nil
+    }
+
+    /// Shows one reading of the session's live statistics in the panel.
+    ///
+    /// The readings only fill in numbers; whether a destination is on air is
+    /// the bus's to say (``handleStreamStatusEvent(_:)``). So a reading that
+    /// crossed a reconnect or the stream's end on its way here never brings a
+    /// row back to Live.
+    ///
+    /// - Parameter readings: One reading of every delivering leg.
+    private func applyLiveStatistics(_ readings: [StreamSession.LegStatistics]) {
+        guard streamSession != nil else { return }
+        let panel = Self.panelStats(
+            for: readings,
+            destinationStates: destinationStates,
+            destinationOrder: destinations.map(\.id)
+        )
+        destinationStats.merge(panel.perDestination) { _, new in new }
+        // None while stopping, when delivery is ending.
+        if let headline = panel.headline, !isStoppingStream { streamStats = headline }
+    }
+
+    /// The panel's figures from one reading of the session's live statistics:
+    /// each live destination's own, and the headline — the first live
+    /// destination's, never an average across destinations that describes
+    /// none of them.
+    ///
+    /// A reading for a destination that is not live by its own events is
+    /// dropped, so the readout can never contradict the destination's state.
+    ///
+    /// - Parameters:
+    ///   - readings: One reading of every delivering leg.
+    ///   - destinationStates: Each destination's state from its bus events.
+    ///   - destinationOrder: The destinations in the panel's order, which
+    ///     decides the first live one.
+    /// - Returns: The figures for each live destination read, and the
+    ///   headline when the first live destination was among them.
+    static func panelStats(
+        for readings: [StreamSession.LegStatistics],
+        destinationStates: [ProjectDestinationID: DestinationState],
+        destinationOrder: [ProjectDestinationID]
+    ) -> (perDestination: [ProjectDestinationID: StreamStats], headline: StreamStats?) {
+        var perDestination: [ProjectDestinationID: StreamStats] = [:]
+        for reading in readings {
+            let id = ProjectDestinationID(rawValue: reading.destination)
+            guard destinationStates[id] == .live else { continue }
+            // Bytes per second arrive from the service; the panel shows kbps.
+            perDestination[id] = StreamStats(
+                bitrateKbps: reading.statistics.bytesPerSecond * 8 / 1000,
+                fps: reading.statistics.framesPerSecond
+            )
+        }
+        let firstLive = destinationOrder.first { destinationStates[$0] == .live }
+        return (perDestination, firstLive.flatMap { perDestination[$0] })
     }
 
     /// Updates ``streamStatus`` and the per-destination state from a
@@ -4596,18 +4677,9 @@ final class EngineModel {
             // leg still down keeps its own row's state.
             setActiveStreamStatus(.live)
             setDestinationState(.live, for: destination)
-        case "stream.stats":
-            // Bitrate arrives in bits per second; the panel shows kbps.
-            let bitrate = event.params?["bitrate"].flatMap(Self.intValue) ?? 0
-            let fps = event.params?["fps"].flatMap(Self.intValue) ?? 0
-            let stats = StreamStats(bitrateKbps: bitrate / 1000, fps: fps)
-            if let destination {
-                destinationStats[destination] = stats
-                setDestinationState(.live, for: destination)
-            }
-            // The headline figure is the first live leg's, never an average
-            // — and none while stopping, when delivery is ending.
-            if isFirstLiveDestination(destination), !isStoppingStream { streamStats = stats }
+        // `stream.stats` is deliberately not handled: the app's line is the
+        // log's once-a-minute window summary, and the panel reads the
+        // session's live statistics instead (``applyLiveStatistics(_:)``).
         case "stream.reconnecting":
             let attempt = event.params?["attempt"].flatMap(Self.intValue) ?? 0
             let maxAttempts = event.params?["maxAttempts"].flatMap(Self.intValue) ?? 0
@@ -4735,17 +4807,6 @@ final class EngineModel {
     private func setDestinationState(_ state: DestinationState, for id: ProjectDestinationID?) {
         guard let id else { return }
         destinationStates[id] = state
-    }
-
-    /// Whether a destination is the first one currently delivering — the leg
-    /// whose counters stand as the session's headline figures.
-    ///
-    /// - Parameter id: The destination an event named, if any.
-    /// - Returns: Whether its stats should drive ``streamStats``.
-    private func isFirstLiveDestination(_ id: ProjectDestinationID?) -> Bool {
-        guard let id else { return true }
-        let firstLive = destinations.first { destinationStates[$0.id] == .live }
-        return firstLive?.id == id
     }
 
     /// The `Int` inside an event value, when it is one.

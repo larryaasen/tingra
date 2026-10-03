@@ -1653,9 +1653,10 @@ there.
       - [x] Decision 36: the Plug-ins settings pane. *Built 2026-09-30
         (PLUGINS.md, "Decision 36 built"); Larry checked it in the running
         app the same day.*
-      - *(Open: tracked in TODO.md.)* Decision 37: `scripts/release-sdk.sh`, `release-sdk.yml`,
-        `packaging/sdk/`; the repo, the token scope, and the first publish
-        are Larry's.
+      - [x] Decision 37: `scripts/release-sdk.sh`, `release-sdk.yml`,
+        `packaging/sdk/`. *Built 2026-09-30 (PLUGINS.md, "Decision 37
+        built"); Decision 51, the repo, the token, the first publish, and
+        the app half of the check are tracked in TODO.md.*
 
 ## Decisions to settle
 
