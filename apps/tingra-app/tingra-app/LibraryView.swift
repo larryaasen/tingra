@@ -204,7 +204,11 @@ struct LibraryView: View {
             .labelsHidden()
             .controlSize(.small)
             .fixedSize()
-            Group {
+            // A `ZStack`, not a `Group`: a modifier on a `Group` is applied to
+            // each of its children, so with no control the frame had nothing
+            // to wrap and the slot — and its spacing — vanished, widening the
+            // row on the tabs without one.
+            ZStack {
                 if tab == .media {
                     addMediaButton
                 }

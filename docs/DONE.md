@@ -1659,6 +1659,59 @@ there.
         at 27.0 the same day; the repo, the token, the first publish, and
         the app half of the check are tracked in TODO.md.*
 
+## Clock and timing
+
+- [x] **Streamed audio sat behind video by the time the destination took to
+  connect, up to a second. Measured and fixed 2026-10-04.** The app attaches the
+  program tee before `StreamSession.run()` connects, so by the time the
+  session reads `T0` its audio stream holds the mixed blocks stamped while it
+  was connecting, up to a second of them (`AudioMixer.bufferedBlockCount`),
+  and its video stream one frame. `HaishinKitMediaConversion.pcmBuffer(for:)`
+  clamps a negative audio time to zero instead of dropping the block,
+  HaishinKit then extrapolates audio from sample count, and a negative video
+  time passes through unclamped. The backlog is therefore played out ahead of
+  the live audio, and everything after it is late by its length.
+
+  Measured with a throwaway probe: a white flash and a 1 kHz beep on the same
+  master clock instant, fed to a real `StreamSession` through the same
+  bounded streams the tee uses (newest frame, newest 48 blocks), over the
+  RTMP service to the simulator, read back with ffmpeg (`signalstats` for
+  the flash, `silencedetect` for the beep). Audio onset minus video onset,
+  identical at every event in a run:
+
+  | Program fed before `run()` for | Audio behind video |
+  | :--- | ---: |
+  | 0 s (localhost connect only) | −29 ms, −20 ms |
+  | 0.5 s | +460 ms |
+  | 2 s | +960 ms, +966 ms |
+
+  The zero row is the floor of the method (a flash lands on the next frame,
+  up to 33 ms late), so the lag was the backlog and nothing else, and it held
+  for the whole stream. In the app the backlog is the connect time: nothing
+  on localhost, a real service's handshake otherwise. Not run through the
+  app itself. The CLI's path has no backlog, so the integration tests never
+  showed it.
+
+  **The fix** is CLOCK.md's rule applied in the session, for every sink:
+  `StreamSession.startPumps(t0:)` drops a frame or block whose rebased time
+  is negative (`isOnSessionTimeline`), so every leg and the recording share
+  the same first instant. The clamp in `HaishinKitMediaConversion` stays as a
+  guard and no longer sees a negative time. Three tests in
+  `StreamSessionTests`. The same probe after the fix, over RTMP:
+
+  | Program fed before `run()` for | Audio behind video |
+  | :--- | ---: |
+  | 0 s | −10 ms |
+  | 0.5 s | −50 ms |
+  | 2 s | −26 ms |
+
+  TingraHost 305 tests, TingraMCP 138, `tingra-cli` 99. Larry's run of
+  `integration-test.sh` passed and a stream from the app was fine
+  (2026-10-05). One integration check had missed once on the first run after
+  the fix and passed on every run since; which check was never identified.
+  Left open in TODO.md: an SRT offset seen on the way, and an integration
+  scenario.
+
 ## Decisions to settle
 
 - [x] **The app's secure storage, and the daemon's — decided and recorded

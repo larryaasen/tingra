@@ -264,6 +264,49 @@ here, under "Left open from “…”", pointing at its record there.
     approval.* Waits on both kits at 1.0.0 (after NDI), Tingra.app
     shipping, and Decisions 35–37.
 
+## Clock and timing
+
+Found by the 2026-10-03 review of CLOCK.md against the code. CLOCK.md states
+the rule each of these breaks or leaves unbuilt.
+
+- [ ] **Left open from “Streamed audio sits behind video by the time the
+  destination took to connect”** (fixed 2026-10-04; record in DONE.md, "Clock
+  and timing"):
+  - **SRT audio leads video by about 100 ms.** Seen while confirming the fix:
+    over SRT the beep arrived 98 ms and 119 ms ahead of the flash, with no
+    backlog and with a two second one alike, so it is not the pre-`T0`
+    defect. RTMP on the same probe reads 10 to 50 ms. Not diagnosed; the
+    read-back was the simulator's RTMP side, so first rule out MediaMTX's
+    remux by reading the stream back over SRT.
+  - **An integration scenario with a flash and a beep.** The probe was a
+    throwaway and is gone; nothing in `scripts/integration-test.sh` measures
+    A/V offset, and its generators have no sync signal. A flash-and-beep
+    generator plus a server side onset check would hold this fix and catch
+    the SRT offset above.
+
+- [ ] **Nothing keeps the Mac or the process awake during a session.** No
+  power assertion, no declared activity, and no App Nap opt-out anywhere in
+  the engine or the app, so an idle sleep pauses a live stream or recording
+  for its length (CLOCK.md, "System sleep and App Nap"). First check whether
+  a running capture session already holds the Mac awake (`pmset -g
+  assertions` during a stream). Then hold one for the life of a session,
+  behind a host seam so the CLI and the daemon get it too. Related: the
+  `caffeinate -d` question in the display sleep item above.
+
+- [ ] **The SRT service measures its frame rate on its own clock.**
+  `SRTHaishinKitStreamingService` keeps a `ContinuousClock` for its frames
+  per second figure: not the injected `EngineClock`, and it counts sleep, so
+  the first reading after a wake is wrong. It stamps no media. Use the
+  injected clock.
+
+- [ ] **Sync offset is designed and unbuilt.** GLOSSARY.md and CLOCK.md
+  define it as a persisted setting; nothing applies or stores one, and
+  comments in `CameraInput.swift` and `Input.swift` say it joins "when it
+  lands". CLOCK.md, "Sync offset" records why a timestamp shift is not
+  enough: the compositor and the mixer never read a captured PTS, so the
+  offset has to be a delay at the video slot and in the channel queue. Decide
+  where it sits on the roadmap.
+
 ## Decisions to settle
 
 - [ ] **Left open from “The log file and the Logging settings pane — decided 2026-09-07, built 2026-09-08.”** (done; record in DONE.md):
@@ -334,4 +377,10 @@ fixed together on 2026-08-06.
 Nothing open.
 
 ## Housekeeping
-Nothing open.
+
+- [ ] **Tingra needs a logo** *(added 2026-10-04)*. One mark, used everywhere
+  the project shows its face: the GitHub repository
+  (https://github.com/larryaasen/tingra — the README header and the social
+  preview image), the macOS app (the `Tingra.app` icon, the About window),
+  and other places as they come up (the Homebrew tap README, the
+  `tingra-plug-in-sdk` repository, the `.pkg` installer, a future website).

@@ -29,8 +29,11 @@ public struct HostClock: EngineClock {
     /// (`T0 + n × duration`), per CLOCK.md's scheduler options. Late ticks
     /// are skipped, never burst — see ``tick(every:lateTicks:)``.
     ///
-    /// Outline status: jitter vs. a dedicated thread is still to be decided
-    /// by benchmark (CLOCK.md open question).
+    /// The loop was benchmarked against a dedicated thread on 2026-10-04 and
+    /// kept: a real time thread delivers a tick about two milliseconds
+    /// sooner on a quiet Mac, but a tick is stamped with its deadline, so
+    /// that lateness never reaches a timestamp (CLOCK.md, "Scheduler
+    /// implementation").
     public func tick(every duration: CMTime) -> AsyncStream<CMTime> {
         tick(every: duration, lateTicks: .skip)
     }

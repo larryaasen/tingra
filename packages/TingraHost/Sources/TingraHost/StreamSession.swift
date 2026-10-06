@@ -902,6 +902,17 @@ public actor StreamSession {
     /// the mixer's mix tick. All of them stamp media on the master clock, so
     /// the identical `T0` rebase applies.
     ///
+    /// **Media stamped before `T0` is dropped, never delivered** (CLOCK.md,
+    /// "Timestamp rules"): it has a negative session time and no place on
+    /// the timeline. The app attaches the program to a session before the
+    /// session connects, so a program-source audio stream reaches this pump
+    /// holding every block mixed while the destinations were connecting, up
+    /// to a second of them. Delivering those put that backlog ahead of the
+    /// live audio and left the whole stream's audio behind its video by the
+    /// time the connect took (measured 2026-10-04: 960 ms behind after a
+    /// one second backlog). Dropping here, rather than in each sink, gives
+    /// every leg and the recording the same first instant.
+    ///
     /// Each pump delivers the rebased media to **every** leg's service, in
     /// leg order. The service list is snapshotted here rather than re-read
     /// per frame: legs are fixed for the session, and a leg that is dead or
@@ -928,6 +939,7 @@ public actor StreamSession {
                             pixelBuffer: frame.pixelBuffer,
                             presentationTime: CMTimeSubtract(frame.presentationTime, t0)
                         )
+                        guard Self.isOnSessionTimeline(rebased.presentationTime) else { continue }
                         // The program frame is immutable after it is yielded,
                         // so every compression sink reads the same buffer
                         // within the tick — none mutates it, per the frame
@@ -952,7 +964,9 @@ public actor StreamSession {
             tasks.append(
                 Task {
                     for await buffer in audio {
-                        guard let rebased = buffer.rebased(by: t0) else { continue }
+                        guard let rebased = buffer.rebased(by: t0),
+                            Self.isOnSessionTimeline(rebased.presentationTime)
+                        else { continue }
                         for service in services {
                             await service.send(audio: rebased)
                         }
@@ -962,6 +976,18 @@ public actor StreamSession {
             )
         }
         return tasks
+    }
+
+    /// Whether a rebased presentation time has a place on the session
+    /// timeline: at or after `T0`. Media stamped before the session started
+    /// rebases to a negative time, and the pumps drop it (see
+    /// ``startPumps(t0:)``).
+    ///
+    /// - Parameter sessionTime: A presentation time already rebased onto
+    ///   `T0`.
+    /// - Returns: `true` when the time is zero or later.
+    static func isOnSessionTimeline(_ sessionTime: CMTime) -> Bool {
+        sessionTime >= .zero
     }
 
     /// Watches every leg's connection events and drives that leg's reconnect

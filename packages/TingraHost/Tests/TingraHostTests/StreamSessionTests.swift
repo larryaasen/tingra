@@ -242,6 +242,88 @@ struct StreamSessionTests {
         #expect(startedParams["videoInput"] == nil)
     }
 
+    @Test("A program frame stamped before the session started is dropped, and the next one is delivered")
+    func programVideoBeforeSessionStartIsDropped() async throws {
+        let clock = ManualClock()
+        clock.advance(to: CMTime(value: 10, timescale: 1))
+        let eventBus = EventBus()
+        let service = MockStreamingService()
+        let pixelBuffer = try #require(makeTestPixelBuffer())
+        // The app attaches the program before the session connects, so a
+        // frame composited while connecting is waiting when T0 is read: it
+        // is stamped 9.5s against a T0 of 10s.
+        let (programStream, continuation) = AsyncStream.makeStream(of: CapturedFrame.self)
+        continuation.yield(
+            CapturedFrame(pixelBuffer: pixelBuffer, presentationTime: CMTime(value: 95, timescale: 10)))
+        continuation.yield(
+            CapturedFrame(pixelBuffer: pixelBuffer, presentationTime: CMTime(value: 105, timescale: 10)))
+        continuation.finish()
+
+        let session = StreamSession(
+            programVideo: programStream,
+            programAudio: nil,
+            service: service,
+            destination: try Self.makeDestination(),
+            configuration: StreamConfiguration(),
+            policy: StreamSession.Policy(statsIntervalSeconds: 0),
+            clock: clock,
+            eventBus: eventBus
+        )
+        let runTask = Task { try await session.run() }
+
+        // The pump delivers in order, so once the second frame has arrived
+        // the first has already been through it.
+        let videoArrived = await eventually { !service.videoTimes.isEmpty }
+        #expect(videoArrived)
+        #expect(service.videoTimes == [CMTime(value: 5, timescale: 10)])
+
+        await session.stop()
+        _ = try await runTask.value
+    }
+
+    @Test("Program audio mixed before the session started is dropped, so the first block delivered is on the timeline")
+    func programAudioBeforeSessionStartIsDropped() async throws {
+        let clock = ManualClock()
+        clock.advance(to: CMTime(value: 10, timescale: 1))
+        let eventBus = EventBus()
+        let service = MockStreamingService()
+        // The backlog the app's tee holds while the destinations connect:
+        // blocks stamped 9.0s and 9.5s against a T0 of 10s, then live audio.
+        let (programAudio, continuation) = AsyncStream.makeStream(of: CapturedAudio.self)
+        continuation.yield(try #require(makeTestAudio(pts: CMTime(value: 90, timescale: 10))))
+        continuation.yield(try #require(makeTestAudio(pts: CMTime(value: 95, timescale: 10))))
+        continuation.yield(try #require(makeTestAudio(pts: CMTime(value: 100, timescale: 10))))
+        continuation.yield(try #require(makeTestAudio(pts: CMTime(value: 105, timescale: 10))))
+        continuation.finish()
+
+        let session = StreamSession(
+            programVideo: nil,
+            programAudio: programAudio,
+            service: service,
+            destination: try Self.makeDestination(),
+            configuration: StreamConfiguration(),
+            policy: StreamSession.Policy(statsIntervalSeconds: 0),
+            clock: clock,
+            eventBus: eventBus
+        )
+        let runTask = Task { try await session.run() }
+
+        // A block stamped exactly T0 is on the timeline, at zero.
+        let audioArrived = await eventually { service.audioTimes.count == 2 }
+        #expect(audioArrived)
+        #expect(service.audioTimes == [.zero, CMTime(value: 5, timescale: 10)])
+
+        await session.stop()
+        _ = try await runTask.value
+    }
+
+    @Test("A session time is on the timeline at zero and after, and off it before")
+    func sessionTimelineMembership() {
+        #expect(StreamSession.isOnSessionTimeline(.zero))
+        #expect(StreamSession.isOnSessionTimeline(CMTime(value: 1, timescale: 48_000)))
+        #expect(!StreamSession.isOnSessionTimeline(CMTime(value: -1, timescale: 48_000)))
+    }
+
     @Test("The configured duration ends the session with durationElapsed")
     func durationElapses() async throws {
         let clock = ManualClock()

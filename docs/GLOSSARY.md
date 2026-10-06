@@ -88,7 +88,9 @@ A project is the saved file for an entire show. A project contains presets. A pr
 
 **Program tick** — the host's pacing heartbeat, firing at the program frame rate on absolute master clock deadlines. Each tick, the compositor pulls the latest frame from every input, renders the current shot, and stamps the program frame with the tick's time. Inputs feed the tick; nothing but the tick drives the program.
 
-**Sync offset** — a signed millisecond adjustment applied to timestamps to correct unequal capture chain latency: a global A/V offset, plus per input offsets. A persisted, first class setting.
+**Mix tick** — the mixer's pacing heartbeat, the audio counterpart of the program tick: it fires once per program audio block on absolute master clock deadlines, on its own tick stream from the same clock. Each tick, the mixer consumes one block from every channel strip's queue, sums them into the program mix, and stamps the block with the tick's time. A late mix tick catches up rather than skipping, so program audio stays contiguous. See CLOCK.md.
+
+**Sync offset** — a signed millisecond adjustment applied to timestamps to correct unequal capture chain latency: a global A/V offset, plus per input offsets. A persisted, first class setting. Designed and not yet built; see CLOCK.md.
 
 ## Delivery
 
