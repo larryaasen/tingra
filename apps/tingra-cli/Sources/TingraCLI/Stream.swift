@@ -419,7 +419,10 @@ struct Stream: AsyncParsableCommand {
             clock: clock,
             eventBus: eventBus,
             recording: recordingService,
-            recordingFile: recordingFile
+            recordingFile: recordingFile,
+            // A stream left running must not be paused by the Mac idling to
+            // sleep (CLOCK.md, "System sleep and App Nap").
+            keepAwake: ProcessActivityKeepAwake()
         )
 
         // Ctrl-C / SIGTERM is a clean stop: flush compression, close the

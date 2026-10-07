@@ -19,7 +19,8 @@ import UniformTypeIdentifiers
 /// list and ending in Clear Menu; then **Save As…** (⇧⌘S), which writes
 /// the show to a new file and continues there, and **Reveal in Finder**.
 /// There is no Save and no Close: the document is always saved, and the
-/// window is the show.
+/// window is the show. (The windows beside it do close, under ⌘W:
+/// ``WindowCloseCommands``.)
 ///
 /// Not SwiftUI's `DocumentGroup`: that scene assumes N windows over N
 /// documents, each with its own model and a dirty state, and Tingra has one

@@ -8256,6 +8256,57 @@
           }
         }
       }
+    },
+    "Keep Mac Awake While Streaming or Recording" : {
+      "comment" : "General settings: checkbox that stops the Mac and its displays from sleeping while a stream or a recording runs",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mac beim Streamen oder Aufnehmen aktiv halten"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mantener el Mac activo al transmitir o grabar"
+          }
+        }
+      }
+    },
+    "Stops the Mac and its displays from going to sleep when idle, so a stream or a recording is not paused. Closing the lid or choosing Sleep still puts the Mac to sleep." : {
+      "comment" : "General settings: footer explaining what the keep awake checkbox does and does not prevent",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verhindert, dass der Mac und seine Displays bei Inaktivität in den Ruhezustand wechseln, damit ein Stream oder eine Aufnahme nicht angehalten wird. Beim Schließen des Displays oder mit „Ruhezustand“ wechselt der Mac weiterhin in den Ruhezustand."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impide que el Mac y sus pantallas entren en reposo por inactividad, para que una transmisión o una grabación no se detenga. Al cerrar la tapa o elegir Reposo, el Mac entra en reposo igualmente."
+          }
+        }
+      }
+    },
+    "Close" : {
+      "comment" : "File menu item closing the frontmost window, when it is not the main window",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schließen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cerrar"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

@@ -81,7 +81,10 @@ struct DaemonEngine {
                 cameraID: { SystemDefaultInputs.cameraID },
                 microphoneID: { SystemDefaultInputs.microphoneID }
             ),
-            destinationStore: destinations
+            destinationStore: destinations,
+            // An agent's stream runs unattended by definition, so the daemon
+            // holds the Mac awake for each session's length.
+            keepAwake: ProcessActivityKeepAwake()
         )
 
         self.clock = clock

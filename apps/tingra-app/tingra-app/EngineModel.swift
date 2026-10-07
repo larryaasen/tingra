@@ -409,6 +409,12 @@ final class EngineModel {
     /// (ARCHITECTURE.md, "Snapshots").
     private(set) var snapshotFolder: URL
 
+    /// Whether a stream or a recording holds the Mac awake for its length,
+    /// from machine-local preferences (CLOCK.md, "System sleep and App
+    /// Nap"). Live: turning it off mid-session lets the Mac sleep again at
+    /// once, and turning it on takes the hold at once (``KeepAwakeSwitch``).
+    private(set) var keepsMacAwake: Bool
+
     /// Bumped whenever the snapshots folder's contents or the folder itself
     /// change by Tingra's hand — a save, a trash, a folder choice — so the
     /// Library's Snapshots tab re-reads the listing on the event rather than
@@ -1217,7 +1223,9 @@ final class EngineModel {
 
     /// The active stream session, or nil when not streaming (v1's one active
     /// session — GLOSSARY.md, "Session").
-    @ObservationIgnored private var streamSession: StreamSession?
+    @ObservationIgnored private var streamSession: StreamSession? {
+        didSet { updateKeepAwakeSwitch() }
+    }
 
     /// The task running the active session's `run()`, retained so its outcome
     /// resolves the status and cleans up.
@@ -1251,7 +1259,9 @@ final class EngineModel {
     /// the app"). This is not a second *stream*: v1's one-active-session rule
     /// governs what is on air, and a session with no destination puts nothing
     /// on air.
-    @ObservationIgnored private var recordSession: StreamSession?
+    @ObservationIgnored private var recordSession: StreamSession? {
+        didSet { updateKeepAwakeSwitch() }
+    }
 
     /// The task running the recording session's `run()`.
     @ObservationIgnored private var recordTask: Task<Void, Never>?
@@ -1261,6 +1271,24 @@ final class EngineModel {
 
     /// Where the operator's snapshots folder lives.
     @ObservationIgnored private let snapshotPreferences: SnapshotPreferences
+
+    /// Where the operator's Keep Mac Awake choice lives.
+    @ObservationIgnored private let keepAwakePreferences: KeepAwakePreferences
+
+    /// Holds the Mac awake while a stream or a recording runs and
+    /// ``keepsMacAwake`` is on. The app's sessions are handed no keep-awake
+    /// of their own; this owns the one hold for both.
+    @ObservationIgnored private let keepAwakeSwitch: KeepAwakeSwitch
+
+    /// Whether the Mac is being held awake right now.
+    var isHoldingMacAwake: Bool { keepAwakeSwitch.isHolding }
+
+    /// Tells the switch whether a session is running, from the two session
+    /// references — set when a session starts and cleared only after its
+    /// run has returned, so the hold covers a recording being finalized.
+    private func updateKeepAwakeSwitch() {
+        keepAwakeSwitch.isSessionRunning = streamSession != nil || recordSession != nil
+    }
 
     /// Renders and writes snapshots, off the main actor (``SnapshotWriter``).
     @ObservationIgnored private let snapshotWriter = SnapshotWriter()
@@ -1607,12 +1635,19 @@ final class EngineModel {
     ///   - recordingPreferences: Where the recordings folder and container
     ///     persist (the standard defaults by default; a throwaway suite in
     ///     tests, for the same reason).
+    ///   - keepAwakePreferences: Where the Keep Mac Awake choice persists
+    ///     (the standard defaults by default; a throwaway suite in tests).
+    ///   - keepAwake: What the Mac is held awake through while a session
+    ///     runs (the system-backed one by default; a double in tests, so no
+    ///     test takes a power assertion).
     init(
         monitor: any AudioMonitor = AVAudioEngineMonitor(),
         monitorPreferences: MonitorPreferences = MonitorPreferences(),
         authorization: any AuthorizationChecking = SystemAuthorization(),
         snapshotPreferences: SnapshotPreferences = SnapshotPreferences(),
-        recordingPreferences: RecordingPreferences = RecordingPreferences()
+        recordingPreferences: RecordingPreferences = RecordingPreferences(),
+        keepAwakePreferences: KeepAwakePreferences = KeepAwakePreferences(),
+        keepAwake: any KeepAwake = ProcessActivityKeepAwake()
     ) {
         self.monitor = monitor
         self.projectURL = ProjectStore().fileURL
@@ -1627,6 +1662,10 @@ final class EngineModel {
         self.recordingFolder = recordingPreferences.folder
         self.recordingContainer = recordingPreferences.container
         self.snapshotFolder = snapshotPreferences.folder
+        self.keepAwakePreferences = keepAwakePreferences
+        self.keepsMacAwake = keepAwakePreferences.isEnabled
+        self.keepAwakeSwitch = KeepAwakeSwitch(
+            keepAwake: keepAwake, eventBus: eventBus, isEnabled: keepAwakePreferences.isEnabled)
         let meterRelay = MeterRelay()
         self.meterRelay = meterRelay
         self.meterDisplayLink = MeterDisplayLink(relay: meterRelay)
@@ -4401,6 +4440,19 @@ final class EngineModel {
                 String(localized: "Layer", comment: "Title of the Layer menu, arranging the selected layer")
             }
         }
+    }
+
+    /// Turns holding the Mac awake during a stream or a recording on or off,
+    /// persisting the choice as a machine-local preference. It takes effect
+    /// at once, on a session already running too.
+    ///
+    /// - Parameter isEnabled: Whether a session should hold the Mac awake.
+    func setKeepsMacAwake(_ isEnabled: Bool) {
+        guard isEnabled != keepsMacAwake else { return }
+        keepsMacAwake = isEnabled
+        keepAwakePreferences.isEnabled = isEnabled
+        keepAwakeSwitch.isEnabled = isEnabled
+        eventBus.event("keepAwake.settingChanged", domain: .platform, params: ["enabled": .bool(isEnabled)])
     }
 
     /// Points snapshots at a different folder, persisting the choice as a

@@ -223,6 +223,13 @@ internal surface a reader needs to navigate the target instead.
   own timebase, so a system sleep pauses the grid rather than moving it) that
   skips late ticks (jumping to the latest due deadline, newest-only buffering)
   or catches up, per the consumer's `LateTickPolicy`.
+- `KeepAwake` — the seam a `StreamSession` holds the Mac and the process
+  awake through for the length of its run (CLOCK.md, "System sleep and App
+  Nap"); a protocol so tests count holds and an embedder may pass none.
+- `KeepAwakeHold` — one hold taken through `KeepAwake`, released once.
+- `ProcessActivityKeepAwake` — the system-backed `KeepAwake`: one
+  `ProcessInfo` activity that disables idle system sleep and idle display
+  sleep and opts the process out of App Nap. Idle sleep only.
 - `InputRegistry` — the actor where input plug-ins register the inputs they
   contribute and the engine resolves them from (by stable ID, listing index, or
   unique name substring via `resolveInput(selector:ofKind:)`); the host's
@@ -1684,6 +1691,12 @@ surface is:
   rather than off, and both
   faults drawing a warning triangle; plus the informational `programFormat`
   reading, lamp always off, whose label is `ProgramFormatChoice.label(for:)`.
+- `KeepAwakePreferences` — whether a stream or a recording holds the Mac
+  awake: machine-local `UserDefaults` on the `StatusBarPreferences` pattern,
+  on for a fresh install; `EngineModel.keepsMacAwake` mirrors it.
+- `KeepAwakeSwitch` — owns the app's one hold on the Mac: held exactly while
+  a stream or a recording is running and the setting is on, so the setting
+  is live mid-session (CLOCK.md, "System sleep and App Nap").
 - `StatusBarPreferences` — whether the bar is shown: machine-local
   `UserDefaults` on the `AppearancePreferences` pattern, shown on a fresh
   install, the presence of the key checked first so a missing value does not
@@ -2161,6 +2174,11 @@ surface is:
   file the operator named and placed (`init(fileURL:)`), with the `name` the
   window title shows; sets the default project's unreadable file aside
   rather than overwriting it.
+- `WindowCloseCommands` — File ▸ Close under ⌘W for the windows beside the
+  main one (Settings, Multiview, the log, a plug-in's window), each marked
+  with `closesWithCloseCommand()`; disabled while the main window is key,
+  which has no Close. Restores what `ProjectCommands` replacing the save
+  group removed.
 - `ProjectCommands` — the File menu's project items (2026-09-13;
   ARCHITECTURE.md, "Projects as documents"): New Project… (⌘N), Open… (⌘O),
   an Open Recent submenu over `EngineModel.recentProjectURLs` ending in Clear

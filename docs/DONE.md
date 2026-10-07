@@ -1712,6 +1712,40 @@ there.
   Left open in TODO.md: an SRT offset seen on the way, and an integration
   scenario.
 
+- [x] **A session holds the Mac awake. Built 2026-10-06.** Nothing held a
+  power assertion or declared an activity, so an idle sleep paused a live
+  stream or recording for its length. Checked first, as the item asked:
+  `pmset -g assertions` shows `coreaudiod` holding
+  `PreventUserIdleSystemSleep` for any process with a live audio input or
+  output, so a session with a microphone or the monitor playing was already
+  kept awake by accident. A generators-only session held nothing, and
+  nothing held the displays.
+
+  **The seam** is `KeepAwake` in `TingraHost`, with `ProcessActivityKeepAwake`
+  behind it: one `ProcessInfo` activity (`.userInitiated`,
+  `.idleDisplaySleepDisabled`, `.latencyCritical`), which is idle system
+  sleep, idle display sleep, and App Nap in one call and needs no IOKit.
+  `StreamSession.run()` takes the hold before its first input starts and
+  releases it after teardown, so the CLI, the daemon, and both of the app's
+  sessions get it from the one place. The displays are held because a display
+  sleep ends a ScreenCaptureKit capture and the CLI cannot restart one. The
+  hold and its release are `keepAwake.held` and `keepAwake.released`, `trace`
+  group, so `--json` output is unchanged.
+
+  **The setting** is Settings > General > Keep Mac Awake While Streaming or
+  Recording, on by default, a machine-local preference
+  (`KeepAwakePreferences`). It is live (Larry, 2026-10-06): the app hands its
+  sessions no keep-awake and owns one hold in `KeepAwakeSwitch`, held while a
+  session is running and the setting is on, so the checkbox works
+  mid-session. The CLI and the daemon always hold, displays included, with
+  no flag to turn it off (decided the same day).
+
+  Seen working in `tingra-cli`: a bars and tone stream to the simulator
+  listed both assertions under its pid, named "Tingra is streaming or
+  recording", and neither after it ended. Larry checked the app (2026-10-06,
+  before the setting became live). TingraHost 312 tests, TingraMCP 138, app
+  826.
+
 ## Decisions to settle
 
 - [x] **The app's secure storage, and the daemon's — decided and recorded

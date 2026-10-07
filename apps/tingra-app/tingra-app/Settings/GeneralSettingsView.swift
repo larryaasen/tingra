@@ -12,7 +12,8 @@ import TingraEventBus
 import UniformTypeIdentifiers
 
 /// The General settings pane: the app's Appearance, System / Light / Dark,
-/// whether the windows carry a status bar, and where snapshots are saved.
+/// whether the windows carry a status bar, whether a stream or a recording
+/// keeps the Mac awake, and where snapshots are saved.
 ///
 /// A grouped `Form` with the control on the trailing edge of a labeled row —
 /// the shape every settings pane on macOS 26 has, and the one that keeps a
@@ -42,6 +43,13 @@ struct GeneralSettingsView: View {
     /// (Larry, 2026-09-12; it was in the Recording pane as first built):
     /// a snapshot is taken from any monitor at any time, so where it lands is
     /// not part of setting up a recording.
+    ///
+    /// **Keep Mac Awake** sits between them in a section of its own: it is
+    /// neither dressing nor a folder, and it needs a footer to say what it
+    /// cannot do. One toggle for streaming and recording both, because the
+    /// sleep it prevents pauses either the same way (CLOCK.md, "System sleep
+    /// and App Nap"); it lives here rather than in the Streaming or the
+    /// Recording pane for that reason.
     var body: some View {
         Form {
             Section {
@@ -57,6 +65,22 @@ struct GeneralSettingsView: View {
                         comment: "General settings: checkbox showing or hiding the bar across the bottom of the windows"
                     )
                 }
+            }
+
+            Section {
+                Toggle(isOn: keepAwakeSelection) {
+                    Text(
+                        "Keep Mac Awake While Streaming or Recording",
+                        comment:
+                            "General settings: checkbox that stops the Mac and its displays from sleeping while a stream or a recording runs"
+                    )
+                }
+            } footer: {
+                Text(
+                    "Stops the Mac and its displays from going to sleep when idle, so a stream or a recording is not paused. Closing the lid or choosing Sleep still puts the Mac to sleep.",
+                    comment:
+                        "General settings: footer explaining what the keep awake checkbox does and does not prevent"
+                )
             }
 
             Section {
@@ -96,6 +120,22 @@ struct GeneralSettingsView: View {
             }
         }
         .formStyle(.grouped)
+    }
+
+    /// The keep-awake binding, reporting its own `tap` before the change
+    /// lands and writing through the model, which persists the choice.
+    private var keepAwakeSelection: Binding<Bool> {
+        Binding {
+            model.keepsMacAwake
+        } set: { isEnabled in
+            model.setKeepsMacAwake(isEnabled)
+        }
+        .reportingTap(
+            to: model.eventBus,
+            "keepAwake.checkbox",
+            domain: .platform,
+            params: { ["enabled": .bool($0)] }
+        )
     }
 
     /// The status bar binding, reporting its own `tap` before the change

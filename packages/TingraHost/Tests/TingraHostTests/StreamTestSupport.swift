@@ -14,6 +14,8 @@ import Synchronization
 import TingraEventBus
 import TingraPlugInKit
 
+@testable import TingraHost
+
 /// Collects the events a session emits on the bus, so a test can assert on
 /// the status stream a sink would see. Shared by every suite that drives a
 /// ``StreamSession``.
@@ -538,4 +540,52 @@ func makeTestAudio(pts: CMTime, samples: Int = 256, sampleRate: Int = 48_000) ->
         let sample = sampleOut
     else { return nil }
     return CapturedAudio(sampleBuffer: sample)
+}
+
+/// A keep-awake that counts its holds instead of taking a power assertion —
+/// the double behind the `KeepAwake` seam.
+final class CountingKeepAwake: KeepAwake, Sendable {
+    /// What the double has seen.
+    private struct State: Sendable {
+        /// The reason of every hold taken, in order.
+        var reasons: [String] = []
+        /// How many holds were released (a second release of one hold is
+        /// not counted twice).
+        var releases = 0
+    }
+
+    /// The counters, shared with every hold handed out.
+    private let state = Mutex(State())
+
+    /// One counted hold.
+    private final class Hold: KeepAwakeHold, Sendable {
+        /// Whether this hold was already released.
+        private let released = Mutex(false)
+        /// Called on the first release.
+        private let onRelease: @Sendable () -> Void
+
+        /// Creates a hold that reports its first release.
+        init(onRelease: @escaping @Sendable () -> Void) {
+            self.onRelease = onRelease
+        }
+
+        func release() {
+            let first = released.withLock { released in
+                defer { released = true }
+                return !released
+            }
+            if first { onRelease() }
+        }
+    }
+
+    func hold(reason: String) -> any KeepAwakeHold {
+        state.withLock { $0.reasons.append(reason) }
+        return Hold { [weak self] in self?.state.withLock { $0.releases += 1 } }
+    }
+
+    /// The reason of every hold taken.
+    var reasons: [String] { state.withLock { $0.reasons } }
+
+    /// How many holds are still out.
+    var liveHolds: Int { state.withLock { $0.reasons.count - $0.releases } }
 }

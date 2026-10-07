@@ -402,6 +402,15 @@ public actor StreamSession {
     /// whose `--json` output is unchanged by an absent param.
     private let label: String?
 
+    /// What holds the Mac and the process awake for the length of
+    /// ``run()``, or nil when the caller wants no hold (CLOCK.md, "System
+    /// sleep and App Nap").
+    private let keepAwake: (any KeepAwake)?
+
+    /// The reason a session's hold carries, as `pmset -g assertions` shows
+    /// it.
+    public static let keepAwakeReason = "Tingra is streaming or recording"
+
     /// The session's finished signal: ``finish(_:)`` yields exactly one
     /// outcome and ``run()`` awaits it.
     private let outcome: AsyncStream<Outcome>
@@ -452,6 +461,8 @@ public actor StreamSession {
     ///     stream-only session.
     ///   - recordingFile: Where the recording is written; required when
     ///     `recording` is present, ignored otherwise.
+    ///   - keepAwake: What holds the Mac awake while the session runs, or
+    ///     nil (the default) to hold nothing.
     public init(
         videoInput: (any Input)?,
         audioInput: (any Input)?,
@@ -461,7 +472,8 @@ public actor StreamSession {
         clock: any EngineClock,
         eventBus: EventBus,
         recording: (any RecordingService)? = nil,
-        recordingFile: RecordingFile? = nil
+        recordingFile: RecordingFile? = nil,
+        keepAwake: (any KeepAwake)? = nil
     ) {
         self.init(
             videoSource: videoInput.map(VideoSource.input),
@@ -472,7 +484,8 @@ public actor StreamSession {
             clock: clock,
             eventBus: eventBus,
             recording: recording,
-            recordingFile: recordingFile
+            recordingFile: recordingFile,
+            keepAwake: keepAwake
         )
     }
 
@@ -495,6 +508,8 @@ public actor StreamSession {
     ///     stream-only session.
     ///   - recordingFile: Where the recording is written; required when
     ///     `recording` is present, ignored otherwise.
+    ///   - keepAwake: What holds the Mac awake while the session runs, or
+    ///     nil (the default) to hold nothing.
     public init(
         videoInput: (any Input)?,
         audioInput: (any Input)?,
@@ -505,7 +520,8 @@ public actor StreamSession {
         clock: any EngineClock,
         eventBus: EventBus,
         recording: (any RecordingService)? = nil,
-        recordingFile: RecordingFile? = nil
+        recordingFile: RecordingFile? = nil,
+        keepAwake: (any KeepAwake)? = nil
     ) {
         self.init(
             videoSource: videoInput.map(VideoSource.input),
@@ -516,7 +532,8 @@ public actor StreamSession {
             clock: clock,
             eventBus: eventBus,
             recording: recording,
-            recordingFile: recordingFile
+            recordingFile: recordingFile,
+            keepAwake: keepAwake
         )
     }
 
@@ -540,6 +557,8 @@ public actor StreamSession {
     ///   - recording: The recording service, or nil for a stream-only session.
     ///   - recordingFile: Where the recording is written; required when
     ///     `recording` is present, ignored otherwise.
+    ///   - keepAwake: What holds the Mac awake while the session runs, or
+    ///     nil (the default) to hold nothing.
     public init(
         programVideo: AsyncStream<CapturedFrame>?,
         programAudio: AsyncStream<CapturedAudio>? = nil,
@@ -550,7 +569,8 @@ public actor StreamSession {
         eventBus: EventBus,
         recording: (any RecordingService)? = nil,
         recordingFile: RecordingFile? = nil,
-        label: String? = nil
+        label: String? = nil,
+        keepAwake: (any KeepAwake)? = nil
     ) {
         self.init(
             videoSource: programVideo.map(VideoSource.program),
@@ -562,7 +582,8 @@ public actor StreamSession {
             eventBus: eventBus,
             recording: recording,
             recordingFile: recordingFile,
-            label: label
+            label: label,
+            keepAwake: keepAwake
         )
     }
 
@@ -585,6 +606,8 @@ public actor StreamSession {
     ///   - recording: The recording service, or nil for a stream-only session.
     ///   - recordingFile: Where the recording is written; required when
     ///     `recording` is present, ignored otherwise.
+    ///   - keepAwake: What holds the Mac awake while the session runs, or
+    ///     nil (the default) to hold nothing.
     public init(
         programVideo: AsyncStream<CapturedFrame>?,
         programAudio: AsyncStream<CapturedAudio>? = nil,
@@ -595,7 +618,8 @@ public actor StreamSession {
         clock: any EngineClock,
         eventBus: EventBus,
         recording: (any RecordingService)? = nil,
-        recordingFile: RecordingFile? = nil
+        recordingFile: RecordingFile? = nil,
+        keepAwake: (any KeepAwake)? = nil
     ) {
         self.init(
             videoSource: programVideo.map(VideoSource.program),
@@ -606,7 +630,8 @@ public actor StreamSession {
             clock: clock,
             eventBus: eventBus,
             recording: recording,
-            recordingFile: recordingFile
+            recordingFile: recordingFile,
+            keepAwake: keepAwake
         )
     }
 
@@ -630,6 +655,10 @@ public actor StreamSession {
     ///   - recording: The recording service, or nil for a stream-only session.
     ///   - recordingFile: Where the recording is written; required when
     ///     `recording` is present, ignored otherwise.
+    ///   - label: What the session calls itself on `stream.started` and
+    ///     `stream.stopped`, or nil.
+    ///   - keepAwake: What holds the Mac awake while the session runs, or
+    ///     nil to hold nothing.
     private init(
         videoSource: VideoSource?,
         audioSource: AudioSource?,
@@ -640,7 +669,8 @@ public actor StreamSession {
         eventBus: EventBus,
         recording: (any RecordingService)?,
         recordingFile: RecordingFile?,
-        label: String? = nil
+        label: String? = nil,
+        keepAwake: (any KeepAwake)?
     ) {
         self.videoSource = videoSource
         self.audioSource = audioSource
@@ -653,6 +683,7 @@ public actor StreamSession {
         self.recording = recording
         self.recordingFile = recordingFile
         self.label = label
+        self.keepAwake = keepAwake
         (self.outcome, self.outcomeContinuation) = AsyncStream.makeStream(of: Outcome.self)
         (self.liveStatistics, self.liveStatisticsContinuation) = AsyncStream.makeStream(
             of: [LegStatistics].self,
@@ -681,6 +712,18 @@ public actor StreamSession {
         // However the run ends — a start-time throw or an outcome — the
         // readout has nothing more to say.
         defer { liveStatisticsContinuation.finish() }
+
+        // Held from before the first input starts until the teardown below
+        // has finished, so an idle sleep cannot pause the master clock under
+        // a connect, a live run, or a recording being finalized.
+        let hold = keepAwake?.hold(reason: Self.keepAwakeReason)
+        if hold != nil { eventBus.trace("keepAwake.held", domain: .platform, params: keepAwakeParams) }
+        defer {
+            if let hold {
+                hold.release()
+                eventBus.trace("keepAwake.released", domain: .platform, params: keepAwakeParams)
+            }
+        }
 
         // Only a session-owned capture input is started here; a program
         // source is driven by the caller's compositor or mixer, already
@@ -879,6 +922,12 @@ public actor StreamSession {
             domain: .output,
             params: ["path": .string(recordingFile.url.path)]
         )
+    }
+
+    /// The params of the two keep-awake traces: the session's label when it
+    /// has one, so the app's streaming and recording holds read apart.
+    private var keepAwakeParams: [String: EventValue]? {
+        label.map { ["session": .string($0)] }
     }
 
     /// Resolves the session with an outcome exactly once.

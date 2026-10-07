@@ -19,8 +19,10 @@ here, under "Left open from “…”", pointing at its record there.
   Remaining: run the new build, put Display 2 in a shot, `pmset
   displaysleepnow`, wake, and confirm the layer moves again and the log
   shows the interrupted/resumed pair. `tingra-cli` cannot restart (a
-  command-line process receives no screen wake notification) — decide
-  whether that wants `caffeinate -d` guidance in CLI.md or more.
+  command-line process receives no screen wake notification); since
+  2026-10-06 a session holds the displays out of idle sleep instead
+  (CLOCK.md, "System sleep and App Nap"), so only a display slept by hand
+  reaches that case.
 
 - [ ] **SRT reconnect on a mid-stream loss.** HaishinKit 2.x's SRT publish
   path pushes no event when a live link dies (`SRTConnection.connected` flips
@@ -283,15 +285,6 @@ the rule each of these breaks or leaves unbuilt.
     A/V offset, and its generators have no sync signal. A flash-and-beep
     generator plus a server side onset check would hold this fix and catch
     the SRT offset above.
-
-- [ ] **Nothing keeps the Mac or the process awake during a session.** No
-  power assertion, no declared activity, and no App Nap opt-out anywhere in
-  the engine or the app, so an idle sleep pauses a live stream or recording
-  for its length (CLOCK.md, "System sleep and App Nap"). First check whether
-  a running capture session already holds the Mac awake (`pmset -g
-  assertions` during a stream). Then hold one for the life of a session,
-  behind a host seam so the CLI and the daemon get it too. Related: the
-  `caffeinate -d` question in the display sleep item above.
 
 - [ ] **The SRT service measures its frame rate on its own clock.**
   `SRTHaishinKitStreamingService` keeps a `ContinuousClock` for its frames

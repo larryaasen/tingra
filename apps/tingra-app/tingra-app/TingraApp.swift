@@ -152,6 +152,7 @@ struct TingraApp: App {
         }
         .commands {
             ProjectCommands(model: model)
+            WindowCloseCommands(model: model)
             PlugInCommands(model: model, host: plugInHost)
             SidebarVisibilityCommands(model: model, visibility: $sidebarVisibility)
             InspectorCommands(model: model, isPresented: $isInspectorPresented)
@@ -184,6 +185,7 @@ struct TingraApp: App {
             MultiviewView(model: model, statusBar: statusBar)
                 .frame(minWidth: 640, minHeight: 400)
                 .environment(plugInHost)
+                .closesWithCloseCommand()
         }
 
         // Settings is a `Window` rather than the `Settings` scene, for one
@@ -211,6 +213,7 @@ struct TingraApp: App {
         ) {
             SettingsView(model: model, appearance: appearance, statusBar: statusBar, uptime: uptime)
                 .environment(plugInHost)
+                .closesWithCloseCommand()
         }
         .windowResizability(.contentMinSize)
         .commandsRemoved()
@@ -228,6 +231,7 @@ struct TingraApp: App {
         ) {
             LogWindowView(model: model)
                 .frame(minWidth: 560, minHeight: 320)
+                .closesWithCloseCommand()
         }
         .defaultSize(width: 1000, height: 640)
         .commandsRemoved()
@@ -242,6 +246,7 @@ struct TingraApp: App {
         WindowGroup(id: Self.plugInWindowID, for: PaneID.self) { $window in
             PlugInWindowView(window: window, host: plugInHost)
                 .frame(minWidth: 320, minHeight: 240)
+                .closesWithCloseCommand()
         }
         .defaultSize(width: 640, height: 480)
         .commandsRemoved()

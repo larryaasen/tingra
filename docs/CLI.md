@@ -278,6 +278,8 @@ Note that no reconnect attempt is ever made for the **initial** connection, on a
 | `--duration <sec>` | Stop automatically after N seconds. |
 | `--dry-run` | Resolve inputs, build the pipeline, print the resolved configuration, and exit without connecting. See "Dry run" below. |
 
+**The Mac stays awake.** A running `stream` holds the Mac and its displays out of idle sleep until it ends, because a system sleep pauses the stream for its length and a display sleep ends a display capture (CLOCK.md, "System sleep and App Nap"). No flag: a stream that sleeps is never what was asked for. A closed lid or the Sleep menu item still sleeps the Mac. The `serve` daemon does the same for each session it runs, and holds nothing while idle.
+
 #### Status events
 
 The `--json` status events are bus events on the standard NDJSON stream (EVENTS.md): one source of truth for humans, scripts, and agents. All are `event`-group events in the `output` domain; their param names mirror `stream.plan`'s and are a stable scripting contract (append-only, like every JSON shape here).

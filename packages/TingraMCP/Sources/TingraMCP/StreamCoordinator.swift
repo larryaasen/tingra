@@ -239,6 +239,10 @@ public actor StreamCoordinator {
     /// The system default input provider.
     private let defaults: StreamDefaults
 
+    /// What holds the Mac awake while a session runs, or nil to hold
+    /// nothing (CLOCK.md, "System sleep and App Nap").
+    private let keepAwake: (any KeepAwake)?
+
     /// Creates a coordinator.
     ///
     /// - Parameters:
@@ -250,6 +254,8 @@ public actor StreamCoordinator {
     ///   - defaults: The system default input provider.
     ///   - destinationStore: The operator's saved destinations, which a
     ///     `destination` selector resolves against (default: none).
+    ///   - keepAwake: What holds the Mac awake while a session runs
+    ///     (default: nothing; the daemon passes the system-backed one).
     public init(
         inputs: InputRegistry,
         outputs: OutputRegistry,
@@ -257,7 +263,8 @@ public actor StreamCoordinator {
         eventBus: EventBus,
         clock: any EngineClock,
         defaults: StreamDefaults,
-        destinationStore: DestinationStore? = nil
+        destinationStore: DestinationStore? = nil,
+        keepAwake: (any KeepAwake)? = nil
     ) {
         self.inputs = inputs
         self.outputs = outputs
@@ -266,6 +273,7 @@ public actor StreamCoordinator {
         self.clock = clock
         self.defaults = defaults
         self.destinationStore = destinationStore
+        self.keepAwake = keepAwake
     }
 
     /// Whether a stream is currently active — the idle-exit guard reads this
@@ -323,7 +331,8 @@ public actor StreamCoordinator {
             clock: clock,
             eventBus: eventBus,
             recording: recordingService,
-            recordingFile: recordingFile
+            recordingFile: recordingFile,
+            keepAwake: keepAwake
         )
         let id = "stream-" + UUID().uuidString.prefix(8).lowercased()
 
