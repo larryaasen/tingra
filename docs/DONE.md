@@ -1677,6 +1677,10 @@ there.
   `streamResumeDecline.button`, then `stream.resumeOffered` with the
   destination count. Five strings with `de`/`es`; tests for the record, the
   decision, every stop reason removing the marker, and the skip paths.
+  After review the same day: the resume starts only the destinations the
+  alert named, the marker leaves out a destination that rejected the
+  connection, and the file is listed in the Data pane as
+  `AppDataKind.liveStream`.
   Checked in the running app: the alert and Don't Resume against a planted
   marker, then Larry's own run of the resume on 2026-10-08, which worked.
   Record: ARCHITECTURE.md, "Offering to resume a stream after the app dies".

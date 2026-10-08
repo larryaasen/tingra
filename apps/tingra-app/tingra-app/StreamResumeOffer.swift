@@ -55,6 +55,20 @@ enum StreamResumeOffer: Equatable {
         }
     }
 
+    /// The destinations a stream that just went live is on air to, as the
+    /// record names them: the streamable ones, less any that rejected the
+    /// connection at start. A rejected destination was never live, and the
+    /// next launch must not say it was or try it again.
+    ///
+    /// - Parameters:
+    ///   - destinations: The project's destinations, in order.
+    ///   - states: Each destination's state as the session has reported it.
+    static func liveDestinationIDs(
+        of destinations: [DestinationEdit], states: [ProjectDestinationID: EngineModel.DestinationState]
+    ) -> [String] {
+        DestinationEdit.streamable(in: destinations).filter { states[$0.id] != .rejected }.map(\.id.rawValue)
+    }
+
     /// Decides the offer from what the launch found.
     ///
     /// The launch must have opened the project the record names, and at

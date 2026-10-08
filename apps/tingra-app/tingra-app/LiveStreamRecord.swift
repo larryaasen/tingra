@@ -45,7 +45,8 @@ struct LiveStreamRecord: Sendable {
         /// The project document that was open when the stream went live.
         let project: URL
 
-        /// The IDs of the destinations the session streamed to.
+        /// The IDs of the destinations the session went live to. A
+        /// destination that rejected the connection at start is not one.
         let destinations: [String]
 
         /// When the stream went live.

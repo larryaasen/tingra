@@ -1915,8 +1915,8 @@ final class EngineModel {
     /// `stream.resumeSkipped`. The click goes on the bus before its effect,
     /// then `stream.resumeOffered` with the number of destinations named —
     /// counts only, never a URL or a key. Resuming is an ordinary
-    /// ``startStreaming()``: the project's enabled destinations are the ones
-    /// recorded, since destinations cannot be edited while live.
+    /// ``startStreaming(only:)`` narrowed to the destinations the question
+    /// named, so one added or enabled since stays off air.
     ///
     /// - Parameter ask: Asks the operator, naming the destinations and when
     ///   the stream went live (the alert by default; a scripted answer in
@@ -1938,7 +1938,7 @@ final class EngineModel {
             eventBus.tap(answer.tapName, domain: .output)
             eventBus.event("stream.resumeOffered", domain: .output, params: ["destinations": .int(offered.count)])
             if answer == .resume {
-                await startStreaming()
+                await startStreaming(only: Set(offered.map(\.id)))
             }
         }
     }
@@ -4073,9 +4073,14 @@ final class EngineModel {
     /// path). Until 2026-09-08 the keys arrived as a value collected from the
     /// main window's rows at the click; the rows now live in the settings
     /// window, and a click in one window cannot read fields in another.
-    func startStreaming() async {
+    ///
+    /// - Parameter only: The destinations to stream to, or `nil` for every
+    ///   streamable one. A resume names the ones its offer did
+    ///   (``offerStreamResume(ask:)``), so a destination added or enabled
+    ///   since cannot go on air unannounced.
+    func startStreaming(only: Set<ProjectDestinationID>?) async {
         guard streamSession == nil else { return }
-        let streamable = destinations.filter(\.isStreamable)
+        let streamable = DestinationEdit.streamable(in: destinations, only: only)
         guard !streamable.isEmpty else {
             streamStatus = .error(
                 String(
@@ -4185,6 +4190,13 @@ final class EngineModel {
             }
             self?.teardownStream()
         }
+    }
+
+    /// Puts the program on air to every streamable destination: what the
+    /// Start control and the `program_stream_start` tool ask for
+    /// (``startStreaming(only:)`` with no narrowing).
+    func startStreaming() async {
+        await startStreaming(only: nil)
     }
 
     /// Takes the program off air: requests a clean stop of the active session
@@ -4782,11 +4794,14 @@ final class EngineModel {
             // On air from here: a run that ends before `stream.stopped` is
             // one the next launch offers to resume. IDs only, never a URL
             // or a key. The legs are the streamable destinations, which
-            // cannot be edited while live.
+            // cannot be edited while live, less any that rejected the
+            // connection: the session reports those before it reports
+            // itself started, and they were never on air.
             liveStreamRecord.write(
                 LiveStreamRecord.Contents(
                     project: projectURL,
-                    destinations: destinations.filter(\.isStreamable).map(\.id.rawValue),
+                    destinations: StreamResumeOffer.liveDestinationIDs(
+                        of: destinations, states: destinationStates),
                     wentLive: event.date))
         case "stream.destination.started":
             setDestinationState(.live, for: destination)

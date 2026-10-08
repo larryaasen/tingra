@@ -7943,6 +7943,23 @@
         }
       }
     },
+    "Live Stream Marker" : {
+      "comment" : "Data settings: the name of the file marking a stream on air, read after a crash to offer resuming",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Livestream-Markierung"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Marcador de transmisión en directo"
+          }
+        }
+      }
+    },
     "Plug-ins Turned Off" : {
       "comment" : "Data settings: the name of the file recording which installed plug-ins are turned off",
       "localizations" : {

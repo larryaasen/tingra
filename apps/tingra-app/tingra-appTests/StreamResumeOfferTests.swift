@@ -205,6 +205,34 @@ struct StreamResumeOfferTests {
         #expect(StreamResumeOffer.SkipReason.noDestinations.rawValue == "noDestinations")
     }
 
+    @Test("a resume streams only to the destinations named, never one added or enabled since")
+    func resumeIsNarrowedToTheNamedDestinations() {
+        let added = DestinationEdit(id: ProjectDestinationID(rawValue: "new"), urlText: "rtmp://localhost/other")
+        var disabled = youtube
+        disabled.isEnabled = false
+        let all = [twitch, youtube, added]
+
+        #expect(DestinationEdit.streamable(in: all) == all)
+        #expect(DestinationEdit.streamable(in: all, only: [twitch.id]) == [twitch])
+        #expect(DestinationEdit.streamable(in: [twitch, disabled], only: [twitch.id, youtube.id]) == [twitch])
+        #expect(DestinationEdit.streamable(in: all, only: []).isEmpty)
+    }
+
+    @Test("the record names the destinations that went live, not one that rejected the connection")
+    func rejectedDestinationIsNotRecorded() {
+        var disabled = DestinationEdit(id: ProjectDestinationID(rawValue: "off"), urlText: "rtmp://localhost/off")
+        disabled.isEnabled = false
+        let all = [twitch, youtube, disabled]
+
+        #expect(StreamResumeOffer.liveDestinationIDs(of: all, states: [:]) == ["twitch", "youtube"])
+        #expect(
+            StreamResumeOffer.liveDestinationIDs(of: all, states: [twitch.id: .live, youtube.id: .rejected])
+                == ["twitch"])
+        #expect(
+            StreamResumeOffer.liveDestinationIDs(of: all, states: [twitch.id: .rejected, youtube.id: .rejected]).isEmpty
+        )
+    }
+
     @Test("each answer is its button's tap")
     func answerTaps() {
         #expect(StreamResumeOffer.Answer.resume.tapName == "streamResume.button")
