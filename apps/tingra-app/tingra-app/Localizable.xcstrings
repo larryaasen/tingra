@@ -7790,6 +7790,91 @@
         }
       }
     },
+    "Tingra quit while it was live." : {
+      "comment" : "Launch alert title after the app's last run ended while a stream was live",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tingra wurde beendet, während es live war."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tingra se cerró mientras estaba en directo."
+          }
+        }
+      }
+    },
+    "The stream to %@ went live %@." : {
+      "comment" : "Launch alert text; the first placeholder is the destinations' names, the second is the date and time the stream went live",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Stream an %@ ging %@ live."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La transmisión a %@ salió en directo el %@."
+          }
+        }
+      }
+    },
+    "Resuming starts a new stream to the same destinations. A recording is not resumed." : {
+      "comment" : "Launch alert text explaining what Resume Stream does",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beim Fortsetzen wird ein neuer Stream an dieselben Ziele gestartet. Eine Aufnahme wird nicht fortgesetzt."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Al reanudar se inicia una nueva transmisión a los mismos destinos. Una grabación no se reanuda."
+          }
+        }
+      }
+    },
+    "Resume Stream" : {
+      "comment" : "Launch alert button: go live again to the destinations the interrupted stream had",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Streaming fortsetzen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reanudar transmisión"
+          }
+        }
+      }
+    },
+    "Don't Resume" : {
+      "comment" : "Launch alert button: leave the interrupted stream stopped",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht fortsetzen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No reanudar"
+          }
+        }
+      }
+    },
     "Open in Safe Mode" : {
       "comment" : "Launch alert button: open the app without the plug-ins the operator installed",
       "localizations" : {

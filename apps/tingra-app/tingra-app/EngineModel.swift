@@ -1280,6 +1280,13 @@ final class EngineModel {
     /// of their own; this owns the one hold for both.
     @ObservationIgnored private let keepAwakeSwitch: KeepAwakeSwitch
 
+    /// The on-disk marker of the stream this run has on air: written when
+    /// the stream session goes live, removed when it stops and at a clean
+    /// quit, and read at the next launch to offer resuming a stream the app
+    /// died under (ARCHITECTURE.md, "Offering to resume a stream after the
+    /// app dies").
+    @ObservationIgnored private let liveStreamRecord: LiveStreamRecord
+
     /// Whether the Mac is being held awake right now.
     var isHoldingMacAwake: Bool { keepAwakeSwitch.isHolding }
 
@@ -1640,6 +1647,9 @@ final class EngineModel {
     ///   - keepAwake: What the Mac is held awake through while a session
     ///     runs (the system-backed one by default; a double in tests, so no
     ///     test takes a power assertion).
+    ///   - liveStreamRecord: The marker of the stream on air (the file in
+    ///     Tingra's Application Support folder by default; one over a
+    ///     temporary folder in tests).
     init(
         monitor: any AudioMonitor = AVAudioEngineMonitor(),
         monitorPreferences: MonitorPreferences = MonitorPreferences(),
@@ -1647,9 +1657,11 @@ final class EngineModel {
         snapshotPreferences: SnapshotPreferences = SnapshotPreferences(),
         recordingPreferences: RecordingPreferences = RecordingPreferences(),
         keepAwakePreferences: KeepAwakePreferences = KeepAwakePreferences(),
-        keepAwake: any KeepAwake = ProcessActivityKeepAwake()
+        keepAwake: any KeepAwake = ProcessActivityKeepAwake(),
+        liveStreamRecord: LiveStreamRecord = LiveStreamRecord()
     ) {
         self.monitor = monitor
+        self.liveStreamRecord = liveStreamRecord
         self.projectURL = ProjectStore().fileURL
         self.snapshotPreferences = snapshotPreferences
         self.recordingPreferences = recordingPreferences
@@ -1884,6 +1896,50 @@ final class EngineModel {
         if let url = pendingProjectURL {
             pendingProjectURL = nil
             await openProject(at: url)
+        }
+
+        // Last, with the project open, its destinations merged, and the
+        // program running: the operator can see what would go on air before
+        // answering. The safe mode offer was answered before the boot.
+        await offerStreamResume()
+    }
+
+    /// Offers to go live again when the last run ended while it was live,
+    /// and acts on the answer (ARCHITECTURE.md, "Offering to resume a stream
+    /// after the app dies").
+    ///
+    /// The marker is removed before anything else happens, so a second crash
+    /// before the answer cannot ask twice about the same stream. A marker
+    /// naming another project, or destinations that are no longer enabled
+    /// and streamable, asks nothing and is reported as
+    /// `stream.resumeSkipped`. The click goes on the bus before its effect,
+    /// then `stream.resumeOffered` with the number of destinations named —
+    /// counts only, never a URL or a key. Resuming is an ordinary
+    /// ``startStreaming()``: the project's enabled destinations are the ones
+    /// recorded, since destinations cannot be edited while live.
+    ///
+    /// - Parameter ask: Asks the operator, naming the destinations and when
+    ///   the stream went live (the alert by default; a scripted answer in
+    ///   tests).
+    func offerStreamResume(
+        ask: @MainActor (_ destinations: [String], _ wentLive: Date) -> StreamResumeOffer.Answer = {
+            StreamResumeAlert.ask(destinations: $0, wentLive: $1)
+        }
+    ) async {
+        let record = liveStreamRecord.read()
+        liveStreamRecord.remove()
+        switch StreamResumeOffer.decide(record: record, projectURL: projectURL, destinations: destinations) {
+        case .none:
+            break
+        case .skip(let reason):
+            eventBus.event("stream.resumeSkipped", domain: .output, params: ["reason": .string(reason.rawValue)])
+        case .ask(let offered, let wentLive):
+            let answer = ask(offered.map(\.displayName), wentLive)
+            eventBus.tap(answer.tapName, domain: .output)
+            eventBus.event("stream.resumeOffered", domain: .output, params: ["destinations": .int(offered.count)])
+            if answer == .resume {
+                await startStreaming()
+            }
         }
     }
 
@@ -4704,8 +4760,13 @@ final class EngineModel {
     /// colors its row without claiming the whole stream is in trouble
     /// (ARCHITECTURE.md, "Multiple destinations").
     ///
+    /// The stream session's `stream.started` and `stream.stopped` also keep
+    /// the ``LiveStreamRecord``: written when the stream goes live, removed
+    /// when it stops, whatever the reason. The recording session's events
+    /// never touch it. Not private, so a test can hand it a stop.
+    ///
     /// - Parameter event: An event drained from the bus.
-    private func handleStreamStatusEvent(_ event: EventBusEvent) {
+    func handleStreamStatusEvent(_ event: EventBusEvent) {
         // The recording runs its own session, which reports its own life with
         // the same two session-level event names. Its events belong to the
         // Record control, never to the streaming panel.
@@ -4718,6 +4779,15 @@ final class EngineModel {
         switch event.name {
         case "stream.started":
             setActiveStreamStatus(.live)
+            // On air from here: a run that ends before `stream.stopped` is
+            // one the next launch offers to resume. IDs only, never a URL
+            // or a key. The legs are the streamable destinations, which
+            // cannot be edited while live.
+            liveStreamRecord.write(
+                LiveStreamRecord.Contents(
+                    project: projectURL,
+                    destinations: destinations.filter(\.isStreamable).map(\.id.rawValue),
+                    wentLive: event.date))
         case "stream.destination.started":
             setDestinationState(.live, for: destination)
         case "stream.destination.rejected":
@@ -4759,6 +4829,10 @@ final class EngineModel {
                 : .stopped
             streamStats = nil
             destinationStats = [:]
+            // Whatever the reason: a stream that ended on its own was not
+            // cut short by the app dying, and offering to restart it would
+            // be wrong.
+            liveStreamRecord.remove()
         default:
             break
         }
@@ -4905,6 +4979,10 @@ final class EngineModel {
         // Before the bus shuts down, so its `project.saved` (or
         // `project.save` error) reaches the log with the rest of the quit.
         if autosaveTask != nil { saveProject() }
+        // A clean quit while live is the operator's choice: nothing to
+        // offer at the next launch, even if the stream's stop event never
+        // reaches the observer before the process exits.
+        liveStreamRecord.remove()
         await finishRecording()
         eventBus.shutdown()
         for task in logSinkTasks {
