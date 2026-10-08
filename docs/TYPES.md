@@ -1967,6 +1967,9 @@ surface is:
     `ActivationTable`; `AppPlugInLink.activate` launches the process if
     needed and sends `tingra/activation`), and re-hosts a pane one second
     after its process dies.
+    A batch is read through a `PlugInDiscoveryPlan`, so an extension the
+    system delivers again is refreshed in place (`plugin.refreshed`, a
+    trace) rather than registered twice.
     `AvailabilityCounts` is the system's enabled/disabled/unapproved counts,
     compared so `plugin.availability` is reported only when they change
     (Launch Services re-announces the same counts on every record update),
@@ -1986,6 +1989,11 @@ surface is:
     `MCPSession` with the plug-in's method handler, the plug-in "activated"
     while any is open; `PlugInHostError` is the one refusal, an identity whose
     bundle is not embedded (a third-party bundle is located in Phase 3).
+  - `PlugInDiscoveryPlan` — what a discovery batch means for the plug-ins
+    registered: `retired`, `arrived`, and `refreshed` (the same extension
+    delivered again under an identity unequal to the one held). It matches
+    by bundle identifier, never identity equality, and is generic over the
+    identity so the rule is tested without ExtensionKit (2026-10-08).
   - `ActivationTable` — the activation conditions every discovered plug-in
     declared, indexed by event name so each bus event costs one lookup: `add`
     and `removeAll(for:)` follow discovery, `matches(_:)` answers which
@@ -2520,7 +2528,8 @@ surface is:
     Resume reloads; a `log.cleared` line empties the list; closing lets every
     line go. A read that cannot complete is a `log.read` error and
     `readFailure`. `LogFileModel.clearedEventName` names the event both use.
-  - `LogWindowFilter` / `LogLaunchScope` — what the window shows: levels, taps,
+  - `LogWindowFilter` / `LogLaunchScope` — what the window shows: levels, taps
+    (governed by the taps choice alone, whatever the levels; 2026-10-08),
     one domain or all, all launches or this one (matched on the log session
     ID), and a `localizedStandardContains` search. A line that did not parse
     shows under every level and hides only under a domain or This Launch.

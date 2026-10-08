@@ -25,8 +25,8 @@ private let sleepyDisplay = DisplayDevice(
 )
 
 /// A scripted capture seam: records every capture it starts and stops, can
-/// refuse a start, and lets a test end a capture or deliver a frame through
-/// it as ScreenCaptureKit would.
+/// refuse or reject a start, and lets a test end a capture or deliver a frame
+/// through it as ScreenCaptureKit would.
 private final class FakeCaptures: Sendable {
     /// What one started capture was handed.
     private struct Started: Sendable {
@@ -43,6 +43,10 @@ private final class FakeCaptures: Sendable {
     /// The start attempts, counting refused ones, that throw.
     private let refusals: Set<Int>
 
+    /// The start attempts that throw as ScreenCaptureKit rejecting the
+    /// configuration, the display still being connected.
+    private let rejections: Set<Int>
+
     /// How many starts have been attempted.
     private let attempts = Mutex(0)
 
@@ -57,9 +61,14 @@ private final class FakeCaptures: Sendable {
 
     /// Creates the seam.
     ///
-    /// - Parameter refusals: The start attempts (0 is the first) that throw.
-    init(refusals: Set<Int> = []) {
+    /// - Parameters:
+    ///   - refusals: The start attempts (0 is the first) that throw as the
+    ///     display having disconnected.
+    ///   - rejections: The start attempts that throw as a rejected
+    ///     configuration.
+    init(refusals: Set<Int> = [], rejections: Set<Int> = []) {
         self.refusals = refusals
+        self.rejections = rejections
         (stops, stopContinuation) = AsyncStream.makeStream(of: Int.self)
     }
 
@@ -72,6 +81,9 @@ private final class FakeCaptures: Sendable {
             }
             if refusals.contains(attempt) {
                 throw CaptureInputError.deviceUnavailable(id)
+            }
+            if rejections.contains(attempt) {
+                throw CaptureInputError.configurationRejected(id, "The stream could not start")
             }
             let index = started.withLock { started in
                 started.append(Started(deliver: deliver, ended: ended))
@@ -167,9 +179,13 @@ private struct SleepHarness {
 
     /// Builds the harness.
     ///
-    /// - Parameter refusals: The start attempts that throw.
-    init(refusals: Set<Int> = []) {
-        let captures = FakeCaptures(refusals: refusals)
+    /// - Parameters:
+    ///   - refusals: The start attempts that throw as the display having
+    ///     disconnected.
+    ///   - rejections: The start attempts that throw as a rejected
+    ///     configuration.
+    init(refusals: Set<Int> = [], rejections: Set<Int> = []) {
+        let captures = FakeCaptures(refusals: refusals, rejections: rejections)
         let eventBus = EventBus()
         let (powerEvents, power) = AsyncStream.makeStream(of: DisplayPowerEvent.self)
         let (powerEnded, powerEndedContinuation) = AsyncStream.makeStream(of: Void.self)
@@ -309,7 +325,7 @@ struct DisplaySleepTests {
 
     @Test("a restart that cannot start reports input.resume as an error, and the next wake tries again")
     func failedResumeRetriesAtNextWake() async throws {
-        var harness = SleepHarness(refusals: [1])
+        var harness = SleepHarness(rejections: [1])
         try await harness.input.start()
         harness.power.yield(.slept)
         harness.power.yield(.woke)
@@ -322,6 +338,25 @@ struct DisplaySleepTests {
 
         harness.power.yield(.woke)
         #expect(await harness.nextEvent()?.name == "input.resumed")
+        #expect(harness.captures.startCount == 2)
+        await harness.input.stop()
+    }
+
+    @Test("a restart that finds the display disconnected reports nothing, and the next wake tries again")
+    func resumeOfADisconnectedDisplayIsNotAnError() async throws {
+        var harness = SleepHarness(refusals: [1])
+        try await harness.input.start()
+        harness.power.yield(.slept)
+        harness.power.yield(.woke)
+        harness.power.yield(.woke)
+
+        // The refused restart sits between these two events and reported
+        // neither an error nor anything else: the disconnection is the
+        // plug-in's `device.disconnected` to report.
+        #expect(await harness.nextEvent()?.name == "input.interrupted")
+        let resumed = try #require(await harness.nextEvent())
+        #expect(resumed.name == "input.resumed")
+        #expect(resumed.group == .event)
         #expect(harness.captures.startCount == 2)
         await harness.input.stop()
     }

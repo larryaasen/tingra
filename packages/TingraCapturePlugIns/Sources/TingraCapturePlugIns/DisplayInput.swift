@@ -146,7 +146,8 @@ final class DisplayInput: Input, Sendable {
     /// event, never a throw: a capture that stops is `input.interrupted`, a
     /// wake that restarts it is `input.resumed`, and a restart that fails is
     /// an `input.resume` error, retried at the next wake. Display
-    /// disconnection is a normal event reported by the plug-in.
+    /// disconnection is a normal event reported by the plug-in, so a restart
+    /// that finds the display gone reports nothing of its own.
     func start() async throws {
         guard await requestAuthorization() else {
             throw CaptureInputError.authorizationDenied(.display, id)
@@ -210,6 +211,12 @@ final class DisplayInput: Input, Sendable {
                         do {
                             running = try await capture(generation)
                             report.resumed()
+                        } catch CaptureInputError.deviceUnavailable {
+                            // The display left, and a wake arrived with its
+                            // leaving, as one does for most disconnections.
+                            // The plug-in reports `device.disconnected`; a
+                            // disconnection is never an error (CLAUDE.md,
+                            // Data Flow Rules).
                         } catch {
                             report.resumeFailed(error)
                         }
@@ -286,7 +293,8 @@ final class DisplayInput: Input, Sendable {
             eventBus?.event("input.resumed", domain: .capture, params: identity)
         }
 
-        /// The fresh capture could not start; the next wake tries again.
+        /// The fresh capture could not start, though the display is still
+        /// connected; the next wake tries again.
         ///
         /// - Parameter error: Why it could not start.
         func resumeFailed(_ error: any Error) {
