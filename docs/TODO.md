@@ -11,6 +11,15 @@ here, under "Left open from “…”", pointing at its record there.
 
 ## Roadmap progress
 
+- [ ] **Offer to resume a stream after the app dies: decided 2026-10-08, not
+  yet built.** After a force quit or crash while live, the next launch offers
+  to go live again to the same destinations (Resume Stream / Don't Resume).
+  Streaming only; a recording is not resumed. Needs a local session on a Mac:
+  `LiveStreamRecord`, the post-boot alert, its `de`/`es` strings, and tests,
+  then a check by hand — go live to the simulator, `kill -9` the app, relaunch,
+  resume, and confirm the simulator sees the stream again. Record:
+  ARCHITECTURE.md, "Offering to resume a stream after the app dies".
+
 - [ ] **Display capture across display sleep: built 2026-09-26, not yet seen
   working live.** ScreenCaptureKit stops a display capture whenever the
   displays sleep; `DisplayInput` now reports that as `input.interrupted` and
