@@ -1697,6 +1697,21 @@ surface is:
 - `KeepAwakeSwitch` — owns the app's one hold on the Mac: held exactly while
   a stream or a recording is running and the setting is on, so the setting
   is live mid-session (CLOCK.md, "System sleep and App Nap").
+- `LiveStreamRecord` — `live-stream.json` in Tingra's Application Support
+  folder, the stream this run has on air: the project file, the destination
+  IDs, and when it went live, never a URL or a key. `EngineModel` writes it
+  at the stream session's `stream.started` and removes it at every
+  `stream.stopped` and in `shutDown(reason:)`; one found at launch means the
+  last run died live (ARCHITECTURE.md, "Offering to resume a stream after
+  the app dies").
+- `StreamResumeOffer` — whether a launch offers to go live again, decided as
+  a pure function of the record, the open project, and its destinations:
+  `ask` naming the recorded destinations still streamable, `skip` with a
+  `projectChanged` or `noDestinations` reason, or `none`; `Answer` carries
+  each button's `tap` name. `StreamResumeAlert` asks: "Tingra quit while it
+  was live.", Resume Stream the default, Don't Resume on Escape.
+  `EngineModel.offerStreamResume(ask:)` runs it as the last step of the
+  boot, after the safe mode offer, and resumes through `startStreaming()`.
 - `StatusBarPreferences` — whether the bar is shown: machine-local
   `UserDefaults` on the `AppearancePreferences` pattern, shown on a fresh
   install, the presence of the key checked first so a missing value does not
