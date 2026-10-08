@@ -119,6 +119,19 @@ struct DestinationEdit: Identifiable, Equatable {
         isEnabled && url != nil
     }
 
+    /// The destinations a stream starts a leg for: the streamable ones,
+    /// narrowed to a named set when the start is a resume, so nothing goes
+    /// on air that the resume offer did not name.
+    ///
+    /// - Parameters:
+    ///   - destinations: The project's destinations, in order.
+    ///   - only: The destinations to keep, or `nil` for every streamable one.
+    static func streamable(in destinations: [DestinationEdit], only: Set<ProjectDestinationID>? = nil)
+        -> [DestinationEdit]
+    {
+        destinations.filter { $0.isStreamable && (only?.contains($0.id) ?? true) }
+    }
+
     /// The operator's record of this destination, or nil when the typed URL
     /// is not yet usable — an incomplete destination is not saved, so a
     /// half-typed URL never reaches the store.

@@ -290,8 +290,8 @@ struct AppDataStoreTests {
         #expect(!AppDataKind.logFile.isRemovable)
         #expect(
             AppDataKind.allCases.filter(\.isRemovable) == [
-                .project, .destinations, .streamKeys, .plugInData, .plugInSecrets, .plugInEnablement, .preferences,
-                .logSession,
+                .project, .destinations, .streamKeys, .plugInData, .plugInSecrets, .plugInEnablement, .liveStream,
+                .preferences, .logSession,
             ])
     }
 
@@ -324,6 +324,28 @@ struct AppDataStoreTests {
 
         #expect(data.hasSuffix("Library/Application Support/Tingra/Plug-in Data"))
         #expect(bundleFolders.allSatisfy { !data.hasPrefix($0) && !$0.hasPrefix(data) })
+    }
+
+    @Test("the live stream marker is counted while it exists, and remove all removes it")
+    func liveStreamMarkerIsCountedAndRemoved() throws {
+        let fixture = try AppDataFixture()
+        defer { fixture.tearDown() }
+        let empty = try #require(fixture.store.inventory().first { $0.kind == .liveStream })
+        #expect(empty.count == 0)
+        let record = LiveStreamRecord(directory: fixture.supportDirectory)
+        record.write(
+            LiveStreamRecord.Contents(
+                project: URL(filePath: "/Users/operator/Shows/Friday.tingra"), destinations: ["twitch"],
+                wentLive: Date(timeIntervalSince1970: 1_791_000_000)))
+
+        let item = try #require(fixture.store.inventory().first { $0.kind == .liveStream })
+        #expect(item.count == 1)
+        #expect((item.byteCount ?? 0) > 0)
+        #expect(item.kind.isRemovable)
+        #expect(fixture.store.liveStreamFileURL == record.fileURL)
+        #expect(fixture.store.removeAll().isEmpty)
+        #expect(record.read() == nil)
+        #expect(!fixture.exists(record.fileURL))
     }
 
     @Test("the plug-ins turned off are counted with the launch record and markers, and remove all removes them")
