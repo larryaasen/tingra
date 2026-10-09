@@ -679,6 +679,23 @@
         }
       }
     },
+    "Add" : {
+      "comment" : "Add Window sheet: adds the selected window as an input",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hinzufügen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Añadir"
+          }
+        }
+      }
+    },
     "Add a destination with an rtmp://, rtmps://, or srt:// URL, then start again." : {
       "comment" : "Stream error shown when no destination is enabled and has a usable URL",
       "localizations" : {
@@ -897,6 +914,57 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Añadir a medios"
+          }
+        }
+      }
+    },
+    "Add Window" : {
+      "comment" : "Title of the sheet for adding a window as an input",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fenster hinzufügen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Añadir ventana"
+          }
+        }
+      }
+    },
+    "Add Window…" : {
+      "comment" : "Menu item opening the sheet that adds a window as an input",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fenster hinzufügen…"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Añadir ventana…"
+          }
+        }
+      }
+    },
+    "Added" : {
+      "comment" : "Add Window sheet: marks a window the project already holds",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hinzugefügt"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Añadida"
           }
         }
       }
@@ -1375,6 +1443,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Elija una cámara o una pantalla para verla aquí."
+          }
+        }
+      }
+    },
+    "Choose a window to capture on its own. It is captured even while other windows cover it." : {
+      "comment" : "Caption of the Add Window sheet",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wähle ein Fenster, das einzeln aufgenommen wird. Es wird auch dann aufgenommen, wenn andere Fenster es verdecken."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Elige una ventana para capturarla por separado. Se captura aunque otras ventanas la cubran."
           }
         }
       }
@@ -3183,6 +3268,23 @@
         }
       }
     },
+    "Looking for windows…" : {
+      "comment" : "Add Window sheet: shown while the window list is read",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fenster werden gesucht…"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Buscando ventanas…"
+          }
+        }
+      }
+    },
     "Lost" : {
       "comment" : "Per-destination state: the destination dropped and did not recover",
       "localizations" : {
@@ -3249,6 +3351,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "macOS conserva por su cuenta los permisos de cámara, micrófono y grabación de pantalla. Para restablecerlos también, ejecuta “tccutil reset All %@” en Terminal."
+          }
+        }
+      }
+    },
+    "macOS lists other applications’ windows only for an app allowed to record the screen. Allow Tingra in System Settings, then return here." : {
+      "comment" : "Add Window sheet: why the list is empty without Screen Recording access, and the fix",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS listet die Fenster anderer Programme nur für eine App auf, die den Bildschirm aufnehmen darf. Erlaube Tingra in den Systemeinstellungen und kehre dann hierher zurück."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS solo muestra las ventanas de otras aplicaciones a una app con permiso para grabar la pantalla. Permite Tingra en Ajustes del Sistema y vuelve aquí."
           }
         }
       }
@@ -4330,6 +4449,40 @@
         }
       }
     },
+    "No windows added" : {
+      "comment" : "Sidebar placeholder when the project holds no window inputs",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Fenster hinzugefügt"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se han añadido ventanas"
+          }
+        }
+      }
+    },
+    "No Windows Open" : {
+      "comment" : "Add Window sheet: title when no window is on screen",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Fenster geöffnet"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No hay ventanas abiertas"
+          }
+        }
+      }
+    },
     "None" : {
       "comment" : "Data settings: the amount shown for a kind with nothing saved",
       "localizations" : {
@@ -4570,7 +4723,7 @@
       }
     },
     "Open System Settings…" : {
-      "comment" : "Permissions settings: button that opens the permission's switch in System Settings",
+      "comment" : "Button that opens the System Settings pane for a permission\nPermissions settings: button that opens the permission's switch in System Settings",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -4582,6 +4735,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Abrir Ajustes del Sistema…"
+          }
+        }
+      }
+    },
+    "Open the window you want to capture, then return to Tingra." : {
+      "comment" : "Add Window sheet: what to do when no window is on screen",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Öffne das Fenster, das du aufnehmen möchtest, und kehre dann zu Tingra zurück."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abre la ventana que quieres capturar y vuelve a Tingra."
           }
         }
       }
@@ -5385,6 +5555,23 @@
         }
       }
     },
+    "Remove Window" : {
+      "comment" : "Sidebar window row context menu: removes the window input from the project",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fenster entfernen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eliminar ventana"
+          }
+        }
+      }
+    },
     "Removes everything listed above except recordings and the log file, then quits Tingra so its next launch is a first run." : {
       "comment" : "Data settings: description under the remove-all row",
       "extractionState" : "stale",
@@ -5877,6 +6064,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Grabación de pantalla"
+          }
+        }
+      }
+    },
+    "Screen Recording Access Needed" : {
+      "comment" : "Add Window sheet: title when Screen Recording access is not granted",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zugriff auf Bildschirmaufnahme erforderlich"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se necesita acceso a la grabación de pantalla"
           }
         }
       }
@@ -7616,6 +7820,57 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ancho"
+          }
+        }
+      }
+    },
+    "Window" : {
+      "comment" : "Add Shot menu submenu listing the windows the project holds",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fenster"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ventana"
+          }
+        }
+      }
+    },
+    "Windows" : {
+      "comment" : "Sidebar section heading over the project's window inputs",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fenster"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ventanas"
+          }
+        }
+      }
+    },
+    "Windows Unavailable" : {
+      "comment" : "Add Window sheet: title when the window list could not be read",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fenster nicht verfügbar"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ventanas no disponibles"
           }
         }
       }

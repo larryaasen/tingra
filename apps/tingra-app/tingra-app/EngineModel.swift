@@ -213,6 +213,11 @@ final class EngineModel {
     /// Shot menu, and a fresh project's seed.
     private(set) var displays: [InputChoice] = []
 
+    /// The window inputs the project holds, for the sidebar's Windows
+    /// section and the Add Shot menu — added by the operator, not
+    /// discovered (ARCHITECTURE.md, "Window capture").
+    private(set) var windowInputs: [InputChoice] = []
+
     /// Every discovered input that produces **audio**, seeding the mixer's
     /// channel strips. Filtered on ``Input/media``, not on ``InputKind``:
     /// the question "can this be a channel strip" is a media question, so an
@@ -641,6 +646,7 @@ final class EngineModel {
         switch layerInputChoices.first(where: { $0.id == id })?.kind {
         case .camera: "video"
         case .display: "display"
+        case .window: "macwindow"
         case .generator: "rectangle.checkered"
         case .microphone: "mic"
         // A media input's symbol says what kind of file it is, resolved
@@ -703,6 +709,10 @@ final class EngineModel {
     /// - Parameter id: The input the layer binds to.
     /// - Returns: The layer's normalized frame.
     func newLayerFrame(forInput id: InputID) -> CGRect {
+        // A window's shape is known from the picker, the same way.
+        if let size = windowSizes[id], size.height > 0 {
+            return LayerPlacement.fitting(inputAspect: size.width / size.height, in: programAspectRatio)
+        }
         guard let item = mediaItem(forInput: id), let size = mediaSizes[item.id], size.height > 0 else {
             return LayerPlacement.fullFrame
         }
@@ -851,6 +861,136 @@ final class EngineModel {
         return nil
     }
 
+    // MARK: Windows
+
+    /// The windows the project holds as inputs, in the order added — the
+    /// document's list, from which each launch makes the window inputs
+    /// (ARCHITECTURE.md, "Window capture"). A record whose window is not
+    /// open stays listed, its input waiting for the window.
+    private(set) var windows: [ProjectWindow] = []
+
+    /// Each window's size in points as the picker listed it when it was
+    /// added, so a new layer can be fitted to the window before the input
+    /// has delivered a frame (``newLayerFrame(forInput:)``). Session state:
+    /// a window loaded from a project is measured from its first frame
+    /// instead.
+    private(set) var windowSizes: [InputID: CGSize] = [:]
+
+    /// Whether the Add Window sheet is up (``WindowPickerSheet``). Session
+    /// state held here rather than in a view because four surfaces open it
+    /// — the Windows section's heading and the Add Shot menu in the
+    /// sidebar, over the shot bank, and in the menu bar — and one view,
+    /// ``ContentView``, presents it.
+    var isWindowPickerPresented = false
+
+    /// Where the window list and the window inputs come from.
+    private var windowProvider: WindowInputProvider {
+        WindowInputProvider(eventBus: eventBus)
+    }
+
+    /// The windows that can be added now — those on screen, by application
+    /// and then title — for the Add Window sheet. Reading the list is what
+    /// asks for Screen Recording access the first time.
+    ///
+    /// - Returns: The windows.
+    /// - Throws: A `WindowListingError` when Screen Recording access is
+    ///   denied or the list cannot be read.
+    func availableWindows() async throws -> [CaptureWindow] {
+        try await windowProvider.availableWindows()
+    }
+
+    /// Whether the project already holds an input for a window, so the
+    /// picker can say so instead of adding a second capture of the same
+    /// thing.
+    ///
+    /// - Parameter window: A window the picker lists.
+    /// - Returns: Whether a record with its application and title exists.
+    func isWindowAdded(_ window: CaptureWindow) -> Bool {
+        WindowChoice.isAdded(window, to: windows)
+    }
+
+    /// Adds a window to the project as an input the sidebar lists and a
+    /// layer can bind to. A window the project already holds is left alone.
+    /// The document autosaves when one was added.
+    ///
+    /// - Parameter window: The window to add, as the picker listed it.
+    func addWindow(_ window: CaptureWindow) async {
+        guard !isWindowAdded(window) else { return }
+        let record = WindowChoice.record(for: window)
+        guard await registerWindow(record, windowID: window.id) else { return }
+        windows.append(record)
+        windowSizes[record.id] = CGSize(width: window.width, height: window.height)
+        eventBus.event(
+            "window.added",
+            domain: .capture,
+            params: [
+                "id": .string(record.id.rawValue),
+                "name": .string(window.target.name),
+                "application": .string(record.bundleIdentifier),
+            ]
+        )
+        await readDeviceLists()
+        scheduleAutosave()
+    }
+
+    /// Removes a window from the project and its input from the registry;
+    /// the reconfigure pass stops it if it was capturing. **Never edits
+    /// shots**: a layer bound to the window stays bound and dormant, the
+    /// removed-device semantic.
+    ///
+    /// - Parameter id: The window input to remove.
+    func removeWindow(_ id: InputID) async {
+        guard let index = windows.firstIndex(where: { $0.id == id }) else { return }
+        let record = windows.remove(at: index)
+        windowSizes[id] = nil
+        await registry.unregister(id)
+        eventBus.event(
+            "window.removed",
+            domain: .capture,
+            params: ["id": .string(id.rawValue), "name": .string(WindowChoice.target(of: record).name)]
+        )
+        await readDeviceLists()
+        await reconfigure()
+        scheduleAutosave()
+    }
+
+    /// Registers the inputs for the loaded project's window list, at boot
+    /// and when a project is opened.
+    private func registerProjectWindows() async {
+        for record in windows {
+            _ = await registerWindow(record, windowID: nil)
+        }
+    }
+
+    /// Makes and registers the input for one window record. Nothing is
+    /// captured and no window is looked for until a shot references the
+    /// input and it starts.
+    ///
+    /// - Parameters:
+    ///   - record: The record to register.
+    ///   - windowID: The window's identifier when the operator has just
+    ///     picked it, or nil for a record loaded from a project.
+    /// - Returns: Whether the input registered; a registry refusal is
+    ///   reported as a `window.add` error.
+    private func registerWindow(_ record: ProjectWindow, windowID: UInt32?) async -> Bool {
+        let target = WindowChoice.target(of: record)
+        do {
+            try await registry.register(windowProvider.makeInput(for: target, id: record.id, windowID: windowID))
+            return true
+        } catch {
+            eventBus.error(
+                "window.add",
+                domain: .capture,
+                params: [
+                    "id": .string(record.id.rawValue),
+                    "name": .string(target.name),
+                    "error": .string(String(describing: error)),
+                ]
+            )
+            return false
+        }
+    }
+
     // MARK: Layer editing session state
 
     /// The selected layer's index in the followed shot's bottom-to-top
@@ -897,6 +1037,10 @@ final class EngineModel {
     func inputAspectRatio(for id: InputID) -> CGFloat? {
         if let extent = inputExtent(for: id) {
             return extent.width / extent.height
+        }
+        // A window's shape is known from the picker before it captures.
+        if let size = windowSizes[id], size.height > 0 {
+            return size.width / size.height
         }
         // A media file's shape is known from the file before it plays.
         guard let item = mediaItem(forInput: id), let size = mediaSizes[item.id], size.height > 0 else { return nil }
@@ -1790,6 +1934,11 @@ final class EngineModel {
             await registerProjectMedia()
             await readDeviceLists()
         }
+        // The project's windows register the same way, for the same reason.
+        if !windows.isEmpty {
+            await registerProjectWindows()
+            await readDeviceLists()
+        }
         await loadDestinations()
         // The strips merge the loaded preset's authored audio channels with
         // discovery — the seed policy (first audio input unmuted) is the
@@ -1909,6 +2058,9 @@ final class EngineModel {
             .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
         displays = inputs.filter { $0.kind == .display }
             .map { InputChoice(id: $0.id, name: $0.name, kind: .display) }
+            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        windowInputs = inputs.filter { $0.kind == .window }
+            .map { InputChoice(id: $0.id, name: $0.name, kind: .window) }
             .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
         videoInputs = Self.mediaChoices(from: inputs, producing: .video)
         audioInputs = Self.mediaChoices(from: inputs, producing: .audio)
@@ -5100,6 +5252,10 @@ final class EngineModel {
         media = project.media ?? []
         mediaDurations = [:]
         mediaSizes = [:]
+        // The window list is the document's too, registered the same way
+        // (``registerProjectWindows()``).
+        windows = project.windows ?? []
+        windowSizes = [:]
         // Plug-in data is the document's, opaque to the app.
         plugInData = project.plugInData ?? [:]
         // The inputs' settings are the document's too; they reach the
@@ -5279,12 +5435,12 @@ final class EngineModel {
     /// the boot load, against an engine that already has a show on air.
     ///
     /// The outgoing show's last edits are flushed to its file first, so the
-    /// file cannot change under a pending autosave. Its media inputs are
-    /// unregistered — they were the document's, and the sidebar and the
-    /// layer editor must stop listing them — and its transient shots go
-    /// with the pool, since they were session state of a show that is no
-    /// longer open. Then the document is adopted, its media registered, its
-    /// destinations merged with the operator's store, and its preset put on
+    /// file cannot change under a pending autosave. Its media and window
+    /// inputs are unregistered — they were the document's, and the sidebar
+    /// and the layer editor must stop listing them — and its transient shots
+    /// go with the pool, since they were session state of a show that is no
+    /// longer open. Then the document is adopted, its media and windows
+    /// registered, its destinations merged with the operator's store, and its preset put on
     /// the buses (``activatePreset(recorded:)``).
     ///
     /// - Parameters:
@@ -5295,11 +5451,17 @@ final class EngineModel {
         for item in media {
             await registry.unregister(item.id.inputID)
         }
+        for record in windows {
+            await registry.unregister(record.id)
+        }
         store = target
         projectURL = target.fileURL
         let recorded = adoptDocument(project)
         if !media.isEmpty {
             await registerProjectMedia()
+        }
+        if !windows.isEmpty {
+            await registerProjectWindows()
         }
         await readDeviceLists()
         await loadDestinations()
@@ -5547,6 +5709,7 @@ final class EngineModel {
             destinations: DestinationEdit.references(from: destinations),
             programFormat: format == ProgramFormat() ? nil : format,
             media: media.isEmpty ? nil : media,
+            windows: windows.isEmpty ? nil : windows,
             plugInData: plugInData.isEmpty ? nil : plugInData,
             inputParameters: inputParameters.isEmpty
                 ? nil : Dictionary(uniqueKeysWithValues: inputParameters.map { ($0.key.rawValue, $0.value) })

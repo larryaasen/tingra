@@ -182,9 +182,9 @@ enum EngineResources {
         ModelResource(
             uri: inputsURI, name: "inputs", title: "Inputs",
             description:
-                "Every input the engine knows: id, name, kind (camera, microphone, display, generator, media), and "
-                + "the media it produces ('video', 'audio'); a media input carries its file 'path'. Changes as "
-                + "devices connect and disconnect and as media is added and removed."
+                "Every input the engine knows: id, name, kind (camera, microphone, display, window, generator, "
+                + "media), and the media it produces ('video', 'audio'); a media input carries its file 'path'. "
+                + "Changes as devices connect and disconnect and as media and windows are added and removed."
         ) { [weak model] in
             guard let model else { return .object([:]) }
             return inputsValue(of: model)

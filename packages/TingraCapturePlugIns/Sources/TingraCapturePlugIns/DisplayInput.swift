@@ -259,7 +259,8 @@ final class DisplayInput: Input, Sendable {
 
     /// Reports the session's interruptions and resumes on the bus, carrying
     /// the input's identity so every event names the display it is about.
-    private struct SessionReporter: Sendable {
+    /// Shared with ``WindowInput``, whose session reports the same events.
+    struct SessionReporter: Sendable {
         /// The bus, or nil where nothing listens.
         let eventBus: EventBus?
 
@@ -279,7 +280,7 @@ final class DisplayInput: Input, Sendable {
         ///
         /// - Parameters:
         ///   - reason: Why: `displaySleep`, `streamStopped`, or
-        ///     `streamFailed`.
+        ///     `streamFailed` — and, for a window, `windowUnavailable`.
         ///   - error: ScreenCaptureKit's description, for `streamFailed`.
         func interrupted(reason: String, error: String?) {
             var params = identity
@@ -327,7 +328,7 @@ final class DisplayInput: Input, Sendable {
 
         /// The output the stream delivers through, held solely to keep it
         /// alive — `SCStream` will not.
-        let output: DisplayStreamOutput
+        let output: ScreenStreamOutput
 
         /// Stops the stream. One ScreenCaptureKit already stopped reports an
         /// error here, which is the state asked for and is ignored.
@@ -394,7 +395,7 @@ final class DisplayInput: Input, Sendable {
         // only hold native-size surfaces.
         configuration.queueDepth = Self.captureQueueDepth
 
-        let output = DisplayStreamOutput(deliver: deliver, ended: ended)
+        let output = ScreenStreamOutput(deliver: deliver, ended: ended)
         let stream = SCStream(filter: filter, configuration: configuration, delegate: output)
         do {
             // The output runs on its own queue: the callback immediately
@@ -426,8 +427,8 @@ final class DisplayInput: Input, Sendable {
     /// The production authorization seam: probes Screen Recording access by
     /// attempting to read the shareable content, which succeeds only once
     /// the permission is granted (no dedicated request API exists — the
-    /// first attempt is what prompts).
-    private static let requestScreenRecordingAccess: @Sendable () async -> Bool = {
+    /// first attempt is what prompts). Shared with ``WindowInput``.
+    static let requestScreenRecordingAccess: @Sendable () async -> Bool = {
         (try? await SCShareableContent.current) != nil
     }
 }
@@ -579,21 +580,65 @@ private func displayUUIDString(for displayID: CGDirectDisplayID) -> String? {
 /// tagged if the framework left it untagged, keeps its host clock PTS, and
 /// leaves through `deliver` — transferring ownership at the yield, per the
 /// frame ownership rule.
-private final class DisplayStreamOutput: NSObject, SCStreamOutput, SCStreamDelegate {
+///
+/// Shared by ``DisplayInput`` and ``WindowInput``. A window capture also
+/// hands it the size the stream is configured with and a `resized` closure:
+/// a window changes size under a running capture, which a display does not,
+/// and the frames are the only place ScreenCaptureKit says so
+/// (``WindowPixelSize/native(contentSize:contentScale:scaleFactor:)``).
+final class ScreenStreamOutput: NSObject, SCStreamOutput, SCStreamDelegate {
     /// Hands one normalized frame to the input's live stream.
     private let deliver: @Sendable (CapturedFrame) -> Void
 
     /// Tells the input's session the stream ended on its own.
     private let ended: @Sendable (DisplayCaptureEnd) -> Void
 
+    /// Tells a window input's session the window is no longer the size the
+    /// stream is configured with, or nil for a display capture.
+    private let resized: (@Sendable (WindowPixelSize) -> Void)?
+
+    /// The sizes a window capture compares each frame against.
+    private struct Sizes {
+        /// The size the stream is configured to deliver.
+        var configured: WindowPixelSize?
+
+        /// The last size reported through `resized`, so a window sitting at
+        /// a new size is reported once, not with every frame — including
+        /// when the reconfiguration it asked for could not be applied.
+        var reported: WindowPixelSize?
+    }
+
+    /// The sizes, behind a mutex: the sample-handler queue reads them and
+    /// the input's session writes the configured one after a resize.
+    private let sizes: Mutex<Sizes>
+
     /// Creates an output delivering frames through the given closure.
     ///
     /// - Parameters:
     ///   - deliver: Hands each frame on.
     ///   - ended: Called when the stream stops on its own.
-    init(deliver: @escaping @Sendable (CapturedFrame) -> Void, ended: @escaping @Sendable (DisplayCaptureEnd) -> Void) {
+    ///   - configuredSize: The size the stream is configured to deliver, for
+    ///     a window capture; nil (the default) for a display.
+    ///   - resized: Called when a frame shows the window at another size
+    ///     than the configured one; nil (the default) for a display.
+    init(
+        deliver: @escaping @Sendable (CapturedFrame) -> Void,
+        ended: @escaping @Sendable (DisplayCaptureEnd) -> Void,
+        configuredSize: WindowPixelSize? = nil,
+        resized: (@Sendable (WindowPixelSize) -> Void)? = nil
+    ) {
         self.deliver = deliver
         self.ended = ended
+        self.resized = resized
+        self.sizes = Mutex(Sizes(configured: configuredSize, reported: nil))
+    }
+
+    /// Records the size the stream now delivers, after a window capture was
+    /// reconfigured to follow its window.
+    ///
+    /// - Parameter size: The newly configured size.
+    func setConfiguredSize(_ size: WindowPixelSize) {
+        sizes.withLock { $0.configured = size }
     }
 
     /// Normalizes and forwards one captured sample buffer, skipping the
@@ -613,6 +658,14 @@ private final class DisplayStreamOutput: NSObject, SCStreamOutput, SCStreamDeleg
             return
         }
         guard status == .complete, let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+        if let resized, let native = Self.nativeSize(of: sampleBuffer) {
+            let isNews = sizes.withLock { sizes -> Bool in
+                guard native != sizes.configured, native != sizes.reported else { return false }
+                sizes.reported = native
+                return true
+            }
+            if isNews { resized(native) }
+        }
         FrameNormalization.tagBT709IfUntagged(pixelBuffer)
         deliver(
             CapturedFrame(
@@ -638,5 +691,25 @@ private final class DisplayStreamOutput: NSObject, SCStreamOutput, SCStreamDeleg
             let statusRaw = attachments.first?[.status] as? Int
         else { return nil }
         return SCFrameStatus(rawValue: statusRaw)
+    }
+
+    /// The captured window's own pixel size, from the content rectangle and
+    /// the two scales ScreenCaptureKit attached to a sample buffer, or nil
+    /// when it attached none of them.
+    private static func nativeSize(of sampleBuffer: CMSampleBuffer) -> WindowPixelSize? {
+        guard
+            let attachments = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: false)
+                as? [[SCStreamFrameInfo: Any]],
+            let info = attachments.first,
+            let rectangle = info[.contentRect] as? NSDictionary,
+            let contentRect = CGRect(dictionaryRepresentation: rectangle as CFDictionary),
+            let contentScale = (info[.contentScale] as? NSNumber)?.doubleValue,
+            let scaleFactor = (info[.scaleFactor] as? NSNumber)?.doubleValue
+        else { return nil }
+        return WindowPixelSize.native(
+            contentSize: contentRect.size,
+            contentScale: contentScale,
+            scaleFactor: scaleFactor
+        )
     }
 }

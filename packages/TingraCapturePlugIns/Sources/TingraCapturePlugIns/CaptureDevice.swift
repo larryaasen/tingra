@@ -32,7 +32,7 @@ struct CaptureDevice: Sendable, Equatable {
 /// is a normal event, never an error (CLAUDE.md, Data Flow Rules).
 public enum CaptureInputError: Error, Equatable {
     /// TCC denied access to the device's kind (camera, microphone, or
-    /// display — Screen Recording).
+    /// display and window — Screen Recording).
     case authorizationDenied(InputKind, InputID)
 
     /// The device has disconnected since discovery, so capture cannot
@@ -79,6 +79,8 @@ extension CaptureInputError: CustomStringConvertible {
             case .camera: permission = "Camera"
             case .microphone: permission = "Microphone"
             case .display: permission = "Screen Recording"
+            // A window is captured through ScreenCaptureKit, like a display.
+            case .window: permission = "Screen Recording"
             // A generator has no device and is never denied; named for
             // exhaustiveness only.
             case .generator: permission = "Capture"

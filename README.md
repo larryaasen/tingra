@@ -246,7 +246,8 @@ Shift as the app opens, by the app's offer after a crash, or with
 ### `packages/TingraCapturePlugIns`
 
 The first party capture plug-ins: camera, microphone, and display discovery and
-capture, and the device connection/disconnection events on the bus. AVFoundation,
+capture, capture of a single window the operator chooses, and the device
+connection/disconnection events on the bus. AVFoundation,
 Core Audio, and ScreenCaptureKit are imported only inside this package, behind
 the `Input` seam.
 

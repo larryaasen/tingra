@@ -11,10 +11,10 @@
 /// devices` sections, the `devices --json` keys) and selector resolution
 /// (`--camera` only matches cameras).
 ///
-/// GLOSSARY.md's remaining input kinds (window, application, media file,
-/// network feed) join as their plug-ins land — a pre-1.0 addition permitted
-/// by the stability contract (see ARCHITECTURE.md, "Plug-in API stability
-/// and versioning"), as `display` did at roadmap step 6.
+/// GLOSSARY.md's remaining input kinds (application, network feed) join as
+/// their plug-ins land — a pre-1.0 addition permitted by the stability
+/// contract (see ARCHITECTURE.md, "Plug-in API stability and versioning"),
+/// as `display` did at roadmap step 6 and `window` did on 2026-10-08.
 public enum InputKind: String, Sendable, Codable, CaseIterable {
     /// A camera device (built-in, external, or Continuity Camera).
     case camera
@@ -22,11 +22,20 @@ public enum InputKind: String, Sendable, Codable, CaseIterable {
     /// A microphone device.
     case microphone
 
-    /// A connected display, captured whole (window and application inputs
-    /// are separate kinds, arriving later). Not yet in the CLI's `devices`
-    /// listing — display inputs are an app-era surface (CLI.md, "Non-goals
-    /// (v1)").
+    /// A connected display, captured whole (a window is its own kind,
+    /// ``window``; application inputs arrive later). Not yet in the CLI's
+    /// `devices` listing — display inputs are an app-era surface (CLI.md,
+    /// "Non-goals (v1)").
     case display
+
+    /// One window of a running application, captured alone wherever it
+    /// sits — behind other windows or on another display. *Chosen*, not
+    /// discovered: windows open and close all day, so a window input is
+    /// made for the window the operator picks and registered by the host
+    /// on the project's behalf, the way a media input is, never at plug-in
+    /// activation (ARCHITECTURE.md, "Window capture"). An app-era surface
+    /// like ``display``, so not in the CLI's `devices` listing.
+    case window
 
     /// A generator: an input that synthesizes its content rather than
     /// capturing it (see GLOSSARY.md). Generators are selected by their
@@ -39,9 +48,9 @@ public enum InputKind: String, Sendable, Codable, CaseIterable {
     /// document (see GLOSSARY.md). Added rather than discovered, so media
     /// inputs are created by a ``MediaInputProvider`` for a given file and
     /// registered by the host on the project's behalf, never at plug-in
-    /// activation. The last kind added before the plug-in API tags 1.0.0:
-    /// a new case breaks exhaustive switches in third-party code, so any
-    /// later kind is a major (ARCHITECTURE.md, "Media inputs and the
+    /// activation. A kind added after the plug-in API tags 1.0.0 breaks
+    /// exhaustive switches in third-party code, so any kind later than
+    /// that tag is a major (ARCHITECTURE.md, "Media inputs and the
     /// Library's Media tab").
     case media
 }

@@ -37,19 +37,25 @@ enum AddShotMenuSurface: Sendable, CaseIterable {
         /// Empty Shot: a new shot with no layers.
         case empty
 
-        /// One of the input items in the Camera, Display, and Video Generator
-        /// submenus: a full-frame shot of that input. One name for all three
-        /// submenus — the params carry which input, and its kind.
+        /// One of the input items in the Camera, Display, Window, and Video
+        /// Generator submenus: a full-frame shot of that input. One name for
+        /// all four submenus — the params carry which input, and its kind.
         case input
+
+        /// Add Window…, at the foot of the Window submenu: opens the Add
+        /// Window sheet (``WindowPickerSheet``).
+        case addWindow
     }
 
     /// The `tap` name one of this surface's items reports.
     ///
     /// - Parameter item: The item.
     /// - Returns: `sidebarShotAddEmpty.menuItem` / `sidebarShotAddInput.menuItem`
-    ///   on the sidebar; `shotBankAddEmpty.menuItem` / `shotBankAddInput.menuItem`
-    ///   on the bank; `shotsMenuAddEmpty.menuItem` / `shotsMenuAddInput.menuItem`
-    ///   in the menu bar.
+    ///   / `sidebarShotAddWindow.menuItem` on the sidebar;
+    ///   `shotBankAddEmpty.menuItem` / `shotBankAddInput.menuItem` /
+    ///   `shotBankAddWindow.menuItem` on the bank; `shotsMenuAddEmpty.menuItem`
+    ///   / `shotsMenuAddInput.menuItem` / `shotsMenuAddWindow.menuItem` in the
+    ///   menu bar.
     func tapName(for item: Item) -> String {
         let prefix =
             switch self {
@@ -60,6 +66,7 @@ enum AddShotMenuSurface: Sendable, CaseIterable {
         switch item {
         case .empty: return "\(prefix)Empty.menuItem"
         case .input: return "\(prefix)Input.menuItem"
+        case .addWindow: return "\(prefix)Window.menuItem"
         }
     }
 }
@@ -89,10 +96,13 @@ struct AddShotMenu<Label: View>: View {
     }
 }
 
-/// The **Add Shot** items: Empty Shot, then a Camera, a Display, and a Video
-/// Generator submenu listing each discovered input, each item adding a
-/// full-frame authored shot of that input to the active preset
-/// (ARCHITECTURE.md, "The shot bank").
+/// The **Add Shot** items: Empty Shot, then a Camera, a Display, a Window,
+/// and a Video Generator submenu listing each discovered input, each item
+/// adding a full-frame authored shot of that input to the active preset
+/// (ARCHITECTURE.md, "The shot bank"). The Window submenu lists the windows
+/// the project holds and ends in **Add Window…**, since a window is added
+/// rather than discovered and this is where an operator looking to put one
+/// in a shot will be.
 ///
 /// One set of items for every place they open — the plus button beside the
 /// Shots heading over the bank, the Add Shot submenu of the sidebar's Shots
@@ -136,6 +146,15 @@ struct AddShotMenuItems: View {
                 emptyLabel: Text("No displays available", comment: "Sidebar placeholder when no display is discovered")
             )
             submenu(
+                Text("Window", comment: "Add Shot menu submenu listing the windows the project holds"),
+                inputs: model.windowInputs,
+                emptyLabel: Text(
+                    "No windows added",
+                    comment: "Sidebar placeholder when the project holds no window inputs"
+                ),
+                opensWindowPicker: true
+            )
+            submenu(
                 Text("Video Generator", comment: "Add Shot menu submenu listing the video generators"),
                 inputs: model.videoInputs.filter { $0.kind == .generator },
                 emptyLabel: Text(
@@ -152,8 +171,15 @@ struct AddShotMenuItems: View {
     ///   - title: The submenu's title.
     ///   - inputs: The inputs to list, in the model's stable order.
     ///   - emptyLabel: What the submenu shows, disabled, when there are none.
+    ///   - opensWindowPicker: Whether the submenu ends in Add Window…, under
+    ///     a divider — the Window submenu's (default: no).
     /// - Returns: The submenu.
-    private func submenu(_ title: Text, inputs: [EngineModel.InputChoice], emptyLabel: Text) -> some View {
+    private func submenu(
+        _ title: Text,
+        inputs: [EngineModel.InputChoice],
+        emptyLabel: Text,
+        opensWindowPicker: Bool = false
+    ) -> some View {
         Menu {
             if inputs.isEmpty {
                 Button {
@@ -179,6 +205,15 @@ struct AddShotMenuItems: View {
                         // drawn verbatim.
                         Text(verbatim: input.name)
                     }
+                }
+            }
+            if opensWindowPicker {
+                Divider()
+                Button {
+                    model.eventBus.tap(surface.tapName(for: .addWindow), domain: .composition)
+                    model.isWindowPickerPresented = true
+                } label: {
+                    Text("Add Window…", comment: "Menu item opening the sheet that adds a window as an input")
                 }
             }
         } label: {

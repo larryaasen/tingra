@@ -33,8 +33,8 @@ packages/                       # Engine libraries
                                 #   combining every audio input into the program mix, one channel
                                 #   strip per input; a host-side library beside TingraComposition
   TingraCapturePlugIns/         # First-party capture plug-ins: camera/microphone (AVFoundation)
-                                #   and display (ScreenCaptureKit) discovery and capture, device
-                                #   connect/disconnect events
+                                #   and display (ScreenCaptureKit) discovery and capture, capture
+                                #   of one chosen window, device connect/disconnect events
   TingraComposition/            # Composition engine library (roadmap step 6): the tick-paced
                                 #   Metal/Core Image compositor, layer tree (shots/layers), program
                                 #   format; a host-side library, not a plug-in, not in TingraHost
@@ -211,8 +211,9 @@ packages/  TingraPlugInKit        →  TingraEventBus; importable standalone by 
 packages/  TingraHost             →  TingraPlugInKit + TingraEventBus
 packages/  TingraCapturePlugIns   →  TingraPlugInKit + TingraEventBus (registers through the
                                      `InputRegistering` seam, so no TingraHost dependency;
-                                     AppKit for NSWorkspace display sleep/wake only — the one
-                                     AppKit import in an engine package, never UI)
+                                     AppKit for NSWorkspace display sleep/wake and application
+                                     launch/activation notifications only — the one engine
+                                     package importing AppKit, never UI)
 packages/  TingraGeneratorPlugIns →  TingraPlugInKit + TingraEventBus (same seam-only design)
 packages/  TingraEffectPlugIns    →  TingraPlugInKit + TingraEventBus (same seam-only design;
                                      registers through the `EffectRegistering` seam; pure DSP

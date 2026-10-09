@@ -44,10 +44,11 @@ internal surface a reader needs to navigate the target instead.
   (defaulted to nothing) hands it their values live, before or after `start()`.
 - `InputID` — the stable identifier for an input, as surfaced by input
   discovery.
-- `InputKind` — the kind of input (camera, microphone, display, generator,
-  media) — its *provenance* — driving discovery grouping and selector
-  resolution; `media` is a file the operator added, created by a
-  `MediaInputProvider` rather than discovered.
+- `InputKind` — the kind of input (camera, microphone, display, window,
+  generator, media) — its *provenance* — driving discovery grouping and
+  selector resolution; `media` is a file the operator added, created by a
+  `MediaInputProvider` rather than discovered, and `window` is a window the
+  operator chose, made by the capture package's `WindowInputProvider`.
 - `InputMedia` — the media an input produces (`.video`, `.audio`, both, or
   neither): the *media* axis beside `InputKind`'s provenance axis, and what
   decides whether an input is offered as a layer, a channel strip, or a
@@ -537,8 +538,46 @@ internal surface a reader needs to navigate the target instead.
   own, and the function that starts one.
 - `DisplayPower` / `DisplayPowerEvent` — display sleep and wake from
   `NSWorkspace`'s screen notifications, observed once per process on the
-  posting thread and fanned out in order; the one AppKit import in an engine
-  package, and received only by an app, never a command-line process.
+  posting thread and fanned out in order; one of the two AppKit imports in an
+  engine package (`ApplicationActivity` is the other), and received only by
+  an app, never a command-line process.
+- `WindowInputProvider` — where window inputs come from: the windows on
+  screen now (`availableWindows()`, which is what asks for Screen Recording
+  access) and the input for the one the operator picks (`makeInput`). A
+  window is chosen, not discovered, so the plug-in registers none at
+  activation; a front end registers the input it makes on the project's
+  behalf (ARCHITECTURE.md, "Window capture").
+- `WindowTarget` — the window a window input captures, as it can be
+  remembered: the owning application's bundle identifier and name, and the
+  window's title. A window has no identifier that outlives it.
+- `CaptureWindow` — one window that can be captured now, as the picker
+  lists it: its `CGWindowID` (exact while the window lives, never saved),
+  its `WindowTarget`, its size in points, and whether it is on screen.
+- `WindowListingError` — why the open windows could not be listed: Screen
+  Recording access denied, or another reason described.
+- `WindowInput` — one window behind the `Input` seam, captured alone
+  wherever it sits. Its session waits for a window that is not open
+  (`input.interrupted`, reason `windowUnavailable`), looks again when the
+  window's application launches or comes to the front, reconfigures the
+  stream when the window changes size, and handles display sleep as
+  `DisplayInput` does.
+- `WindowMatching` — the pure rules that find the window a saved
+  `WindowTarget` means among those open now (the same window by identifier,
+  then the saved title, then the application's only window on screen, and
+  otherwise nothing) and that order the picker's list.
+- `WindowPixelSize` — a window's size in pixels, with the arithmetic that
+  reads it from a frame's content rectangle, content scale, and scale
+  factor.
+- `WindowCapture` / `WindowCaptureStarter` — the injected capture seam that
+  makes the window session unit-testable, the window counterpart to
+  `DisplayCapture` / `DisplayCaptureStarter`.
+- `ApplicationActivity` / `ApplicationArrival` — an application launching
+  or coming to the front, from `NSWorkspace`'s notifications, observed once
+  per process and fanned out: the event a waiting window input retries on.
+  The package's second AppKit import, received only by an app.
+- `ScreenStreamOutput` — the `SCStreamOutput` both screen inputs deliver
+  through: normalizes and forwards complete frames, reports the stream
+  stopping, and for a window reports a size other than the configured one.
 - `SystemDefaultInputs` — the system default camera and microphone as input
   identifiers, for resolving the `stream` defaults without importing AVFoundation
   elsewhere.
@@ -630,6 +669,11 @@ internal surface a reader needs to navigate the target instead.
   `MediaID`, absolute path (no bookmark; the app is not sandboxed), and cached
   display name; the document's record from which the app asks the media
   registry for the input on each launch.
+- `ProjectWindow` — one window the operator added to a project as an input:
+  the project's own id (the `InputID` the input reports) with the owning
+  application's bundle identifier and name and the title the window had when
+  added — a description, since a window has no identifier that outlives it
+  (ARCHITECTURE.md, "Window capture").
 - `ProjectID` — a stable, string-backed identifier for a project document
   itself, not its file (a fresh UUID by default): what lets the app keep the
   operator's position per show outside the document (2026-09-13;
@@ -640,7 +684,7 @@ internal surface a reader needs to navigate the target instead.
   `destination` (key excluded — it
   lives in secure storage), each shot's optional default transition, the
   optional `programFormat` (absent meaning 1080p30), the optional `media`
-  list, and the optional `plugInData` — project-scoped storage for app-tier
+  list, the optional `windows` list, and the optional `plugInData` — project-scoped storage for app-tier
   plug-ins, keyed by plug-in id, each value opaque JSON the plug-in owns; an
   entry for a plug-in the build does not have round-trips untouched
   (PLUGINS.md, "Storage"), and the optional `inputParameters` — the values of
@@ -1253,9 +1297,9 @@ surface is:
   direction.
 - `LeadingSidebar` — the main window's leading sidebar (GLOSSARY.md, "Sidebar"; `SidebarView` until 2026-09-10): the project's presets, the
   active one's shots, the video generators, the project's media files, the
-  audio generators, every camera, display, audio input device, and audio
-  output device this Mac can see, and the destinations the program streams
-  to, in ten sections. The Cameras and
+  windows the operator added, the audio generators, every camera, display,
+  audio input device, and audio output device this Mac can see, and the
+  destinations the program streams to, in eleven sections. The Cameras and
   Displays headings are plain headings: the casting pickers they carried from
   2026-09-09 were removed on 2026-09-13. It is a standard
   `NavigationSplitView` sidebar, which is what makes it Liquid Glass on macOS 26
@@ -1306,7 +1350,7 @@ surface is:
   keeps a generator out of a device list and gives the audio generators a
   section of their own; and the name sort that stops the output section
   reshuffling when Core Audio reorders itself.
-- `SidebarSection` — the closed list of the sidebar's ten sections, each
+- `SidebarSection` — the closed list of the sidebar's eleven sections, each
   deriving its own persistence key and its own disclosure `tap` name, so a
   section added without an entry does not compile.
 - `SidebarPreferences` — which sections are open: machine-local `UserDefaults`
@@ -2288,9 +2332,11 @@ surface is:
 - `AddShotMenu` — the **Add Shot** menu the plus button beside the Shots
   heading opens: `AddShotMenuItems` under a caller-drawn label.
 - `AddShotMenuItems` — the Add Shot items every surface shares — Empty Shot,
-  then Camera, Display, and Video Generator submenus listing each discovered
+  then Camera, Display, Window, and Video Generator submenus listing each
   input, each adding a full-frame authored shot of it; a submenu with nothing
-  to list shows the sidebar's placeholder for that section, disabled. A view
+  to list shows the sidebar's placeholder for that section, disabled. The
+  Window submenu lists the windows the project holds and ends in Add
+  Window…, which opens `WindowPickerSheet`. A view
   rather than a menu because two of its three hosts are menus already: the
   sidebar's Shots section header context menu and the menu bar's Shots menu
   each carry them as an Add Shot submenu.
@@ -2298,7 +2344,16 @@ surface is:
   menu bar: the pure, unit-tested source of each surface's `tap` names
   (`sidebarShotAddEmpty.menuItem` / `sidebarShotAddInput.menuItem`,
   `shotBankAddEmpty.menuItem` / `shotBankAddInput.menuItem`,
-  `shotsMenuAddEmpty.menuItem` / `shotsMenuAddInput.menuItem`).
+  `shotsMenuAddEmpty.menuItem` / `shotsMenuAddInput.menuItem`), each with
+  a third for Add Window… (`…AddWindow.menuItem`).
+- `WindowPickerSheet` — the Add Window sheet: the windows on screen grouped
+  by application, one of which becomes a window input; re-read whenever
+  Tingra becomes active, and where a missing Screen Recording grant is
+  explained (ARCHITECTURE.md, "Window capture").
+- `WindowChoice` — the pure rules between the picker's `CaptureWindow`, the
+  project's `ProjectWindow`, and the capture's `WindowTarget`: the record
+  for a picked window, a record's target, whether a window is already
+  added, the picker's grouping by application, and a window's size text.
 - `DraggedInput` — the `Transferable` payload of an input dragged from the
   sidebar — its id under the app's exported `com.moonwink.tingra.input` type,
   declared in the target's `Info.plist` — accepted by the shot bank (a new

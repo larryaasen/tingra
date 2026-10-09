@@ -11,6 +11,17 @@ here, under "Left open from “…”", pointing at its record there.
 
 ## Roadmap progress
 
+- [ ] **Window capture: built 2026-10-08, not yet seen working in the app.**
+  One window is an input of its own (`WindowInput`), added through the
+  sidebar's Windows section and saved with the project (ARCHITECTURE.md,
+  "Window capture"). The matching rules and the session are unit-tested, and
+  the frame attachment arithmetic was measured against a real window.
+  Remaining: run the new build, add a window, put it in a shot, and confirm
+  it moves; resize the window and confirm the picture stays sharp and
+  unpadded; close the window, reopen it, click it, and confirm the layer
+  comes back with an `input.interrupted`/`input.resumed` pair in the log;
+  quit and reopen Tingra and confirm the window is found again.
+
 - [ ] **Display capture across display sleep: built 2026-09-26, not yet seen
   working live.** ScreenCaptureKit stops a display capture whenever the
   displays sleep; `DisplayInput` now reports that as `input.interrupted` and

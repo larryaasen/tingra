@@ -186,6 +186,12 @@ struct ContentView: View {
         .sheet(isPresented: $isCustomSizePresented) {
             ProgramFormatSheet(model: model)
         }
+        // Presented here for every surface that opens it (the sidebar's
+        // Windows heading and the three Add Shot menus), so it is up
+        // whether or not the sidebar is.
+        .sheet(isPresented: $model.isWindowPickerPresented) {
+            WindowPickerSheet(model: model)
+        }
         // The window's undo manager is what the Edit menu's Undo drives,
         // and the model is what registers layer edits against it.
         .onAppear {

@@ -27,6 +27,10 @@ enum SidebarSection: String, CaseIterable {
     /// The discovered displays.
     case displays
 
+    /// The windows the project holds as inputs (ARCHITECTURE.md, "Window
+    /// capture").
+    case windows
+
     /// The video generators.
     case generators
 
@@ -60,6 +64,7 @@ enum SidebarSection: String, CaseIterable {
         case .shots: "sidebarShots.disclosure"
         case .cameras: "sidebarCameras.disclosure"
         case .displays: "sidebarDisplays.disclosure"
+        case .windows: "sidebarWindows.disclosure"
         case .generators: "sidebarGenerators.disclosure"
         case .media: "sidebarMedia.disclosure"
         case .audioInputs: "sidebarAudioInputs.disclosure"
