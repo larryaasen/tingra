@@ -15,8 +15,8 @@ import TingraPlugInKit
 /// The main window's leading sidebar: the project's **presets** and the active
 /// one's **shots**, the **generators** that synthesize a picture or a sound,
 /// the hardware this Mac can see — cameras, displays, audio input devices,
-/// audio output devices — and the **destinations** the program streams to, in
-/// nine sections.
+/// audio output devices — the **windows** and **media** the operator added,
+/// and the **destinations** the program streams to, in eleven sections.
 ///
 /// **It is the standard macOS sidebar, and that is what makes it Liquid
 /// Glass.** The sidebar is the leading column of the window's
@@ -37,7 +37,8 @@ import TingraPlugInKit
 /// **The order is the signal path.** Presets hold shots, so they sit above
 /// them; a shot is what actually goes to air and is the app's own vocabulary
 /// (GLOSSARY.md), so it sits above the inputs it is built from; those run
-/// captured picture, synthesized picture, captured sound, synthesized sound,
+/// captured picture (cameras, displays, then the windows the operator
+/// added), synthesized picture, captured sound, synthesized sound,
 /// then where sound is monitored; and the destinations the program leaves by
 /// are last. Top to bottom, the sidebar reads the way the signal flows.
 ///
@@ -184,7 +185,7 @@ struct LeadingSidebar: View {
     /// comes off the monitors, which are what the operator actually watches.
     private static let maximumWidth: CGFloat = 340
 
-    /// The nine sections, in signal order: the presets, then the active one's
+    /// The sections, in signal order: the presets, then the active one's
     /// shots, then the two kinds of picture — captured, then synthesized —
     /// then the two kinds of sound in the same order, then where sound is
     /// heard, then where the program goes.
@@ -197,6 +198,8 @@ struct LeadingSidebar: View {
             cameraSection
 
             displaySection
+
+            windowSection
 
             generatorSection
 
@@ -533,6 +536,60 @@ struct LeadingSidebar: View {
         }
     }
 
+    /// The window section: one row per window the project holds as an input,
+    /// staging that window full frame on preview when clicked and lit with
+    /// its tally — the display section over the project's windows rather
+    /// than the discovered displays (ARCHITECTURE.md, "Window capture").
+    ///
+    /// **Adding a window is the header's context menu**, the Presets
+    /// header's shape: windows are the third thing the operator makes here
+    /// rather than the Mac discovering, so a right-click on the heading
+    /// offers **Add Window…**, which opens the picker
+    /// (``WindowPickerSheet``). The Add Shot menu's Window submenu ends in
+    /// the same item. A row's own menu adds **Remove Window** under the
+    /// input rows' Add Shot Showing …; removing asks nothing first, because
+    /// it deletes no file and no shot — a layer bound to the window stays
+    /// bound and dormant, and adding the window again is two clicks.
+    ///
+    /// A row stays listed while its window is closed: the input is waiting
+    /// for the window, not gone, and a row that vanished would take the
+    /// way to remove it with it.
+    private var windowSection: some View {
+        stagingSection(
+            .windows,
+            header: Text("Windows", comment: "Sidebar section heading over the project's window inputs")
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(.rect)
+                .contextMenu {
+                    Button {
+                        model.eventBus.tap("sidebarWindowAdd.menuItem", domain: .capture)
+                        model.isWindowPickerPresented = true
+                    } label: {
+                        Text("Add Window…", comment: "Menu item opening the sheet that adds a window as an input")
+                    }
+                },
+            rows: SidebarRow.rows(
+                from: model.windowInputs,
+                ofKind: .window,
+                onProgram: model.programInputIDs,
+                onPreview: model.previewInputIDs
+            ),
+            symbol: "macwindow",
+            emptyLabel: Text(
+                "No windows added",
+                comment: "Sidebar placeholder when the project holds no window inputs"
+            ),
+            menu: .window
+        ) { row in
+            model.eventBus.tap(
+                "sidebarWindow.row",
+                domain: .composition,
+                params: ["id": .string(row.id), "name": .string(row.name)]
+            )
+            Task { await model.stagePreview(showing: InputID(rawValue: row.id)) }
+        }
+    }
+
     /// The destination section: one row per destination the program streams
     /// to, inert, each carrying a Delete that confirms first.
     ///
@@ -717,6 +774,12 @@ struct LeadingSidebar: View {
         /// layer list (``DraggedInput``). The camera, display, and video
         /// generator rows'.
         case input
+
+        /// A window row's menu and drag: everything an input row has, then
+        /// **Remove Window** (``EngineModel/removeWindow(_:)``) — a window
+        /// is in the list because the operator added it, so the row is
+        /// where they take it out again.
+        case window
     }
 
     /// One clickable row: the tally-lit label, with the section's context menu
@@ -780,23 +843,56 @@ struct LeadingSidebar: View {
             button
                 .draggable(DraggedInput(id: input))
                 .contextMenu {
-                    Button {
+                    addShotMenuItem(showing: input, row: row)
+                }
+        case .window?:
+            let input = InputID(rawValue: row.id)
+            button
+                .draggable(DraggedInput(id: input))
+                .contextMenu {
+                    addShotMenuItem(showing: input, row: row)
+                    Divider()
+                    Button(role: .destructive) {
                         model.eventBus.tap(
-                            "sidebarInputAddShot.menu",
-                            domain: .composition,
-                            params: ["input": .string(row.id), "name": .string(row.name)]
+                            "sidebarWindowRemove.menuItem",
+                            domain: .capture,
+                            params: ["id": .string(row.id), "name": .string(row.name)]
                         )
-                        Task { await model.addShot(showing: input) }
+                        Task { await model.removeWindow(input) }
                     } label: {
                         Text(
-                            "Add Shot Showing \(row.name)",
-                            comment:
-                                "Sidebar input row context menu: add a full-frame shot of this input; the placeholder is the input's name"
+                            "Remove Window",
+                            comment: "Sidebar window row context menu: removes the window input from the project"
                         )
                     }
                 }
         case nil:
             button
+        }
+    }
+
+    /// An input row's **Add Shot Showing …** item: adds a full-frame authored
+    /// shot of the input. Shared by every row menu an input has
+    /// (``RowMenu/input``, ``RowMenu/window``).
+    ///
+    /// - Parameters:
+    ///   - input: The row's input.
+    ///   - row: The row, for the item's title and its `tap`.
+    /// - Returns: The menu item.
+    private func addShotMenuItem(showing input: InputID, row: SidebarRow) -> some View {
+        Button {
+            model.eventBus.tap(
+                "sidebarInputAddShot.menu",
+                domain: .composition,
+                params: ["input": .string(row.id), "name": .string(row.name)]
+            )
+            Task { await model.addShot(showing: input) }
+        } label: {
+            Text(
+                "Add Shot Showing \(row.name)",
+                comment:
+                    "Sidebar input row context menu: add a full-frame shot of this input; the placeholder is the input's name"
+            )
         }
     }
 

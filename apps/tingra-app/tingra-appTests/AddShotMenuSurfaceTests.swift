@@ -18,6 +18,7 @@ struct AddShotMenuSurfaceTests {
         let surface = AddShotMenuSurface.sidebar
         #expect(surface.tapName(for: .empty) == "sidebarShotAddEmpty.menuItem")
         #expect(surface.tapName(for: .input) == "sidebarShotAddInput.menuItem")
+        #expect(surface.tapName(for: .addWindow) == "sidebarShotAddWindow.menuItem")
     }
 
     @Test("the bank heading's plus button reports its own names")
@@ -25,6 +26,7 @@ struct AddShotMenuSurfaceTests {
         let surface = AddShotMenuSurface.bank
         #expect(surface.tapName(for: .empty) == "shotBankAddEmpty.menuItem")
         #expect(surface.tapName(for: .input) == "shotBankAddInput.menuItem")
+        #expect(surface.tapName(for: .addWindow) == "shotBankAddWindow.menuItem")
     }
 
     @Test("the menu bar's Shots menu reports its own names")
@@ -32,6 +34,7 @@ struct AddShotMenuSurfaceTests {
         let surface = AddShotMenuSurface.menuBar
         #expect(surface.tapName(for: .empty) == "shotsMenuAddEmpty.menuItem")
         #expect(surface.tapName(for: .input) == "shotsMenuAddInput.menuItem")
+        #expect(surface.tapName(for: .addWindow) == "shotsMenuAddWindow.menuItem")
     }
 
     @Test("no two surfaces share a tap name for any item, and no surface reuses one across items")

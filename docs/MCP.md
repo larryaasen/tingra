@@ -156,7 +156,7 @@ The app registers three, each rendered from `EngineModel` and each signalling a 
 |---|---|
 | `tingra://session` | `stream` — `state` (`idle`, `starting`, `live`, `reconnecting` with `attempt`/`maxAttempts`, `stopping` while a stop closes the connections, `stopped`, `error` with `message`), `bitrateKbps`/`fps` while live, and `destinations`, one per project destination (`id`, `name`, `url`, `enabled`, and while streaming its own `state` of `live`/`reconnecting`/`rejected`/`lost` with its counters); `recording` — `state` (`idle`, `starting`, `recording`, `finalizing`, `error` with `message`), `path`, `container`, and `startedAt` while a file is open. Never a stream key |
 | `tingra://program` | `presets` and `activePreset` (`id`, `name`), `shots` of the active preset (`id`, `name`, `origin` of `authored` or `automatic`, `inputs`), `programShot` and `previewShot` (`id`, `name`, or null), `programInputs` and `previewInputs` (the tally, as sorted input ids), `fadedToBlack` |
-| `tingra://inputs` | `inputs`, every input the engine knows: `id`, `name`, `kind` (`camera`, `microphone`, `display`, `generator`, `media`), `media` (`video`, `audio`), and a media input's `path` |
+| `tingra://inputs` | `inputs`, every input the engine knows: `id`, `name`, `kind` (`camera`, `microphone`, `display`, `window`, `generator`, `media`), `media` (`video`, `audio`), and a media input's `path` |
 
 **The program tools are the app's** — registered by `ProgramToolsPlugIn` in the app target through the same `ToolRegistering` seam, because only the app has a program (the daemon streams one input and has no compositor to take a shot on):
 

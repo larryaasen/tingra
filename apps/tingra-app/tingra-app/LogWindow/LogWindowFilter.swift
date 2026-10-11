@@ -26,11 +26,13 @@ enum LogLaunchScope: String, CaseIterable, Sendable {
 /// groups into one), and not a param's value, since values are written unquoted
 /// (ARCHITECTURE.md, "The log window").
 struct LogWindowFilter: Equatable, Sendable {
-    /// The levels shown; all of them by default.
+    /// The levels shown; all of them by default. Info covers the INFO lines
+    /// that are not taps, which ``showsTaps`` governs.
     var levels: Set<LogLevel> = Set(LogLevel.allCases)
 
-    /// Whether tap lines are shown. Taps are INFO lines, so hiding Info hides
-    /// them too.
+    /// Whether tap lines are shown. This choice alone decides it: a tap is
+    /// written as an INFO line, but hiding Info does not hide it, or a checked
+    /// Taps item would show nothing (2026-10-08).
     var showsTaps = true
 
     /// The one domain shown, or nil for every domain.
@@ -55,8 +57,11 @@ struct LogWindowFilter: Equatable, Sendable {
     func includes(_ entry: LogEntry, currentSessionID: Int) -> Bool {
         if !searchText.isEmpty, !entry.text.localizedStandardContains(searchText) { return false }
         guard let level = entry.level else { return domain == nil && launch == .all }
-        guard levels.contains(level) else { return false }
-        if entry.isTap, !showsTaps { return false }
+        if entry.isTap {
+            guard showsTaps else { return false }
+        } else {
+            guard levels.contains(level) else { return false }
+        }
         if let domain, entry.domain != domain { return false }
         if launch == .current, entry.sessionID != currentSessionID { return false }
         return true

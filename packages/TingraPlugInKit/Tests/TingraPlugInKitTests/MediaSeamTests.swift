@@ -144,4 +144,11 @@ struct MediaSeamTests {
         #expect(InputKind.allCases.contains(.media))
         #expect(InputKind.media != .generator)
     }
+
+    @Test("The window kind is a distinct case with a stable raw value")
+    func windowKindRawValue() {
+        #expect(InputKind.window.rawValue == "window")
+        #expect(InputKind.allCases.contains(.window))
+        #expect(InputKind.window != .display)
+    }
 }

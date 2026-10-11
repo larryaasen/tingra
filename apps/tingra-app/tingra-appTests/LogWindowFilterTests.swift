@@ -44,12 +44,27 @@ struct LogWindowFilterTests {
     @Test("hiding a level hides its lines and nothing else")
     func hidesLevel() {
         #expect(shown(by: LogWindowFilter(levels: [.info, .error])) == [info, error, tap, unparsed])
-        #expect(shown(by: LogWindowFilter(levels: [])) == [unparsed])
+        #expect(shown(by: LogWindowFilter(levels: [], showsTaps: false)) == [unparsed])
     }
 
-    @Test("hiding Info hides taps too, since taps are INFO lines")
-    func hidingInfoHidesTaps() {
-        #expect(!shown(by: LogWindowFilter(levels: [.debug, .error])).contains(tap))
+    @Test("hiding Info keeps taps, which the taps choice alone governs")
+    func hidingInfoKeepsTaps() {
+        #expect(shown(by: LogWindowFilter(levels: [.debug, .error])) == [debug, error, tap, unparsed])
+    }
+
+    @Test("with only Errors shown, taps still show beside the errors")
+    func errorsAndTaps() {
+        #expect(shown(by: LogWindowFilter(levels: [.error])) == [error, tap, unparsed])
+    }
+
+    @Test("with every level hidden, taps are the only parsed lines shown")
+    func everyLevelHiddenShowsTaps() {
+        #expect(shown(by: LogWindowFilter(levels: [])) == [tap, unparsed])
+    }
+
+    @Test("with Info shown and taps hidden, no tap line shows")
+    func infoWithoutTaps() {
+        #expect(shown(by: LogWindowFilter(levels: [.info], showsTaps: false)) == [info, unparsed])
     }
 
     @Test("hiding taps hides tap lines and keeps the other INFO lines")

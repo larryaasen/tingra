@@ -234,16 +234,42 @@ final class AppPlugInHost {
         }
     }
 
-    /// Registers the manifests of a batch of identities and retires the
-    /// plug-ins no longer in it.
+    /// Registers the manifests of a batch of identities, retires the
+    /// plug-ins no longer in it, and refreshes the identity of a plug-in the
+    /// system delivered again (``PlugInDiscoveryPlan``).
     private func adopt(_ batch: [AppExtensionIdentity], services: AppPlugInServices) {
-        let present = Set(batch.map(\.bundleIdentifier))
-        for plugIn in plugIns where !present.contains(plugIn.identity.bundleIdentifier) {
+        let plan = PlugInDiscoveryPlan(
+            registered: plugIns.map { .init(bundleIdentifier: $0.identity.bundleIdentifier, identity: $0.identity) },
+            batch: batch.map { .init(bundleIdentifier: $0.bundleIdentifier, identity: $0) })
+        for plugIn in plugIns where plan.retired.contains(plugIn.identity.bundleIdentifier) {
             retire(plugIn, services: services)
         }
-        for identity in batch where !plugIns.contains(where: { $0.identity == identity }) {
-            register(identity, services: services)
+        for entry in plan.refreshed {
+            refresh(entry.identity, services: services)
         }
+        for entry in plan.arrived {
+            register(entry.identity, services: services)
+        }
+    }
+
+    /// Adopts the identity the system delivered again for a plug-in already
+    /// registered. Its registration, its manifest, and whatever it has
+    /// running stay as they are; the next process or scene the host starts
+    /// for it uses the newer identity.
+    private func refresh(_ identity: AppExtensionIdentity, services: AppPlugInServices) {
+        guard let index = plugIns.firstIndex(where: { $0.identity.bundleIdentifier == identity.bundleIdentifier })
+        else { return }
+        let held = plugIns[index]
+        let plugIn = DiscoveredPlugIn(
+            identity: identity, manifest: held.manifest, version: held.version, isBuiltIn: held.isBuiltIn)
+        plugIns[index] = plugIn
+        links[plugIn.id]?.refresh(plugIn)
+        services.eventBus.trace(
+            "plugin.refreshed", domain: .plugIn,
+            params: [
+                "tier": .string("app"), "id": .string(plugIn.id.rawValue),
+                "bundle": .string(identity.bundleIdentifier),
+            ])
     }
 
     /// Reads an identity's manifest and fills the registries from it.
@@ -587,8 +613,9 @@ final class AppPlugInStorage: PlugInStoring {
 /// hosted pane, each carrying an MCP session with the plug-in's method
 /// handler. The plug-in is "activated" while any connection is open.
 final class AppPlugInLink {
-    /// The plug-in.
-    let plugIn: AppPlugInHost.DiscoveredPlugIn
+    /// The plug-in. Replaced when the system delivers its identity again
+    /// (``refresh(_:)``).
+    private(set) var plugIn: AppPlugInHost.DiscoveredPlugIn
 
     /// What the sessions need.
     private let services: AppPlugInServices
@@ -603,6 +630,14 @@ final class AppPlugInLink {
     init(plugIn: AppPlugInHost.DiscoveredPlugIn, services: AppPlugInServices) {
         self.plugIn = plugIn
         self.services = services
+    }
+
+    /// Adopts the plug-in as rediscovered. The open sessions are untouched;
+    /// the next process launch uses its identity.
+    ///
+    /// - Parameter plugIn: The same plug-in, with the newer identity.
+    func refresh(_ plugIn: AppPlugInHost.DiscoveredPlugIn) {
+        self.plugIn = plugIn
     }
 
     /// Forwards a command over the process connection, launching the
