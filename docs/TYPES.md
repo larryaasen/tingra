@@ -460,6 +460,7 @@ surface is:
 - `StatusBarCommands` — the View-menu Show/Hide Status Bar item, ⌘/.
 - `SidebarVisibilityCommands` — the View-menu Show/Hide Sidebar item, ⌃⌘S.
 - `StatusBarItem` — the pure lamp and symbol reading behind the status bar.
+- `StreamHealth` — whether a live stream is delivered well, for the bar.
 - `KeepAwakePreferences` — whether a stream or recording keeps the Mac awake.
 - `KeepAwakeSwitch` — owns the app's one hold on the Mac while on air.
 - `LiveStreamRecord` — `live-stream.json`: the stream this run has on air.

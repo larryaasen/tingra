@@ -296,6 +296,37 @@ struct LiveStreamRecordModelTests {
         #expect(record.read() == nil)
     }
 
+    @Test("the stream going live records when it went on air, and stopping clears it")
+    func startedAtFollowsTheSession() async throws {
+        let (model, record) = makeModel()
+        defer { discard(record) }
+        #expect(model.streamStartedAt == nil)
+
+        let started = await events({ $0.event("stream.started", domain: .output) })
+        for event in started {
+            model.handleStreamStatusEvent(event)
+        }
+        #expect(model.streamStartedAt == (try #require(started.first)).date)
+
+        for event in await events({ $0.event("stream.stopped", domain: .output) }) {
+            model.handleStreamStatusEvent(event)
+        }
+        #expect(model.streamStartedAt == nil)
+    }
+
+    @Test("the recording session's own start never sets when the stream went on air")
+    func recordingSessionLeavesStartedAtAlone() async {
+        let (model, record) = makeModel()
+        defer { discard(record) }
+        let label: [String: EventValue] = ["session": .string(EngineModel.recordSessionLabel)]
+
+        for event in await events({ $0.event("stream.started", domain: .output, params: label) }) {
+            model.handleStreamStatusEvent(event)
+        }
+
+        #expect(model.streamStartedAt == nil)
+    }
+
     @Test("every stop reason the session can report is covered")
     func stopReasonsAreTheSessionsOutcomes() {
         let outcomes: [StreamSession.Outcome] = [.stopRequested, .durationElapsed, .connectionLost, .recordingFailed]

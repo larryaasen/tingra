@@ -201,7 +201,7 @@ struct StreamHistoryRow: View {
                 }
             }
             Group {
-                Text(StreamHistoryFormat.period(of: entry))
+                Text(StreamHistoryFormat.period(of: entry, isOnAir: isOnAir))
                 Text(StreamHistoryFormat.programFormat(of: entry))
             }
             .font(.callout)
@@ -230,7 +230,7 @@ struct StreamHistoryRow: View {
         if !entry.destinations.isEmpty {
             lines.append(StreamHistoryFormat.destinations(of: entry))
         }
-        lines.append(StreamHistoryFormat.period(of: entry))
+        lines.append(StreamHistoryFormat.period(of: entry, isOnAir: isOnAir))
         lines.append(StreamHistoryFormat.programFormat(of: entry))
         if let ending {
             lines.append(String(localized: ending))
@@ -270,11 +270,19 @@ struct StreamHistoryRow: View {
         case .stopped:
             nil
         case nil:
-            isOnAir
-                ? nil
-                : LocalizedStringResource(
+            if isOnAir {
+                nil
+            } else if entry.lastOnAirAt != nil {
+                LocalizedStringResource(
+                    "Ended unexpectedly; the end shown is when it was last known to be on air",
+                    comment:
+                        "Stream history: remark on a session whose end was never seen, as after a crash, shown with the last time it reported being on air"
+                )
+            } else {
+                LocalizedStringResource(
                     "Ended unexpectedly; the end time was not recorded",
                     comment: "Stream history: remark on a session whose end was never seen, as after a crash")
+            }
         }
     }
 }

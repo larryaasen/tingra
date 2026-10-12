@@ -1,6 +1,23 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "%lld of %lld destinations off air" : {
+      "comment" : "Status bar warning: how many of the stream's destinations are not being streamed to",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$lld von %2$lld Zielen nicht auf Sendung"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$lld de %2$lld destinos fuera del aire"
+          }
+        }
+      }
+    },
     "“%@” is still being recorded. Stop the recording before moving it to the Trash." : {
       "comment" : "Reason a recording could not be moved to the Trash: it is the take being recorded; the placeholder is the file's name",
       "localizations" : {
@@ -2349,6 +2366,23 @@
         }
       }
     },
+    "Ended unexpectedly; the end shown is when it was last known to be on air" : {
+      "comment" : "Stream history: remark on a session whose end was never seen, as after a crash, shown with the last time it reported being on air",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unerwartet beendet; das angezeigte Ende ist der Zeitpunkt, zu dem die Sitzung zuletzt sicher auf Sendung war"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Terminó inesperadamente; el final mostrado es el último momento en que se supo que estaba al aire"
+          }
+        }
+      }
+    },
     "Ended unexpectedly; the end time was not recorded" : {
       "comment" : "Stream history: remark on a session whose end was never seen, as after a crash",
       "localizations" : {
@@ -4120,6 +4154,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "No hay cámaras conectadas"
+          }
+        }
+      }
+    },
+    "No data sent" : {
+      "comment" : "Status bar warning: the stream is live but nothing is being delivered",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Daten gesendet"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se envían datos"
           }
         }
       }
@@ -6966,6 +7017,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Iniciar transmisión"
+          }
+        }
+      }
+    },
+    "Started %@" : {
+      "comment" : "Status bar tooltip on the Live reading: the date and time the stream went on air",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gestartet: %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inició: %@"
           }
         }
       }

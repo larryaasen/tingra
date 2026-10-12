@@ -58,7 +58,7 @@ struct StreamHistoryFormatTests {
 
     @Test("a finished session's period names the day once, with both times")
     func finishedPeriod() {
-        let text = StreamHistoryFormat.period(of: entry(length: 3960), locale: english, timeZone: utc)
+        let text = StreamHistoryFormat.period(of: entry(length: 3960), isOnAir: false, locale: english, timeZone: utc)
         #expect(text.contains("Oct 11, 2026"))
         #expect(text.contains("3:04"))
         #expect(text.contains("4:10"))
@@ -67,7 +67,7 @@ struct StreamHistoryFormatTests {
 
     @Test("a session with no end reads as its start alone")
     func openPeriod() {
-        let text = StreamHistoryFormat.period(of: entry(length: nil), locale: english, timeZone: utc)
+        let text = StreamHistoryFormat.period(of: entry(length: nil), isOnAir: false, locale: english, timeZone: utc)
         #expect(text.contains("Oct 11, 2026"))
         #expect(text.contains("3:04"))
         #expect(!text.contains("4:10"))
@@ -75,8 +75,40 @@ struct StreamHistoryFormatTests {
 
     @Test("a session that ended the moment it started reads as its start alone")
     func zeroLengthPeriod() {
-        let open = StreamHistoryFormat.period(of: entry(length: nil), locale: english, timeZone: utc)
-        #expect(StreamHistoryFormat.period(of: entry(length: 0), locale: english, timeZone: utc) == open)
+        let open = StreamHistoryFormat.period(of: entry(length: nil), isOnAir: false, locale: english, timeZone: utc)
+        #expect(
+            StreamHistoryFormat.period(of: entry(length: 0), isOnAir: false, locale: english, timeZone: utc) == open)
+    }
+
+    /// A session starting at ``start`` whose end was never seen, last known
+    /// to be on air 66 minutes in.
+    private var cutOff: StreamHistoryEntry {
+        var entry = entry(length: nil)
+        entry.lastOnAirAt = Self.start.addingTimeInterval(3960)
+        return entry
+    }
+
+    @Test("a session whose end was never seen ends when it was last known to be on air")
+    func cutOffPeriod() {
+        let text = StreamHistoryFormat.period(of: cutOff, isOnAir: false, locale: english, timeZone: utc)
+        #expect(text.contains("3:04"))
+        #expect(text.contains("4:10"))
+    }
+
+    @Test("the session on air reads as its start alone, whatever it has reported")
+    func onAirPeriod() {
+        let text = StreamHistoryFormat.period(of: cutOff, isOnAir: true, locale: english, timeZone: utc)
+        #expect(text.contains("3:04"))
+        #expect(!text.contains("4:10"))
+    }
+
+    @Test("a recorded end is shown over the last moment known to be on air")
+    func recordedEndWins() {
+        var entry = entry(length: 3960)
+        entry.lastOnAirAt = Self.start.addingTimeInterval(1800)
+        let text = StreamHistoryFormat.period(of: entry, isOnAir: false, locale: english, timeZone: utc)
+        #expect(text.contains("4:10"))
+        #expect(!text.contains("3:34"))
     }
 
     @Test("the program format reads as the status bar words it")

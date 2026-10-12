@@ -155,8 +155,13 @@ struct StatusBarView: View {
         }
     }
 
-    /// The streaming reading: what the session is doing, with the delivery
-    /// counters while it is live.
+    /// The streaming reading: what the session is doing, with the time on
+    /// air while it is live — and what is wrong with the delivery, when
+    /// something is (``StreamHealth``). When the stream went on air and the
+    /// delivery figures themselves are the reading's tooltip
+    /// (``liveHelp(startedAt:stats:locale:timeZone:)``): the figures are for
+    /// diagnosing, which the streaming panel is for, and a healthy stream
+    /// has nothing to say with them.
     @ViewBuilder private var streamingReading: some View {
         let item = StatusBarItem.streaming(model.streamStatus)
         switch model.streamStatus {
@@ -165,10 +170,14 @@ struct StatusBarView: View {
         case .starting:
             reading(item, label: Text("Connecting…", comment: "Stream status: connecting to the destination"))
         case .live:
-            reading(item, label: Text("Live", comment: "Status bar reading: the program is on air")) {
-                if let stats = model.streamStats {
-                    Text(verbatim: "\(stats.bitrateKbps) kbps · \(stats.fps) fps")
-                        .monospacedDigit()
+            reading(
+                item,
+                label: Text("Live", comment: "Status bar reading: the program is on air"),
+                help: Self.liveHelp(startedAt: model.streamStartedAt, stats: model.streamStats)
+            ) {
+                streamElapsedTime
+                if let trouble = model.streamTrouble {
+                    troubleReading(trouble)
                 }
             }
         case .reconnecting(let attempt, let maxAttempts):
@@ -243,6 +252,87 @@ struct StatusBarView: View {
         }
     }
 
+    /// How long the current stream has been on air, worded as the stream
+    /// history words a session's length ("4m 13s",
+    /// ``StreamHistoryFormat/duration(_:locale:)``) so the bar and the
+    /// history read alike.
+    ///
+    /// The same once-a-second redraw as ``elapsedTime``: the start instant
+    /// comes from the model, and only the clock ticks. Whole seconds elapsed,
+    /// rounded down, so a second is shown once it has passed.
+    private var streamElapsedTime: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            if let started = model.streamStartedAt {
+                Text(
+                    verbatim: StreamHistoryFormat.duration(
+                        max(0, context.date.timeIntervalSince(started)).rounded(.down))
+                )
+                .monospacedDigit()
+            }
+        }
+    }
+
+    /// The Live reading's tooltip: when the stream went on air, as a date
+    /// and a time to the second — the elapsed time beside it counts in
+    /// seconds, so the start it counts from is given as finely — and the
+    /// delivery figures on a line beneath — whichever of the two are known.
+    ///
+    /// - Parameters:
+    ///   - startedAt: When the stream went on air, or nil if not known.
+    ///   - stats: The latest delivery figures, or nil before the first.
+    ///   - locale: The locale to format in (the current one by default).
+    ///   - timeZone: The time zone to show the time in (the current one by
+    ///     default).
+    /// - Returns: The tooltip; empty with neither, which shows none.
+    static func liveHelp(
+        startedAt: Date?,
+        stats: EngineModel.StreamStats?,
+        locale: Locale = .current,
+        timeZone: TimeZone = .current
+    ) -> String {
+        var lines: [String] = []
+        if let startedAt {
+            var style = Date.FormatStyle(date: .abbreviated, time: .standard, locale: locale)
+            style.timeZone = timeZone
+            let started = startedAt.formatted(style)
+            lines.append(
+                String(
+                    localized: "Started \(started)",
+                    comment: "Status bar tooltip on the Live reading: the date and time the stream went on air"))
+        }
+        if let stats {
+            lines.append("\(stats.bitrateKbps) kbps · \(stats.fps) fps")
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    /// What is wrong with the stream on air, beside the time: a warning
+    /// triangle and a few words, in the pending lamp's orange so it reads as
+    /// "look at this" against the red of Live without reading as off air.
+    ///
+    /// - Parameter trouble: The trouble to show.
+    /// - Returns: The warning.
+    private func troubleReading(_ trouble: StreamHealth.Trouble) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: "exclamationmark.triangle.fill")
+            switch trouble {
+            case .stalled:
+                Text("No data sent", comment: "Status bar warning: the stream is live but nothing is being delivered")
+            case .destinationsOffAir(let count, let total):
+                Text(
+                    "\(count) of \(total) destinations off air",
+                    comment: "Status bar warning: how many of the stream's destinations are not being streamed to"
+                )
+            case .framesBehind(let fps, let target):
+                // Verbatim, like the reconnect count: delivered over the
+                // program's rate, the same in every language.
+                Text(verbatim: "\(fps)/\(target) fps")
+                    .monospacedDigit()
+            }
+        }
+        .foregroundStyle(StatusBarItem.Light.pending.tint)
+    }
+
     /// One reading on the bar: its symbol, its label, and any detail beside
     /// it, tinted and weighted by what the lamp reads.
     ///
@@ -253,7 +343,7 @@ struct StatusBarView: View {
     ///     message the way the panels do. Empty for the readings that have
     ///     nothing more to say, which shows no tooltip.
     ///   - detail: The secondary text beside the label — an elapsed time, a
-    ///     bitrate — or nothing.
+    ///     warning — or nothing.
     /// - Returns: The reading.
     private func reading<Detail: View>(
         _ item: StatusBarItem,

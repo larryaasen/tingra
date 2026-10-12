@@ -31,18 +31,25 @@ enum StreamHistoryFormat {
     }
 
     /// When a session ran: its start through its end, or its start alone
-    /// while it has no recorded end.
+    /// while it is on air or has no end to show.
+    ///
+    /// A session whose end was never seen — a crash, a Force Quit, the
+    /// debugger's Stop — ends at the last moment it was known to be on air
+    /// (`lastOnAirAt`), the same moment its length is counted to, so the
+    /// row's times and its length agree.
     ///
     /// - Parameters:
     ///   - entry: The session.
+    ///   - isOnAir: Whether the session is the one on air now, which has no
+    ///     end yet whatever it has reported.
     ///   - locale: The locale to format in (the current one by default).
     ///   - timeZone: The time zone to show the times in (the current one by
     ///     default).
     /// - Returns: For example "Oct 11, 2026, 3:04 – 4:10 PM".
     static func period(
-        of entry: StreamHistoryEntry, locale: Locale = .current, timeZone: TimeZone = .current
+        of entry: StreamHistoryEntry, isOnAir: Bool, locale: Locale = .current, timeZone: TimeZone = .current
     ) -> String {
-        guard let endedAt = entry.endedAt, endedAt > entry.startedAt else {
+        guard !isOnAir, let endedAt = entry.endedAt ?? entry.lastOnAirAt, endedAt > entry.startedAt else {
             var style = Date.FormatStyle(date: .abbreviated, time: .shortened, locale: locale)
             style.timeZone = timeZone
             return entry.startedAt.formatted(style)

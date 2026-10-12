@@ -357,6 +357,26 @@ final class EngineModel {
     /// describes none of them; each leg's own is in ``destinationStats``.
     private(set) var streamStats: StreamStats?
 
+    /// Whether the stream on air is being delivered well, from the same
+    /// once-a-second readings as ``streamStats`` — what ``streamTrouble``
+    /// judges.
+    private(set) var streamHealth = StreamHealth()
+
+    /// What is wrong with the stream on air, or nil while it is healthy or
+    /// not on air — what the status bar shows beside Live
+    /// (``StreamHealth``).
+    var streamTrouble: StreamHealth.Trouble? {
+        guard streamStatus == .live else { return nil }
+        return streamHealth.trouble(destinationStates: destinationStates)
+    }
+
+    /// When the current stream went on air — the date of the session's
+    /// `stream.started` event — or nil when not streaming. It holds through
+    /// a reconnect, which is the same session. The status bar's elapsed time
+    /// is drawn from this at display cadence, the way the recording's is
+    /// from ``recordingStartedAt``.
+    private(set) var streamStartedAt: Date?
+
     /// Each streaming destination's latest delivery stats, keyed by
     /// destination id — what the panel's per-destination rows show. Driven by
     /// the session's once-a-second live statistics; cleared when the stream
@@ -4319,6 +4339,8 @@ final class EngineModel {
         streamSession = session
         streamStatus = .starting
         streamStats = nil
+        streamHealth.reset()
+        streamStartedAt = nil
         destinationStats = [:]
         destinationStates = [:]
 
@@ -4374,6 +4396,7 @@ final class EngineModel {
         guard let streamSession, streamStatus != .stopping else { return }
         streamStatus = .stopping
         streamStats = nil
+        streamHealth.reset()
         await streamSession.stop()
     }
 
@@ -4884,7 +4907,10 @@ final class EngineModel {
         )
         destinationStats.merge(panel.perDestination) { _, new in new }
         // None while stopping, when delivery is ending.
-        if let headline = panel.headline, !isStoppingStream { streamStats = headline }
+        if let headline = panel.headline, !isStoppingStream {
+            streamStats = headline
+            streamHealth.record(headline, frameRate: format.frameRate)
+        }
     }
 
     /// The panel's figures from one reading of the session's live statistics:
@@ -4951,6 +4977,7 @@ final class EngineModel {
         switch event.name {
         case "stream.started":
             setActiveStreamStatus(.live)
+            streamStartedAt = event.date
             // On air from here: a run that ends before `stream.stopped` is
             // one the next launch offers to resume. IDs only, never a URL
             // or a key. The legs are the streamable destinations, which
@@ -4993,6 +5020,7 @@ final class EngineModel {
             if !destinationStates.values.contains(.live), !isStoppingStream {
                 setActiveStreamStatus(.reconnecting(attempt: attempt, maxAttempts: maxAttempts))
                 streamStats = nil
+                streamHealth.reset()
             }
         case "stream.stopped":
             // The session reports its outcome as the stop reason; every leg
@@ -5008,6 +5036,8 @@ final class EngineModel {
                 )
                 : .stopped
             streamStats = nil
+            streamHealth.reset()
+            streamStartedAt = nil
             destinationStats = [:]
             // Whatever the reason: a stream that ended on its own was not
             // cut short by the app dying, and offering to restart it would
