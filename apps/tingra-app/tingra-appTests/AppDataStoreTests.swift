@@ -99,6 +99,7 @@ struct AppDataFixture {
         store = AppDataStore(
             projectStore: projectStore,
             destinationsFileURL: supportDirectory.appending(path: "destinations.json"),
+            streamHistoryStore: StreamHistoryStore(directory: supportDirectory),
             logSessionFileURL: supportDirectory.appending(path: "log-session-id"),
             logFileURL: root.appending(path: "Logs/Tingra/Tingra.log"),
             defaults: defaults,
@@ -290,9 +291,25 @@ struct AppDataStoreTests {
         #expect(!AppDataKind.logFile.isRemovable)
         #expect(
             AppDataKind.allCases.filter(\.isRemovable) == [
-                .project, .destinations, .streamKeys, .plugInData, .plugInSecrets, .plugInEnablement, .liveStream,
-                .preferences, .logSession,
+                .project, .destinations, .streamKeys, .streamHistory, .plugInData, .plugInSecrets, .plugInEnablement,
+                .liveStream, .preferences, .logSession,
             ])
+    }
+
+    @Test("the stream history counts its file and the unreadable sibling beside it")
+    func streamHistoryIsCounted() throws {
+        let fixture = try AppDataFixture()
+        defer { fixture.tearDown() }
+        let empty = try #require(fixture.store.inventory().first { $0.kind == .streamHistory })
+        #expect(empty.count == 0)
+
+        try fixture.write(fixture.store.streamHistoryStore.fileURL, byteCount: 200)
+        try fixture.write(fixture.store.streamHistoryStore.unreadableFileURL, byteCount: 20)
+
+        let item = try #require(fixture.store.inventory().first { $0.kind == .streamHistory })
+        #expect(item.count == 2)
+        #expect(item.byteCount == 220)
+        #expect(item.folderURL != nil)
     }
 
     @Test("plug-in data counts the files under the plug-in data folder and remove all removes the folder")
@@ -454,12 +471,16 @@ struct AppDataStoreTests {
         try fixture.write(fixture.store.unreadableProjectFileURL, byteCount: 10)
         try fixture.write(fixture.store.destinationsFileURL, byteCount: 120)
         try fixture.write(fixture.store.logSessionFileURL, byteCount: 3)
+        try fixture.write(fixture.store.streamHistoryStore.fileURL, byteCount: 200)
+        try fixture.write(fixture.store.streamHistoryStore.unreadableFileURL, byteCount: 20)
         try fixture.secureStorage.setSecret("live_a", forAccount: "a")
         fixture.defaults.set("dark", forKey: "appearance.mode")
 
         let failures = fixture.store.removeAll()
 
         #expect(failures.isEmpty)
+        #expect(!fixture.exists(fixture.store.streamHistoryStore.fileURL))
+        #expect(!fixture.exists(fixture.store.streamHistoryStore.unreadableFileURL))
         #expect(!fixture.exists(fixture.store.projectStore.fileURL))
         #expect(!fixture.exists(fixture.store.unreadableProjectFileURL))
         #expect(!fixture.exists(fixture.store.destinationsFileURL))

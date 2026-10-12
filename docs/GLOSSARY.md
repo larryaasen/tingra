@@ -116,6 +116,10 @@ A project is the saved file for an entire show. A project contains presets. A pr
 
 **Macro** — a saved, replayable sequence of engine actions: switch preset, start recording, enable an overlay, begin streaming. Macros can be triggered manually, by an agent, or by an event.
 
+**Streamed session** — one stretch the program was on air: from the moment a stream starts publishing to the moment it ends, however many destinations it fanned out to. A start that every destination refused is not a streamed session. Numbered from 1 in the order they went on air. Distinct from the engine **session** below, which is the engine's live state whether or not anything is streaming.
+
+**Stream history** — the kept record of every streamed session: its number, the destinations it went to, when it started and ended, and the program format, with the session count and the total time on air over all of them. Operator-global, like the saved destinations, and shown in the Streaming settings pane.
+
 **Session** — the live running state of the engine in the persistent process: which inputs are active, what is on program and preview, what is streaming and recording. The session survives across individual tool calls.
 
 ## Events and observability

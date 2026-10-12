@@ -11,6 +11,20 @@ here, under "Left open from “…”", pointing at its record there.
 
 ## Roadmap progress
 
+- [ ] **Stream history: built 2026-10-11, not yet seen working in the app.**
+  Every streamed session is recorded and listed in the Streaming settings
+  pane (ARCHITECTURE.md, "Stream history"). The rules, the file, the model,
+  and the wording are unit-tested; the pane has not been looked at and no
+  real stream has been recorded. Remaining: stream to the simulator, stop,
+  and confirm session 1 with its destination, times, format, and length;
+  stream again and confirm session 2 and the totals; quit on air and confirm
+  the entry reads "Ended when Tingra quit"; Force Quit on air and confirm it
+  reads "Ended unexpectedly"; check Clear Stream History and the Data pane's
+  Stream History row. Larry's calls still to make: whether `tingra-cli
+  stream` and the daemon's `stream_start` record too (and what a CLI `--url`
+  is called there), and whether five is the right number of sessions to list
+  before Show All.
+
 - [ ] **Window capture: built 2026-10-08, not yet seen working in the app.**
   One window is an input of its own (`WindowInput`), added through the
   sidebar's Windows section and saved with the project (ARCHITECTURE.md,

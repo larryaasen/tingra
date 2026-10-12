@@ -35,6 +35,11 @@ enum AppDataKind: String, CaseIterable, Identifiable, Sendable {
     /// (`SecureStorage`) — the items that are not a plug-in's.
     case streamKeys
 
+    /// The stream history — one entry per streamed session, with the
+    /// `.unreadable` sibling an undecodable history is set aside as
+    /// (``StreamHistoryStore``).
+    case streamHistory
+
     /// The app-scoped files app-tier plug-ins keep on this Mac, one folder
     /// per plug-in under Application Support (``PlugInApplicationStore``).
     case plugInData
@@ -102,8 +107,8 @@ enum AppDataKind: String, CaseIterable, Identifiable, Sendable {
     var isRemovable: Bool {
         switch self {
         case .recordings, .snapshots, .logFile: false
-        case .project, .destinations, .streamKeys, .plugInData, .plugInSecrets, .plugInEnablement, .liveStream,
-            .preferences, .logSession:
+        case .project, .destinations, .streamKeys, .streamHistory, .plugInData, .plugInSecrets, .plugInEnablement,
+            .liveStream, .preferences, .logSession:
             true
         }
     }
@@ -182,6 +187,9 @@ struct AppDataStore {
     /// The destinations document.
     let destinationsFileURL: URL
 
+    /// The stream history's store.
+    let streamHistoryStore: StreamHistoryStore
+
     /// The log session counter file.
     let logSessionFileURL: URL
 
@@ -219,6 +227,7 @@ struct AppDataStore {
     /// - Parameters:
     ///   - projectStore: The project document's store.
     ///   - destinationsFileURL: The destinations document.
+    ///   - streamHistoryStore: The stream history's store.
     ///   - logSessionFileURL: The log session counter file.
     ///   - logFileURL: The log file.
     ///   - defaults: The preferences.
@@ -233,6 +242,7 @@ struct AppDataStore {
     init(
         projectStore: ProjectStore,
         destinationsFileURL: URL,
+        streamHistoryStore: StreamHistoryStore,
         logSessionFileURL: URL,
         logFileURL: URL,
         defaults: UserDefaults,
@@ -245,6 +255,7 @@ struct AppDataStore {
     ) {
         self.projectStore = projectStore
         self.destinationsFileURL = destinationsFileURL
+        self.streamHistoryStore = streamHistoryStore
         self.logSessionFileURL = logSessionFileURL
         self.logFileURL = logFileURL
         self.defaults = defaults
@@ -312,6 +323,11 @@ struct AppDataStore {
                     location: String(localized: "Keychain", comment: "Data settings: where the stream keys are stored"),
                     folderURL: nil
                 )
+            case .streamHistory:
+                return fileItem(
+                    kind,
+                    files: [streamHistoryStore.fileURL, streamHistoryStore.unreadableFileURL],
+                    folder: streamHistoryStore.fileURL.deletingLastPathComponent())
             case .plugInData:
                 return fileItem(kind, files: Self.regularFiles(under: plugInDirectory), folder: plugInDirectory)
             case .plugInSecrets:
@@ -386,6 +402,8 @@ struct AppDataStore {
             // the plug-ins' secrets go with the keys here, and their own
             // kind below finds nothing left to remove when both run.
             try secureStorage.removeAllSecrets()
+        case .streamHistory:
+            try streamHistoryStore.remove()
         case .plugInData:
             try Self.removeIfPresent(plugInDirectory)
         case .plugInSecrets:

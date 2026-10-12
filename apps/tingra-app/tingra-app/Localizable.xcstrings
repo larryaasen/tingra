@@ -1515,6 +1515,23 @@
         }
       }
     },
+    "Clear Stream History" : {
+      "comment" : "Stream history: label of the clear row, and the confirmation's button",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stream-Verlauf löschen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Borrar historial de transmisiones"
+          }
+        }
+      }
+    },
     "Clear the log file?" : {
       "comment" : "Confirmation alert title before emptying the log file",
       "localizations" : {
@@ -1528,6 +1545,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "¿Vaciar el archivo de registro?"
+          }
+        }
+      }
+    },
+    "Clear the stream history?" : {
+      "comment" : "Confirmation alert title before clearing the stream history",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stream-Verlauf löschen?"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "¿Borrar el historial de transmisiones?"
           }
         }
       }
@@ -2162,6 +2196,23 @@
         }
       }
     },
+    "Each time the program goes on air, Tingra records the session: where it streamed to, when it started and ended, and the program format. The history is kept on this Mac." : {
+      "comment" : "Stream history: footer explaining what is recorded",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jedes Mal, wenn das Programm auf Sendung geht, hält Tingra die Sitzung fest: wohin gestreamt wurde, wann sie begann und endete, und das Programmformat. Der Verlauf wird auf diesem Mac gespeichert."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cada vez que el programa sale al aire, Tingra registra la sesión: a dónde se transmitió, cuándo empezó y terminó, y el formato del programa. El historial se guarda en este Mac."
+          }
+        }
+      }
+    },
     "Edge" : {
       "comment" : "Label of the picker choosing the frame edge a wipe reveals the next shot from",
       "localizations" : {
@@ -2294,6 +2345,57 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Toma vacía"
+          }
+        }
+      }
+    },
+    "Ended unexpectedly; the end time was not recorded" : {
+      "comment" : "Stream history: remark on a session whose end was never seen, as after a crash",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unerwartet beendet; die Endzeit wurde nicht festgehalten"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Terminó inesperadamente; no se registró la hora de finalización"
+          }
+        }
+      }
+    },
+    "Ended when every destination was lost" : {
+      "comment" : "Stream history: remark on a session that ended because the connections dropped",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beendet, als alle Ziele verloren gingen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Terminó al perderse todos los destinos"
+          }
+        }
+      }
+    },
+    "Ended when Tingra quit" : {
+      "comment" : "Stream history: remark on a session cut off by quitting the app",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beendet, als Tingra beendet wurde"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Terminó al salir de Tingra"
           }
         }
       }
@@ -2703,6 +2805,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Cuánto dura una disolución, cortinilla o transición de shader, en segundos. Un corte es instantáneo."
+          }
+        }
+      }
+    },
+    "How this session ended" : {
+      "comment" : "Stream history: accessibility label of a row's marker",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wie diese Sitzung endete"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cómo terminó esta sesión"
           }
         }
       }
@@ -4619,6 +4738,23 @@
         }
       }
     },
+    "On Air" : {
+      "comment" : "Stream history: shown in place of a length for the session running now",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auf Sendung"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Al aire"
+          }
+        }
+      }
+    },
     "On preview" : {
       "comment" : "Accessibility label of the layer editor's lamp: the edited shot is staged on preview",
       "localizations" : {
@@ -5572,6 +5708,23 @@
         }
       }
     },
+    "Removes every session listed here. The next session is session 1 again." : {
+      "comment" : "Stream history: description under the clear row",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Entfernt alle hier aufgeführten Sitzungen. Die nächste Sitzung ist wieder Sitzung 1."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Elimina todas las sesiones que aparecen aquí. La próxima sesión vuelve a ser la sesión 1."
+          }
+        }
+      }
+    },
     "Removes everything listed above except recordings and the log file, then quits Tingra so its next launch is a first run." : {
       "comment" : "Data settings: description under the remove-all row",
       "extractionState" : "stale",
@@ -6222,6 +6375,40 @@
         }
       }
     },
+    "Session %lld" : {
+      "comment" : "Stream history: a session's title; the placeholder is its number",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sitzung %lld"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sesión %lld"
+          }
+        }
+      }
+    },
+    "Sessions" : {
+      "comment" : "Stream history: label of the row counting the streamed sessions",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sitzungen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sesiones"
+          }
+        }
+      }
+    },
     "Settings" : {
       "comment" : "Title of the settings window, and the toolbar button that opens it",
       "localizations" : {
@@ -6392,6 +6579,23 @@
         }
       }
     },
+    "Show All %lld Sessions" : {
+      "comment" : "Stream history: button that lists every session; the placeholder is how many",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alle %lld Sitzungen anzeigen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostrar las %lld sesiones"
+          }
+        }
+      }
+    },
     "Show Inspector" : {
       "comment" : "View menu item and toolbar tooltip that shows the inspector column",
       "localizations" : {
@@ -6439,6 +6643,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Mostrar u ocultar la barra de estado"
+          }
+        }
+      }
+    },
+    "Show Recent Sessions" : {
+      "comment" : "Stream history: button that lists only the newest sessions",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neueste Sitzungen anzeigen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostrar sesiones recientes"
           }
         }
       }
@@ -6881,6 +7102,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Deteniendo…"
+          }
+        }
+      }
+    },
+    "Stream History" : {
+      "comment" : "The record of streamed sessions — the Data settings kind and the Streaming settings heading",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stream-Verlauf"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Historial de transmisiones"
           }
         }
       }
@@ -7465,6 +7703,23 @@
         }
       }
     },
+    "This removes the record of every streamed session and resets the totals. Recordings and the log file are not affected. This cannot be undone." : {
+      "comment" : "Confirmation alert message before clearing the stream history",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dadurch wird der Eintrag jeder gestreamten Sitzung entfernt und die Summen werden zurückgesetzt. Aufnahmen und die Protokolldatei bleiben unberührt. Dies kann nicht widerrufen werden."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esto elimina el registro de todas las sesiones transmitidas y pone los totales a cero. Las grabaciones y el archivo de registro no se ven afectados. Esta acción no se puede deshacer."
+          }
+        }
+      }
+    },
     "This removes what Tingra has saved on this Mac, then quits. It cannot be undone." : {
       "comment" : "Confirmation alert message before removing all data: the opening line",
       "localizations" : {
@@ -7614,6 +7869,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Arriba a la derecha"
+          }
+        }
+      }
+    },
+    "Total Time on Air" : {
+      "comment" : "Stream history: label of the row summing how long every session was on air",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gesamtzeit auf Sendung"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tiempo total al aire"
           }
         }
       }

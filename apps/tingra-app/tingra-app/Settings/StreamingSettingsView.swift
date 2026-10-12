@@ -32,6 +32,9 @@ import TingraEventBus
 /// what this pane adds is the per-destination reading the bar cannot carry —
 /// which leg is reconnecting, which was refused — beside the destination it
 /// belongs to.
+///
+/// Under the status is the stream history (``StreamHistorySection``): every
+/// streamed session and the figures over all of them.
 struct StreamingSettingsView: View {
     /// The engine model owning the destinations and the stream session.
     let model: EngineModel
@@ -53,6 +56,8 @@ struct StreamingSettingsView: View {
                     comment: "Streaming settings: footer under the status row"
                 )
             }
+
+            StreamHistorySection(model: model)
         }
         .formStyle(.grouped)
     }
