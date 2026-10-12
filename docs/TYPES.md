@@ -40,6 +40,8 @@ internal surface a reader needs to navigate the target instead.
 - `StreamingServiceError` — the errors `StreamingService.start(to:)` throws.
 - `StreamingStatistics` — a snapshot of a service's delivery counters.
 - `StreamConfiguration` — the compression and program settings of a stream.
+- `StreamConfiguration.VideoCodec` — the video codecs a stream compresses with.
+- `StreamConfiguration.AudioCodec` — the audio codecs a stream compresses with.
 - `OutputID` — the stable identifier for a registered output.
 - `OutputRegistering` — the registration seam where output plug-ins attach.
 - `Destination` — a streaming target: URL, optional stream key, parameters.
@@ -48,10 +50,13 @@ internal surface a reader needs to navigate the target instead.
 - `RecordingServiceEvent` — a recording event reported after a start.
 - `RecordingServiceError` — the errors `RecordingService.start(to:)` throws.
 - `RecordingFile` — where a recording is written: file URL and container.
+- `RecordingFile.Container` — the container a recording is muxed into.
 - `EffectID` — the stable identifier for a registered audio or video effect.
 - `EffectConfiguration` — one effect as persisted: its id and parameters.
 - `ParameterDescribing` — declares the `parameters` a registration exposes.
 - `Parameter` — one adjustable setting a plug-in declares: number or color.
+- `Parameter.Kind` — the value a parameter takes, and so its control.
+- `Parameter.Scale` — how a control maps its travel onto the range.
 - `ParameterColor` — a color parameter's value: sRGB components and alpha.
 - `EffectParameter` — the deprecated alias of `Parameter`.
 - `EffectColor` — the deprecated alias of `ParameterColor`.
@@ -97,6 +102,7 @@ internal surface a reader needs to navigate the target instead.
 - `PlugInBundleScan` — one scan's result: found, loaded, problems, skipped.
 - `FoundPlugInBundle` — one bundle a scan met, with its declared info.
 - `PlugInBundleSkip` — an admitted bundle that was not loaded, and why.
+- `PlugInBundleSkip.Reason` — why a bundle was skipped, as a stable string.
 - `PlugInSafeModeTrigger` — why a launch is in safe mode.
 - `PlugInEnablement` — which bundles are off: the `plug-ins.json` document.
 - `CrashedPlugInBundle` — one recorded crash of a bundle while it loaded.
@@ -106,6 +112,7 @@ internal surface a reader needs to navigate the target instead.
 - `PlugInLoadMarker` — names the bundle a process is loading right now.
 - `ProcessIdentity` — a process id paired with the kernel's start time.
 - `PlugInBundleProblem` — a bundle refusal or defect, with a stable reason.
+- `PlugInBundleProblem.Reason` — the stable refusal and defect reasons.
 - `PlugInBundleInfo` — what a bundle's Info.plist declares about itself.
 - `PlugInBundleOpening` — the seam that reads and loads a bundle on disk.
 - `FoundationPlugInBundleOpener` — the production opener, over `Bundle`.
@@ -138,6 +145,8 @@ internal surface a reader needs to navigate the target instead.
 - `StreamSession.AudioSource` — the session's audio: an input or the mix.
 - `StreamSession.LegStatistics` — one leg's counters at one reading.
 - `StreamSession.DestinationLeg` — one leg: its id, destination, and service.
+- `StreamSession.Policy` — the reconnect, statistics, and duration knobs.
+- `StreamSession.Outcome` — why a session that was live ended.
 - `SecureStorage` — the host's secret store seam, where stream keys live.
 - `KeychainSecureStorage` — the data-protection Keychain `SecureStorage`.
 - `SecureStorageError` — a recoverable, secret-free secure storage error.
@@ -145,6 +154,11 @@ internal surface a reader needs to navigate the target instead.
 - `DestinationID` — a saved destination's stable identity.
 - `StoredDestination` — a saved destination's key-free record.
 - `DestinationStoreError` — a recoverable, secret-free store error.
+- `StreamHistory` — the streamed sessions and which is on air, as a value.
+- `StreamHistoryEntry` — one streamed session: number, times, and format.
+- `StreamHistoryEndReason` — `stopped`, `connectionLost`, or `appQuit`.
+- `StreamHistorySummary` — the session count and the total time on air.
+- `StreamHistoryStore` — reads and writes `stream-history.json`.
 - `ToolRegistry` — the actor holding the MCP tools plug-ins register.
 - `ToolRegistryError` — a tool name that is already registered.
 - `ResourceRegistry` — the actor holding the engine's MCP resources.
@@ -165,6 +179,13 @@ internal surface a reader needs to navigate the target instead.
 - `DisplayPowerEvent` — a display sleep or wake.
 - `SystemDefaultInputs` — the system default camera and microphone ids.
 - `PrivateAggregateDevice` — keeps macOS's private aggregates out of inputs.
+- `CaptureInputError` — the errors a capture input throws when it starts.
+- `WindowInputProvider` — lists the open windows and makes an input of one.
+- `WindowListingError` — why the open windows could not be listed.
+- `WindowTarget` — the description a window capture looks for.
+- `CaptureWindow` — one window that can be captured now, as a picker lists it.
+- `WindowInput` — one window behind the `Input` seam.
+- `WindowCapture` — one running window capture, injected for tests.
 
 ## `packages/TingraGeneratorPlugIns`
 
@@ -181,6 +202,7 @@ internal surface a reader needs to navigate the target instead.
 - `Compositor` — the tick-paced engine rendering the program and preview.
 - `MediaID` — a media item's stable identifier, and its input's `InputID`.
 - `ProjectMedia` — one file added to a project as media: id, path, name.
+- `ProjectWindow` — one window added to a project: a description to find.
 - `ProjectID` — the stable identifier of a project document.
 - `Project` — the saved, versioned `Codable` document for a whole show.
 - `DestinationReference` — a project's use of one saved destination.
@@ -280,6 +302,7 @@ internal surface a reader needs to navigate the target instead.
 - `AsyncQueue` — a single-consumer async FIFO for blocking producers.
 - `XPCMessageChannel` — the `@objc` protocol an `NSXPCConnection` carries.
 - `XPCMessageTransport` — the `MessageTransport` over an `NSXPCConnection`.
+- `XPCMessageTransport.End` — how a connection ended.
 - `XPCMessageTransportError` — the connection offered no channel proxy.
 
 ## `packages/TingraMCP`
@@ -311,6 +334,7 @@ sees the types listed under that package.
 - `SidebarPosition` — the sidebar a pane prefers: leading, trailing, bottom.
 - `PaneDescriptor` — a pane a plug-in contributes to a sidebar.
 - `ShortcutDescriptor` — a keyboard shortcut as a manifest declares it.
+- `ShortcutDescriptor.Modifier` — a modifier key, named as in a manifest.
 - `CommandPlacement` — where a command appears; today the plug-in's menu.
 - `CommandDescriptor` — a command a plug-in contributes to the menus.
 - `SettingsPaneDescriptor` — a pane a plug-in adds to the Settings window.
@@ -321,16 +345,28 @@ sees the types listed under that package.
 - `FrameBus` — a video bus a plug-in can follow: `program` or `preview`.
 - `BusFrame` — one bus frame as a plug-in gets it: surface, bus, time.
 - `BusMonitorView` — the ready-made bus monitor view for a plug-in's pane.
+- `BusMonitorView.Coordinator` — follows one bus for the view's lifetime.
 - `ActivationCondition` — a bus event that wakes the plug-in.
 - `ActivationCondition.Qualifier` — the param key and value it requires.
 - `ActivationConditionError` — a malformed activation condition.
 - `PlugInManifest` — what a plug-in declares in its extension's Info.plist.
 - `PlugInManifestError` — what is wrong with a manifest, naming the fix.
 - `AppTierMethod` — the JSON-RPC method names the app tier adds to MCP.
+- `AppTierMethod.EventParam` — the parameter keys of `event`.
+- `AppTierMethod.StorageParam` — the keys of `storageGet` and `storageSet`.
+- `AppTierMethod.SecretParam` — the keys of `secretsGet` and `secretsSet`.
+- `AppTierMethod.StatusItemParam` — the parameter keys of `statusItemSet`.
+- `AppTierMethod.MetersParam` — the parameter keys of `meters`.
+- `AppTierMethod.FrameParam` — the keys of `frameNext` and `frame`.
+- `AppTierMethod.CommandParam` — the parameter keys of `commandPerform`.
+- `AppTierMethod.ActivationParam` — the parameter keys of `activation`.
 - `StorageScope` — where a stored value lives: `project` or `application`.
 - `PlugInConnection` — the extension's MCP client connection to the app.
+- `PlugInConnection.CommandHandler` — performs a command the app forwarded.
+- `PlugInConnection.ActivationHandler` — handles an activation condition met.
 - `PlugInConnectionError` — what a connection call can get wrong.
 - `DebouncedWriter` — coalesces a stream of values into one write per pause.
+- `DebouncedWriter.Write` — the closure that performs the write.
 - `PlugInRuntime` — the extension's observable view of its connections.
 - `TingraAppExtension` — what a plug-in's `@main` type adopts.
 - `PlugInCommandHandler` — the configuration accepting the app's connections.
@@ -358,12 +394,13 @@ An app, so it exposes no public API beyond its `@main` entry; its internal
 surface is:
 
 - `EngineModel` — the observable model that boots and drives the engine.
-- `LeadingSidebar` — the main window's leading sidebar and its ten sections.
+- `LeadingSidebar` — the main window's leading sidebar and its eleven sections.
 - `SidebarRow` — the pure row derivation behind the leading sidebar.
-- `SidebarSection` — the closed list of the sidebar's ten sections.
+- `SidebarSection` — the closed list of the sidebar's eleven sections.
 - `SidebarPreferences` — which sidebar sections are open, per Mac.
 - `ContentView` — the main window's detail column: monitors over controls.
 - `TransitionPanel` — the Cut, Take, transition, and duration controls.
+- `TakeTransitionKind` — the transition kinds the switcher's picker offers.
 - `FadeToBlackButton` — the latching Fade to Black toolbar control.
 - `SettingsButton` — the toolbar gear that opens the settings window.
 - `DestinationListView` — the Streaming pane's destination list.
@@ -373,6 +410,7 @@ surface is:
 - `MixerView` — the console mixer panel: strip columns and a master column.
 - `FaderScale` — the pure mapping between fader travel and linear gain.
 - `EffectChainView` — one strip's audio effect chain editor, in a popover.
+- `LayerEffectChainView` — one layer's video effect chain editor.
 - `InputParametersView` — one input's declared settings, in a popover.
 - `ParameterScale` — the pure mapping between a value and slider travel.
 - `CommittingNumberField` — a number field committing on Return or focus loss.
@@ -429,6 +467,7 @@ surface is:
 - `StreamResumeAlert` — the alert asking whether to resume the stream.
 - `StatusBarPreferences` — whether the status bar is shown, per Mac.
 - `StatusBarModel` — the observable both windows read for the bar's state.
+- `TingraApp` — the `@main` entry: the scenes, commands, and engine model.
 - `TingraAppDelegate` — the AppKit hooks: open, quit, and safe mode.
 - `PresetContextMenu` — one preset's context menu.
 - `PresetMenuSurface` — which surface a preset menu is on, for `tap` names.
@@ -483,6 +522,7 @@ surface is:
   - `AppPlugInHost` — discovers app-tier plug-ins and starts them on demand.
   - `AvailabilityCounts` — the enabled, disabled, and unapproved counts.
   - `DiscoveredPlugIn` — an extension identity with its manifest.
+  - `PlugInDiscoveryPlan` — which delivered extensions are new, by bundle id.
   - `AppPlugInServices` — what every plug-in link needs from the app.
   - `AppPlugInStorage` — the storage behind the method handler.
   - `AppPlugInLink` — one plug-in's process and its connections.
@@ -554,6 +594,8 @@ surface is:
 - `AddShotMenuItems` — the Add Shot items every surface shares.
 - `AddShotMenuSurface` — which surface the items are on, for `tap` names.
 - `DraggedInput` — the `Transferable` payload of a dragged sidebar input.
+- `WindowPickerSheet` — the Add Window sheet: open windows by application.
+- `WindowChoice` — the pure rules turning a picked window into an input.
 - `MultiviewView` — the multiview window: program, preview, and inputs.
 - `InputFrameSource` — one input's latest frame, for a multiview tile.
 - `MultiviewTile` — the pure tile derivation and its tally rule.
@@ -573,7 +615,11 @@ surface is:
 - `SettingsSelection` — what the list selects: a built-in or plug-in pane.
 - `SettingsCommands` — the app-menu Settings… item, ⌘,.
 - `GeneralSettingsView` — the General pane: appearance, status bar, snapshots.
-- `StreamingSettingsView` — the Streaming pane: destinations and status.
+- `StreamingSettingsView` — the Streaming pane: destinations, status, history.
+- `StreamHistorySection` — the pane's Stream History: totals, list, clear.
+- `StreamHistoryRow` — one session on one line, with an ending marker.
+- `StreamHistoryModel` — the observable model saving the host's history.
+- `StreamHistoryFormat` — the pure wording of lengths, periods, and formats.
 - `AppearancePicker` — the three-thumbnail appearance control.
 - `AppearanceSwatch` — one appearance thumbnail.
 - `AppearanceMiniDesktop` — the miniature desktop a thumbnail draws.
@@ -632,8 +678,12 @@ surface is:
 - `TingraCamerasApp` — the `@main` entry owning the shared model.
 - `ContentView` — the `NavigationSplitView` two-column layout.
 - `SidebarView` — the Cameras and Microphones sidebar list.
+- `DeviceRow` — one tappable device row, checkmarked when active.
 - `PreviewCanvasView` — the panel centering the 16:9 preview frame.
+- `PreviewMessage` — the placeholder or error shown with no live feed.
 - `CameraPreviewView` — the video view: a placeholder or a live feed.
+- `SampleBufferHostView` — the `NSView` hosting the sample buffer layer.
 - `HardwareModel` — the observable device selection state.
+- `CaptureEngine` — the one type the app reaches the capture engine through.
 - `Device` — one camera or microphone the picker lists.
 - `DeviceKind` — whether a device is a camera or a microphone.
