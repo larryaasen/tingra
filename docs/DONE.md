@@ -1659,6 +1659,32 @@ there.
         at 27.0 the same day; the repo, the token, the first publish, and
         the app half of the check are tracked in TODO.md.*
 
+- [x] **Offer to resume a stream after the app dies. Decided and built
+  2026-10-08.** After a force quit or crash while live, the next launch
+  offers to go live again to the same destinations (Resume Stream / Don't
+  Resume). Streaming only; a recording is not resumed. `LiveStreamRecord`
+  (`live-stream.json` in Tingra's Application Support folder) holds the
+  project file, the destination IDs, and when the stream went live, never a
+  URL or a key; `EngineModel` writes it at the stream session's
+  `stream.started` and removes it at every `stream.stopped` and in
+  `shutDown(reason:)`. `StreamResumeOffer.decide` is the pure ask/skip
+  decision and `StreamResumeAlert` the app-modal question;
+  `offerStreamResume(ask:)` runs as the last step of the boot, after the
+  safe mode offer, removes the marker before acting, and resumes through
+  `startStreaming()` unchanged. A marker naming another project or no
+  streamable destination is removed and reported as `stream.resumeSkipped`
+  (`projectChanged` / `noDestinations`). Taps `streamResume.button` and
+  `streamResumeDecline.button`, then `stream.resumeOffered` with the
+  destination count. Five strings with `de`/`es`; tests for the record, the
+  decision, every stop reason removing the marker, and the skip paths.
+  After review the same day: the resume starts only the destinations the
+  alert named, the marker leaves out a destination that rejected the
+  connection, and the file is listed in the Data pane as
+  `AppDataKind.liveStream`.
+  Checked in the running app: the alert and Don't Resume against a planted
+  marker, then Larry's own run of the resume on 2026-10-08, which worked.
+  Record: ARCHITECTURE.md, "Offering to resume a stream after the app dies".
+
 ## Clock and timing
 
 - [x] **Streamed audio sat behind video by the time the destination took to

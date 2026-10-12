@@ -58,6 +58,12 @@ enum AppDataKind: String, CaseIterable, Identifiable, Sendable {
     /// (`PlugInLoadGuard`). Removing them turns every plug-in back on.
     case plugInEnablement
 
+    /// The marker of a stream on air: `live-stream.json`, there only from
+    /// the moment a stream goes live until it stops, and after a run that
+    /// died live until the next launch reads it (``LiveStreamRecord``).
+    /// Removing it means no offer to resume.
+    case liveStream
+
     /// Machine-local preferences in the app's `UserDefaults` domain:
     /// appearance, the status bar, the monitor output, the recording folder
     /// and format, the sidebar's sections, the operator's last position
@@ -102,7 +108,7 @@ enum AppDataKind: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .recordings, .snapshots, .logFile: false
         case .project, .destinations, .streamKeys, .streamHistory, .plugInData, .plugInSecrets, .plugInEnablement,
-            .preferences, .logSession:
+            .liveStream, .preferences, .logSession:
             true
         }
     }
@@ -270,6 +276,12 @@ struct AppDataStore {
         ] + Self.regularFiles(under: plugInLoadMarkerDirectory)
     }
 
+    /// The marker of a stream on air, in the same folder
+    /// (``LiveStreamRecord``).
+    var liveStreamFileURL: URL {
+        LiveStreamRecord(directory: plugInStateDirectory).fileURL
+    }
+
     /// The load guard's marker folder.
     var plugInLoadMarkerDirectory: URL {
         plugInStateDirectory.appending(path: PlugInLoadGuard.folderName, directoryHint: .isDirectory)
@@ -328,6 +340,8 @@ struct AppDataStore {
                 )
             case .plugInEnablement:
                 return fileItem(kind, files: plugInEnablementFiles, folder: plugInStateDirectory)
+            case .liveStream:
+                return fileItem(kind, files: [liveStreamFileURL], folder: plugInStateDirectory)
             case .preferences:
                 return AppDataItem(
                     kind: kind,
@@ -398,6 +412,8 @@ struct AppDataStore {
             try Self.removeIfPresent(PlugInEnablementStore(directory: plugInStateDirectory).fileURL)
             try Self.removeIfPresent(PlugInLaunchRecord(directory: plugInStateDirectory).fileURL)
             try Self.removeIfPresent(plugInLoadMarkerDirectory)
+        case .liveStream:
+            try Self.removeIfPresent(liveStreamFileURL)
         case .preferences:
             defaults.removePersistentDomain(forName: defaultsDomain)
         case .logSession:
