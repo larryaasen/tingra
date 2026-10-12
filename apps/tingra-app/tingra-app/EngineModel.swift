@@ -1580,6 +1580,7 @@ final class EngineModel {
         store: AppDataStore(
             projectStore: defaultStore,
             destinationsFileURL: destinationStore.fileURL,
+            streamHistoryStore: StreamHistoryStore(directory: defaultStore.directoryURL),
             logSessionFileURL: LogSession.counterFileURL,
             logFileURL: logFile.url,
             defaults: .standard,
@@ -1597,6 +1598,13 @@ final class EngineModel {
     /// model and the Help menu's Share Log File… — over the same ``logFile``
     /// the file sink appends to (``LogFileModel``).
     @ObservationIgnored private(set) lazy var logFileModel = LogFileModel(logFile: logFile, eventBus: eventBus)
+
+    /// The stream history — every streamed session and the figures over all
+    /// of them, the Streaming settings pane's history — kept beside the
+    /// project store's default document (``StreamHistoryModel``). Lazy, so a
+    /// launch that neither streams nor opens the pane reads nothing.
+    @ObservationIgnored private(set) lazy var streamHistory = StreamHistoryModel(
+        store: StreamHistoryStore(directory: defaultStore.directoryURL), eventBus: eventBus)
 
     /// Which installed plug-ins are turned off — the Plug-ins settings
     /// pane's model, over the same `plug-ins.json` the bundle loader reads
@@ -4870,6 +4878,7 @@ final class EngineModel {
         switch event.name {
         case "stream.started":
             setActiveStreamStatus(.live)
+            recordStreamStarted(at: event.date)
         case "stream.destination.started":
             setDestinationState(.live, for: destination)
         case "stream.destination.rejected":
@@ -4882,9 +4891,13 @@ final class EngineModel {
             // leg still down keeps its own row's state.
             setActiveStreamStatus(.live)
             setDestinationState(.live, for: destination)
-        // `stream.stats` is deliberately not handled: the app's line is the
-        // log's once-a-minute window summary, and the panel reads the
+        // `stream.stats` carries no figure the panel reads: the app's line is
+        // the log's once-a-minute window summary, and the panel reads the
         // session's live statistics instead (``applyLiveStatistics(_:)``).
+        // It is what says the stream is still on air, though, so the history
+        // stamps its open entry with it.
+        case "stream.stats":
+            if !isRemovingData { streamHistory.markOnAir(at: event.date) }
         case "stream.reconnecting":
             let attempt = event.params?["attempt"].flatMap(Self.intValue) ?? 0
             let maxAttempts = event.params?["maxAttempts"].flatMap(Self.intValue) ?? 0
@@ -4911,9 +4924,45 @@ final class EngineModel {
                 : .stopped
             streamStats = nil
             destinationStats = [:]
+            recordStreamEnded(
+                reason: reason == StreamSession.Outcome.connectionLost.rawValue ? .connectionLost : .stopped,
+                at: event.date)
         default:
             break
         }
+    }
+
+    /// Enters the session that just went on air in the stream history: the
+    /// destinations it went on air to — every streamed destination but those
+    /// that refused the connection, whose `stream.destination.rejected`
+    /// precedes `stream.started` — and the program format, both of which the
+    /// session holds locked until it has closed.
+    ///
+    /// Nothing is recorded once ``removeAllData()`` has run, the rule
+    /// autosave follows: a history the operator just removed is not written
+    /// back by the stream that is still on air.
+    ///
+    /// - Parameter date: When the session reported going on air.
+    private func recordStreamStarted(at date: Date) {
+        guard !isRemovingData else { return }
+        let onAir = destinations.filter { $0.isStreamable && destinationStates[$0.id] != .rejected }
+        streamHistory.begin(
+            destinations: onAir.map(\.displayName),
+            width: format.width,
+            height: format.height,
+            frameRate: format.frameRate,
+            at: date
+        )
+    }
+
+    /// Closes the stream history's open entry, if there is one.
+    ///
+    /// - Parameters:
+    ///   - reason: How the session ended.
+    ///   - date: When it ended.
+    private func recordStreamEnded(reason: StreamHistoryEndReason, at date: Date) {
+        guard !isRemovingData else { return }
+        streamHistory.end(reason: reason, at: date)
     }
 
     /// Moves the stream status to a running state reported by the session —
@@ -5036,7 +5085,9 @@ final class EngineModel {
     /// `app.terminating` event (domain `platform`) carrying the cause and
     /// whether a recording or a stream was open, writes a pending debounced
     /// autosave at once — an edit made in the second before the quit would
-    /// otherwise be lost with its timer — finalizes the recording the way
+    /// otherwise be lost with its timer — closes the stream history's entry
+    /// for a stream still on air (``StreamHistoryModel``), finalizes the
+    /// recording the way
     /// quitting always has — an unfinalized movie is an unplayable one —
     /// then shuts the bus down and **awaits every log sink's drain**, because
     /// delivery is asynchronous and an event still buffered when the process
@@ -5057,6 +5108,10 @@ final class EngineModel {
         // Before the bus shuts down, so its `project.saved` (or
         // `project.save` error) reaches the log with the rest of the quit.
         if autosaveTask != nil { saveProject() }
+        // The stream goes with the process and reports no end of its own, so
+        // the history's open entry is closed here — otherwise a quit on air
+        // would read as a crash at the next launch.
+        if isStreaming { recordStreamEnded(reason: .appQuit, at: Date()) }
         await finishRecording()
         eventBus.shutdown()
         for task in logSinkTasks {

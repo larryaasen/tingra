@@ -482,6 +482,27 @@ internal surface a reader needs to navigate the target instead.
   `notFound`/`ambiguous` selector resolution (mirroring the input selector's
   two), an unreadable or unwritable document, and the unreadable key an
   unsigned development build gets, whose message names the fix.
+- `StreamHistory` — the stream history's rules as a value: the streamed
+  sessions oldest first and which one is on air (ARCHITECTURE.md, "Stream
+  history"). `begin(destinations:width:height:frameRate:at:)` adds the next
+  session number, `end(reason:at:)` stamps the open one, `markOnAir(at:)` notes
+  it is still running so a session cut off keeps a length, `removeAll()`
+  restarts the numbering. It reads no clock and touches no file; the session
+  on air is not persisted, so a history read back has nothing on air and an
+  entry with no end is one that was cut off.
+- `StreamHistoryEntry` / `StreamHistoryEndReason` / `StreamHistorySummary` —
+  one streamed session (number, start, end, how it ended, destination names,
+  the last moment it was known to be on air, and the program's width, height,
+  and frame rate, with the length derived: to the end, else to that last
+  moment),
+  the three endings (`stopped`, `connectionLost`, `appQuit`), and the figures
+  over a history: the session count and the time on air summed over every
+  session's length.
+- `StreamHistoryStore` — where the history persists:
+  `~/Library/Application Support/Tingra/stream-history.json`, `{"sessions":
+  [...]}` with ISO 8601 dates, rewritten whole on each change. Reads empty
+  with no file, sets an unreadable file aside as `.unreadable`, and takes its
+  directory by injection so tests never touch the operator's own.
 - `ToolRegistry` — the actor where tool plug-ins register the MCP tools they
   contribute and the MCP/Control service lists and resolves them from; the
   host's concrete `ToolRegistering`.
@@ -2459,6 +2480,25 @@ surface is:
   destinations rather than returning to the main window: the status bar there
   already answers "am I on air", and what this pane adds is the per-destination
   reading beside the destination it belongs to.
+- `StreamHistorySection` / `StreamHistoryRow` — the Streaming pane's Stream
+  History section (2026-10-11; ARCHITECTURE.md, "Stream history"): Sessions
+  and Total Time on Air, the five newest sessions with the rest behind Show
+  All, and Clear Stream History behind a confirmation. A row is one line: the
+  session number, its destinations (the part that truncates when the pane is
+  narrow), when it ran, the program format, and its length — or On Air for
+  the one running now. A marker flags a session that did not end by the
+  operator's stop, and the row's tooltip says everything in full, the ending
+  included; clicking the marker shows only how the session ended, in a
+  popover.
+- `StreamHistoryModel` — the `@Observable @MainActor` model behind that
+  section, owned lazily by `EngineModel` over the host's `StreamHistory` and
+  `StreamHistoryStore`: begun on `stream.started`, stamped on each
+  `stream.stats`, and ended on `stream.stopped` or a quit on air, saved after each change, with
+  `stream.history.cleared` on a clear and `stream.history.load`/`.save`/
+  `.clear` errors.
+- `StreamHistoryFormat` — the section's wording, apart from the views so it
+  is tested without drawing: a length in hours, minutes, and seconds, a
+  session's period, its program format, and its destination list.
 - `AppearancePicker` / `AppearanceSwatch` / `AppearanceMiniDesktop` — the
   three-thumbnail appearance control and the miniature desktop each thumbnail
   draws — the System swatch composites the other two rather than being a third
@@ -2507,7 +2547,8 @@ surface is:
   so tests run the real inventory and removal against a temporary directory
   and a throwaway defaults suite. The kinds are a closed list — the project
   document (with its `.unreadable` sibling), the destinations document, the
-  stream keys in the Keychain, the plug-ins' app-scoped files and their
+  stream keys in the Keychain, the stream history (with its `.unreadable`
+  sibling), the plug-ins' app-scoped files  stream keys in the Keychain, the plug-ins' app-scoped files and their
   Keychain secrets (counted apart from the keys by their `plugin:` accounts),
   the plug-ins turned off (`plug-ins.json`, with the launch record and the
   load guard's markers), the preferences domain, the log session
