@@ -46,6 +46,16 @@ struct LayerArrangeCommandTests {
         #expect(LayerArrangeCommand.delete.destination(from: 1, count: 4) == nil)
     }
 
+    @Test("the context menu shows the Delete key on Delete Layer and the menu bar does not")
+    func deleteShortcutBySurface() {
+        #expect(LayerArrangeCommand.delete.shortcut(on: .menuBar) == nil)
+        #expect(LayerArrangeCommand.delete.shortcut(on: .contextMenu) == KeyboardShortcut(.delete, modifiers: []))
+        for command in LayerArrangeCommand.allCases where command != .delete {
+            #expect(command.shortcut(on: .menuBar) == command.shortcut)
+            #expect(command.shortcut(on: .contextMenu) == command.shortcut)
+        }
+    }
+
     @Test("the keys are Keynote's, distinct, and Delete has none")
     func shortcuts() {
         #expect(LayerArrangeCommand.bringToFront.key == "]")

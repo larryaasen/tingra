@@ -142,6 +142,28 @@ struct LayerTreeEditTests {
         #expect(LayerTreeEdit.movingLayers(fromDisplayed: [0], toDisplayed: 4, in: three) == three)
     }
 
+    @Test("pasting a layer puts it on top exactly as copied, keeping the shot's identity")
+    func pastingLayer() {
+        let copied = Layer(
+            input: extra, frame: CGRect(x: 0.5, y: 0.5, width: 0.25, height: 0.25), opacity: 0.4,
+            effects: [EffectConfiguration(effect: EffectID(rawValue: "blur"))])
+        let pasted = LayerTreeEdit.pastingLayer(copied, into: shot)
+        #expect(pasted.layers.count == 3)
+        #expect(pasted.layers.last == copied)
+        #expect(Array(pasted.layers.prefix(2)) == shot.layers)
+        #expect(pasted.id == shot.id)
+        #expect(pasted.name == shot.name)
+        #expect(pasted.background == shot.background)
+        #expect(pasted.defaultTransition == shot.defaultTransition)
+    }
+
+    @Test("pasting into an empty shot makes the layer its only one")
+    func pastingLayerIntoEmptyShot() {
+        let empty = Shot(id: ShotID(rawValue: "empty"), name: "Empty", layers: [])
+        let copied = shot.layers[1]
+        #expect(LayerTreeEdit.pastingLayer(copied, into: empty).layers == [copied])
+    }
+
     @Test("duplicating a layer inserts an identical copy directly above it")
     func duplicatingLayer() {
         let duplicated = LayerTreeEdit.duplicatingLayer(at: 0, in: shot)

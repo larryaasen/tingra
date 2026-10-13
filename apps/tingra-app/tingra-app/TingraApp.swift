@@ -369,6 +369,54 @@ final class TingraAppDelegate: NSObject, NSApplicationDelegate {
         PlugInLaunchRecord().remove()
     }
 
+    /// Edit > Cut, for the layer editor: cuts the selected layer.
+    ///
+    /// **Why the Edit menu's three pasteboard actions are handled here.**
+    /// They travel the responder chain, and the application delegate is its
+    /// last stop: a focused text field answers first, so copying in a pixel
+    /// field or a name field is untouched, and only an action nothing in
+    /// the window claimed reaches the layer editor. That makes ⌘C and ⌘V
+    /// work wherever the focus happens to be — on the layer list, on the
+    /// monitor, or on nothing, which is where it is after the operator
+    /// clicks another shot's tile and the editor is showing that shot's
+    /// empty layer list. A copy command attached to the list would work
+    /// only while the list had the focus, and paste would have nowhere to
+    /// land in exactly the case it is for (ARCHITECTURE.md, "Copying a
+    /// layer between shots").
+    ///
+    /// - Parameter sender: The menu item (unused).
+    @objc func cut(_ sender: Any?) {
+        guard let model else { return }
+        Task { await model.cutSelectedLayer() }
+    }
+
+    /// Edit > Copy, for the layer editor: copies the selected layer.
+    ///
+    /// - Parameter sender: The menu item (unused).
+    @objc func copy(_ sender: Any?) {
+        model?.copySelectedLayer()
+    }
+
+    /// Edit > Paste, for the layer editor: pastes the copied layer on top
+    /// of the shot the editor follows.
+    ///
+    /// - Parameter sender: The menu item (unused).
+    @objc func paste(_ sender: Any?) {
+        guard let model else { return }
+        Task { await model.pasteLayer() }
+    }
+
+    /// Whether the layer editor's window is the one the keys are going to.
+    /// The pasteboard actions reach the delegate from any window, and a ⌘V
+    /// in Settings must not change a shot behind it. The editor's window is
+    /// the one whose undo manager the model registers on, which is also
+    /// what makes the edit's Undo appear in the menu the operator is
+    /// looking at.
+    private var isLayerEditorWindowKey: Bool {
+        guard let undoManager = model?.undoManager else { return false }
+        return NSApp.keyWindow?.undoManager === undoManager
+    }
+
     /// Holds every quit open just long enough to record it and to finalize a
     /// recording in flight.
     ///
@@ -397,6 +445,29 @@ final class TingraAppDelegate: NSObject, NSApplicationDelegate {
             sender.reply(toApplicationShouldTerminate: true)
         }
         return .terminateLater
+    }
+}
+
+extension TingraAppDelegate: NSMenuItemValidation {
+    /// Enables the Edit menu's Cut, Copy, and Paste for the layer editor,
+    /// asked as the menu opens and as a key equivalent is matched — so
+    /// Paste reads the pasteboard at the moment it matters and nothing has
+    /// to watch it. Cut and Copy need a selected layer; Paste needs a
+    /// followed shot and a layer on the pasteboard; all three need the
+    /// editor's window to be the key one.
+    ///
+    /// - Parameter menuItem: The item being validated.
+    /// - Returns: Whether the item is enabled; true for any item that is
+    ///   not one of the three.
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        switch menuItem.action {
+        case #selector(cut(_:)), #selector(copy(_:)):
+            isLayerEditorWindowKey && model?.canCopyLayer == true
+        case #selector(paste(_:)):
+            isLayerEditorWindowKey && model?.canPasteLayer() == true
+        default:
+            true
+        }
     }
 }
 

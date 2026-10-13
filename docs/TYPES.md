@@ -491,9 +491,11 @@ surface is:
 - `LayerSnap` — the pure smart guides a dragged layer snaps onto.
 - `LayerCommands` — the menu bar's Layer menu.
 - `LayerMenuItems` — the items the Layer menu and row context menu share.
+- `LayerPasteboardMenuItems` — the row context menu's Copy and Paste.
 - `LayerArrangeCommand` — the closed table of layer arrange commands.
 - `LayerMenuSurface` — which surface a layer menu item was chosen from.
 - `LayerUndoAction` — what a layer edit did, naming Undo and Redo.
+- `LayerPasteboard` — a copied layer on a pasteboard: write, test, read.
 - `TrailingSidebar` — the trailing sidebar: inspector, Library, plug-ins.
 - `LibrarySplitter` — the draggable hairline that resizes the Library.
 - `LayerInspectorColumn` — the trailing sidebar's upper pane.

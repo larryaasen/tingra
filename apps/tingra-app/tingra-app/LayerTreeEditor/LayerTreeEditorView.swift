@@ -33,7 +33,8 @@ import TingraPlugInKit
 /// display, or video generator — as does dropping a sidebar input row on the
 /// list (``DraggedInput``; ARCHITECTURE.md, "The shot bank"); rows drag to
 /// reorder, and the row's context menu and the Layer menu carry Keynote's
-/// arrange commands (``LayerMenuItems``); the Delete key removes the
+/// arrange commands (``LayerMenuItems``), the context menu leading with
+/// Copy Layer and Paste Layer (``LayerPasteboardMenuItems``); the Delete key removes the
 /// selection; the trailing inspector column (``LayerInspectorColumn``)
 /// rebinds the selected layer, places it by pixel fields or preset, and sets
 /// its opacity — every edit is on program at the next tick, no separate
@@ -199,6 +200,8 @@ struct LayerTreeEditorView: View {
                         layerRow(shot.layers[index], at: index)
                             .tag(index)
                             .contextMenu {
+                                LayerPasteboardMenuItems(model: model, index: index)
+                                Divider()
                                 LayerMenuItems(model: model, surface: .contextMenu, index: index)
                             }
                     }
@@ -250,6 +253,12 @@ struct LayerTreeEditorView: View {
         .overlay {
             RoundedRectangle(cornerRadius: 4)
                 .strokeBorder(.separator)
+        }
+        // Paste is how a copied layer gets into a new shot, so the empty
+        // list offers it too.
+        .contentShape(.rect)
+        .contextMenu {
+            LayerPasteboardMenuItems(model: model, index: nil)
         }
     }
 

@@ -3785,6 +3785,121 @@ final class EngineModel {
         applyShotEdit(.duplicateLayer) { LayerTreeEdit.duplicatingLayer(at: index, in: $0) }
     }
 
+    /// Whether Edit > Copy and Edit > Cut have a layer to act on: one is
+    /// selected in the shot the editor follows.
+    var canCopyLayer: Bool {
+        selectedLayer != nil
+    }
+
+    /// Whether Paste has somewhere to put a layer and a layer to put
+    /// there: a shot is followed and the pasteboard holds one.
+    ///
+    /// Reads ``layerPasteboardChangeCount`` so a view that draws a Paste
+    /// item from this — the layer row's context menu — is redrawn when the
+    /// app copies a layer; the pasteboard itself is not observable.
+    ///
+    /// - Parameter pasteboard: The pasteboard to look at.
+    func canPasteLayer(from pasteboard: NSPasteboard = .general) -> Bool {
+        _ = layerPasteboardChangeCount
+        return editedShot != nil && LayerPasteboard.containsLayer(pasteboard)
+    }
+
+    /// The pasteboard's change count as of the app's last layer copy, or
+    /// nil before one — observed state standing in for the pasteboard,
+    /// which cannot be observed (``canPasteLayer(from:)``).
+    private(set) var layerPasteboardChangeCount: Int?
+
+    /// Copies the selected layer to the pasteboard — Edit > Copy. The shot
+    /// is untouched, so there is nothing to undo; the `tap` records the
+    /// operator's action, since the Edit menu's items are the system's
+    /// (the reasoning under ``restoreShot(_:_:)``'s `layerEdit.undo`).
+    ///
+    /// - Parameter pasteboard: The pasteboard to write.
+    /// - Returns: Whether a layer was copied.
+    @discardableResult
+    func copySelectedLayer(to pasteboard: NSPasteboard = .general) -> Bool {
+        guard let selection = selectedLayer else { return false }
+        return copyLayer(at: selection.index, to: pasteboard, reporting: "layerEdit.copy")
+    }
+
+    /// Copies the layer at the given bottom-to-top index of the followed
+    /// shot to the pasteboard, selected or not — the layer row's context
+    /// menu copies the row it was opened on.
+    ///
+    /// - Parameters:
+    ///   - index: The layer's index in the shot's `layers` array.
+    ///   - pasteboard: The pasteboard to write.
+    ///   - tapName: The `tap` recording which control asked.
+    /// - Returns: Whether a layer was copied.
+    @discardableResult
+    func copyLayer(at index: Int, to pasteboard: NSPasteboard = .general, reporting tapName: String) -> Bool {
+        guard let layers = editedShot?.shot.layers, layers.indices.contains(index) else { return false }
+        eventBus.tap(tapName, domain: .composition, params: ["index": .int(index)])
+        return writeLayer(layers[index], to: pasteboard)
+    }
+
+    /// Cuts the selected layer — Edit > Cut: copies it, then removes it
+    /// from the followed shot as one undo step, and reconfigures so an
+    /// input no shot references anymore is stopped. A layer that could not
+    /// be copied is not removed.
+    ///
+    /// - Parameter pasteboard: The pasteboard to write.
+    func cutSelectedLayer(to pasteboard: NSPasteboard = .general) async {
+        guard let selection = selectedLayer else { return }
+        eventBus.tap("layerEdit.cut", domain: .composition, params: ["index": .int(selection.index)])
+        guard writeLayer(selection.layer, to: pasteboard) else { return }
+        selectedLayerIndex = nil
+        applyShotEdit(.cutLayer) { LayerTreeEdit.removingLayer(at: selection.index, from: $0) }
+        await reconfigure()
+    }
+
+    /// Pastes the pasteboard's layer on top of the followed shot — Edit >
+    /// Paste — and selects it, so the inspector and the handles are on the
+    /// layer that just arrived. One undo step; then a reconfigure so the
+    /// layer's input is running, as after ``addLayer(boundTo:)``. A layer
+    /// bound to an input this project cannot see lands dormant.
+    ///
+    /// - Parameters:
+    ///   - pasteboard: The pasteboard to read.
+    ///   - tapName: The `tap` recording which control asked — the Edit
+    ///     menu's by default.
+    func pasteLayer(from pasteboard: NSPasteboard = .general, reporting tapName: String = "layerEdit.paste") async {
+        guard let followed = editedShot, let layer = LayerPasteboard.layer(on: pasteboard) else { return }
+        eventBus.tap(
+            tapName,
+            domain: .composition,
+            params: ["shot": .string(followed.shot.id.rawValue), "input": .string(layer.input.rawValue)]
+        )
+        applyShotEdit(.pasteLayer) { LayerTreeEdit.pastingLayer(layer, into: $0) }
+        selectedLayerIndex = followed.shot.layers.count
+        // Pasting a layer is the operator asking for its input now, so a
+        // silent one gets another attempt (``silentInputs``).
+        silentInputs.remove(layer.input)
+        await reconfigure()
+    }
+
+    /// Writes a layer to a pasteboard, reporting a layer that could not be
+    /// encoded as an `error` event rather than throwing at a menu item.
+    ///
+    /// - Parameters:
+    ///   - layer: The layer to copy.
+    ///   - pasteboard: The pasteboard to write.
+    /// - Returns: Whether the layer was written.
+    private func writeLayer(_ layer: Layer, to pasteboard: NSPasteboard) -> Bool {
+        do {
+            try LayerPasteboard.write(layer, to: pasteboard)
+            layerPasteboardChangeCount = pasteboard.changeCount
+            return true
+        } catch {
+            eventBus.error(
+                "layerEdit.copy",
+                domain: .composition,
+                params: ["error": .string(String(describing: error))]
+            )
+            return false
+        }
+    }
+
     /// Nudges the layer at the given bottom-to-top index one step — an
     /// arrow key on the monitor. A discrete edit: each press is its own
     /// undo step, as in Keynote.

@@ -1685,6 +1685,23 @@
         }
       }
     },
+    "Copy Layer" : {
+      "comment" : "Layer context menu item copying the layer to the pasteboard",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ebene kopieren"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copiar capa"
+          }
+        }
+      }
+    },
     "Couldn’t Move to Trash" : {
       "comment" : "Title of the alert when a snapshot could not be moved to the Trash",
       "localizations" : {
@@ -1783,6 +1800,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Corte"
+          }
+        }
+      }
+    },
+    "Cut Layer" : {
+      "comment" : "Undo action name: a layer was cut to the pasteboard",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ebene ausschneiden"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cortar capa"
           }
         }
       }
@@ -4990,6 +5024,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Panorámica"
+          }
+        }
+      }
+    },
+    "Paste Layer" : {
+      "comment" : "Layer context menu item and undo action name: the copied layer is pasted into the shot",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ebene einsetzen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pegar capa"
           }
         }
       }

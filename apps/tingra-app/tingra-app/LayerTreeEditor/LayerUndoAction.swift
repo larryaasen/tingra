@@ -22,6 +22,8 @@ enum LayerUndoAction: String, CaseIterable, Sendable {
     case removeLayer
     case reorderLayer
     case duplicateLayer
+    case cutLayer
+    case pasteLayer
     case addEffect
     case removeEffect
     case moveEffect
@@ -45,6 +47,12 @@ enum LayerUndoAction: String, CaseIterable, Sendable {
             String(localized: "Reorder Layer", comment: "Undo action name: a layer moved through the stack")
         case .duplicateLayer:
             String(localized: "Duplicate Layer", comment: "Layer menu item duplicating the selected layer")
+        case .cutLayer:
+            String(localized: "Cut Layer", comment: "Undo action name: a layer was cut to the pasteboard")
+        case .pasteLayer:
+            String(
+                localized: "Paste Layer",
+                comment: "Layer context menu item and undo action name: the copied layer is pasted into the shot")
         case .addEffect:
             String(localized: "Add Effect", comment: "Menu adding an effect to a channel strip's chain")
         case .removeEffect:

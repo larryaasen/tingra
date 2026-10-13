@@ -326,6 +326,19 @@ enum LayerTreeEdit {
         return replacingLayers(of: shot, with: layers)
     }
 
+    /// Pastes a copied layer on **top** of the shot's stack, exactly as it
+    /// was copied — the same input, frame, opacity, and effect chain — so a
+    /// layer placed in one shot sits in the same place in the next. On top
+    /// for the reason a new layer is: you paste a layer to see it.
+    ///
+    /// - Parameters:
+    ///   - layer: The copied layer.
+    ///   - shot: The shot to edit.
+    /// - Returns: The shot with the layer appended on top.
+    static func pastingLayer(_ layer: Layer, into shot: Shot) -> Shot {
+        replacingLayers(of: shot, with: shot.layers + [layer])
+    }
+
     private static func replacingChain(of layer: Layer, with chain: [EffectConfiguration]) -> Layer {
         Layer(input: layer.input, frame: layer.frame, opacity: layer.opacity, effects: chain)
     }

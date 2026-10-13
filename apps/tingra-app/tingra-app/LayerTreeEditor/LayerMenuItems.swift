@@ -44,7 +44,7 @@ struct LayerMenuItems: View {
             } label: {
                 command.title
             }
-            .keyboardShortcut(command.shortcut)
+            .keyboardShortcut(command.shortcut(on: surface))
             .disabled(!command.isAvailable(index: index, count: count))
         }
     }
@@ -71,6 +71,48 @@ struct LayerMenuItems: View {
             model.selectedLayerIndex = nil
             Task { await model.removeLayer(at: index) }
         }
+    }
+}
+
+/// The layer list's **Copy Layer** and **Paste Layer** context-menu items:
+/// the Edit menu's Copy and Paste where the pointer already is
+/// (ARCHITECTURE.md, "Copying a layer between shots"). Context menu only —
+/// the menu bar has them in the Edit menu, under ⌘C and ⌘V.
+///
+/// Copy takes the row the menu was opened on, selected or not, the way
+/// every item of a row's context menu acts on that row; Paste puts the
+/// copied layer on top of the shot. Both are disabled rather than hidden
+/// when they would do nothing. Each shows the Edit menu's key beside it —
+/// shown only: a context menu's key equivalents are live just while it is
+/// open, so ⌘C in a text field is still the text field's.
+struct LayerPasteboardMenuItems: View {
+    /// The engine model the items copy and paste through.
+    @Bindable var model: EngineModel
+
+    /// The bottom-to-top index of the row the menu was opened on, or nil
+    /// for the empty shot's list, where there is nothing to copy.
+    let index: Int?
+
+    /// The two items.
+    var body: some View {
+        Button {
+            guard let index else { return }
+            model.copyLayer(at: index, reporting: "layerCopy.menu")
+        } label: {
+            Text("Copy Layer", comment: "Layer context menu item copying the layer to the pasteboard")
+        }
+        .keyboardShortcut("c", modifiers: .command)
+        .disabled(index == nil)
+
+        Button {
+            Task { await model.pasteLayer(reporting: "layerPaste.menu") }
+        } label: {
+            Text(
+                "Paste Layer",
+                comment: "Layer context menu item and undo action name: the copied layer is pasted into the shot")
+        }
+        .keyboardShortcut("v", modifiers: .command)
+        .disabled(!model.canPasteLayer())
     }
 }
 

@@ -80,6 +80,20 @@ enum LayerArrangeCommand: String, CaseIterable, Sendable {
         key.map { KeyboardShortcut($0, modifiers: modifiers) }
     }
 
+    /// The shortcut an item shows on a surface: ``shortcut`` everywhere,
+    /// except that the context menu's Delete Layer shows the Delete key.
+    /// There it is a reminder of the key the list already answers to — a
+    /// context menu's key equivalents are live only while it is open — while
+    /// the menu bar's item stays without one, for the reason ``delete``
+    /// gives.
+    ///
+    /// - Parameter surface: Where the item is drawn.
+    /// - Returns: The shortcut, or nil for an item that shows none there.
+    func shortcut(on surface: LayerMenuSurface) -> KeyboardShortcut? {
+        guard self == .delete, surface == .contextMenu else { return shortcut }
+        return KeyboardShortcut(.delete, modifiers: [])
+    }
+
     /// The item's localized title.
     var title: Text {
         switch self {
