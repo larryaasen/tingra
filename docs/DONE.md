@@ -1685,6 +1685,55 @@ there.
   marker, then Larry's own run of the resume on 2026-10-08, which worked.
   Record: ARCHITECTURE.md, "Offering to resume a stream after the app dies".
 
+- [x] **Stream history. Built 2026-10-11, checked in the running app by
+  Larry 2026-10-13.** Every streamed session is recorded with its
+  destinations, times, program format, and length, and listed with totals
+  in the Streaming settings pane. Larry's two open calls (whether the CLI
+  and the daemon record too, and the number listed before Show All) are
+  tracked in TODO.md. Record: ARCHITECTURE.md, "Stream history".
+
+- [x] **Window capture. Built 2026-10-08, checked in the running app by
+  Larry 2026-10-13.** One window is an input of its own (`WindowInput`),
+  added through the sidebar's Windows section and saved with the project.
+  Record: ARCHITECTURE.md, "Window capture".
+
+- [x] **Display capture across display sleep. Built 2026-09-26, checked
+  live by Larry 2026-10-13.** `DisplayInput` reports a display capture
+  stopped by display sleep as `input.interrupted` and restarts on
+  `NSWorkspace`'s screen wake (`input.resumed`). `tingra-cli` cannot
+  restart (a command-line process receives no screen wake notification);
+  since 2026-10-06 a session holds the displays out of idle sleep instead
+  (CLOCK.md, "System sleep and App Nap"). Record: ARCHITECTURE.md,
+  "Display capture across display sleep".
+
+- [x] **Two small defects seen while building the stream's Stopping state
+  (2026-09-26). Fixed 2026-10-13.** (1) While a recording is finishing
+  (`RecordingStatus.finalizing`) `RecordButton` read Record and could be
+  clicked, though a new recording cannot start until the file is closed.
+  It now reads Finishing… and is disabled, ⌘R with it
+  (`EngineModel.isFinishingRecording`), the rule `StreamButton` follows
+  while a stream stops; the string is the Recording pane's own, so nothing
+  new to translate. (2) `EngineModel.destinationStates` was never cleared
+  when a stream ended, so the Streaming pane's per-destination status rows
+  could keep reading Live after a stop. Cleared at `stream.stopped` and
+  again in `teardownStream()`, for a start that threw after a destination
+  had reported its state; a destination's Refused goes with it, the
+  session's own error carrying that news off air. One test for the second;
+  the first is a view state with no seam to drive it, not seen in the
+  running app.
+
+- [x] **The app's tests wrote into the operator's stream history. Found and
+  fixed 2026-10-13.** Larry's history showed a session 16 with no
+  destination and no length, which no stream can produce. It was the test
+  suite's: `StreamResumeOfferTests` hands an `EngineModel` a
+  `stream.started`, the model records a session at every one, and the
+  model's history store was always the file in Application Support. The
+  store is now an initializer argument (`streamHistoryStore`, the default
+  unchanged), as `liveStreamRecord` already was, and those tests pass one
+  over their temporary folder. Checked: the real file's checksum is the
+  same before and after a full test run. Session 16 itself is still in
+  Larry's file; only Clear Stream History removes it.
+
 ## Clock and timing
 
 - [x] **Streamed audio sat behind video by the time the destination took to

@@ -34,6 +34,13 @@ import TingraEventBus
 /// applied to the image itself rather than through `tint`, because a toolbar
 /// draws its items' labels in its own monochrome style and a tint never
 /// reaches the glyph.
+///
+/// **While the file is being closed it reads Finishing… and cannot be
+/// clicked** (2026-10-13), the rule ``StreamButton`` follows while a stream
+/// stops. Until then the button read Record the moment Stop Recording was
+/// clicked, though a new recording cannot start before the last one's file is
+/// finalized, so a click on it did nothing. The dot is no longer red: nothing
+/// more is being captured. ⌘R is disabled with the button.
 struct RecordButton: View {
     /// The engine model the control drives.
     let model: EngineModel
@@ -48,7 +55,13 @@ struct RecordButton: View {
                 Task { await model.startRecording() }
             }
         } label: {
-            if model.isRecording {
+            if model.isFinishingRecording {
+                Label {
+                    Text("Finishing…", comment: "Recording status: the file is being closed so it is playable")
+                } icon: {
+                    Image(systemName: "record.circle")
+                }
+            } else if model.isRecording {
                 Label {
                     Text("Stop Recording", comment: "Button that stops the local recording")
                 } icon: {
@@ -64,6 +77,7 @@ struct RecordButton: View {
             }
         }
         .labelStyle(.titleAndIcon)
+        .disabled(model.isFinishingRecording)
         .keyboardShortcut(ProductionShortcut.record.shortcut)
     }
 }

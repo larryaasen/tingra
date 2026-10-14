@@ -475,6 +475,13 @@ final class EngineModel {
         }
     }
 
+    /// Whether Stop Recording was clicked and the file is still being closed
+    /// — so the control reads Finishing… and cannot be clicked until the
+    /// take is playable and a new one can start.
+    var isFinishingRecording: Bool {
+        recordingStatus == .finalizing
+    }
+
     /// Whether a stream is currently starting, live, reconnecting, or
     /// stopping — so the destination fields lock and a format change or a
     /// project switch is refused (``StreamStatus/isActive``).
@@ -1607,7 +1614,7 @@ final class EngineModel {
         store: AppDataStore(
             projectStore: defaultStore,
             destinationsFileURL: destinationStore.fileURL,
-            streamHistoryStore: StreamHistoryStore(directory: defaultStore.directoryURL),
+            streamHistoryStore: streamHistoryStore,
             logSessionFileURL: LogSession.counterFileURL,
             logFileURL: logFile.url,
             defaults: .standard,
@@ -1627,11 +1634,19 @@ final class EngineModel {
     @ObservationIgnored private(set) lazy var logFileModel = LogFileModel(logFile: logFile, eventBus: eventBus)
 
     /// The stream history — every streamed session and the figures over all
-    /// of them, the Streaming settings pane's history — kept beside the
-    /// project store's default document (``StreamHistoryModel``). Lazy, so a
-    /// launch that neither streams nor opens the pane reads nothing.
+    /// of them, the Streaming settings pane's history — kept in
+    /// ``streamHistoryStore`` (``StreamHistoryModel``). Lazy, so a launch
+    /// that neither streams nor opens the pane reads nothing.
     @ObservationIgnored private(set) lazy var streamHistory = StreamHistoryModel(
-        store: StreamHistoryStore(directory: defaultStore.directoryURL), eventBus: eventBus)
+        store: streamHistoryStore, eventBus: eventBus)
+
+    /// Where the stream history persists: beside the project store's default
+    /// document in the app, a temporary folder in tests. Injected because
+    /// the model records a session at every `stream.started` it is handed,
+    /// and a test that hands it one must not write into the operator's own
+    /// history — which one did on 2026-10-13, as a session with no
+    /// destination.
+    @ObservationIgnored private let streamHistoryStore: StreamHistoryStore
 
     /// Which installed plug-ins are turned off — the Plug-ins settings
     /// pane's model, over the same `plug-ins.json` the bundle loader reads
@@ -1822,6 +1837,9 @@ final class EngineModel {
     ///   - liveStreamRecord: The marker of the stream on air (the file in
     ///     Tingra's Application Support folder by default; one over a
     ///     temporary folder in tests).
+    ///   - streamHistoryStore: Where the stream history persists (the file
+    ///     in Tingra's Application Support folder by default; one over a
+    ///     temporary folder in tests).
     init(
         monitor: any AudioMonitor = AVAudioEngineMonitor(),
         monitorPreferences: MonitorPreferences = MonitorPreferences(),
@@ -1830,10 +1848,12 @@ final class EngineModel {
         recordingPreferences: RecordingPreferences = RecordingPreferences(),
         keepAwakePreferences: KeepAwakePreferences = KeepAwakePreferences(),
         keepAwake: any KeepAwake = ProcessActivityKeepAwake(),
-        liveStreamRecord: LiveStreamRecord = LiveStreamRecord()
+        liveStreamRecord: LiveStreamRecord = LiveStreamRecord(),
+        streamHistoryStore: StreamHistoryStore = StreamHistoryStore(directory: ProjectStore().directoryURL)
     ) {
         self.monitor = monitor
         self.liveStreamRecord = liveStreamRecord
+        self.streamHistoryStore = streamHistoryStore
         self.projectURL = ProjectStore().fileURL
         self.snapshotPreferences = snapshotPreferences
         self.recordingPreferences = recordingPreferences
@@ -5003,6 +5023,10 @@ final class EngineModel {
         streamStatisticsTask = nil
         streamSession = nil
         streamTask = nil
+        // `stream.stopped` clears these too; clearing them here as well
+        // covers a session that ended without emitting it — a start that
+        // threw after a destination had already reported its state.
+        destinationStates = [:]
     }
 
     /// Shows one reading of the session's live statistics in the panel.
@@ -5154,6 +5178,9 @@ final class EngineModel {
             streamHealth.reset()
             streamStartedAt = nil
             destinationStats = [:]
+            // Off air, no destination has a state: a row left reading Live
+            // after the stop is what clearing them here prevents.
+            destinationStates = [:]
             // Whatever the reason: a stream that ended on its own was not
             // cut short by the app dying, and offering to restart it would
             // be wrong.

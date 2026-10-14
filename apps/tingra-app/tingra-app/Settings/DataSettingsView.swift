@@ -302,7 +302,7 @@ struct AppDataRow: View {
             case .preferences:
                 String(localized: "\(item.count) entries", comment: "Data settings: a count of preference entries")
             case .project, .destinations, .streamHistory, .plugInData, .plugInEnablement, .liveStream, .logSession,
-                 .logFile, .recordings, .snapshots:
+                .logFile, .recordings, .snapshots:
                 String(localized: "\(item.count) files", comment: "Data settings: a count of files")
             }
         guard let byteCount = item.byteCount else { return count }

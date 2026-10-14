@@ -11,43 +11,11 @@ here, under "Left open from “…”", pointing at its record there.
 
 ## Roadmap progress
 
-- [ ] **Stream history: built 2026-10-11, not yet seen working in the app.**
-  Every streamed session is recorded and listed in the Streaming settings
-  pane (ARCHITECTURE.md, "Stream history"). The rules, the file, the model,
-  and the wording are unit-tested; the pane has not been looked at and no
-  real stream has been recorded. Remaining: stream to the simulator, stop,
-  and confirm session 1 with its destination, times, format, and length;
-  stream again and confirm session 2 and the totals; quit on air and confirm
-  the entry reads "Ended when Tingra quit"; Force Quit on air and confirm it
-  reads "Ended unexpectedly"; check Clear Stream History and the Data pane's
-  Stream History row. Larry's calls still to make: whether `tingra-cli
-  stream` and the daemon's `stream_start` record too (and what a CLI `--url`
-  is called there), and whether five is the right number of sessions to list
-  before Show All.
-
-- [ ] **Window capture: built 2026-10-08, not yet seen working in the app.**
-  One window is an input of its own (`WindowInput`), added through the
-  sidebar's Windows section and saved with the project (ARCHITECTURE.md,
-  "Window capture"). The matching rules and the session are unit-tested, and
-  the frame attachment arithmetic was measured against a real window.
-  Remaining: run the new build, add a window, put it in a shot, and confirm
-  it moves; resize the window and confirm the picture stays sharp and
-  unpadded; close the window, reopen it, click it, and confirm the layer
-  comes back with an `input.interrupted`/`input.resumed` pair in the log;
-  quit and reopen Tingra and confirm the window is found again.
-
-- [ ] **Display capture across display sleep: built 2026-09-26, not yet seen
-  working live.** ScreenCaptureKit stops a display capture whenever the
-  displays sleep; `DisplayInput` now reports that as `input.interrupted` and
-  restarts on `NSWorkspace`'s screen wake (`input.resumed`). The state machine
-  is unit-tested (ARCHITECTURE.md, "Display capture across display sleep").
-  Remaining: run the new build, put Display 2 in a shot, `pmset
-  displaysleepnow`, wake, and confirm the layer moves again and the log
-  shows the interrupted/resumed pair. `tingra-cli` cannot restart (a
-  command-line process receives no screen wake notification); since
-  2026-10-06 a session holds the displays out of idle sleep instead
-  (CLOCK.md, "System sleep and App Nap"), so only a display slept by hand
-  reaches that case.
+- [ ] **Left open from “Stream history”** (done; record in DONE.md):
+  - Larry's calls still to make: whether `tingra-cli stream` and the
+    daemon's `stream_start` record too (and what a CLI `--url` is called
+    there), and whether five is the right number of sessions to list before
+    Show All.
 
 - [ ] **SRT reconnect on a mid-stream loss.** HaishinKit 2.x's SRT publish
   path pushes no event when a live link dies (`SRTConnection.connected` flips
@@ -70,14 +38,6 @@ here, under "Left open from “…”", pointing at its record there.
     makes it briefly false, but the 12 s gap shows frames drop without one.
     Measure over a longer take (count frames and DTS steps with `ffprobe`)
     before changing anything.
-
-- [ ] **Two small defects seen while building the stream's Stopping state
-  (2026-09-26), not fixed.** (1) Record has the gap Stop Streaming had: while
-  a recording is finishing (`RecordingStatus.finalizing`) `RecordButton`
-  already reads Record and can be clicked. (2) `EngineModel.destinationStates`
-  is never cleared when a stream ends, though its doc comment says it is empty
-  when not streaming, so the Streaming pane's per-destination status rows can
-  keep reading Live after a stop.
 
 - [ ] **Steps 7–8** — app era: production features (presets, shots, layers,
   transitions, audio mixer) *(step 7 complete 2026-07-20)*, SRT/multiple

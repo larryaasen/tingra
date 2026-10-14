@@ -258,7 +258,13 @@ struct LiveStreamRecordModelTests {
     /// A model over a record in a temporary folder.
     private func makeModel() -> (EngineModel, LiveStreamRecord) {
         let record = temporaryRecord()
-        return (EngineModel(monitor: SilentMonitor(), liveStreamRecord: record), record)
+        // The stream history goes in the record's own temporary folder, so
+        // the `stream.started` these tests hand the model is never recorded
+        // in the operator's history, and `discard(_:)` removes both.
+        let history = StreamHistoryStore(directory: record.fileURL.deletingLastPathComponent())
+        return (
+            EngineModel(monitor: SilentMonitor(), liveStreamRecord: record, streamHistoryStore: history), record
+        )
     }
 
     /// A record of a stream from a project to one destination.
@@ -312,6 +318,32 @@ struct LiveStreamRecordModelTests {
             model.handleStreamStatusEvent(event)
         }
         #expect(model.streamStartedAt == nil)
+    }
+
+    @Test("the stream stopping leaves no destination with a live state")
+    func stoppedClearsDestinationStates() async {
+        let (model, record) = makeModel()
+        defer { discard(record) }
+        let twitch: [String: EventValue] = ["destination": .string("twitch")]
+        let youtube: [String: EventValue] = ["destination": .string("youtube")]
+
+        let started = await events({
+            $0.event("stream.destination.started", domain: .output, params: twitch)
+            $0.event("stream.destination.rejected", domain: .output, params: youtube)
+        })
+        for event in started {
+            model.handleStreamStatusEvent(event)
+        }
+        #expect(
+            model.destinationStates == [
+                ProjectDestinationID(rawValue: "twitch"): .live,
+                ProjectDestinationID(rawValue: "youtube"): .rejected,
+            ])
+
+        for event in await events({ $0.event("stream.stopped", domain: .output) }) {
+            model.handleStreamStatusEvent(event)
+        }
+        #expect(model.destinationStates.isEmpty)
     }
 
     @Test("the recording session's own start never sets when the stream went on air")
