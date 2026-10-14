@@ -61,8 +61,8 @@
 		5B14E5010000000000000A0B /* Embed ExtensionKit Extensions */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
-			dstPath = "$(EXTENSIONS_FOLDER_PATH)";
-			dstSubfolderSpec = 16;
+			dstPath = Contents/Extensions;
+			dstSubfolderSpec = 1;
 			files = (
 				5B14E5010000000000000A0F /* com.moonwink.tingra.app.plug-in.appextensionpoint in Embed ExtensionKit Extensions */,
 				5B14E5020000000000000B0A /* TingraNotes.appex in Embed ExtensionKit Extensions */,

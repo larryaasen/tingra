@@ -334,7 +334,8 @@ Nothing open.
     links (`ARCHS = arm64`); CI must archive signed with Developer ID, with
     the app's profile passed as `TINGRA_APP_PROFILE_SPECIFIER`; the exported
     app launches and reads a key a development build filed. The archive
-    step's Notes warning is still to resolve.
+    step's Notes warning is fixed: the embed phase copies into the app
+    bundle, not the products directory.
   - [x] Spike row D *(2026-10-14)*: the app and the disk image each
     notarized (Accepted, no issues), stapled, and assessed as Notarized
     Developer ID, including a quarantined copy of the image.
