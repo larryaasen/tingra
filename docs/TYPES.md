@@ -468,7 +468,8 @@ surface is:
 - `StreamResumeAlert` — the alert asking whether to resume the stream.
 - `StatusBarPreferences` — whether the status bar is shown, per Mac.
 - `StatusBarModel` — the observable both windows read for the bar's state.
-- `TingraApp` — the `@main` entry: the scenes, commands, and engine model.
+- `TingraMain` — the `@main` entry: answers `--version` or starts the app.
+- `TingraApp` — the app: the scenes, commands, and engine model.
 - `TingraAppDelegate` — the AppKit hooks: open, quit, and safe mode.
 - `PresetContextMenu` — one preset's context menu.
 - `PresetMenuSurface` — which surface a preset menu is on, for `tap` names.
@@ -478,6 +479,7 @@ surface is:
 - `ShotRenameDialog` — the shot rename alert as a modifier.
 - `LaunchDiagnostics` — the build and system params of `app.launched`.
 - `LaunchEnvironment` — whether this is the test host or a console run.
+- `LaunchArguments` — whether the command line asks for the version.
 - `ConsoleEventSink` — the dev-run sink printing log-file lines to stdout.
 - `TerminationReason` — why the app is quitting, as far as AppKit can say.
 - `QuitCommands` — the app-menu Quit item, recording its `tap` first.

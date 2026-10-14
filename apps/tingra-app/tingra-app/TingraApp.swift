@@ -19,7 +19,9 @@ import TingraHost
 /// and hands it to the main window. The engine starts once the window
 /// appears; production controls (presets, shots, the mixer) hang off this
 /// same model as they land.
-@main
+///
+/// Not the process entry point itself: ``TingraMain`` is, so `--version` can
+/// answer before this value, and the state it owns, exists.
 struct TingraApp: App {
     /// The engine model, owned for the app's lifetime.
     @State private var model = EngineModel()

@@ -16,7 +16,8 @@
 # What it does, in order:
 #   1. Preflight: tools, authentication, branch, clean tree, signing env.
 #   2. Prompt for the version, defaulting to the next increment.
-#   3. Bump TingraCLIVersion.current and Info.plist's version keys together.
+#   3. Bump TingraCLIVersion.current, Info.plist's version keys, and the app's
+#      TINGRA_VERSION together.
 #   4. Commit the bump and push the branch.
 #   5. Run scripts/release-cli-publish.sh, which tags, packages, publishes, updates the tap.
 #   6. Optionally reopen main on the next -dev version (the documented scheme).
@@ -43,6 +44,9 @@ readonly ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 readonly CLI_DIR="${ROOT}/apps/tingra-cli"
 readonly VERSION_SWIFT="${CLI_DIR}/Sources/TingraCLI/Version.swift"
 readonly INFO_PLIST="${CLI_DIR}/Info.plist"
+# The app's version setting: Tingra.app and its Notes extension take the
+# product version from this one line (docs/RELEASE.md, Decision 6).
+readonly APP_XCCONFIG="${ROOT}/apps/tingra-app/Tingra.xcconfig"
 readonly RELEASE_BRANCH="${TINGRA_RELEASE_BRANCH:-main}"
 
 log()  { echo "release-cli: $*"; }
@@ -61,7 +65,7 @@ while [[ $# -gt 0 ]]; do
         --dry-run)      DRY_RUN=true; shift ;;
         --no-dev-bump)  DEV_BUMP=false; shift ;;
         -y|--yes)       ASSUME_YES=true; shift ;;
-        -h|--help)      sed -n '10,39p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help)      sed -n '10,40p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *)              die "unknown argument '$1' (try --help)." ;;
     esac
 done
@@ -114,9 +118,16 @@ confirm() {
     [[ "$reply" == "y" || "$reply" == "Y" ]]
 }
 
-# Writes a version into both Version.swift and the embedded Info.plist, then
-# reads them back. They are bumped together on purpose: release-cli-package.sh refuses
-# to package a binary whose plist and constant disagree.
+# Reads TINGRA_VERSION from the app's xcconfig, the app's copy of the product
+# version.
+xcconfig_version() {
+    sed -n -E 's/^TINGRA_VERSION[[:space:]]*=[[:space:]]*([^[:space:]]+)[[:space:]]*$/\1/p' "$APP_XCCONFIG"
+}
+
+# Writes a version into Version.swift, the embedded Info.plist, and the app's
+# xcconfig, then reads them back. They are bumped together on purpose:
+# release-cli-package.sh refuses to package a binary whose plist and constant
+# disagree, and the app and the CLI carry one product version.
 write_version() {
     local new="$1"
     sed -i '' -E "s/(static let current = \")[^\"]*(\")/\1${new}\2/" "$VERSION_SWIFT"
@@ -124,12 +135,15 @@ write_version() {
         -e "/<key>CFBundleShortVersionString<\/key>/{n;s|<string>.*</string>|<string>${new}</string>|;}" \
         -e "/<key>CFBundleVersion<\/key>/{n;s|<string>.*</string>|<string>${new}</string>|;}" \
         "$INFO_PLIST"
+    sed -i '' -E "s/^(TINGRA_VERSION[[:space:]]*=[[:space:]]*).*$/\\1${new}/" "$APP_XCCONFIG"
 
-    local got_swift got_plist
+    local got_swift got_plist got_xcconfig
     got_swift="$(current_version)"
     got_plist="$(plist_version)"
     [[ "$got_swift" == "$new" ]] || die "Version.swift did not take the bump (got '${got_swift}')."
     [[ "$got_plist" == "$new" ]] || die "Info.plist did not take the bump (got '${got_plist}')."
+    got_xcconfig="$(xcconfig_version)"
+    [[ "$got_xcconfig" == "$new" ]] || die "Tingra.xcconfig did not take the bump (got '${got_xcconfig}')."
 }
 
 # ---------------------------------------------------------------------------
@@ -249,12 +263,12 @@ confirm "Cut and publish ${TAG}?" || die "aborted."
 
 # Skipped when already in place, so a re-run after a mid-release failure
 # resumes instead of double-bumping.
-if [[ "$CURRENT" == "$VERSION" && "$(plist_version)" == "$VERSION" ]]; then
+if [[ "$CURRENT" == "$VERSION" && "$(plist_version)" == "$VERSION" && "$(xcconfig_version)" == "$VERSION" ]]; then
     log "version already at ${VERSION} — skipping the bump."
 else
     log "bumping to ${VERSION}"
     write_version "$VERSION"
-    git -C "$ROOT" add "$VERSION_SWIFT" "$INFO_PLIST"
+    git -C "$ROOT" add "$VERSION_SWIFT" "$INFO_PLIST" "$APP_XCCONFIG"
     git -C "$ROOT" commit -q -m "tingra-cli ${VERSION}"
     log "committed the version bump."
 fi
@@ -279,7 +293,7 @@ if $DEV_BUMP; then
     echo
     if confirm "Reopen ${BRANCH} on ${DEV_VERSION}?"; then
         write_version "$DEV_VERSION"
-        git -C "$ROOT" add "$VERSION_SWIFT" "$INFO_PLIST"
+        git -C "$ROOT" add "$VERSION_SWIFT" "$INFO_PLIST" "$APP_XCCONFIG"
         git -C "$ROOT" commit -q -m "Bumped tingra-cli to ${DEV_VERSION}."
         git -C "$ROOT" push -q origin "$BRANCH"
         log "${BRANCH} now on ${DEV_VERSION}."

@@ -58,7 +58,7 @@ Signed and notarized binary for Apple Silicon (arm64) only, distributed through 
 
 **In CI (the normal path).** Actions → *Release tingra-cli* → *Run workflow*. Leave `version` blank to take the `-dev` version on the branch with its suffix dropped, or type an explicit `MAJOR.MINOR.PATCH`. `dry_run` rehearses the whole preflight and prints the plan without changing anything; `dev_bump` (on by default) reopens the branch on the next `-dev` version afterwards; `skip_tests` bypasses the Format & Test gate, which is for resuming a release that already passed it, not for skipping a red build. Verify from a consumer's position when it finishes — step 7 below.
 
-**Locally.** `scripts/release-cli.sh` cuts and publishes a release in one command, and is what the workflow runs. It owns the version decision — prompting for the next version number and bumping `TingraCLIVersion.current` and the embedded `Info.plist` together — then hands off to `scripts/release-cli-publish.sh` for the build, signing, notarization, tag, GitHub release, and tap update. `release-cli-publish.sh` stays non-interactive and callable on its own.
+**Locally.** `scripts/release-cli.sh` cuts and publishes a release in one command, and is what the workflow runs. It owns the version decision — prompting for the next version number and bumping `TingraCLIVersion.current`, the embedded `Info.plist`, and the app's `TINGRA_VERSION` (RELEASE.md, Decision 6) together — then hands off to `scripts/release-cli-publish.sh` for the build, signing, notarization, tag, GitHub release, and tap update. `release-cli-publish.sh` stays non-interactive and callable on its own.
 
 **Step by step.**
 

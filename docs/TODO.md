@@ -317,6 +317,36 @@ Nothing open.
 
 ## Release mechanics
 
+- [ ] **Release Tingra.app** *(all eleven decisions approved 2026-10-13;
+  [RELEASE.md](RELEASE.md))*. The app has no release path: no script, no
+  workflow, no cask. Slice 1 is the app alone, in a disk image, with a
+  `tingra` cask. Slice 2 puts the daemon and the CLI inside the app, closes
+  the Login Items item below, and gives the Claude Desktop Extension item
+  its bundled CLI.
+  - [x] `Tingra --version` and the shared `TINGRA_VERSION` *(built
+    2026-10-13; app 927 tests)*.
+  - [x] The Developer ID provisioning profile *(Larry, 2026-10-13)*: an
+    explicit `com.moonwink.tingra.app` under the legacy prefix, the same
+    prefix as development builds, so spike row A is answered. Its
+    certificate expires 2027-02-01; regenerate the profile with the
+    certificate.
+  - [x] Spike rows B and C *(2026-10-14)*: the Release configuration now
+    links (`ARCHS = arm64`); CI must archive signed with Developer ID, with
+    the app's profile passed as `TINGRA_APP_PROFILE_SPECIFIER`; the exported
+    app launches and reads a key a development build filed. The archive
+    step's Notes warning is still to resolve.
+  - [x] Spike row D *(2026-10-14)*: the app and the disk image each
+    notarized (Accepted, no issues), stapled, and assessed as Notarized
+    Developer ID, including a quarantined copy of the image.
+  - [x] Spike row F *(Larry, 2026-10-14)*: development builds keep sharing
+    the release bundle identifier; TCC grants move between the two
+    signatures, accepted.
+  - [ ] Spike row E, Larry's: a clean account's first run of the notarized
+    disk image (`dist/tingra-app/`, from row D).
+  - [ ] `scripts/release-app-package.sh`, the renames, the cask template,
+    `release.yml`, and the docs that follow them.
+  - [ ] Larry: add the `TINGRA_APP_PROFILE` secret and cut 0.2.0.
+
 - [ ] **Daemon shows the signer's name, not "Tingra", in Login Items & Extensions
   → App Background Activity** *(found 2026-07-11)*. macOS groups a standalone
   LaunchAgent by its **code-signing identity**; with an individual Developer ID

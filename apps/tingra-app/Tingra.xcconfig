@@ -23,3 +23,28 @@
 #include? "Local.xcconfig"
 
 DEVELOPMENT_TEAM = $(TINGRA_DEVELOPMENT_TEAM)
+
+//  The product version, the number `tingra-cli version` prints: the app and
+//  its embedded Notes extension take it for both CFBundleShortVersionString
+//  and CFBundleVersion (RELEASE.md, Decision 6). scripts/release-cli.sh bumps
+//  this line together with TingraCLIVersion.current and the CLI's Info.plist,
+//  and refuses to go on if the three disagree. Between releases it carries the
+//  next version with a -dev suffix, as they do.
+TINGRA_VERSION = 0.1.4-dev
+
+//  Apple Silicon only, in every configuration (CLAUDE.md, "Platform Support").
+//  Without this a Release build for a generic Mac destination — which is what
+//  `xcodebuild archive` uses — is universal, and its x86_64 slice cannot link:
+//  the prebuilt libsrt HaishinKit's SRT output carries is arm64 only. Day-to-day
+//  builds never showed it because they name `arch=arm64` in the destination
+//  (RELEASE.md, "Spike findings", row B).
+ARCHS = arm64
+
+//  The provisioning profile the app target signs with, by name: empty here, so
+//  development builds keep automatic signing, and set on the command line by
+//  the release, which archives with the Developer ID identity and manual
+//  signing (RELEASE.md, Decision 3). Only the app target reads it. A profile
+//  named in PROVISIONING_PROFILE_SPECIFIER directly would reach every target —
+//  the Notes extension and both kit frameworks refuse a profile issued for
+//  another bundle — which is why the app's setting points here instead.
+TINGRA_APP_PROFILE_SPECIFIER =
