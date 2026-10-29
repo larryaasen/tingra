@@ -12,7 +12,8 @@ import SwiftUI
 /// What one reading on the window's status bar looks like: the lamp's state
 /// and the symbol beside it (``StatusBarView``).
 ///
-/// A plain value derived by ``streaming(_:)`` and ``recording(_:)``, pure
+/// A plain value derived by ``streaming(_:)``, ``recording(_:)``, and
+/// ``masterMuted(stream:recording:)``, pure
 /// functions of the session status the engine already reports — the
 /// ``MultiviewTile`` and ``MixerStrip`` pattern, so the whole rule that
 /// decides which lamp lights is unit-testable with no window and no engine.
@@ -100,6 +101,28 @@ struct StatusBarItem: Equatable {
         case .error:
             StatusBarItem(light: .fault, systemImage: "exclamationmark.triangle.fill")
         }
+    }
+
+    /// The status bar's reading for a **muted master** (GLOSSARY.md, "Master
+    /// mute"), shown only while the master is muted.
+    ///
+    /// **Orange while anything is going out, off otherwise.** A muted master
+    /// with nothing on air or on disk is just a setting; the same mute
+    /// during a stream or a recording is a silent show the operator cannot
+    /// hear happening unless they are monitoring — so it takes the pending
+    /// lamp, the color the bar already uses for "look at this".
+    ///
+    /// - Parameters:
+    ///   - stream: The live stream status.
+    ///   - recording: The live recording status.
+    /// - Returns: The bar's reading.
+    static func masterMuted(
+        stream: EngineModel.StreamStatus,
+        recording: EngineModel.RecordingStatus
+    ) -> StatusBarItem {
+        let lights = [streaming(stream).light, Self.recording(recording).light]
+        let goingOut = lights.contains { $0 == .on || $0 == .pending }
+        return StatusBarItem(light: goingOut ? .pending : .off, systemImage: "speaker.slash.fill")
     }
 }
 

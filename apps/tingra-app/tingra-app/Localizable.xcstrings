@@ -3610,6 +3610,40 @@
         }
       }
     },
+    "Master mute" : {
+      "comment" : "Accessibility label of the master mute toggle",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Summe stummschalten"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Silenciar máster"
+          }
+        }
+      }
+    },
+    "Master muted" : {
+      "comment" : "Status bar reading: the program's sound is muted at the master",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Summe stumm"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Máster silenciado"
+          }
+        }
+      }
+    },
     "Match Input" : {
       "comment" : "Layer inspector button restoring the input's own aspect ratio",
       "localizations" : {
@@ -3965,6 +3999,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Silenciar"
+          }
+        }
+      }
+    },
+    "Mute the program's sound: the stream, the recording, and the monitor go silent while the picture keeps going" : {
+      "comment" : "Help tag on the master mute toggle",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ton des Programms stummschalten: Stream, Aufnahme und Monitor verstummen, während das Bild weiterläuft"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Silenciar el sonido del programa: la transmisión, la grabación y el monitor quedan en silencio mientras la imagen continúa"
           }
         }
       }

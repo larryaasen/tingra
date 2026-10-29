@@ -15,9 +15,12 @@ import TingraPlugInKit
 /// strip's Input Settings button (PLUGINS.md, Decision 15): a control per
 /// `Parameter` the input declares — a slider paired with the shared
 /// ``EffectParameterField`` for a number, the shared ``EffectColorWell``
-/// for a color — drawn generically from the descriptors, so a host-only
-/// plug-in's input gets a native settings pane with no app code of its own.
-/// The 440 Hz tone is the first: its frequency and level.
+/// for a color, the shared ``EffectParameterToggle`` for a toggle — drawn
+/// generically from the descriptors, so a host-only plug-in's input gets a
+/// native settings pane with no app code of its own. The 440 Hz tone is the
+/// first: its frequency and level. A UVC camera's controls are the largest
+/// (docs/UVC.md): grouped under their section headings, with a value its
+/// Auto toggle owns disabled while that toggle is on.
 ///
 /// Edits apply live through `Input.setParameters` and persist with the
 /// project (`Project.inputParameters`); each control reports its own `tap`
@@ -39,12 +42,22 @@ struct InputParametersView: View {
             Text(model.inputName(for: inputID))
                 .foregroundStyle(.secondary)
 
-            ForEach(parameters, id: \.key) { parameter in
+            ForEach(Array(parameters.enumerated()), id: \.element.key) { index, parameter in
+                if let section = parameter.section, index == 0 || parameters[index - 1].section != section {
+                    // Section headings come from the plug-in, like its
+                    // parameter names.
+                    Text(verbatim: section)
+                        .font(.subheadline)
+                        .padding(.top, 4)
+                }
                 switch parameter.kind {
                 case .number:
                     parameterSlider(parameter)
+                        .disabled(parameter.isControlledAutomatically(in: payload, among: parameters))
                 case .color:
                     parameterColorWell(parameter)
+                case .toggle:
+                    parameterToggle(parameter)
                 @unknown default:
                     UnsupportedParameterRow(parameter: parameter)
                 }
@@ -59,9 +72,27 @@ struct InputParametersView: View {
         model.declaredInputParameters[inputID] ?? []
     }
 
-    /// The input's stored values, keyed by parameter.
+    /// The input's values, keyed by parameter: the project's stored values,
+    /// else the values the device keeps for itself.
     private var payload: [String: JSONValue] {
-        model.inputParameters[inputID] ?? [:]
+        model.inputParameterValues(for: inputID)
+    }
+
+    /// One toggle parameter's switch — a camera's Auto Exposure, Auto White
+    /// Balance, or Auto Focus. A flip is one change and one `tap`.
+    private func parameterToggle(_ parameter: Parameter) -> some View {
+        EffectParameterToggle(parameter: parameter, isOn: parameter.isOn(in: payload) ?? false) { isOn in
+            model.eventBus.tap(
+                "inputParameter.toggle",
+                domain: .capture,
+                params: [
+                    "id": .string(inputID.rawValue),
+                    "key": .string(parameter.key),
+                    "value": .bool(isOn),
+                ]
+            )
+            model.setInputParameter(.bool(isOn), forKey: parameter.key, ofInput: inputID)
+        }
     }
 
     /// One number parameter's slider — its travel mapped through the scale

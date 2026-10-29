@@ -257,6 +257,14 @@ final class EngineModel {
     /// input this Mac does not have is kept and written back untouched.
     private(set) var inputParameters: [InputID: [String: JSONValue]] = [:]
 
+    /// The values a device keeps for itself, by input id, for the inputs
+    /// the open project stores nothing for — a UVC camera's brightness and
+    /// white balance as it holds them in firmware (`Input.currentParameters`,
+    /// docs/UVC.md). What the settings popover shows, and starts its edits
+    /// from, until the operator changes one and the project stores it. Never
+    /// written to the document.
+    private(set) var deviceInputParameters: [InputID: [String: JSONValue]] = [:]
+
     /// The last application of an edited input payload, chained so edits
     /// made at gesture rate reach the input in the order they were made —
     /// two tasks racing to the registry could otherwise leave a stale
@@ -311,6 +319,18 @@ final class EngineModel {
     /// monitor plays goes silent, so the program mix, the stream, and the
     /// recording are as untouched by it as by the level.
     private(set) var isMonitorMuted = false
+
+    /// Whether the master is muted — the program's sound off air while its
+    /// picture keeps going (GLOSSARY.md, "Master mute"). Unlike the monitor
+    /// mute it silences everything leaving the mixer: the stream, the
+    /// recording, and the monitor with them.
+    ///
+    /// Session state, deliberately, like ``isFadedToBlack``: it never enters
+    /// preferences or the project document, so a show never reopens with no
+    /// sound. A forgotten monitor mute fails safe — the operator hears
+    /// nothing and notices — but a forgotten master mute is a silent
+    /// recording nobody hears happening.
+    private(set) var isMasterMuted = false
 
     /// Whether the monitor is currently playing. A selected device that is
     /// not connected leaves this false while keeping the selection, so the
@@ -2173,22 +2193,46 @@ final class EngineModel {
     }
 
     /// Records which inputs declare parameters and hands each of them the
-    /// project's stored values — or an empty payload, which restores its
-    /// declared defaults, so an input tuned by the previous project is not
-    /// left tuned when a project without an entry for it opens. Runs with
-    /// every device-list rebuild, because a device that reconnects is a
-    /// fresh input instance that knows nothing of the project's settings.
+    /// project's stored values. An input the project stores nothing for gets
+    /// the values it reports holding itself (`Input.currentParameters`): an
+    /// input whose settings live only in the host reports none, so the empty
+    /// payload restores its declared defaults and an input tuned by the
+    /// previous project is not left tuned; a device that keeps its own
+    /// settings — a UVC camera — reports them, so applying them changes
+    /// nothing and opening a project never resets the camera's picture
+    /// (docs/UVC.md). Runs with every device-list rebuild, because a device
+    /// that reconnects is a fresh input instance that knows nothing of the
+    /// project's settings.
     ///
     /// - Parameter inputs: The inputs currently in the registry.
     private func applyInputParameters(to inputs: [any Input]) async {
         var declared: [InputID: [Parameter]] = [:]
+        var deviceValues: [InputID: [String: JSONValue]] = [:]
         for input in inputs {
             let parameters = input.parameters
             guard !parameters.isEmpty else { continue }
             declared[input.id] = parameters
-            await input.setParameters(inputParameters[input.id] ?? [:])
+            if let stored = inputParameters[input.id] {
+                await input.setParameters(stored)
+                continue
+            }
+            let current = await input.currentParameters()
+            if !current.isEmpty {
+                deviceValues[input.id] = current
+            }
+            await input.setParameters(current)
         }
         declaredInputParameters = declared
+        deviceInputParameters = deviceValues
+    }
+
+    /// One input's parameter values as the settings popover shows them: the
+    /// project's stored values, else the values the device keeps for itself.
+    ///
+    /// - Parameter id: The input.
+    /// - Returns: The payload; empty when neither exists.
+    func inputParameterValues(for id: InputID) -> [String: JSONValue] {
+        inputParameters[id] ?? deviceInputParameters[id] ?? [:]
     }
 
     /// Applies the open project's stored input settings to every registered
@@ -2210,7 +2254,9 @@ final class EngineModel {
     ///   - key: The parameter's persisted key.
     ///   - id: The input whose parameter changes.
     func setInputParameter(_ value: JSONValue, forKey key: String, ofInput id: InputID) {
-        var payload = inputParameters[id] ?? [:]
+        // The first edit of a device-held setting starts from the device's
+        // values, so storing it does not reset the others to defaults.
+        var payload = inputParameterValues(for: id)
         guard payload[key] != value else { return }
         payload[key] = value
         inputParameters[id] = payload
@@ -2534,6 +2580,23 @@ final class EngineModel {
     }
 
     // MARK: Mixer
+
+    /// Mutes or unmutes the master — the program's sound off air, its
+    /// picture kept (GLOSSARY.md, "Master mute"). Everything fed from the
+    /// program mix goes silent: every streaming destination, any recording,
+    /// and the monitor. The strips keep their settings and their devices, so
+    /// unmuting brings back exactly the mix that was there.
+    ///
+    /// Independent of ``setFadeToBlack(_:duration:)``: the mixer multiplies
+    /// the two, so bringing the program up from black leaves a muted master
+    /// muted. The mixer reports `master.mute`; the toggle's own `tap`
+    /// records the click.
+    ///
+    /// - Parameter isMuted: Whether the master is muted.
+    func setMasterMuted(_ isMuted: Bool) {
+        isMasterMuted = isMuted
+        mixer.setMasterMuted(isMuted)
+    }
 
     /// Sets one channel strip's level, applied to the program mix from the
     /// next mix tick. Gesture-rate (a slider drag calls it many times a

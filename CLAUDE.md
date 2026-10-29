@@ -34,7 +34,11 @@ packages/                       # Engine libraries
                                 #   strip per input; a host-side library beside TingraComposition
   TingraCapturePlugIns/         # First-party capture plug-ins: camera/microphone (AVFoundation)
                                 #   and display (ScreenCaptureKit) discovery and capture, capture
-                                #   of one chosen window, device connect/disconnect events
+                                #   of one chosen window, device connect/disconnect events;
+                                #   a USB webcam's controls as the camera input's parameters
+  TingraUVC/                    # Standalone USB Video Class control library (see UVC.md):
+                                #   lists UVC cameras and reads/sets their standard controls
+                                #   through IOUSBHost; depends on no other Tingra package
   TingraComposition/            # Composition engine library (roadmap step 6): the tick-paced
                                 #   Metal/Core Image compositor, layer tree (shots/layers), program
                                 #   format; a host-side library, not a plug-in, not in TingraHost
@@ -65,7 +69,7 @@ packages/                       # Engine libraries
   (UI packages)                 # Phase 2 — arrive once the engine is proven
 docs/                           # The project documentation set (ARCHITECTURE.md, GLOSSARY.md, CLI.md,
                                 #   SIMULATOR.md, CLOCK.md, EVENTS.md, MCP.md, DESTINATIONS.md,
-                                #   TYPES.md, TODO.md, DONE.md)
+                                #   UVC.md, TYPES.md, TODO.md, DONE.md)
                                 #   and screenshots
 scripts/                        # Formatting scripts (format-swift.sh, check-format.sh), the
                                 #   streaming integration tests (integration-test.sh), and the
@@ -81,7 +85,7 @@ The package names are **finalized** (reviewed 2026-07-03; also recorded in "Repo
 **Key facts:**
 - Within each package's or app's `Sources/`, keep files flat by default; use a named subdirectory only for features with **more than one UI or implementation file**. Do not create generic folders like `Views/`, `Components/`, or `Helpers/`.
 - `packages/` holds local SPM library packages (the engine); `apps/` holds the runnable products (`tingra-cli`, `ingest-simulator`, and the phase-3 `tingra-app`) that consume them.
-- Companion docs, each authoritative for its area: [README.md](README.md) (project overview), [ARCHITECTURE.md](docs/ARCHITECTURE.md) (technical plan and engine design), [GLOSSARY.md](docs/GLOSSARY.md) (canonical vocabulary), [CLI.md](docs/CLI.md) (`tingra-cli` spec), [SIMULATOR.md](docs/SIMULATOR.md) (local RTMP/SRT test server), [CLOCK.md](docs/CLOCK.md) (master clock, program tick, and A/V sync model), [EVENTS.md](docs/EVENTS.md) (event bus, sinks, and logging/redaction policy), [MCP.md](docs/MCP.md) (engine daemon, socket transport, and the agent-facing MCP server), [DESTINATIONS.md](docs/DESTINATIONS.md) (the named destination model: the operator-global destination store and its agent-facing resolution), [TYPES.md](docs/TYPES.md) (every public type, package by package).
+- Companion docs, each authoritative for its area: [README.md](README.md) (project overview), [ARCHITECTURE.md](docs/ARCHITECTURE.md) (technical plan and engine design), [GLOSSARY.md](docs/GLOSSARY.md) (canonical vocabulary), [CLI.md](docs/CLI.md) (`tingra-cli` spec), [SIMULATOR.md](docs/SIMULATOR.md) (local RTMP/SRT test server), [CLOCK.md](docs/CLOCK.md) (master clock, program tick, and A/V sync model), [EVENTS.md](docs/EVENTS.md) (event bus, sinks, and logging/redaction policy), [MCP.md](docs/MCP.md) (engine daemon, socket transport, and the agent-facing MCP server), [DESTINATIONS.md](docs/DESTINATIONS.md) (the named destination model: the operator-global destination store and its agent-facing resolution), [UVC.md](docs/UVC.md) (USB Video Class camera controls: the `TingraUVC` library and the camera input's parameters), [TYPES.md](docs/TYPES.md) (every public type, package by package).
 - **Vocabulary is not optional.** Use [GLOSSARY.md](docs/GLOSSARY.md) terms exactly — in code, comments, commit messages, and UI text: `input`, `generator`, `shot`, `preset`, `project`, `program`, `preview`, `compression`, `output`, `destination`, `plug-in` (always hyphenated), `host`, `registry`. Never use terminology (`source`, `scene`, `encoder`, `ingest`, `egress`) except at an explicit external protocol boundary (e.g., an RTSP "source" stays a source in that protocol's own terms).
 - `AGENTS.md` is a pointer to this file and should not be edited separately.
 
@@ -209,11 +213,14 @@ packages/  TingraEventBus         no engine-internal dependencies; a dynamic pro
 packages/  TingraPlugInKit        →  TingraEventBus; importable standalone by third parties (who
                                      build against the binary TingraPlugInSDK, Decision 28)
 packages/  TingraHost             →  TingraPlugInKit + TingraEventBus
-packages/  TingraCapturePlugIns   →  TingraPlugInKit + TingraEventBus (registers through the
-                                     `InputRegistering` seam, so no TingraHost dependency;
-                                     AppKit for NSWorkspace display sleep/wake and application
-                                     launch/activation notifications only — the one engine
-                                     package importing AppKit, never UI)
+packages/  TingraUVC              no engine-internal dependencies (a standalone UVC control
+                                     library over IOUSBHost; see UVC.md)
+packages/  TingraCapturePlugIns   →  TingraPlugInKit + TingraEventBus + TingraUVC (registers
+                                     through the `InputRegistering` seam, so no TingraHost
+                                     dependency; AppKit for NSWorkspace display sleep/wake and
+                                     application launch/activation notifications only — the one
+                                     engine package importing AppKit, never UI; TingraUVC for a
+                                     camera's controls, imported only behind CameraControls)
 packages/  TingraGeneratorPlugIns →  TingraPlugInKit + TingraEventBus (same seam-only design)
 packages/  TingraEffectPlugIns    →  TingraPlugInKit + TingraEventBus (same seam-only design;
                                      registers through the `EffectRegistering` seam; pure DSP

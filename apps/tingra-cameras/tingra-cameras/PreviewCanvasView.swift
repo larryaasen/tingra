@@ -9,26 +9,50 @@
 
 import SwiftUI
 
-/// The right content panel: a wide canvas that centers the rounded
-/// live-camera preview frame, drawn on the standard detail-pane background.
+/// The right content panel: the rounded live-camera preview frame at the
+/// top, and the selected camera's controls beneath it, drawn on the standard
+/// detail-pane background.
 struct PreviewCanvasView: View {
     /// The shared hardware-selection state, so the frame follows the
     /// currently selected camera.
     @Environment(HardwareModel.self) private var model
 
-    /// Centers the preview frame in the available space.
+    /// Stacks the preview frame at the top of the available space, centered
+    /// horizontally, over the camera's controls.
     var body: some View {
-        // The centered video view window: a 16:9 rounded-rectangle container
-        // that shows the live feed for the selected camera, a placeholder
-        // when none is selected, or a message when the camera can't be
-        // opened — with no layout change between them.
-        content
-            .aspectRatio(16.0 / 9.0, contentMode: .fit)
-            .clipShape(.rect(cornerRadius: 12))
-            .padding()
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .accessibilityElement()
-            .accessibilityLabel(previewAccessibilityLabel)
+        VStack(spacing: 0) {
+            // The top-aligned video view window: a 16:9 rounded-rectangle
+            // container that shows the live feed for the selected camera, a
+            // placeholder when none is selected, or a message when the camera
+            // can't be opened — with no layout change between them. It takes
+            // its full width-fitted size first; the controls get the rest.
+            content
+                .aspectRatio(16.0 / 9.0, contentMode: .fit)
+                .clipShape(.rect(cornerRadius: 12))
+                .accessibilityElement()
+                .accessibilityLabel(previewAccessibilityLabel)
+                .overlay(alignment: .bottomTrailing) {
+                    // The Maps-style framing buttons, over a live preview of
+                    // a camera that can be framed.
+                    if showsFraming {
+                        FramingOverlay()
+                            .padding(10)
+                    }
+                }
+                .padding()
+                .layoutPriority(1)
+
+            if model.selectedCamera != nil {
+                CameraControlsView()
+                    .frame(minHeight: 160)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+
+    /// Whether the preview shows a live camera whose framing can be moved.
+    private var showsFraming: Bool {
+        model.previewError == nil && model.selectedCamera != nil && model.hasFraming
     }
 
     /// The frame's contents for the current state: an error message, the live
@@ -43,6 +67,7 @@ struct PreviewCanvasView: View {
             )
         } else if model.selectedCamera != nil {
             CameraPreviewView()
+                .help(showsFraming ? Text("Drag to pan and tilt. Pinch or Option-scroll to zoom.") : Text(verbatim: ""))
         } else {
             PreviewMessage(
                 title: Text("Live Camera Preview"),

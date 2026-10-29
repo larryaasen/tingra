@@ -104,6 +104,22 @@ public protocol Input: ParameterDescribing {
     ///
     /// - Parameter parameters: The parameter payload.
     func setParameters(_ parameters: [String: JSONValue]) async
+
+    /// The values of the declared parameters as the input holds them right
+    /// now, keyed by ``Parameter/key`` — what a host applies and shows when
+    /// it has no stored payload for the input.
+    ///
+    /// An input whose settings live only in the host (a generator) keeps
+    /// the default, an empty payload, and a host with nothing stored hands
+    /// it that empty payload, restoring its declared defaults. An input
+    /// backed by a device that keeps its own settings — a UVC camera holds
+    /// its brightness in firmware across apps — reports them here, so a host
+    /// with nothing stored applies the device's own values (changing
+    /// nothing) rather than resetting it to its defaults (added 2026-10-27,
+    /// docs/UVC.md). It may read the device, so call it off the main actor.
+    ///
+    /// - Returns: The current payload; empty by default.
+    func currentParameters() async -> [String: JSONValue]
 }
 
 extension Input {
@@ -115,6 +131,10 @@ extension Input {
     /// By default an input has no settings to take, matching the empty
     /// ``ParameterDescribing/parameters`` it declares.
     public func setParameters(_ parameters: [String: JSONValue]) async {}
+
+    /// By default an input's settings live only in the host, so it reports
+    /// none of its own.
+    public func currentParameters() async -> [String: JSONValue] { [:] }
 
     /// By default an input produces no video: an already-finished stream.
     /// Video inputs (cameras, displays, video generators) override this.

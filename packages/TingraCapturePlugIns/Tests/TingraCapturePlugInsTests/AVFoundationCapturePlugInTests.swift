@@ -130,6 +130,32 @@ struct AVFoundationCapturePlugInTests {
         #expect(registered[1] is MicrophoneInput)
     }
 
+    @Test("a plug-in asked for cameras only registers no microphone and reports no microphone discovery")
+    func cameraOnlyActivationSkipsMicrophones() async throws {
+        let eventBus = EventBus()
+        let events = eventBus.events()
+        let plugIn = AVFoundationCapturePlugIn(
+            deviceKinds: [.camera], enumerateDevices: { fixtureDevices }, deviceChanges: noChanges)
+        let registrar = MockInputRegistrar()
+
+        try await plugIn.activate(in: makeContext(registrar: registrar, eventBus: eventBus))
+        eventBus.shutdown()
+
+        #expect(plugIn.deviceKinds == [.camera])
+        #expect(await registrar.registered.map(\.id) == [InputID(rawValue: "0x8020000005ac8514")])
+        var discovered: [EventValue?] = []
+        for await event in events where event.name == "input.discovered" {
+            discovered.append(event.params?["kind"])
+        }
+        #expect(discovered == [.string("camera")])
+    }
+
+    @Test("the production plug-in contributes cameras and microphones unless asked for fewer")
+    func defaultDeviceKinds() {
+        #expect(AVFoundationCapturePlugIn().deviceKinds == [.camera, .microphone])
+        #expect(AVFoundationCapturePlugIn(deviceKinds: [.camera]).deviceKinds == [.camera])
+    }
+
     @Test("activation with no connected devices registers nothing")
     func activationWithNoDevices() async throws {
         let plugIn = AVFoundationCapturePlugIn(enumerateDevices: { [] }, deviceChanges: noChanges)
@@ -170,6 +196,62 @@ struct AVFoundationCapturePlugInTests {
         #expect(discoveries.allSatisfy { $0.group == .trace && $0.domain == .capture })
         #expect(discoveries.first?.params?["id"] == .string("0x8020000005ac8514"))
         #expect(discoveries.first?.params?["kind"] == .string("camera"))
+    }
+
+    @Test("a camera the seam describes declares its controls, reported with an input.controls trace")
+    func describedCameraDeclaresControls() async throws {
+        let eventBus = EventBus()
+        let events = eventBus.events()
+        let registrar = MockInputRegistrar()
+        let controls = ScriptedCameraControls.razerLike()
+        let plugIn = AVFoundationCapturePlugIn(
+            enumerateDevices: { fixtureDevices },
+            deviceChanges: noChanges,
+            describeCameraControls: { $0.kind == .camera ? controls : nil }
+        )
+
+        try await plugIn.activate(in: makeContext(registrar: registrar, eventBus: eventBus))
+        eventBus.shutdown()
+
+        let registered = await registrar.registered
+        #expect(registered.first?.parameters == controls.parameters)
+        #expect(registered.last?.parameters.isEmpty == true)
+        var received: [EventBusEvent] = []
+        for await event in events {
+            received.append(event)
+        }
+        let traces = received.filter { $0.name == "input.controls" }
+        #expect(traces.count == 1)
+        #expect(traces.first?.group == .trace)
+        #expect(traces.first?.params?["parameters"] == .int(controls.parameters.count))
+    }
+
+    @Test("a camera whose controls cannot be described is still registered, with an input.controls error")
+    func undescribableCameraIsRegisteredWithoutControls() async throws {
+        let eventBus = EventBus()
+        let events = eventBus.events()
+        let registrar = MockInputRegistrar()
+        let plugIn = AVFoundationCapturePlugIn(
+            enumerateDevices: { fixtureDevices },
+            deviceChanges: noChanges,
+            describeCameraControls: { _ in throw CameraControlFailure(key: "", reason: "could not be opened") }
+        )
+
+        try await plugIn.activate(in: makeContext(registrar: registrar, eventBus: eventBus))
+        eventBus.shutdown()
+
+        let registered = await registrar.registered
+        #expect(registered.count == 2)
+        #expect(registered.first?.parameters.isEmpty == true)
+        var received: [EventBusEvent] = []
+        for await event in events {
+            received.append(event)
+        }
+        // Only the camera is described; the microphone never is.
+        let errors = received.filter { $0.name == "input.controls" }
+        #expect(errors.count == 1)
+        #expect(errors.first?.group == .error)
+        #expect(errors.first?.params?["error"] == .string("could not be opened"))
     }
 
     @Test("activation declines a private aggregate device with an input.ignored trace, registering the rest")
@@ -280,6 +362,32 @@ struct DeviceEventReporterTests {
         #expect(received.allSatisfy { $0.group != .error })
         #expect(received.first?.params?["name"] == .string("MacBook Pro Microphone"))
         #expect(received.first?.params?["kind"] == .string("microphone"))
+    }
+
+    @Test("a reporter following cameras only skips a microphone's changes: no registration, no event")
+    func otherKindChangesAreSkipped() async {
+        let eventBus = EventBus()
+        let events = eventBus.events()
+        let registrar = MockInputRegistrar()
+        let reporter = DeviceEventReporter(
+            changes: AsyncStream { continuation in
+                continuation.yield(DeviceChange(kind: .connected, device: fixtureDevices[1]))
+                continuation.yield(DeviceChange(kind: .connected, device: fixtureDevices[0]))
+                continuation.finish()
+            },
+            deviceKinds: [.camera],
+            makeInput: { CameraInput(device: $0, requestAuthorization: { false }) }
+        )
+
+        await reporter.run(on: eventBus, inputs: registrar)
+        eventBus.shutdown()
+
+        #expect(await registrar.registered.map(\.id) == [InputID(rawValue: fixtureDevices[0].uniqueID)])
+        var received: [EventValue?] = []
+        for await event in events {
+            received.append(event.params?["id"])
+        }
+        #expect(received == [.string(fixtureDevices[0].uniqueID)])
     }
 
     @Test("a connection registers the new input; a disconnection unregisters it")

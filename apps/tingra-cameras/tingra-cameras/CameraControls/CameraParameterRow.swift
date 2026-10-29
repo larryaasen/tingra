@@ -1,0 +1,147 @@
+//
+//  CameraParameterRow.swift
+//  tingra-cameras
+//
+//  Created by Larry Aasen on 2026-10-27.
+//  Copyright © 2026 Larry Aasen.
+//  SPDX-License-Identifier: MIT
+//
+
+import SwiftUI
+import TingraPlugInKit
+
+/// One camera control: a switch for a toggle, a slider with its value and
+/// unit for a number. A number its Auto switch owns is disabled while that
+/// switch is on, because the camera sets it then; when that switch owns no
+/// other number, it is drawn at the end of the number's row as an Auto
+/// checkbox (White Balance's Temperature, Focus) instead of on a row of its
+/// own.
+///
+/// Each control reports its own `tap` — the switch when it flips, the
+/// slider when a drag ends, the reset when it is double-clicked (EVENTS.md,
+/// "The `tap` convention").
+struct CameraParameterRow: View {
+    /// The shared model holding the camera's values.
+    @Environment(HardwareModel.self) private var model
+
+    /// The control this row adjusts.
+    let parameter: Parameter
+
+    /// The Auto switch drawn at the end of a number's row, or nil when the
+    /// number's switch (if any) has a row of its own.
+    var automaticToggle: Parameter?
+
+    /// The row for the parameter's kind.
+    var body: some View {
+        switch parameter.kind {
+        case .toggle:
+            toggleRow
+        case .number:
+            sliderRow
+        case .color:
+            // No camera control is a color.
+            EmptyView()
+        @unknown default:
+            // A kind a later kit adds has no camera control behind it.
+            EmptyView()
+        }
+    }
+
+    /// Whether the parameter's Auto switch is on, so the camera owns it.
+    private var isControlledAutomatically: Bool {
+        parameter.isControlledAutomatically(in: model.cameraParameterValues, among: model.cameraParameters)
+    }
+
+    /// A switch for an on/off control.
+    private var toggleRow: some View {
+        Toggle(isOn: isOnBinding(for: parameter)) {
+            // Control names come from the capture plug-in, like device
+            // names.
+            Text(verbatim: parameter.name)
+        }
+        .toggleStyle(.switch)
+    }
+
+    /// A slider for a number control, with its Auto checkbox after it when
+    /// the row carries one.
+    private var sliderRow: some View {
+        LabeledContent {
+            HStack {
+                CameraParameterSlider(parameter: parameter)
+                    .disabled(isControlledAutomatically)
+                if let automaticToggle {
+                    Toggle(isOn: isOnBinding(for: automaticToggle)) {
+                        Text("Auto")
+                    }
+                    .toggleStyle(.checkbox)
+                    .help(Text(verbatim: automaticToggle.name))
+                    .accessibilityLabel(Text(verbatim: automaticToggle.name))
+                }
+            }
+        } label: {
+            Text(verbatim: parameter.name)
+        }
+    }
+
+    /// A binding to a toggle control's state that sends each flip to the
+    /// camera and records its tap.
+    ///
+    /// - Parameter toggle: The toggle control.
+    /// - Returns: The binding.
+    private func isOnBinding(for toggle: Parameter) -> Binding<Bool> {
+        Binding {
+            toggle.isOn(in: model.cameraParameterValues) ?? false
+        } set: { isOn in
+            model.setCameraParameter(.bool(isOn), for: toggle)
+            model.recordCameraParameterTap("cameraParameter.toggle", parameter: toggle)
+        }
+    }
+}
+
+/// A number control's slider with its value and unit beside it, shared by
+/// the control rows and the Framing row. Its travel is mapped through the
+/// scale the parameter declares and rests only on the camera's own steps
+/// (`ParameterScale` snaps to the parameter's declared step); a
+/// **double-click** returns it to the camera's default — the reset
+/// convention the main app's pan slider and faders set.
+struct CameraParameterSlider: View {
+    /// The shared model holding the camera's values.
+    @Environment(HardwareModel.self) private var model
+
+    /// The number control this slider adjusts.
+    let parameter: Parameter
+
+    /// The narrowest the value beside the slider may be, so the slider
+    /// doesn't shift as the value's width changes.
+    var valueMinWidth: CGFloat = 72
+
+    /// The slider, then the value.
+    var body: some View {
+        let value = parameter.value(in: model.cameraParameterValues)
+        HStack {
+            CameraSlider(
+                value: Binding {
+                    ParameterScale.position(of: value, for: parameter)
+                } set: { position in
+                    let newValue = ParameterScale.value(at: position, for: parameter)
+                    model.setCameraParameter(.double(newValue), for: parameter)
+                },
+                in: 0...1,
+                // Control names come from the capture plug-in, like device
+                // names.
+                label: parameter.name,
+                onDoubleClick: {
+                    model.resetCameraParameter(parameter)
+                },
+                onEditingChanged: { isEditing in
+                    guard !isEditing else { return }
+                    model.recordCameraParameterTap("cameraParameter.slider", parameter: parameter)
+                }
+            )
+            Text(verbatim: parameter.formattedValue(value))
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+                .frame(minWidth: valueMinWidth, alignment: .trailing)
+        }
+    }
+}

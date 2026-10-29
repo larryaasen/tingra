@@ -40,13 +40,29 @@ struct DeviceEventReporter: Sendable {
     /// The changes to report; injected so tests script the timeline.
     private let changes: AsyncStream<DeviceChange>
 
+    /// The kinds of device to follow; a change to a device of another kind
+    /// is skipped without a registration or an event (the plug-in's
+    /// ``AVFoundationCapturePlugIn/deviceKinds``).
+    private let deviceKinds: Set<InputKind>
+
     /// Builds the input for a newly connected device (the plug-in's
     /// camera/microphone factory).
     private let makeInput: @Sendable (CaptureDevice) -> any Input
 
     /// Creates a reporter over a change stream and an input factory.
-    init(changes: AsyncStream<DeviceChange>, makeInput: @escaping @Sendable (CaptureDevice) -> any Input) {
+    ///
+    /// - Parameters:
+    ///   - changes: The changes to report.
+    ///   - deviceKinds: The kinds of device to follow; every kind unless
+    ///     the plug-in asks for fewer.
+    ///   - makeInput: Builds the input for a newly connected device.
+    init(
+        changes: AsyncStream<DeviceChange>,
+        deviceKinds: Set<InputKind> = Set(InputKind.allCases),
+        makeInput: @escaping @Sendable (CaptureDevice) -> any Input
+    ) {
         self.changes = changes
+        self.deviceKinds = deviceKinds
         self.makeInput = makeInput
     }
 
@@ -58,7 +74,7 @@ struct DeviceEventReporter: Sendable {
     /// instead: the monitor's own plumbing announces itself as a microphone
     /// the moment monitoring starts (``PrivateAggregateDevice``).
     func run(on eventBus: EventBus, inputs: any InputRegistering) async {
-        for await change in changes {
+        for await change in changes where deviceKinds.contains(change.device.kind) {
             guard !PrivateAggregateDevice.isPrivate(uid: change.device.uniqueID) else {
                 PrivateAggregateDevice.reportIgnored(change.device, change: change.kind, on: eventBus)
                 continue

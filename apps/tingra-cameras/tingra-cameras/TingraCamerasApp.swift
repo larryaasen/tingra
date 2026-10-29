@@ -11,8 +11,10 @@ import SwiftUI
 
 /// The application entry point for "Tingra Cameras".
 ///
-/// It hosts a single ``ContentView`` in a window sized for the two-column
-/// layout and owns the shared ``HardwareModel`` for the session.
+/// It hosts ``ContentView`` in a window sized for the two-column layout —
+/// File ▸ New Window opens more, all showing the same camera — beside the
+/// settings window (``SettingsView``), and owns the shared ``HardwareModel``
+/// for the session.
 @main
 struct TingraCamerasApp: App {
     /// The session's hardware-selection state, owned here so it persists for
@@ -20,18 +22,59 @@ struct TingraCamerasApp: App {
     /// model discovers real hardware through the Tingra engine.
     @State private var model = HardwareModel.live
 
+    /// The app's appearance, owned for the app's lifetime and installed on
+    /// the application as it is created, so the first window is drawn in it.
+    @State private var appearance = AppearanceModel()
+
+    /// Whether the windows carry a status bar, shared by every window and the
+    /// settings window that edits it.
+    @State private var statusBar = StatusBarModel()
+
+    /// When the app launched, recorded as it is created; the About pane's
+    /// uptime counts from here (see ``AppUptime``).
+    @State private var uptime = AppUptime()
+
+    /// The identifier the app menu's Settings… command opens.
+    static let settingsWindowID = "settings"
+
     /// The app's scene graph: a single resizable window presenting the
     /// hardware picker.
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .environment(model)
+                .environment(statusBar)
                 // A comfortable default that keeps both columns legible; the
                 // window remains freely resizable by the operator.
                 .frame(minWidth: 820, minHeight: 520)
-                // Discover the connected cameras and microphones and start
+                // Discover the connected cameras and start
                 // the first camera's live preview once the window appears.
                 .task { await model.start() }
         }
+        // Tall enough for the top-aligned preview and the camera's controls
+        // beneath it.
+        .defaultSize(width: 1040, height: 900)
+        .commands {
+            PreviewCommands(model: model)
+            PresetCommands(model: model)
+            StatusBarCommands(model: model, statusBar: statusBar)
+            SettingsCommands(model: model)
+        }
+
+        // Settings is a `Window` rather than the `Settings` scene, so its
+        // source list runs the full height of the window as the main
+        // window's sidebar does (see ``SettingsView``). `SettingsCommands`
+        // puts Settings… where macOS reserves it, under ⌘, in the app menu;
+        // `commandsRemoved()` drops the scene's own Window-menu item so that
+        // stays the only one.
+        Window(
+            String(localized: "Settings", comment: "Title of the settings window"),
+            id: Self.settingsWindowID
+        ) {
+            SettingsView(appearance: appearance, statusBar: statusBar, uptime: uptime)
+                .environment(model)
+        }
+        .windowResizability(.contentMinSize)
+        .commandsRemoved()
     }
 }

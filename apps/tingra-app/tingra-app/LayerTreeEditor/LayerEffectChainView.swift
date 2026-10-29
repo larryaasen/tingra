@@ -96,8 +96,12 @@ struct LayerEffectChainView: View {
                     switch parameter.kind {
                     case .number:
                         parameterSlider(parameter, at: index, in: configuration)
+                            .disabled(
+                                parameter.isControlledAutomatically(in: configuration.parameters, among: parameters))
                     case .color:
                         parameterColorWell(parameter, at: index, in: configuration)
+                    case .toggle:
+                        parameterToggle(parameter, at: index, in: configuration)
                     @unknown default:
                         UnsupportedParameterRow(parameter: parameter)
                     }
@@ -167,6 +171,32 @@ struct LayerEffectChainView: View {
                 model.setLayerEffectParameter(typed, forKey: parameter.key, ofEffectAt: index, atLayer: layerIndex)
                 model.endLayerGesture(.adjustEffect)
             }
+        }
+    }
+
+    /// One declared toggle parameter's switch, drawn generically from its
+    /// descriptor. A flip is one undo step and one `tap`.
+    private func parameterToggle(
+        _ parameter: Parameter,
+        at index: Int,
+        in configuration: EffectConfiguration
+    ) -> some View {
+        EffectParameterToggle(parameter: parameter, isOn: parameter.isOn(in: configuration.parameters) ?? false) {
+            isOn in
+            model.eventBus.tap(
+                "layerEffectParameter.toggle",
+                domain: .composition,
+                params: [
+                    "layer": .int(layerIndex),
+                    "effect": .string(configuration.effect.rawValue),
+                    "index": .int(index),
+                    "key": .string(parameter.key),
+                    "value": .bool(isOn),
+                ]
+            )
+            model.beginLayerGesture()
+            model.setLayerEffectParameter(.bool(isOn), forKey: parameter.key, ofEffectAt: index, atLayer: layerIndex)
+            model.endLayerGesture(.adjustEffect)
         }
     }
 

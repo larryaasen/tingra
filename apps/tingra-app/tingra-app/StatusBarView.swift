@@ -12,7 +12,8 @@ import TingraAppPlugInKit
 
 /// The window's status bar: whether the program is being **recorded**,
 /// whether it is being **streamed**, and what **format** it is, across the
-/// bottom of the window.
+/// bottom of the window — and, only while it is on, that the **master is
+/// muted**.
 ///
 /// **Why a status bar rather than the panels that already say this.** The main
 /// window's recording and streaming panels are at the bottom of a scrolling
@@ -97,6 +98,17 @@ struct StatusBarView: View {
 
                     Divider()
                         .frame(height: 12)
+
+                    // Beside the two readings it can silence, and only
+                    // while it is on: a muted master is the one way the
+                    // program can be live and recording with nobody able
+                    // to hear it.
+                    if model.isMasterMuted {
+                        masterMutedReading
+
+                        Divider()
+                            .frame(height: 12)
+                    }
 
                     // The format last: it never changes on air, so it is the
                     // reading an operator checks before a show, not during.
@@ -201,6 +213,14 @@ struct StatusBarView: View {
                 help: message
             )
         }
+    }
+
+    /// The master mute reading: the program's sound is off air.
+    private var masterMutedReading: some View {
+        reading(
+            StatusBarItem.masterMuted(stream: model.streamStatus, recording: model.recordingStatus),
+            label: Text("Master muted", comment: "Status bar reading: the program's sound is muted at the master")
+        )
     }
 
     /// The program format reading: size and rate, the way the delivery

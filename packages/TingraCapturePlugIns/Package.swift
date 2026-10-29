@@ -14,7 +14,9 @@ import PackageDescription
 // the full inputs at roadmap step 2. AVFoundation is imported only inside
 // this package, behind the Input seam; registration goes through the
 // InputRegistering seam, so the package depends on the protocol package
-// alone, never the engine (see ARCHITECTURE.md).
+// alone, never the engine (see ARCHITECTURE.md). A camera's adjustable
+// controls reach it through TingraUVC, the standalone UVC control library
+// (docs/UVC.md).
 let package = Package(
     name: "TingraCapturePlugIns",
     platforms: [.macOS(.v15)],
@@ -24,6 +26,7 @@ let package = Package(
     dependencies: [
         .package(path: "../TingraEventBus"),
         .package(path: "../TingraPlugInKit"),
+        .package(path: "../TingraUVC"),
     ],
     targets: [
         .target(
@@ -31,6 +34,7 @@ let package = Package(
             dependencies: [
                 .product(name: "TingraEventBus", package: "TingraEventBus"),
                 .product(name: "TingraPlugInKit", package: "TingraPlugInKit"),
+                .product(name: "TingraUVC", package: "TingraUVC"),
             ]
         ),
         .testTarget(name: "TingraCapturePlugInsTests", dependencies: ["TingraCapturePlugIns"]),

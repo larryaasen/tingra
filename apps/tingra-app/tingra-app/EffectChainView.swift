@@ -103,8 +103,12 @@ struct EffectChainView: View {
                     switch parameter.kind {
                     case .number:
                         parameterSlider(parameter, at: index, in: configuration)
+                            .disabled(
+                                parameter.isControlledAutomatically(in: configuration.parameters, among: parameters))
                     case .color:
                         parameterColorWell(parameter, at: index, in: configuration)
+                    case .toggle:
+                        parameterToggle(parameter, at: index, in: configuration)
                     @unknown default:
                         UnsupportedParameterRow(parameter: parameter)
                     }
@@ -112,6 +116,32 @@ struct EffectChainView: View {
             }
         }
         .padding(.vertical, 2)
+    }
+
+    /// One declared toggle parameter's switch — no built-in audio effect
+    /// declares one, but the descriptor's kind is handled exhaustively so a
+    /// third-party effect that does gets its control. A flip is one change
+    /// and one `tap`.
+    private func parameterToggle(
+        _ parameter: Parameter,
+        at index: Int,
+        in configuration: EffectConfiguration
+    ) -> some View {
+        EffectParameterToggle(parameter: parameter, isOn: parameter.isOn(in: configuration.parameters) ?? false) {
+            isOn in
+            model.eventBus.tap(
+                "effectParameter.toggle",
+                domain: .audio,
+                params: [
+                    "id": .string(stripID.rawValue),
+                    "effect": .string(configuration.effect.rawValue),
+                    "index": .int(index),
+                    "key": .string(parameter.key),
+                    "value": .bool(isOn),
+                ]
+            )
+            model.setEffectParameter(.bool(isOn), forKey: parameter.key, ofEffectAt: index, onStrip: stripID)
+        }
     }
 
     /// One declared color parameter's well — no built-in audio effect

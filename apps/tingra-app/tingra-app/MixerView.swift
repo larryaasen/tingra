@@ -125,7 +125,10 @@ struct MixerView: View {
     /// The master section, standing at the mixer panel's trailing edge as
     /// two headed groups side by side (GLOSSARY.md, "Master"). **Master** is
     /// the **post-fader** stereo master meter under its peak-hold readout —
-    /// the program mix as the stream and the recording receive it.
+    /// the program mix as the stream and the recording receive it — over the
+    /// **master mute**, which takes the program's sound off air while its
+    /// picture keeps going (GLOSSARY.md, "Master mute"); the meter, being
+    /// post-mute, drops to the floor with it.
     /// **Monitor** is the operator's own listening path: the device they
     /// listen through, its level as a vertical fader read in decibels, the
     /// level's readout, and the monitor mute — the control room cut, keeping
@@ -135,7 +138,8 @@ struct MixerView: View {
     /// (DONE.md, "Does the recorded mix need a master fader?").
     ///
     /// **There is deliberately no master fader**: the engine has no master
-    /// gain of the operator's, and the monitor level is not one — it scales
+    /// gain of the operator's — the mute is a latch, not a level — and the
+    /// monitor level is not one — it scales
     /// only what the operator hears, never the program mix, the stream, or
     /// the recording (ARCHITECTURE.md, "The monitor path"). Its fader
     /// therefore tops out at unity (``FaderScale/monitor``): the playback
@@ -148,6 +152,21 @@ struct MixerView: View {
                 PeakReadout(displayLink: model.meterDisplayLink, subject: .master, eventBus: model.eventBus)
 
                 MasterMeter(displayLink: model.meterDisplayLink)
+
+                // Down to the row's foot, so the master mute lines up with
+                // the monitor mute beside it.
+                Spacer(minLength: 0)
+
+                Toggle(isOn: masterMuteBinding) {
+                    MuteLabel(isMuted: model.isMasterMuted)
+                }
+                .toggleStyle(.button)
+                .help(
+                    Text(
+                        "Mute the program's sound: the stream, the recording, and the monitor go silent while the picture keeps going",
+                        comment: "Help tag on the master mute toggle")
+                )
+                .accessibilityLabel(Text("Master mute", comment: "Accessibility label of the master mute toggle"))
             }
 
             Divider()
@@ -189,7 +208,7 @@ struct MixerView: View {
                 .accessibilityLabel(
                     Text("Monitor", comment: "Label of the master strip's monitor device picker"))
 
-                VerticalSlider(
+                MixerSlider(
                     value: monitorLevelBinding,
                     in: 0...1,
                     label: String(
@@ -280,6 +299,21 @@ struct MixerView: View {
         }
     }
 
+    /// A binding to the master mute, reporting the toggle's `tap` before the
+    /// model takes the program's sound off air or puts it back.
+    private var masterMuteBinding: Binding<Bool> {
+        Binding {
+            model.isMasterMuted
+        } set: { newValue in
+            model.eventBus.tap(
+                "masterMute.toggle",
+                domain: .audio,
+                params: ["muted": .bool(newValue)]
+            )
+            model.setMasterMuted(newValue)
+        }
+    }
+
     /// A binding to the monitor mute — the control room cut — reporting the
     /// toggle's `tap` before the model silences or restores playback. The
     /// same control as a strip's mute, one group over, so it reads the same.
@@ -349,7 +383,7 @@ struct MixerView: View {
             PeakReadout(displayLink: model.meterDisplayLink, subject: .strip(strip.id), eventBus: model.eventBus)
 
             HStack(spacing: 6) {
-                VerticalSlider(
+                MixerSlider(
                     value: levelPositionBinding(for: strip.id),
                     in: 0...1,
                     label: String(localized: "Level", comment: "Accessibility label of a channel strip's level slider"),
@@ -474,36 +508,37 @@ struct MixerView: View {
     /// default, flanked by the broadcast L/R value labels. The drag-end
     /// `tap` reports where the pan landed; a double-click recenters it (the
     /// macOS slider-reset convention), reporting its own `tap` since a reset
-    /// is a discrete action, not a drag.
+    /// is a discrete action, not a drag. A ``MixerSlider`` lying flat, like
+    /// the faders, because only an `NSSlider` subclass sees the double-click.
     private func panSlider(for strip: MixerStrip) -> some View {
-        Slider(value: panBinding(for: strip.id), in: -1...1) {
-            Text("Pan", comment: "Label of a channel strip's pan slider")
-        } minimumValueLabel: {
+        HStack(spacing: 4) {
             Text("L", comment: "Left label beside a channel strip's pan slider")
-        } maximumValueLabel: {
-            Text("R", comment: "Right label beside a channel strip's pan slider")
-        } onEditingChanged: { editing in
-            guard !editing else { return }
-            let pan = model.mixerStrips.first { $0.id == strip.id }?.pan ?? 0
-            model.eventBus.tap(
-                "mixerPan.slider",
-                domain: .audio,
-                params: ["id": .string(strip.id.rawValue), "value": .double(pan)]
-            )
-        }
-        .labelsHidden()
-        .help(Text("Pan", comment: "Label of a channel strip's pan slider"))
-        .accessibilityLabel(Text("Pan", comment: "Label of a channel strip's pan slider"))
-        .simultaneousGesture(
-            TapGesture(count: 2).onEnded {
+                .accessibilityHidden(true)
+            MixerSlider(
+                value: panBinding(for: strip.id),
+                in: -1...1,
+                axis: .horizontal,
+                label: String(localized: "Pan", comment: "Label of a channel strip's pan slider"),
+                onDoubleClick: {
+                    model.eventBus.tap(
+                        "mixerPan.reset",
+                        domain: .audio,
+                        params: ["id": .string(strip.id.rawValue)]
+                    )
+                    model.setStripPan(0, forStrip: strip.id)
+                }
+            ) { editing in
+                guard !editing else { return }
+                let pan = model.mixerStrips.first { $0.id == strip.id }?.pan ?? 0
                 model.eventBus.tap(
-                    "mixerPan.reset",
+                    "mixerPan.slider",
                     domain: .audio,
-                    params: ["id": .string(strip.id.rawValue)]
+                    params: ["id": .string(strip.id.rawValue), "value": .double(pan)]
                 )
-                model.setStripPan(0, forStrip: strip.id)
             }
-        )
+            Text("R", comment: "Right label beside a channel strip's pan slider")
+                .accessibilityHidden(true)
+        }
     }
 
     /// Whether a strip's input is currently discovered. A strip with no

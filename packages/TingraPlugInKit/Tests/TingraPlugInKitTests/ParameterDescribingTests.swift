@@ -167,4 +167,87 @@ struct ParameterDescribingTests {
         let gain = Parameter(key: "gainDecibels", name: "Gain", range: -60...6, defaultValue: 0)
         #expect(gain.color(in: [:]) == nil)
     }
+
+    @Test("currentParameters defaults to an empty payload, for an input whose settings live in the host")
+    func currentParametersDefaultsToEmpty() async {
+        #expect(await SilentInput().currentParameters().isEmpty)
+        #expect(await TunableInput().currentParameters().isEmpty)
+    }
+
+    @Test("a toggle reads a boolean, reads a number as on when non-zero, and defaults otherwise")
+    func toggleReadsItsPayload() {
+        let auto = Parameter(key: "whiteBalanceAuto", name: "Auto White Balance", defaultIsOn: true)
+        #expect(auto.kind == .toggle)
+        #expect(auto.range == 0...1)
+        #expect(auto.defaultValue == 1)
+        #expect(auto.isOn(in: [:]) == true)
+        #expect(auto.isOn(in: ["whiteBalanceAuto": .bool(false)]) == false)
+        #expect(auto.isOn(in: ["whiteBalanceAuto": .int(0)]) == false)
+        #expect(auto.isOn(in: ["whiteBalanceAuto": .double(1)]) == true)
+        #expect(auto.isOn(in: ["whiteBalanceAuto": .string("off")]) == true)
+        let off = Parameter(key: "focusAuto", name: "Auto Focus", defaultIsOn: false)
+        #expect(off.isOn(in: [:]) == false)
+        let gain = Parameter(key: "gainDecibels", name: "Gain", range: -60...6, defaultValue: 0)
+        #expect(gain.isOn(in: ["gainDecibels": .bool(true)]) == nil)
+    }
+
+    @Test("section and automatic toggle default to nil and are set by modifiers")
+    func modifiersSetSectionAndAutomaticToggle() {
+        let plain = Parameter(key: "brightness", name: "Brightness", range: 0...255, defaultValue: 128)
+        #expect(plain.section == nil)
+        #expect(plain.automaticToggleKey == nil)
+        let grouped = plain.inSection("Image")
+        #expect(grouped.section == "Image")
+        #expect(grouped.key == plain.key)
+        let governed = plain.controlledAutomatically(whenOn: "exposureAuto")
+        #expect(governed.automaticToggleKey == "exposureAuto")
+        #expect(governed.section == nil)
+    }
+
+    @Test("parameters that differ only in section or automatic toggle are not equal")
+    func sectionAndAutomaticToggleTakePartInEquality() {
+        let plain = Parameter(key: "brightness", name: "Brightness", range: 0...255, defaultValue: 128)
+        #expect(plain == Parameter(key: "brightness", name: "Brightness", range: 0...255, defaultValue: 128))
+        #expect(plain != plain.inSection("Image"))
+        #expect(plain != plain.controlledAutomatically(whenOn: "exposureAuto"))
+        #expect(plain.inSection("Image") == plain.inSection("Image"))
+    }
+
+    @Test("a stepped parameter snaps to the nearest step from the bottom of its range, never to -0")
+    func steppedParameterSnaps() {
+        let pan = Parameter(key: "pan", name: "Pan", range: -10...10, defaultValue: 0, unit: "°").stepped(by: 1)
+        #expect(pan.step == 1)
+        #expect(pan.snapped(-0.003) == 0)
+        #expect(pan.snapped(-0.003).sign == .plus)
+        #expect(pan.snapped(2.6) == 3)
+        #expect(pan.snapped(40) == 10)
+        let temperature = Parameter(key: "kelvin", name: "Temperature", range: 2000...7500, defaultValue: 5000)
+            .stepped(by: 10)
+        #expect(temperature.snapped(5103) == 5100)
+        #expect(temperature.snapped(5106) == 5110)
+    }
+
+    @Test("a parameter without a step, or with a step that is not positive, stays continuous")
+    func unsteppedParameterIsContinuous() {
+        let gain = Parameter(key: "gain", name: "Gain", range: -60...6, defaultValue: 0)
+        #expect(gain.step == nil)
+        #expect(gain.snapped(-0.25) == -0.25)
+        #expect(gain.snapped(9) == 6)
+        #expect(gain.stepped(by: 0).step == nil)
+        #expect(gain.stepped(by: -1).step == nil)
+        #expect(gain != gain.stepped(by: 1))
+    }
+
+    @Test("a governed parameter is automatic exactly while its toggle is on")
+    func governedParameterFollowsItsToggle() {
+        let auto = Parameter(key: "whiteBalanceAuto", name: "Auto White Balance", defaultIsOn: true)
+        let temperature = Parameter(
+            key: "whiteBalanceTemperature", name: "Temperature", range: 2000...7500, defaultValue: 5000, unit: "K"
+        ).controlledAutomatically(whenOn: "whiteBalanceAuto")
+        let parameters = [auto, temperature]
+        #expect(temperature.isControlledAutomatically(in: [:], among: parameters))
+        #expect(!temperature.isControlledAutomatically(in: ["whiteBalanceAuto": .bool(false)], among: parameters))
+        #expect(!temperature.isControlledAutomatically(in: [:], among: [temperature]))
+        #expect(!auto.isControlledAutomatically(in: [:], among: parameters))
+    }
 }

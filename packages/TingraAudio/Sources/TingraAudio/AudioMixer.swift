@@ -60,7 +60,11 @@ import TingraPlugInKit
 /// before the master reading above, so a faded-down master meters as silence
 /// while every strip meter keeps showing its input delivering. Its picture
 /// half is `Compositor.setFadeToBlack(_:duration:)`, which a caller owning
-/// both drives alongside it.
+/// both drives alongside it. Beside it sits the **master mute**
+/// (``setMasterMuted(_:)``): the same stage, a one-block ramp to silence
+/// and back that takes only the sound off air while the picture keeps
+/// going. The two latch independently and their gains multiply, so neither
+/// can undo the other.
 ///
 /// The mixer emits from its first tick — silence before any strip delivers —
 /// so the program mix, like the program video, is a live canvas at the tick
@@ -120,6 +124,13 @@ public final class AudioMixer: Sendable {
         /// the operator takes the program down (GLOSSARY.md, "Fade to
         /// black").
         var fade = MasterFade()
+
+        /// The **master mute** — sound off air with the picture kept, open
+        /// until the operator mutes the master (GLOSSARY.md, "Master
+        /// mute"). A ``MasterFade`` whose travel is always one block: the
+        /// same exact-endpoint ramp, short enough to read as instant and
+        /// long enough not to click.
+        var mute = MasterFade()
 
         /// The running mix task, while started.
         var mixTask: Task<Void, Never>?
@@ -492,6 +503,45 @@ public final class AudioMixer: Sendable {
         state.withLock { $0.fade.isFaded }
     }
 
+    /// Mutes or unmutes the **master** — everything leaving the mixer — and
+    /// **latches** there: the stream and the recording go silent while the
+    /// program's picture keeps going (GLOSSARY.md, "Master mute").
+    ///
+    /// The same master stage as ``setMasterFade(_:duration:)`` — downstream
+    /// of every strip, upstream of the post-fader master meter — so a muted
+    /// master meters silence while every strip meter keeps reading its
+    /// input. It ramps over **one block** (about 21 ms at the default
+    /// format) rather than cutting on a sample, which would click, and it
+    /// latches independently of the fade: the two gains multiply, so
+    /// unmuting a faded-down master leaves it silent, and bringing the fade
+    /// up leaves a muted master muted.
+    ///
+    /// It changes nothing about the strips and stops no device, so
+    /// unmuting restores exactly the mix that was there. Reports
+    /// `master.mute` when the latch changes; a call with the value already
+    /// in effect does nothing.
+    ///
+    /// - Parameter muted: `true` to silence the master, `false` to open it.
+    public func setMasterMuted(_ muted: Bool) {
+        let changed = state.withLock { state in
+            guard state.mute.isFaded != muted else { return false }
+            state.mute.retarget(faded: muted, totalBlocks: 1)
+            return true
+        }
+        guard changed else { return }
+        eventBus.event(
+            "master.mute",
+            domain: .audio,
+            params: ["state": .string(muted ? "muted" : "open")]
+        )
+    }
+
+    /// Whether the master is muted — the latch ``setMasterMuted(_:)`` sets,
+    /// not the ramp's current position.
+    public var isMasterMuted: Bool {
+        state.withLock { $0.mute.isFaded }
+    }
+
     /// The master fade's default ramp length, matching the compositor's
     /// `Transition.defaultDissolveDuration` — the broadcast-typical half
     /// second — rather than inventing a second convention. It is declared
@@ -570,6 +620,9 @@ public final class AudioMixer: Sendable {
             // The master fade is session state, so a stopped mixer never
             // comes back up silent — a show must not reopen faded down.
             state.fade = MasterFade()
+            // The master mute too: it is never persisted, for the same
+            // reason — a forgotten mute is a silent show.
+            state.mute = MasterFade()
             return taken
         }
         mixTask?.cancel()
@@ -592,8 +645,8 @@ public final class AudioMixer: Sendable {
     /// the same walk also measures each channel's consumed samples
     /// pre-fader — after the chain, before level, pan, and mute — and
     /// yields the tick's ``MeterBlock``. Last of all, while the **master
-    /// fade** is anything but fully open, the summed block is scaled by the
-    /// master's ramping gain — downstream of every strip and upstream of the
+    /// fade** or the **master mute** is anything but fully open, the summed
+    /// block is scaled by the master's ramping gain — the two multiplied — downstream of every strip and upstream of the
     /// post-fader master reading, both of which read the same summed arrays.
     private func mixBlock(at tickTime: CMTime, format: MixFormat) {
         let frames = format.blockFrames
@@ -668,12 +721,20 @@ public final class AudioMixer: Sendable {
                     // below, which read these same arrays — upstream of the
                     // post-fader master meter by construction, so the meter
                     // shows silence with no metering change at all
-                    // (ARCHITECTURE.md, "Fade to black").
-                    if state.fade.isActive {
+                    // (ARCHITECTURE.md, "Fade to black"). The master mute
+                    // rides the same pass, its gain multiplied in: an open
+                    // ramp's gains are exactly 1, so either one alone scales
+                    // the block exactly as it would by itself, and with both
+                    // open the pass never runs and the mix is untouched.
+                    if state.fade.isActive || state.mute.isActive {
                         Self.applyMasterFade(
-                            &left, &right, from: state.fade.gain, to: state.fade.endGain, frames: frames)
+                            &left, &right,
+                            from: state.fade.gain * state.mute.gain,
+                            to: state.fade.endGain * state.mute.endGain,
+                            frames: frames)
                     }
                     state.fade.advance()
+                    state.mute.advance()
                     let program = state.programContinuation.map { (left, right, $0) }
                     // The master reading is taken here, on the summed block —
                     // after every strip's chain, level, pan, and mute, which

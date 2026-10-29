@@ -1154,6 +1154,124 @@ struct AudioMixerTests {
         #expect(state == "silent")
     }
 
+    // MARK: The master mute
+
+    @Test("muting the master silences the mix after a one-block ramp, and the mute latches")
+    func mutingTheMasterSilencesTheMix() async throws {
+        let mixer = try makeTonedMixer(ticks: 3)
+        await letFillTasksDrain()
+        mixer.setMasterMuted(true)
+
+        let program = mixer.programAudio(bufferingPolicy: .unbounded)
+        mixer.start()
+        let blocks = await collect(program, limit: 3)
+
+        // The first block is the ramp — descending, never a cut on one
+        // sample, which would click — and every block after it is silent.
+        #expect(blocks.count == 3)
+        let firstBlock = try #require(blocks.first)
+        let first = try #require(samples(of: firstBlock, sampleRate: format.sampleRate)?.first)
+        #expect(try #require(first.first) > 0)
+        #expect(zip(first, first.dropFirst()).allSatisfy { $0 >= $1 })
+        for block in blocks.dropFirst() {
+            let channels = try #require(samples(of: block, sampleRate: format.sampleRate))
+            #expect(try #require(channels.first).allSatisfy { $0 == 0 })
+        }
+        #expect(mixer.isMasterMuted)
+    }
+
+    @Test("a muted master meters silence while every strip meter keeps reading its input")
+    func aMutedMasterMetersSilenceWhileStripsKeepReading() async throws {
+        let audio = try #require(
+            makeAudio(
+                channels: [[Float](repeating: 0.5, count: format.blockFrames * 2)], sampleRate: format.sampleRate))
+        let input = FakeAudioInput(id: "mic", buffers: [audio])
+        let mixer = makeMixer(tickTimes: ticks(2))
+        mixer.setChannelStrips([ChannelStrip(input: input)])
+        await letFillTasksDrain()
+        mixer.setMasterMuted(true)
+
+        let meters = mixer.meterReadings(bufferingPolicy: .unbounded)
+        mixer.start()
+        let block = try #require(await collectMeters(meters, limit: 2).last)
+
+        #expect(abs(try #require(block.strips[input.id]).peak - 0.5) < 0.0001)
+        #expect(block.master == .floor)
+    }
+
+    @Test("unmuting the master restores exactly the mix that was there")
+    func unmutingTheMasterRestoresTheMix() async throws {
+        /// One run of the mix, optionally muted and unmuted before it starts.
+        func mixedSamples(togglingTheMute: Bool) async throws -> [[Float]] {
+            let mixer = try makeTonedMixer(ticks: 1)
+            await letFillTasksDrain()
+            if togglingTheMute {
+                mixer.setMasterMuted(true)
+                mixer.setMasterMuted(false)
+            }
+            let program = mixer.programAudio(bufferingPolicy: .unbounded)
+            mixer.start()
+            let block = try #require(await collect(program, limit: 1).first)
+            return try #require(samples(of: block, sampleRate: format.sampleRate))
+        }
+
+        // Byte-identical, not merely close: an open mute never runs the pass.
+        #expect(try await mixedSamples(togglingTheMute: true) == (try await mixedSamples(togglingTheMute: false)))
+    }
+
+    @Test("the master mute and the master fade latch independently — neither undoes the other")
+    func theMuteAndTheFadeLatchIndependently() async throws {
+        let mixer = try makeTonedMixer(ticks: 3)
+        await letFillTasksDrain()
+        mixer.setMasterFade(true, duration: 0)
+        mixer.setMasterMuted(true)
+        // Bringing the fade back up leaves the muted master muted.
+        mixer.setMasterFade(false, duration: 0)
+
+        let program = mixer.programAudio(bufferingPolicy: .unbounded)
+        mixer.start()
+        let blocks = await collect(program, limit: 3)
+
+        #expect(mixer.isMasterMuted)
+        #expect(mixer.isMasterFaded == false)
+        for block in blocks.dropFirst() {
+            let channels = try #require(samples(of: block, sampleRate: format.sampleRate))
+            #expect(try #require(channels.first).allSatisfy { $0 == 0 })
+        }
+    }
+
+    @Test("stop clears the master mute — a show never reopens silent")
+    func stopClearsTheMasterMute() throws {
+        let mixer = try makeTonedMixer(ticks: 1)
+        mixer.setMasterMuted(true)
+        #expect(mixer.isMasterMuted)
+
+        mixer.stop()
+
+        #expect(mixer.isMasterMuted == false)
+    }
+
+    @Test("muting the master reports a control-plane event naming the state, once per change")
+    func mutingTheMasterReportsAnEvent() async throws {
+        let bus = EventBus()
+        let events = bus.events()
+        let mixer = AudioMixer(clock: SyntheticClock(tickTimes: []), format: format, eventBus: bus)
+
+        mixer.setMasterMuted(true)
+        // Already muted: no second event.
+        mixer.setMasterMuted(true)
+        mixer.setMasterMuted(false)
+
+        var states: [String] = []
+        for await event in events where event.name == "master.mute" {
+            #expect(event.group == .event)
+            #expect(event.domain == .audio)
+            states.append(event.params?["state"]?.description ?? "")
+            if states.count == 2 { break }
+        }
+        #expect(states == ["muted", "open"])
+    }
+
     @Test("a ramp shorter than one block still completes on the next tick")
     func aRampShorterThanABlockCompletesOnTheNextTick() {
         #expect(AudioMixer.blockCount(for: 0, format: format) == 1)

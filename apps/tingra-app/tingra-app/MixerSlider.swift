@@ -1,5 +1,5 @@
 //
-//  VerticalSlider.swift
+//  MixerSlider.swift
 //  tingra-app
 //
 //  Created by Larry Aasen on 2026-09-08.
@@ -10,12 +10,12 @@
 import AppKit
 import SwiftUI
 
-/// A vertical slider: an `NSSlider` standing on end, for the mixer's master
-/// column, where the monitor level is a fader beside the master meter
-/// (GLOSSARY.md, "Master"). SwiftUI's `Slider` lays out horizontally only,
-/// and rotating one is a layout trick rather than a control, so this is
-/// AppKit where SwiftUI does not cover the need — the `MTKView` rule
-/// applied to a control.
+/// The mixer's slider: an `NSSlider` in SwiftUI, standing on end for the
+/// faders beside the meters (GLOSSARY.md, "Fader") and lying flat for a
+/// strip's pan. SwiftUI's `Slider` lays out horizontally only, and rotating
+/// one is a layout trick rather than a control; nor can it carry a
+/// double-click reset (below). So this is AppKit where SwiftUI does not
+/// cover the need — the `MTKView` rule applied to a control.
 ///
 /// Mirrors `Slider(value:in:onEditingChanged:)`: the binding updates
 /// continuously through a drag, and `onEditingChanged` brackets the
@@ -27,16 +27,21 @@ import SwiftUI
 /// would to any control.
 ///
 /// A **double-click** reaches `onDoubleClick` instead of moving the knob —
-/// the fader's return to unity (ARCHITECTURE.md, "The console mixer"), the
-/// reset convention the pan slider set. AppKit tracks a whole drag inside
+/// the fader's return to unity (ARCHITECTURE.md, "The console mixer") and
+/// the pan's return to centre. AppKit tracks a whole drag inside
 /// `mouseDown`, so the second click of a double-click arrives as its own
-/// event with `clickCount == 2`, which is where ``FaderSlider`` catches it.
-struct VerticalSlider: NSViewRepresentable {
+/// event with `clickCount == 2`, which is where ``FaderSlider`` catches it;
+/// a SwiftUI tap gesture beside a `Slider` never sees that click, which is
+/// why the pan slider moved here (2026-10-27).
+struct MixerSlider: NSViewRepresentable {
     /// The slider's value, updated continuously as it drags.
     @Binding var value: Double
 
-    /// The slider's range, bottom to top.
+    /// The slider's range, bottom to top or left to right.
     let range: ClosedRange<Double>
+
+    /// Whether the slider stands on end (a fader) or lies flat (a pan).
+    let axis: Axis
 
     /// The slider's accessibility label and tool tip. Set on the `NSSlider`
     /// itself: an AppKit view is its own accessibility element, so SwiftUI's
@@ -56,11 +61,12 @@ struct VerticalSlider: NSViewRepresentable {
     /// The surrounding enablement, mirrored onto the `NSSlider`.
     @Environment(\.isEnabled) private var isEnabled
 
-    /// Creates a vertical slider over `value` within `range`.
+    /// Creates a slider over `value` within `range`.
     ///
     /// - Parameters:
     ///   - value: The value the slider edits.
-    ///   - range: The slider's range, bottom to top.
+    ///   - range: The slider's range, bottom to top or left to right.
+    ///   - axis: `.vertical` for a fader, `.horizontal` for a pan.
     ///   - label: The accessibility label and tool tip.
     ///   - onDoubleClick: Called on a double-click in place of a drag, or
     ///     nil to leave double-clicks to AppKit.
@@ -69,12 +75,14 @@ struct VerticalSlider: NSViewRepresentable {
     init(
         value: Binding<Double>,
         in range: ClosedRange<Double>,
+        axis: Axis = .vertical,
         label: String,
         onDoubleClick: (() -> Void)? = nil,
         onEditingChanged: @escaping (Bool) -> Void
     ) {
         self._value = value
         self.range = range
+        self.axis = axis
         self.label = label
         self.onDoubleClick = onDoubleClick
         self.onEditingChanged = onEditingChanged
@@ -85,8 +93,8 @@ struct VerticalSlider: NSViewRepresentable {
         Coordinator(parent: self)
     }
 
-    /// Creates the slider, standing, continuous, wired to the coordinator
-    /// for both its action and its double-click.
+    /// Creates the slider, standing or lying along its axis, continuous,
+    /// wired to the coordinator for both its action and its double-click.
     func makeNSView(context: Context) -> FaderSlider {
         let slider = FaderSlider(
             value: value,
@@ -95,7 +103,7 @@ struct VerticalSlider: NSViewRepresentable {
             target: context.coordinator,
             action: #selector(Coordinator.sliderChanged(_:))
         )
-        slider.isVertical = true
+        slider.isVertical = axis == .vertical
         slider.isContinuous = true
         slider.onDoubleClick = { [weak coordinator = context.coordinator] in coordinator?.doubleClicked() }
         return slider
@@ -135,14 +143,14 @@ struct VerticalSlider: NSViewRepresentable {
     final class Coordinator: NSObject {
         /// The representable, refreshed on every SwiftUI update so the
         /// action always writes the current binding.
-        var parent: VerticalSlider
+        var parent: MixerSlider
 
         /// Whether a drag is in progress — between the first change and the
         /// release.
         private(set) var isEditing = false
 
         /// Creates the coordinator for `parent`.
-        init(parent: VerticalSlider) {
+        init(parent: MixerSlider) {
             self.parent = parent
         }
 
@@ -192,12 +200,11 @@ struct VerticalSlider: NSViewRepresentable {
     }
 }
 
-/// The `NSSlider` behind ``VerticalSlider``: a stock slider that hands a
+/// The `NSSlider` behind ``MixerSlider``: a stock slider that hands a
 /// double-click to ``onDoubleClick`` instead of tracking it as a drag. The
 /// first click of the pair is tracked as usual (AppKit tracks a whole drag
 /// inside `mouseDown`), so a double-click first lands the knob where it was
-/// clicked and then resets it — the same two steps a double-click on a
-/// SwiftUI `Slider` with the pan slider's tap gesture goes through.
+/// clicked and then resets it.
 @MainActor
 final class FaderSlider: NSSlider {
     /// Called on a double-click, in place of the drag. Nil treats a

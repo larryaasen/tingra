@@ -249,9 +249,23 @@ The first party capture plug-ins: camera, microphone, and display discovery and
 capture, capture of a single window the operator chooses, and the device
 connection/disconnection events on the bus. AVFoundation,
 Core Audio, and ScreenCaptureKit are imported only inside this package, behind
-the `Input` seam.
+the `Input` seam. A USB webcam's picture controls — brightness, white balance,
+exposure, focus, zoom — reach it through `TingraUVC` and surface as the camera
+input's parameters (see [UVC.md](docs/UVC.md)).
 
 **Types:** [`TingraCapturePlugIns` in TYPES.md](docs/TYPES.md#packagestingracaptureplugins)
+
+### `packages/TingraUVC`
+
+A general-purpose USB Video Class control library for the Mac, the Swift
+counterpart of the Dart [`uvc`](https://pub.dev/packages/uvc) package: it lists
+the connected UVC cameras and reads and sets their standard controls through
+Apple's `IOUSBHost` — no libusb, no driver, no vendor SDK, and no TCC prompt.
+Standalone on purpose: it depends on no other Tingra package, so any Mac app can
+import it, and every byte to the camera crosses one `UVCTransport` seam, so it is
+unit tested without a camera (see [UVC.md](docs/UVC.md)).
+
+**Types:** [`TingraUVC` in TYPES.md](docs/TYPES.md#packagestingrauvc)
 
 ### `packages/TingraGeneratorPlugIns`
 
@@ -450,10 +464,11 @@ deferred packaging, tracked alongside the CLI's distribution recipe.
 
 ### `apps/tingra-cameras`
 
-A standalone "Tingra Cameras" macOS app: a two-column hardware picker — a
-sidebar listing the available cameras and microphones beside a large live-camera
-preview canvas. A native Xcode project (`tingra-cameras.xcodeproj`, single app
-target), self-contained (no engine package dependencies), and styled with the
+A standalone "Tingra Cameras" macOS app: a two-column camera picker — a
+sidebar listing the available cameras beside a large live-camera preview canvas,
+with the selected camera's controls beneath it. A native Xcode project
+(`tingra-cameras.xcodeproj`, single app target) that drives the engine packages
+(`TingraHost`, `TingraCapturePlugIns`) through the `Input` seam, and styled with the
 standard SwiftUI Liquid Glass look rather than any bespoke theme (see its own
 [CLAUDE.md](apps/tingra-cameras/CLAUDE.md)). An app, so it exposes no public API
 beyond its `@main` entry. User-facing strings are localized

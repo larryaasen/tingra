@@ -54,10 +54,11 @@ internal surface a reader needs to navigate the target instead.
 - `EffectID` — the stable identifier for a registered audio or video effect.
 - `EffectConfiguration` — one effect as persisted: its id and parameters.
 - `ParameterDescribing` — declares the `parameters` a registration exposes.
-- `Parameter` — one adjustable setting a plug-in declares: number or color.
+- `Parameter` — one setting a plug-in declares: a number, color, or toggle.
 - `Parameter.Kind` — the value a parameter takes, and so its control.
 - `Parameter.Scale` — how a control maps its travel onto the range.
 - `ParameterColor` — a color parameter's value: sRGB components and alpha.
+- `ParameterScale` — the pure mapping between a value and slider travel.
 - `EffectParameter` — the deprecated alias of `Parameter`.
 - `EffectColor` — the deprecated alias of `ParameterColor`.
 - `AudioEffect` — one audio processing step in a channel strip's chain.
@@ -159,6 +160,9 @@ internal surface a reader needs to navigate the target instead.
 - `StreamHistoryEndReason` — `stopped`, `connectionLost`, or `appQuit`.
 - `StreamHistorySummary` — the session count and the total time on air.
 - `StreamHistoryStore` — reads and writes `stream-history.json`.
+- `CameraPreset` — one saved camera's control values, under a name.
+- `CameraPresets` — the camera presets and the default, as a value.
+- `CameraPresetStore` — reads and writes `camera-presets.json`.
 - `ToolRegistry` — the actor holding the MCP tools plug-ins register.
 - `ToolRegistryError` — a tool name that is already registered.
 - `ResourceRegistry` — the actor holding the engine's MCP resources.
@@ -186,6 +190,22 @@ internal surface a reader needs to navigate the target instead.
 - `CaptureWindow` — one window that can be captured now, as a picker lists it.
 - `WindowInput` — one window behind the `Input` seam.
 - `WindowCapture` — one running window capture, injected for tests.
+
+## `packages/TingraUVC`
+
+- `UVCDevice` — a connected UVC camera, as the I/O Registry lists it.
+- `UVCCamera` — a described camera: the controls its descriptors advertise.
+- `UVCControl` — one control: range, step, and default; reads and sets it.
+- `UVCControlKind` — the catalog of standard UVC controls the package knows.
+- `UVCControlKind.Entity` — the entity a control lives in.
+- `UVCControlKind.Style` — whether a control is a range, a switch, or a bitmap.
+- `UVCControlCapabilities` — a control's `GET_INFO` capability bits.
+- `UVCAutoExposureMode` — the auto exposure mode bitmap.
+- `UVCTransport` — the seam: opens a camera for the length of one exchange.
+- `UVCConnection` — an open camera: reads descriptors and sends requests.
+- `UVCRequest` — one class-specific control request to an entity.
+- `UVCRequestCode` — a control request's code: `SET_CUR`, `GET_CUR`, ...
+- `UVCError` — every UVC failure, each explaining its cause and fix.
 
 ## `packages/TingraGeneratorPlugIns`
 
@@ -412,11 +432,11 @@ surface is:
 - `EffectChainView` — one strip's audio effect chain editor, in a popover.
 - `LayerEffectChainView` — one layer's video effect chain editor.
 - `InputParametersView` — one input's declared settings, in a popover.
-- `ParameterScale` — the pure mapping between a value and slider travel.
 - `CommittingNumberField` — a number field committing on Return or focus loss.
 - `EffectChainHeading` — the Effects heading both chain editors share.
 - `EffectSlotOrdinal` — the "1." ordinal before each chain slot's name.
 - `EffectParameterField` — the value field beside a parameter's slider.
+- `EffectParameterToggle` — the switch every editor draws for a toggle.
 - `EffectParameterFormat` — the pure unit and percent conversions for it.
 - `UnsupportedParameterRow` — the row for a parameter kind this build lacks.
 - `EffectColorWell` — the color well drawn for a color parameter.
@@ -435,7 +455,7 @@ surface is:
 - `MeterRelay` — the lock-guarded holder of latest readings and peak holds.
 - `ProgramFrameRelay` — the lock-guarded holder of a bus's latest frame.
 - `ProgramTee` — the tee feeding program media to stream and recording.
-- `VerticalSlider` — a vertical `NSSlider` mirroring SwiftUI's `Slider`.
+- `MixerSlider` — the mixer's `NSSlider`: a fader on end, or a pan lying flat.
 - `FaderSlider` — the `NSSlider` subclass catching a fader's double-click.
 - `MeterBallistics` — draw-time ballistics: instant attack, 20 dB/s decay.
 - `SessionPreferences` — where the operator's position persists per project.
@@ -682,13 +702,54 @@ surface is:
 
 - `TingraCamerasApp` — the `@main` entry owning the shared model.
 - `ContentView` — the `NavigationSplitView` two-column layout.
-- `SidebarView` — the Cameras and Microphones sidebar list.
+- `SidebarView` — the Cameras sidebar list.
 - `DeviceRow` — one tappable device row, checkmarked when active.
-- `PreviewCanvasView` — the panel centering the 16:9 preview frame.
+- `PreviewCanvasView` — the 16:9 preview frame at the top, controls below.
 - `PreviewMessage` — the placeholder or error shown with no live feed.
 - `CameraPreviewView` — the video view: a placeholder or a live feed.
 - `SampleBufferHostView` — the `NSView` hosting the sample buffer layer.
+- `CameraControlsView` — the selected camera's controls, as a grouped form.
+- `ParameterSection` — a run of controls under one section heading.
+- `CameraParameterRow` — one camera control: a switch or a slider.
+- `CameraParameterSlider` — a control's slider and value; double-click resets.
+- `CameraSlider` — an `NSSlider` in SwiftUI that resets on a double-click.
+- `ResettableSlider` — the `NSSlider` subclass that catches the double-click.
+- `FramingOverlay` — Maps-style zoom and reset buttons over the preview.
+- `FramingButtonStyle` — one framing button's square, clickable target.
+- `FramingRow` — pan, tilt, and zoom as one row of three sliders.
+- `PreviewCommands` — Copy in the Edit menu, Cross Bars in the View menu.
+- `FrameClipboard` — puts a camera frame on the pasteboard as an image.
 - `HardwareModel` — the observable device selection state.
 - `CaptureEngine` — the one type the app reaches the capture engine through.
-- `Device` — one camera or microphone the picker lists.
-- `DeviceKind` — whether a device is a camera or a microphone.
+- `Device` — one camera the picker lists.
+- `PixelDimensions` — a camera frame's size, the status bar's resolution.
+- `PreviewState` — where the selected camera's preview stands.
+- `SettingsView` — the settings window: General, Permissions, About.
+- `SettingsPane` — one pane of the settings window.
+- `SettingsCommands` — Settings… in the app menu, under ⌘,.
+- `GeneralSettingsView` — the General pane: Appearance and Show Status Bar.
+- `AppearancePicker` — the System / Light / Dark thumbnail control.
+- `AppearanceSwatch` — one thumbnail of the Appearance control.
+- `AppearanceMiniDesktop` — the miniature desktop drawn in a swatch.
+- `AppearanceMode` — System, Light, or Dark.
+- `AppearancePreferences` — where the appearance choice persists.
+- `AppearanceModel` — the appearance, installed on the application.
+- `AppearanceTarget` — the seam the appearance is installed through.
+- `PermissionsSettingsView` — the Permissions pane: the camera permission.
+- `PermissionRow` — one permission's status and its action.
+- `StatusLabel` — a permission status as a colored symbol and a word.
+- `PermissionsModel` — where each permission stands, re-read on activation.
+- `AboutSettingsView` — the About pane: icon, version, and uptime.
+- `AppVersion` — the bundle's version and build, as About prints it.
+- `AppUptime` — how long the app has been running, as About words it.
+- `StatusBarView` — the bar under the preview: state, camera, resolution.
+- `StatusBarModel` — whether the windows carry a status bar.
+- `StatusBarPreferences` — where the status bar choice persists.
+- `StatusBarCommands` — Show/Hide Status Bar in the View menu, ⌘/.
+- `PresetsSection` — the sidebar's saved camera presets, default marked.
+- `PresetRow` — one preset row, recalling the preset when clicked.
+- `PresetContextMenu` — recall, default, update, rename, delete a preset.
+- `PresetCommands` — the Presets menu: save, recall, Default Preset.
+- `PresetDialog` — the Save, Rename, or Delete preset dialog.
+- `PresetDialogPresenter` — which preset dialog a window shows.
+- `PresetDialogs` — the preset dialogs, presented over a window.

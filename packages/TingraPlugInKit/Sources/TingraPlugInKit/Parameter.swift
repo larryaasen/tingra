@@ -26,6 +26,19 @@
 /// for it. The kind joined the descriptor additively — every numeric
 /// conformer and call site is unchanged — as the stability rules ask.
 ///
+/// Three more joined the same way on 2026-10-27 for camera controls
+/// (docs/UVC.md): a **toggle** parameter (``Kind/toggle``) carries a JSON
+/// boolean and a host draws a switch; a parameter may name the
+/// ``section`` it is grouped under; and a parameter may name the toggle
+/// that hands it to the device's automatic control
+/// (``automaticToggleKey``), so a host disables its control while that
+/// toggle is on. The last two are set with modifiers
+/// (``inSection(_:)``, ``controlledAutomatically(whenOn:)``), so no
+/// existing initializer changed. A number may also declare the ``step``
+/// its values move in (``stepped(by:)``), so a slider lands only on values
+/// the device takes — a camera's pan moves in whole degrees, and a slider
+/// that left it at -0.003° showed "-0°".
+///
 /// Named `EffectParameter` until 2026-09-15, when the declaration widened
 /// past effects; the old name remains as a deprecated alias.
 public struct Parameter: Sendable, Equatable {
@@ -40,6 +53,13 @@ public struct Parameter: Sendable, Equatable {
         /// hold `0`…`1` and `0`; ``Parameter/defaultColor`` is the
         /// default instead.
         case color
+
+        /// On or off — a switch. The payload carries a JSON boolean;
+        /// ``Parameter/range`` is `0`…`1` and ``Parameter/defaultValue``
+        /// is `1` for on and `0` for off, so a host that reads it as a
+        /// number still gets an honest answer. Read it with
+        /// ``Parameter/isOn(in:)``.
+        case toggle
     }
 
     /// How a control maps its travel onto the parameter's range.
@@ -80,6 +100,27 @@ public struct Parameter: Sendable, Equatable {
     /// The color the parameter takes when the payload omits its key — set
     /// for a ``Kind/color`` parameter, nil for a numeric one.
     public let defaultColor: ParameterColor?
+
+    /// A short user-facing heading the parameter is grouped under, e.g.
+    /// "White Balance", or nil for none. A host groups consecutive
+    /// parameters that share a section under one heading, in declaration
+    /// order. Set with ``inSection(_:)``.
+    public private(set) var section: String?
+
+    /// The key of a ``Kind/toggle`` parameter that, while on, hands this
+    /// parameter to the device's automatic control — a white balance
+    /// temperature while auto white balance is on — or nil when nothing
+    /// governs it. A host disables this parameter's control while that
+    /// toggle is on, and a conformer does not apply the value then. Set with
+    /// ``controlledAutomatically(whenOn:)``.
+    public private(set) var automaticToggleKey: String?
+
+    /// The increment a number's values move in from the bottom of its
+    /// range — `1` for a camera's brightness, `10` for a white balance
+    /// temperature in kelvin — or nil for a continuous parameter. A host
+    /// snaps a control's values to it (``snapped(_:)``; ``ParameterScale``
+    /// does so for every slider). Set with ``stepped(by:)``.
+    public private(set) var step: Double?
 
     /// Creates a parameter descriptor.
     ///
@@ -124,6 +165,103 @@ public struct Parameter: Sendable, Equatable {
         self.scale = .linear
         self.kind = .color
         self.defaultColor = defaultColor
+    }
+
+    /// Creates a toggle parameter descriptor — a ``Kind/toggle`` parameter a
+    /// host draws a switch for.
+    ///
+    /// - Parameters:
+    ///   - key: The parameter's stable key in the persisted payload.
+    ///   - name: A short user-facing name.
+    ///   - defaultIsOn: Whether the toggle is on when the payload omits the
+    ///     key.
+    public init(key: String, name: String, defaultIsOn: Bool) {
+        self.key = key
+        self.name = name
+        self.range = 0...1
+        self.defaultValue = defaultIsOn ? 1 : 0
+        self.unit = nil
+        self.scale = .linear
+        self.kind = .toggle
+        self.defaultColor = nil
+    }
+
+    /// The same parameter, grouped under a section heading.
+    ///
+    /// - Parameter section: The short user-facing heading.
+    /// - Returns: A copy with ``section`` set.
+    public func inSection(_ section: String) -> Parameter {
+        var copy = self
+        copy.section = section
+        return copy
+    }
+
+    /// The same parameter, governed by a toggle that hands it to the
+    /// device's automatic control while on.
+    ///
+    /// - Parameter toggleKey: The key of the governing ``Kind/toggle``
+    ///   parameter, declared by the same conformer.
+    /// - Returns: A copy with ``automaticToggleKey`` set.
+    public func controlledAutomatically(whenOn toggleKey: String) -> Parameter {
+        var copy = self
+        copy.automaticToggleKey = toggleKey
+        return copy
+    }
+
+    /// The same parameter, moving in steps of a fixed increment from the
+    /// bottom of its range.
+    ///
+    /// - Parameter step: The increment; a step that is not positive leaves
+    ///   the parameter continuous.
+    /// - Returns: A copy with ``step`` set.
+    public func stepped(by step: Double) -> Parameter {
+        var copy = self
+        copy.step = step > 0 ? step : nil
+        return copy
+    }
+
+    /// A value clamped into ``range`` and, for a parameter that declares a
+    /// ``step``, moved to the nearest step from the bottom of the range —
+    /// what a host does with a slider's value, so a control never rests
+    /// between two values the device takes.
+    ///
+    /// - Parameter value: A value to snap.
+    /// - Returns: The nearest value the parameter takes.
+    public func snapped(_ value: Double) -> Double {
+        let clamped = clamped(value)
+        guard let step else { return clamped }
+        let steps = ((clamped - range.lowerBound) / step).rounded()
+        return self.clamped(range.lowerBound + steps * step)
+    }
+
+    /// Whether a payload holds this toggle on — its boolean, a number read
+    /// as on when non-zero, or the declared default when the payload omits
+    /// the key or holds something else; nil for a parameter that is not a
+    /// ``Kind/toggle``.
+    ///
+    /// - Parameter payload: The persisted parameter payload.
+    /// - Returns: Whether the toggle is on, or nil for another kind.
+    public func isOn(in payload: [String: JSONValue]) -> Bool? {
+        guard kind == .toggle else { return nil }
+        if let isOn = payload[key]?.boolValue { return isOn }
+        if let number = payload[key]?.doubleValue { return number != 0 }
+        return defaultValue != 0
+    }
+
+    /// Whether the parameter's governing toggle is on in a payload, so its
+    /// value belongs to the device's automatic control — false when no
+    /// toggle governs it.
+    ///
+    /// - Parameters:
+    ///   - payload: The persisted parameter payload.
+    ///   - parameters: The declaring conformer's parameters, where the
+    ///     governing toggle is found.
+    /// - Returns: Whether an automatic toggle owns the value right now.
+    public func isControlledAutomatically(in payload: [String: JSONValue], among parameters: [Parameter]) -> Bool {
+        guard let automaticToggleKey,
+            let toggle = parameters.first(where: { $0.key == automaticToggleKey })
+        else { return false }
+        return toggle.isOn(in: payload) ?? false
     }
 
     /// The numeric value a payload holds for this parameter, or the

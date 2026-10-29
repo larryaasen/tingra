@@ -251,6 +251,20 @@ here, under "Left open from “…”", pointing at its record there.
     approval.* Waits on both kits at 1.0.0 (after NDI), Tingra.app
     shipping, and Decisions 35–37.
 
+- [ ] **UVC camera controls: what this slice left open** (UVC.md, built
+  2026-10-27: the `TingraUVC` package, the kit's toggle kind,
+  `automaticToggleKey`, `section`, and `Input.currentParameters()`, the
+  camera input's parameters, and the Tingra Cameras controls panel).
+  - [ ] Larry: select the Razer in Tingra Cameras and check the panel
+    under the preview — sliders, the three Auto switches, and a governed
+    slider greying out. A session could not drive the window.
+  - [ ] A camera's controls in the main app: its Input Settings popover
+    hangs off a mixer strip, and a camera has none; the camera layer's
+    inspector is the likely home.
+  - [ ] A choice kind in the kit, for power line frequency and auto
+    exposure priority.
+  - [ ] Named profiles in Tingra Cameras, like the vendor utility's.
+
 ## Clock and timing
 
 Found by the 2026-10-03 review of CLOCK.md against the code. CLOCK.md states

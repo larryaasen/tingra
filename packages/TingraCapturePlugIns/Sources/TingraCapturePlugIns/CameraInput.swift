@@ -48,6 +48,13 @@ import TingraPlugInKit
 /// runtime error stays observed for the session's whole lifetime, so a
 /// device that dies mid-show is reported and released rather than left in
 /// the program as a frozen frame.
+///
+/// **A UVC camera declares its controls as parameters** (docs/UVC.md):
+/// brightness, white balance, exposure, focus, zoom — whatever the camera
+/// advertises, with its own ranges — read through
+/// ``currentParameters()`` and written through ``setParameters(_:)``,
+/// whether or not the camera is capturing. A camera with no UVC controls (a
+/// built-in or Continuity camera) declares none.
 final class CameraInput: Input, Sendable {
     /// The discovered device this input captures from.
     private let device: CaptureDevice
@@ -62,6 +69,17 @@ final class CameraInput: Input, Sendable {
     /// a successful start. Optional so a test can build the input with no
     /// bus at all.
     private let eventBus: EventBus?
+
+    /// The camera's adjustable controls, or nil when it has none (not a UVC
+    /// camera, or one that could not be described).
+    private let controls: (any CameraControls)?
+
+    /// The parameter values the camera was last read or written with — what
+    /// ``setParameters(_:)`` compares against so it writes only what
+    /// changed. The mutex is held across each device exchange, so reads and
+    /// writes reach the camera one at a time and the record never drifts
+    /// from what was sent.
+    private let knownParameters = Mutex<[String: JSONValue]>([:])
 
     /// The running session task's signal continuation and the single
     /// active frame continuation. One holder at a time, per the frame
@@ -98,6 +116,12 @@ final class CameraInput: Input, Sendable {
         /// AVFoundation reported a runtime error; the string is its
         /// description.
         case runtimeError(String)
+
+        /// The task awaiting `start()` was cancelled before the first frame
+        /// arrived — the caller has moved on (an operator picked another
+        /// camera), so the start is abandoned rather than left to run out
+        /// its verification window.
+        case startCancelled
     }
 
     /// How long the session has, after `startRunning()` returns, to deliver
@@ -123,14 +147,18 @@ final class CameraInput: Input, Sendable {
     ///     in tests that assert only on the thrown errors.
     ///   - requestAuthorization: The authorization seam; defaults to the
     ///     real TCC request.
+    ///   - controls: The camera's adjustable controls, or nil (the default)
+    ///     for a camera with none.
     init(
         device: CaptureDevice,
         eventBus: EventBus? = nil,
-        requestAuthorization: @escaping @Sendable () async -> Bool = CameraInput.requestCameraAccess
+        requestAuthorization: @escaping @Sendable () async -> Bool = CameraInput.requestCameraAccess,
+        controls: (any CameraControls)? = nil
     ) {
         self.device = device
         self.eventBus = eventBus
         self.requestAuthorization = requestAuthorization
+        self.controls = controls
     }
 
     /// The stable identifier — the device's unique ID, verbatim, so
@@ -147,6 +175,77 @@ final class CameraInput: Input, Sendable {
     /// already-finished default.
     var media: InputMedia { .video }
 
+    /// The camera's controls as parameters, in display order; empty for a
+    /// camera with none.
+    var parameters: [Parameter] { controls?.parameters ?? [] }
+
+    /// Reads the camera's current control values — what a host with nothing
+    /// stored shows and applies, so it never resets a camera that keeps its
+    /// own settings.
+    ///
+    /// A camera that cannot be reached is reported as an
+    /// `input.parameterRead` error event, and the values it was last known
+    /// to hold are returned instead.
+    ///
+    /// - Returns: The current payload; empty for a camera with no controls.
+    func currentParameters() async -> [String: JSONValue] {
+        guard let controls else { return [:] }
+        return knownParameters.withLock { known in
+            do {
+                known = try controls.read()
+            } catch {
+                eventBus?.error(
+                    "input.parameterRead",
+                    domain: .capture,
+                    params: [
+                        "id": .string(id.rawValue),
+                        "name": .string(name),
+                        "error": .string(String(describing: error)),
+                    ]
+                )
+            }
+            return known
+        }
+    }
+
+    /// Writes the payload's values to the camera: only those that changed
+    /// since the last read or write, Auto toggles first, and never a value
+    /// while its Auto toggle is on (``CameraParameterPlan``). Keys the
+    /// payload omits take their declared defaults, per the seam's contract.
+    ///
+    /// Each value the camera does not take is reported as an
+    /// `input.parameterSet` error event naming the parameter and the
+    /// camera's reason; the rest still apply, and the camera keeps running.
+    ///
+    /// - Parameter parameters: The parameter payload.
+    func setParameters(_ parameters: [String: JSONValue]) async {
+        guard let controls else { return }
+        let declared = controls.parameters
+        let resolved = CameraParameterPlan.resolved(parameters, parameters: declared)
+        let failures = knownParameters.withLock { known in
+            let writes = CameraParameterPlan.writes(for: resolved, parameters: declared, known: known)
+            guard !writes.isEmpty else { return [CameraControlFailure]() }
+            let failures = controls.write(writes)
+            let failed = Set(failures.map(\.key))
+            for (key, value) in writes where !failed.contains(key) {
+                known[key] = value
+            }
+            return failures
+        }
+        for failure in failures {
+            eventBus?.error(
+                "input.parameterSet",
+                domain: .capture,
+                params: [
+                    "id": .string(id.rawValue),
+                    "name": .string(name),
+                    "key": .string(failure.key),
+                    "error": .string(failure.reason),
+                ]
+            )
+        }
+    }
+
     /// Requests authorization and starts the capture session task, returning
     /// only once the session has delivered its first frame.
     ///
@@ -157,8 +256,11 @@ final class CameraInput: Input, Sendable {
     /// cannot accept the device or output or reports a runtime error before
     /// its first frame, and ``CaptureInputError/startedSilent(_:within:)``
     /// when it delivers no frame within ``frameVerificationWindow`` — the
-    /// honest-start gate described on the type. On any throw the session is
-    /// torn down before returning, so a
+    /// honest-start gate described on the type. Throws `CancellationError`
+    /// when the calling task is cancelled before the first frame arrives, so
+    /// a caller that has moved on to another camera can abandon a slow or
+    /// silent one at once. On any throw the session is torn down before
+    /// returning, so a
     /// rejected start leaves nothing running and no indicator light on.
     /// Device disconnection after a successful start is a normal event,
     /// never an error; a session that reports a runtime error after a
@@ -187,72 +289,88 @@ final class CameraInput: Input, Sendable {
             if isFirst { signal.yield(.firstFrame) }
             self?.state.withLock { $0.continuation }?.yield(frame)
         }
-        try await withCheckedThrowingContinuation { (ready: CheckedContinuation<Void, any Error>) in
-            Task { [weak self] in
-                let running: RunningSession
-                do {
-                    running = try Self.makeRunningSession(
-                        for: device,
-                        id: inputID,
-                        deliver: deliver,
-                        signal: signal
-                    )
-                } catch {
-                    ready.resume(throwing: error)
-                    return
-                }
-                let verification = Task {
-                    try? await Task.sleep(for: Self.frameVerificationWindow)
-                    guard !Task.isCancelled else { return }
-                    signal.yield(.verificationTimedOut)
-                }
-                defer { verification.cancel() }
-                var isReady = false
-                // One loop owns the whole lifecycle: the verification race
-                // first, then the park until `stop()` finishes the stream or
-                // the session reports a runtime error. The session and
-                // delegate stay alive and task-confined throughout.
-                for await event in signals {
-                    switch event {
-                    case .firstFrame:
-                        guard !isReady else { continue }
-                        isReady = true
-                        verification.cancel()
-                        ready.resume()
-                    case .verificationTimedOut:
-                        guard !isReady else { continue }
-                        running.tearDown()
-                        ready.resume(
-                            throwing: CaptureInputError.startedSilent(inputID, within: Self.frameVerificationWindow))
-                        return
-                    case .runtimeError(let reason):
-                        running.tearDown()
-                        guard isReady else {
-                            ready.resume(
-                                throwing: CaptureInputError.configurationRejected(
-                                    inputID, "the session reported a runtime error before its first frame: \(reason)"
-                                ))
-                            return
-                        }
-                        // Post-start, the failure is the session's, not the
-                        // start's: report it, release the device, and end
-                        // the frame stream so a consumer sees the input
-                        // stop rather than a frozen last frame.
-                        eventBus?.error(
-                            "input.runtimeError",
-                            domain: .capture,
-                            params: [
-                                "id": .string(inputID.rawValue),
-                                "name": .string(inputName),
-                                "error": .string(reason),
-                            ]
+        // A cancelled caller abandons the start: the session task tears the
+        // session down and the start throws `CancellationError`, so an
+        // operator who picks another camera never waits out the window.
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (ready: CheckedContinuation<Void, any Error>) in
+                Task { [weak self] in
+                    let running: RunningSession
+                    do {
+                        running = try Self.makeRunningSession(
+                            for: device,
+                            id: inputID,
+                            deliver: deliver,
+                            signal: signal
                         )
-                        await self?.stop()
+                    } catch {
+                        ready.resume(throwing: error)
                         return
                     }
+                    let verification = Task {
+                        try? await Task.sleep(for: Self.frameVerificationWindow)
+                        guard !Task.isCancelled else { return }
+                        signal.yield(.verificationTimedOut)
+                    }
+                    defer { verification.cancel() }
+                    var isReady = false
+                    // One loop owns the whole lifecycle: the verification race
+                    // first, then the park until `stop()` finishes the stream or
+                    // the session reports a runtime error. The session and
+                    // delegate stay alive and task-confined throughout.
+                    for await event in signals {
+                        switch event {
+                        case .firstFrame:
+                            guard !isReady else { continue }
+                            isReady = true
+                            verification.cancel()
+                            ready.resume()
+                        case .verificationTimedOut:
+                            guard !isReady else { continue }
+                            running.tearDown()
+                            ready.resume(
+                                throwing: CaptureInputError.startedSilent(inputID, within: Self.frameVerificationWindow)
+                            )
+                            return
+                        case .startCancelled:
+                            // A cancellation that lands after the first frame
+                            // is moot: the start has already returned.
+                            guard !isReady else { continue }
+                            running.tearDown()
+                            ready.resume(throwing: CancellationError())
+                            return
+                        case .runtimeError(let reason):
+                            running.tearDown()
+                            guard isReady else {
+                                ready.resume(
+                                    throwing: CaptureInputError.configurationRejected(
+                                        inputID,
+                                        "the session reported a runtime error before its first frame: \(reason)"
+                                    ))
+                                return
+                            }
+                            // Post-start, the failure is the session's, not the
+                            // start's: report it, release the device, and end
+                            // the frame stream so a consumer sees the input
+                            // stop rather than a frozen last frame.
+                            eventBus?.error(
+                                "input.runtimeError",
+                                domain: .capture,
+                                params: [
+                                    "id": .string(inputID.rawValue),
+                                    "name": .string(inputName),
+                                    "error": .string(reason),
+                                ]
+                            )
+                            await self?.stop()
+                            return
+                        }
+                    }
+                    running.tearDown()
                 }
-                running.tearDown()
             }
+        } onCancel: {
+            signal.yield(.startCancelled)
         }
         state.withLock { $0.sessionSignal = signal }
     }

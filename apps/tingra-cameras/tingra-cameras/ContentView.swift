@@ -26,13 +26,24 @@ struct ContentView: View {
             SidebarView()
                 .navigationSplitViewColumnWidth(min: 240, ideal: 260, max: 320)
         } detail: {
+            // The status bar rides on the detail column, not under the whole
+            // split view: the sidebar's material runs the full height of the
+            // window. A bottom safe-area inset, so it stays put while the
+            // controls scroll.
             PreviewCanvasView()
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    StatusBarView()
+                }
         }
+        // On the window's root rather than the sidebar, so the Presets menu
+        // can open a dialog with the sidebar collapsed.
+        .presetDialogs(model: model)
     }
 }
 
 #Preview {
     ContentView()
         .environment(HardwareModel.preview)
+        .environment(StatusBarModel())
         .frame(width: 900, height: 560)
 }

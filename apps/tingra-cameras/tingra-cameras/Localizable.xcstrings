@@ -1,8 +1,144 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "%@ %@" : {
+      "comment" : "About settings: an uptime of hours then minutes, e.g. “1 hour” then “43 min”",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ %2$@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ %2$@"
+          }
+        }
+      }
+    },
+    "%@ is not connected" : {
+      "comment" : "Tooltip on a camera preset whose camera is unplugged; the placeholder is its name",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ ist nicht angeschlossen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ no está conectada"
+          }
+        }
+      }
+    },
+    "%@ will be deleted. This cannot be undone." : {
+      "comment" : "Delete Preset dialog message; the placeholder is the preset's name",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "„%@“ wird gelöscht. Dies kann nicht rückgängig gemacht werden."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se eliminará «%@». Esta acción no se puede deshacer."
+          }
+        }
+      }
+    },
+    "About" : {
+      "comment" : "Settings window pane: the app's version",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Über"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Acerca de"
+          }
+        }
+      }
+    },
+    "Appearance" : {
+      "comment" : "General settings: label of the light/dark appearance control",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erscheinungsbild"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apariencia"
+          }
+        }
+      }
+    },
+    "Auto" : {
+      "comment" : "Checkbox at the end of a camera control's slider that lets the camera set that control itself, e.g. its white balance or focus.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auto"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auto"
+          }
+        }
+      }
+    },
+    "Camera" : {
+      "comment" : "Permissions settings: the camera permission's name",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kamera"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cámara"
+          }
+        }
+      }
+    },
     "Camera Unavailable" : {
       "comment" : "Title shown in the preview when the selected camera cannot be opened.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kamera nicht verfügbar"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cámara no disponible"
+          }
+        }
+      }
+    },
+    "Camera unavailable" : {
+      "comment" : "Status bar reading: the selected camera could not be opened",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -31,6 +167,312 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Cámaras"
+          }
+        }
+      }
+    },
+    "Cancel" : {
+      "comment" : "Camera preset dialog cancel button",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abbrechen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cancelar"
+          }
+        }
+      }
+    },
+    "Checking…" : {
+      "comment" : "Permissions settings: status before the first read",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wird geprüft…"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Comprobando…"
+          }
+        }
+      }
+    },
+    "Copy" : {
+      "comment" : "Edit menu and preview context menu command that copies the camera's current frame to the pasteboard.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kopieren"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copiar"
+          }
+        }
+      }
+    },
+    "Cross Bars" : {
+      "comment" : "View menu and preview context menu option that shows lines through the centre of the camera preview.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fadenkreuz"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cruz central"
+          }
+        }
+      }
+    },
+    "Dark" : {
+      "comment" : "Appearance option: always draw the app dark",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dunkel"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Oscuro"
+          }
+        }
+      }
+    },
+    "Default" : {
+      "comment" : "Sidebar label marking the camera preset applied at launch",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Standard"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Predeterminado"
+          }
+        }
+      }
+    },
+    "Default Preset" : {
+      "comment" : "Presets menu submenu choosing the preset applied at launch",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Standardvoreinstellung"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Preajuste predeterminado"
+          }
+        }
+      }
+    },
+    "Delete" : {
+      "comment" : "Delete Preset dialog confirm button",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Löschen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eliminar"
+          }
+        }
+      }
+    },
+    "Delete Preset" : {
+      "comment" : "Title of the dialog confirming a camera preset's deletion",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Voreinstellung löschen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eliminar preajuste"
+          }
+        }
+      }
+    },
+    "Delete Preset…" : {
+      "comment" : "Camera preset context menu: delete this preset, after confirming",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Voreinstellung löschen …"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eliminar preajuste…"
+          }
+        }
+      }
+    },
+    "Denied" : {
+      "comment" : "Permissions settings: status of a permission macOS refuses",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verweigert"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Denegado"
+          }
+        }
+      }
+    },
+    "Drag to pan and tilt. Pinch or Option-scroll to zoom." : {
+      "comment" : "Tooltip on the live preview explaining how to frame the camera by hand.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zum Schwenken und Neigen ziehen. Zum Zoomen mit zwei Fingern auf- oder zuziehen oder mit gedrückter Wahltaste scrollen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Arrastra para la panorámica y la inclinación. Para hacer zoom, pellizca o desplázate con la tecla Opción."
+          }
+        }
+      }
+    },
+    "Forget this permission, so macOS asks again the next time a camera opens" : {
+      "comment" : "Tooltip on a permission's Reset button",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Berechtigung vergessen, damit macOS beim nächsten Öffnen einer Kamera erneut fragt"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Olvidar este permiso para que macOS vuelva a preguntar la próxima vez que se abra una cámara"
+          }
+        }
+      }
+    },
+    "General" : {
+      "comment" : "Settings window pane: general app settings",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Allgemein"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "General"
+          }
+        }
+      }
+    },
+    "Granted" : {
+      "comment" : "Permissions settings: status of a permission macOS allows",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erlaubt"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Permitido"
+          }
+        }
+      }
+    },
+    "Hide Status Bar" : {
+      "comment" : "View menu item that hides the window status bar",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Statusleiste ausblenden"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ocultar barra de estado"
+          }
+        }
+      }
+    },
+    "Light" : {
+      "comment" : "Appearance option: always draw the app light",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hell"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Claro"
+          }
+        }
+      }
+    },
+    "Live" : {
+      "comment" : "Status bar reading: the selected camera's frames are showing",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Live"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "En vivo"
           }
         }
       }
@@ -69,8 +511,43 @@
         }
       }
     },
+    "macOS grants each permission to this app. Tingra Cameras checks again whenever it becomes active, so a change made in System Settings appears here when you return, and the preview starts on its own. Reset forgets a decision, so macOS asks again the next time a camera opens." : {
+      "comment" : "Permissions settings: footer explaining when the statuses update and what Reset does",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS erteilt jede Berechtigung dieser App. Tingra Cameras prüft sie erneut, sobald die App aktiv wird. Eine in den Systemeinstellungen vorgenommene Änderung erscheint hier also bei der Rückkehr, und die Vorschau startet von selbst. „Zurücksetzen“ vergisst eine Entscheidung, sodass macOS beim nächsten Öffnen einer Kamera erneut fragt."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS concede cada permiso a esta app. Tingra Cameras vuelve a comprobarlo cada vez que se activa, así que un cambio hecho en Ajustes del Sistema aparece aquí al volver y la vista previa se inicia sola. Restablecer olvida una decisión, así que macOS vuelve a preguntar la próxima vez que se abra una cámara."
+          }
+        }
+      }
+    },
+    "Microphone" : {
+      "comment" : "Permissions settings: the microphone permission's name",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mikrofon"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Micrófono"
+          }
+        }
+      }
+    },
     "Microphones" : {
       "comment" : "Sidebar section header for the list of available microphones.",
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -82,6 +559,517 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Micrófonos"
+          }
+        }
+      }
+    },
+    "Name" : {
+      "comment" : "Name text field label in the camera preset dialogs",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Name"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nombre"
+          }
+        }
+      }
+    },
+    "No camera selected" : {
+      "comment" : "Status bar reading: no camera is selected or connected",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Kamera ausgewählt"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ninguna cámara seleccionada"
+          }
+        }
+      }
+    },
+    "No Presets" : {
+      "comment" : "Placeholder in the sidebar and the Presets menu when no camera preset has been saved",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Voreinstellungen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No hay preajustes"
+          }
+        }
+      }
+    },
+    "Not Requested" : {
+      "comment" : "Permissions settings: status of a permission the app has never asked for",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht angefordert"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No solicitado"
+          }
+        }
+      }
+    },
+    "Not used by Tingra Cameras." : {
+      "comment" : "Permissions settings: purpose of a permission the app never asks for",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wird von Tingra Cameras nicht verwendet."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tingra Cameras no lo usa."
+          }
+        }
+      }
+    },
+    "Open System Settings…" : {
+      "comment" : "Permissions settings: button that opens the permission's switch in System Settings",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Systemeinstellungen öffnen…"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abrir Ajustes del Sistema…"
+          }
+        }
+      }
+    },
+    "Pan and Tilt" : {
+      "comment" : "Accessibility label of the pad that points the camera across and up or down.",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schwenken und Neigen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Panorámica e inclinación"
+          }
+        }
+      }
+    },
+    "Permissions" : {
+      "comment" : "Settings window pane: the system permissions' status",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Berechtigungen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Permisos"
+          }
+        }
+      }
+    },
+    "Preset %lld" : {
+      "comment" : "Suggested name of a new camera preset; the number counts up",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Voreinstellung %lld"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Preajuste %lld"
+          }
+        }
+      }
+    },
+    "Presets" : {
+      "comment" : "Title of the Presets menu and the sidebar section listing the saved camera presets",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Voreinstellungen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Preajustes"
+          }
+        }
+      }
+    },
+    "Recall" : {
+      "comment" : "Camera preset context menu: apply this preset to its camera",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abrufen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Recuperar"
+          }
+        }
+      }
+    },
+    "Recall this preset" : {
+      "comment" : "Tooltip on a sidebar camera preset row",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Voreinstellung abrufen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Recuperar este preajuste"
+          }
+        }
+      }
+    },
+    "Rename" : {
+      "comment" : "Rename Preset dialog confirm button",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Umbenennen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Renombrar"
+          }
+        }
+      }
+    },
+    "Rename Preset" : {
+      "comment" : "Title of the dialog renaming a camera preset",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Voreinstellung umbenennen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Renombrar preajuste"
+          }
+        }
+      }
+    },
+    "Rename…" : {
+      "comment" : "Camera preset context menu: rename this preset",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Umbenennen …"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Renombrar…"
+          }
+        }
+      }
+    },
+    "Request…" : {
+      "comment" : "Permissions settings: button that shows the system permission prompt",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anfordern…"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Solicitar…"
+          }
+        }
+      }
+    },
+    "Reset" : {
+      "comment" : "Permissions settings: button that forgets the system's decision for a permission",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zurücksetzen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Restablecer"
+          }
+        }
+      }
+    },
+    "Reset Framing" : {
+      "comment" : "Button over the preview that returns the camera's pan, tilt, and zoom to their defaults.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bildausschnitt zurücksetzen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Restablecer encuadre"
+          }
+        }
+      }
+    },
+    "Restricted" : {
+      "comment" : "Permissions settings: status of a permission a policy forbids",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eingeschränkt"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Restringido"
+          }
+        }
+      }
+    },
+    "Save" : {
+      "comment" : "Save Preset dialog confirm button",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sichern"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Guardar"
+          }
+        }
+      }
+    },
+    "Save Preset" : {
+      "comment" : "Title of the dialog naming a new camera preset",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Voreinstellung sichern"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Guardar preajuste"
+          }
+        }
+      }
+    },
+    "Save Preset…" : {
+      "comment" : "Command saving the selected camera's settings as a new preset",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Voreinstellung sichern …"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Guardar preajuste…"
+          }
+        }
+      }
+    },
+    "Screen Recording" : {
+      "comment" : "Permissions settings: the Screen Recording permission's name",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bildschirmaufnahme"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grabación de pantalla"
+          }
+        }
+      }
+    },
+    "Set as Default" : {
+      "comment" : "Camera preset context menu: apply this preset at launch",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Als Standard festlegen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Establecer como predeterminado"
+          }
+        }
+      }
+    },
+    "Settings" : {
+      "comment" : "Title of the settings window",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einstellungen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ajustes"
+          }
+        }
+      }
+    },
+    "Settings…" : {
+      "comment" : "App menu item that opens the settings window",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einstellungen…"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ajustes…"
+          }
+        }
+      }
+    },
+    "Show Status Bar" : {
+      "comment" : "General settings: checkbox showing or hiding the bar across the bottom of the windows\nView menu item that shows the window status bar",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Statusleiste einblenden"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostrar barra de estado"
+          }
+        }
+      }
+    },
+    "Starting…" : {
+      "comment" : "Status bar reading: the selected camera is opening",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wird gestartet…"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Iniciando…"
+          }
+        }
+      }
+    },
+    "System" : {
+      "comment" : "Appearance option: follow the system's light or dark setting",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "System"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sistema"
+          }
+        }
+      }
+    },
+    "The preset keeps the current settings of %@." : {
+      "comment" : "Save Preset dialog message; the placeholder is the camera's name",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Voreinstellung behält die aktuellen Einstellungen von %@."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El preajuste conserva los ajustes actuales de %@."
           }
         }
       }
@@ -99,6 +1087,142 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "La vista previa en vivo de la cámara seleccionada aparece aquí."
+          }
+        }
+      }
+    },
+    "The selected camera's live preview." : {
+      "comment" : "Permissions settings: what the camera permission is used for",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Live-Vorschau der ausgewählten Kamera."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La vista previa en vivo de la cámara seleccionada."
+          }
+        }
+      }
+    },
+    "This camera has no adjustable controls." : {
+      "comment" : "Shown under the preview when the selected camera offers no controls to adjust, such as a built-in or Continuity camera.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Kamera hat keine einstellbaren Regler."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esta cámara no tiene controles ajustables."
+          }
+        }
+      }
+    },
+    "Update with Current Settings" : {
+      "comment" : "Camera preset context menu: replace this preset's settings with the camera's current ones",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mit aktuellen Einstellungen aktualisieren"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actualizar con los ajustes actuales"
+          }
+        }
+      }
+    },
+    "Uptime" : {
+      "comment" : "About settings: label of the row showing how long the app has been running",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Betriebszeit"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tiempo de actividad"
+          }
+        }
+      }
+    },
+    "Version %@" : {
+      "comment" : "About settings: the app's version and build number",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Version %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Versión %@"
+          }
+        }
+      }
+    },
+    "Version unavailable" : {
+      "comment" : "About settings: shown when the bundle names no version",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Version nicht verfügbar"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Versión no disponible"
+          }
+        }
+      }
+    },
+    "Zoom In" : {
+      "comment" : "Button over the preview that zooms the camera in.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vergrößern"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Acercar"
+          }
+        }
+      }
+    },
+    "Zoom Out" : {
+      "comment" : "Button over the preview that zooms the camera out.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verkleinern"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alejar"
           }
         }
       }

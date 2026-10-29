@@ -1,6 +1,6 @@
 //
 //  ParameterScaleTests.swift
-//  tingra-app
+//  TingraPlugInKit
 //
 //  Created by Larry Aasen on 2026-09-15.
 //  Copyright © 2026 Larry Aasen.
@@ -11,8 +11,6 @@ import Foundation
 import Testing
 import TingraPlugInKit
 
-@testable import TingraApp
-
 @Suite("Parameter slider scale")
 struct ParameterScaleTests {
     /// A level in decibels: linear travel.
@@ -22,6 +20,15 @@ struct ParameterScaleTests {
     private let frequency = Parameter(
         key: "frequencyHertz", name: "Frequency", range: 20...20_000, defaultValue: 440, unit: "Hz",
         scale: .logarithmic)
+
+    @Test("a slider's value lands on the parameter's step")
+    func valuesLandOnTheStep() {
+        let pan = Parameter(key: "pan", name: "Pan", range: -10...10, defaultValue: 0).stepped(by: 1)
+        #expect(ParameterScale.value(at: 0.4999, for: pan) == 0)
+        #expect(ParameterScale.value(at: 0.4999, for: pan).sign == .plus)
+        #expect(ParameterScale.value(at: 0.53, for: pan) == 1)
+        #expect(ParameterScale.value(at: 1, for: pan) == 10)
+    }
 
     @Test("a linear parameter maps its range evenly onto the travel")
     func linearPositions() {

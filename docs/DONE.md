@@ -3558,6 +3558,20 @@ there.
   master section is for. Until then the honest master section is meter plus
   monitor, and the column heads the two as separate groups, **Master** and
   **Monitor**, divided, so the monitor fader cannot be mistaken for one.
+- [x] **Does the master need a mute? — Yes, decided and built 2026-10-28**,
+  reversing the "No master mute" line of 2026-09-08 (ARCHITECTURE.md, "The
+  monitor path"). That line rested on the master-fader argument — a master
+  mute silences the stream and the recording behind a moving picture, a
+  silent broadcast nobody can hear happening — but the risk argues for
+  guards, not for leaving the control out, and the use is everyday: a cough,
+  a private aside, a "be right back" over a running picture, which otherwise
+  means clicking every strip's mute and then every one again. Unlike a master
+  fader it is a latch, not a level, so the fader's footguns do not carry
+  over: there is no "nudged down one evening" state, only muted or not, lit
+  on the button. The guards: the monitor hears the muted program; the status
+  bar reads **Master muted** while it is on, orange while anything is going
+  out; and it is session state, never persisted, so a show never reopens
+  muted. The answer on the master fader stands.
 
 ## CI follow-ups
 

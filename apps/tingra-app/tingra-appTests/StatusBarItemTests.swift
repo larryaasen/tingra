@@ -112,4 +112,24 @@ struct StatusBarItemTests {
         #expect(StatusBarItem.Light.off.isProminent == false)
         #expect(StatusBarItem.Light.pending.isProminent == false)
     }
+
+    @Test("a muted master reads pending while the program is going out, live or starting, on either reading")
+    func mutedMasterReadsPendingWhileGoingOut() {
+        #expect(StatusBarItem.masterMuted(stream: .live, recording: .idle).light == .pending)
+        #expect(StatusBarItem.masterMuted(stream: .starting, recording: .idle).light == .pending)
+        #expect(StatusBarItem.masterMuted(stream: .idle, recording: .recording).light == .pending)
+        #expect(StatusBarItem.masterMuted(stream: .stopped, recording: .finalizing).light == .pending)
+    }
+
+    @Test("a muted master reads off while nothing is going out, including after a fault")
+    func mutedMasterReadsOffWhileNothingGoesOut() {
+        #expect(StatusBarItem.masterMuted(stream: .idle, recording: .idle).light == .off)
+        #expect(StatusBarItem.masterMuted(stream: .error("x"), recording: .error("y")).light == .off)
+    }
+
+    @Test("a muted master draws the muted speaker in either state")
+    func mutedMasterDrawsTheMutedSpeaker() {
+        #expect(StatusBarItem.masterMuted(stream: .idle, recording: .idle).systemImage == "speaker.slash.fill")
+        #expect(StatusBarItem.masterMuted(stream: .live, recording: .idle).systemImage == "speaker.slash.fill")
+    }
 }

@@ -10,17 +10,17 @@
 import SwiftUI
 
 /// The left selection panel: a standard macOS sidebar listing the available
-/// cameras and microphones in two sections.
+/// cameras, then the saved camera presets (``PresetsSection``).
 ///
 /// It uses a plain sidebar-styled `List` so the system supplies the Liquid
 /// Glass material, section headers, and row metrics; each row is a standard
-/// `Label` with an SF Symbol, and the active camera and microphone are marked
-/// with a trailing checkmark.
+/// `Label` with an SF Symbol, and the active camera is marked with a trailing
+/// checkmark.
 struct SidebarView: View {
-    /// The shared hardware-selection state driving each section's active row.
+    /// The shared hardware-selection state driving the active row.
     @Environment(HardwareModel.self) private var model
 
-    /// Lays out the two device sections in a sidebar list.
+    /// Lays out the cameras and the presets in a sidebar list.
     var body: some View {
         List {
             Section("Cameras") {
@@ -35,17 +35,8 @@ struct SidebarView: View {
                     }
                 }
             }
-            Section("Microphones") {
-                ForEach(model.microphones) { microphone in
-                    DeviceRow(
-                        name: microphone.name,
-                        systemImage: "mic",
-                        isActive: model.selectedMicrophoneID == microphone.id
-                    ) {
-                        model.selectMicrophone(microphone.id)
-                    }
-                }
-            }
+            // Below the cameras: a preset recalls settings onto one of them.
+            PresetsSection()
         }
         .listStyle(.sidebar)
     }
@@ -56,9 +47,9 @@ struct SidebarView: View {
 private struct DeviceRow: View {
     /// The device name shown in the row.
     let name: String
-    /// The SF Symbol identifying the device kind (`video` / `mic`).
+    /// The SF Symbol identifying the device (`video` for a camera).
     let systemImage: String
-    /// Whether this row is the active selection in its section.
+    /// Whether this row is the active selection.
     let isActive: Bool
     /// Invoked when the row is activated, to update the selection.
     let onSelect: () -> Void
@@ -80,6 +71,16 @@ private struct DeviceRow: View {
         .buttonStyle(.plain)
         .accessibilityAddTraits(isActive ? .isSelected : [])
     }
+}
+
+#Preview {
+    NavigationSplitView {
+        SidebarView()
+            .environment(HardwareModel.preview)
+    } detail: {
+        Color.clear
+    }
+    .frame(width: 900, height: 560)
 }
 
 #Preview {
