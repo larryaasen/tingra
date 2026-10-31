@@ -597,6 +597,23 @@
         }
       }
     },
+    "No cameras connected" : {
+      "comment" : "Sidebar placeholder when no camera is discovered",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Kameras verbunden"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No hay cámaras conectadas"
+          }
+        }
+      }
+    },
     "No Presets" : {
       "comment" : "Placeholder in the sidebar and the Presets menu when no camera preset has been saved",
       "localizations" : {

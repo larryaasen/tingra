@@ -10,7 +10,7 @@
 import SwiftUI
 import TingraHost
 
-/// The sidebar's Presets section: one row per saved camera preset, under the
+/// The sidebar's Presets section: one row per saved camera preset, above the
 /// cameras, with the default marked — the main Tingra app's Presets section,
 /// for camera settings (docs/UVC.md, "Camera presets").
 ///
@@ -19,7 +19,8 @@ import TingraHost
 /// and cannot be recalled, but can still be managed. **Saving** a preset is
 /// the section header's context menu and the Presets menu, as adding a
 /// preset is in the main app; each row's context menu recalls, makes the
-/// default, updates, renames, and deletes it.
+/// default, updates, renames, and deletes it. The section collapses like
+/// every sidebar section (``SidebarView``), over the binding it is given.
 struct PresetsSection: View {
     /// The shared model holding the presets.
     @Environment(HardwareModel.self) private var model
@@ -27,14 +28,18 @@ struct PresetsSection: View {
     /// Opens a preset dialog over the window.
     @Environment(\.presetDialogPresenter) private var presetDialogPresenter
 
+    /// Whether the section is open — the sidebar's persisted expansion.
+    @Binding var isExpanded: Bool
+
     /// The section.
     var body: some View {
-        Section {
+        Section(isExpanded: $isExpanded) {
             if model.presets.isEmpty {
                 Text(
                     "No Presets",
                     comment: "Placeholder in the sidebar and the Presets menu when no camera preset has been saved"
                 )
+                .font(.callout)
                 .foregroundStyle(.secondary)
             } else {
                 ForEach(model.presets.presets) { preset in
@@ -45,6 +50,9 @@ struct PresetsSection: View {
             Text(
                 "Presets", comment: "Title of the Presets menu and the sidebar section listing the saved camera presets"
             )
+            // The whole header row answers the right-click, not just the word.
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(.rect)
             .contextMenu {
                 Button {
                     model.recordPresetTap("cameraPresetSave.menu")
