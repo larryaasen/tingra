@@ -54,8 +54,9 @@ internal surface a reader needs to navigate the target instead.
 - `EffectID` — the stable identifier for a registered audio or video effect.
 - `EffectConfiguration` — one effect as persisted: its id and parameters.
 - `ParameterDescribing` — declares the `parameters` a registration exposes.
-- `Parameter` — one setting a plug-in declares: a number, color, or toggle.
+- `Parameter` — a plug-in's declared setting: number, color, toggle, choice.
 - `Parameter.Kind` — the value a parameter takes, and so its control.
+- `Parameter.Choice` — one named option of a choice parameter.
 - `Parameter.Scale` — how a control maps its travel onto the range.
 - `ParameterColor` — a color parameter's value: sRGB components and alpha.
 - `ParameterScale` — the pure mapping between a value and slider travel.
@@ -702,6 +703,8 @@ surface is:
 
 - `TingraCamerasApp` — the `@main` entry owning the shared model.
 - `ContentView` — the `NavigationSplitView` two-column layout.
+- `HostWindow` — the window a view is in, for widening it.
+- `HostWindowReader` — the invisible view that fills in a `HostWindow`.
 - `SidebarView` — the Cameras sidebar list.
 - `DeviceRow` — one tappable device row, checkmarked when active.
 - `PreviewCanvasView` — the 16:9 preview frame at the top, controls below.

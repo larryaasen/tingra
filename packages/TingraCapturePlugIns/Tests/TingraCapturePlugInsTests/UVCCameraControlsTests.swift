@@ -22,7 +22,10 @@ private final class RazerTransport: UVCTransport {
     private let answers: Mutex<[String: [UInt8]]>
 
     /// Creates the scripted Razer.
-    init() {
+    ///
+    /// - Parameter powerLineMaximum: The power line frequency's `GET_MAX`:
+    ///   `2` as the Razer reports it, `3` for a camera that has Auto.
+    init(powerLineMaximum: Int = 2) {
         var answers: [String: [UInt8]] = [:]
         func range(
             _ entity: UInt8, _ selector: UInt8, size: Int, _ low: Int, _ high: Int, res: Int = 1, def: Int, cur: Int,
@@ -45,7 +48,7 @@ private final class RazerTransport: UVCTransport {
         range(3, 0x02, size: 2, 0, 255, def: 128, cur: 87)
         range(3, 0x03, size: 2, 0, 255, def: 128, cur: 109)
         range(3, 0x04, size: 2, 0, 255, def: 0, cur: 0, info: 0x0F)
-        range(3, 0x05, size: 1, 1, 2, def: 2, cur: 2)
+        range(3, 0x05, size: 1, 1, powerLineMaximum, def: 2, cur: 2)
         range(3, 0x07, size: 2, 0, 255, def: 128, cur: 138)
         range(3, 0x08, size: 2, 0, 255, def: 128, cur: 80)
         range(3, 0x0A, size: 2, 2000, 7500, res: 10, def: 5000, cur: 5100)
@@ -136,14 +139,14 @@ struct UVCCameraControlsTests {
         let (_, controls) = try razerControls()
         #expect(
             controls.parameters.map(\.key) == [
-                "exposureAuto", "exposureTime", "gain", "backlightCompensation", "brightness", "contrast",
-                "saturation", "sharpness", "whiteBalanceAuto", "whiteBalanceTemperature", "focusAuto", "focus",
-                "zoom", "pan", "tilt",
+                "exposureAuto", "exposureTime", "gain", "backlightCompensation", "powerLineFrequency", "brightness",
+                "contrast", "saturation", "sharpness", "focusAuto", "focus", "whiteBalanceAuto",
+                "whiteBalanceTemperature", "zoom", "pan", "tilt",
             ])
         #expect(controls.parameters.first?.section == "Exposure")
         #expect(controls.parameters.first { $0.key == "brightness" }?.section == "Image")
         #expect(controls.parameters.first { $0.key == "whiteBalanceTemperature" }?.section == "White Balance")
-        #expect(controls.parameters.first { $0.key == "focus" }?.section == "Focus")
+        #expect(controls.parameters.first { $0.key == "focus" }?.section == "Image")
         #expect(controls.parameters.last?.section == "Framing")
     }
 
@@ -200,12 +203,48 @@ struct UVCCameraControlsTests {
         #expect(controls.parameters.first { $0.key == "whiteBalanceTemperature" }?.unit == "K")
     }
 
-    @Test("power line frequency and auto exposure priority are not mapped")
-    func leavesChoicesUnmapped() throws {
+    @Test("auto exposure priority is not mapped")
+    func leavesExposurePriorityUnmapped() throws {
         let (_, controls) = try razerControls()
-        let keys = Set(controls.parameters.map(\.key))
-        #expect(!keys.contains("powerLineFrequency"))
-        #expect(!keys.contains("autoExposurePriority"))
+        #expect(!controls.parameters.map(\.key).contains("autoExposurePriority"))
+    }
+
+    @Test("power line frequency is a choice with Disabled, 50 Hz, and 60 Hz on the Razer, which has no Auto")
+    func mapsPowerLineFrequency() throws {
+        let (_, controls) = try razerControls()
+        let frequency = try #require(controls.parameters.first { $0.key == "powerLineFrequency" })
+        #expect(frequency.kind == .choice)
+        #expect(frequency.section == "Exposure")
+        #expect(frequency.choices.map(\.name) == ["Disabled", "50 Hz", "60 Hz"])
+        #expect(frequency.defaultValue == 2)
+    }
+
+    @Test("power line frequency offers Auto on a camera whose range reaches it")
+    func mapsPowerLineFrequencyAuto() throws {
+        let camera = try UVCCamera(name: "Auto", transport: RazerTransport(powerLineMaximum: 3))
+        let controls = try #require(UVCCameraControls(camera: camera))
+        let frequency = try #require(controls.parameters.first { $0.key == "powerLineFrequency" })
+        #expect(frequency.choices.map(\.name) == ["Disabled", "50 Hz", "60 Hz", "Auto"])
+    }
+
+    @Test("power line frequency reads and writes the option's value, Disabled included")
+    func readsAndWritesPowerLineFrequency() throws {
+        let (transport, controls) = try razerControls()
+        #expect(try controls.read()["powerLineFrequency"] == .double(2))
+        #expect(controls.write([("powerLineFrequency", .double(0))]).isEmpty)
+        #expect(transport.current(0x05, entity: 3) == [0x00])
+        #expect(controls.write([("powerLineFrequency", .double(1))]).isEmpty)
+        #expect(transport.current(0x05, entity: 3) == [0x01])
+    }
+
+    @Test("a resolved choice keeps a known option and defaults an unknown one")
+    func resolvesChoices() throws {
+        let (_, controls) = try razerControls()
+        let parameters = controls.parameters
+        let known = CameraParameterPlan.resolved(["powerLineFrequency": .int(1)], parameters: parameters)
+        #expect(known["powerLineFrequency"] == .double(1))
+        let unknown = CameraParameterPlan.resolved(["powerLineFrequency": .double(9)], parameters: parameters)
+        #expect(unknown["powerLineFrequency"] == .double(2))
     }
 
     @Test("reading converts every raw value to its payload value")

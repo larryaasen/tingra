@@ -44,9 +44,11 @@ struct TingraCamerasApp: App {
             ContentView()
                 .environment(model)
                 .environment(statusBar)
-                // A comfortable default that keeps both columns legible; the
-                // window remains freely resizable by the operator.
-                .frame(minWidth: 820, minHeight: 520)
+                // The narrowest the preview column stays legible on its own;
+                // the sidebar closes before the window gets this narrow
+                // (see ``ContentView``). The window remains freely resizable
+                // by the operator.
+                .frame(minWidth: ContentView.minimumWindowWidth, minHeight: 520)
                 // Discover the connected cameras and start
                 // the first camera's live preview once the window appears.
                 .task { await model.start() }

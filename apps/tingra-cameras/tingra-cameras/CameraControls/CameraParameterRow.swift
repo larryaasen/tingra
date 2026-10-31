@@ -10,15 +10,15 @@
 import SwiftUI
 import TingraPlugInKit
 
-/// One camera control: a switch for a toggle, a slider with its value and
-/// unit for a number. A number its Auto switch owns is disabled while that
+/// One camera control: a switch for a toggle, a pop-up menu for a choice, a
+/// slider with its value and unit for a number. A number its Auto switch owns is disabled while that
 /// switch is on, because the camera sets it then; when that switch owns no
 /// other number, it is drawn at the end of the number's row as an Auto
 /// checkbox (White Balance's Temperature, Focus) instead of on a row of its
 /// own.
 ///
-/// Each control reports its own `tap` — the switch when it flips, the
-/// slider when a drag ends, the reset when it is double-clicked (EVENTS.md,
+/// Each control reports its own `tap` — the switch when it flips, the menu
+/// when an option is picked, the slider when a drag ends, the reset when it is double-clicked (EVENTS.md,
 /// "The `tap` convention").
 struct CameraParameterRow: View {
     /// The shared model holding the camera's values.
@@ -38,6 +38,8 @@ struct CameraParameterRow: View {
             toggleRow
         case .number:
             sliderRow
+        case .choice:
+            choiceRow
         case .color:
             // No camera control is a color.
             EmptyView()
@@ -60,6 +62,30 @@ struct CameraParameterRow: View {
             Text(verbatim: parameter.name)
         }
         .toggleStyle(.switch)
+    }
+
+    /// A pop-up menu for a control with named options.
+    private var choiceRow: some View {
+        Picker(selection: choiceBinding) {
+            ForEach(parameter.choices, id: \.value) { choice in
+                // Option names come from the capture plug-in, like control
+                // names.
+                Text(verbatim: choice.name).tag(choice.value)
+            }
+        } label: {
+            Text(verbatim: parameter.name)
+        }
+    }
+
+    /// A binding to a choice control's option that sends each pick to the
+    /// camera and records its tap.
+    private var choiceBinding: Binding<Double> {
+        Binding {
+            parameter.choice(in: model.cameraParameterValues)?.value ?? parameter.defaultValue
+        } set: { value in
+            model.setCameraParameter(.double(value), for: parameter)
+            model.recordCameraParameterTap("cameraParameter.choice", parameter: parameter)
+        }
     }
 
     /// A slider for a number control, with its Auto checkbox after it when
@@ -115,6 +141,10 @@ struct CameraParameterSlider: View {
     /// doesn't shift as the value's width changes.
     var valueMinWidth: CGFloat = 72
 
+    /// Where the value sits within that width: against the row's trailing
+    /// edge by default, or against the slider where several share a row.
+    var valueAlignment: Alignment = .trailing
+
     /// The slider, then the value.
     var body: some View {
         let value = parameter.value(in: model.cameraParameterValues)
@@ -141,7 +171,7 @@ struct CameraParameterSlider: View {
             Text(verbatim: parameter.formattedValue(value))
                 .monospacedDigit()
                 .foregroundStyle(.secondary)
-                .frame(minWidth: valueMinWidth, alignment: .trailing)
+                .frame(minWidth: valueMinWidth, alignment: valueAlignment)
         }
     }
 }

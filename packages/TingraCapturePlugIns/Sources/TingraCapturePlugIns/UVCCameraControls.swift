@@ -178,12 +178,20 @@ struct UVCCameraControls: CameraControls {
             numberMapping(
                 camera.backlightCompensation, key: "backlightCompensation", name: "Backlight Compensation",
                 section: "Exposure"),
+            powerLineFrequencyMapping(camera.powerLineFrequency),
             numberMapping(camera.brightness, key: "brightness", name: "Brightness", section: "Image"),
             numberMapping(camera.contrast, key: "contrast", name: "Contrast", section: "Image"),
             numberMapping(camera.saturation, key: "saturation", name: "Saturation", section: "Image"),
             numberMapping(camera.sharpness, key: "sharpness", name: "Sharpness", section: "Image"),
             numberMapping(camera.hue, key: "hue", name: "Hue", section: "Image", unit: "°", divisor: 100),
             numberMapping(camera.gamma, key: "gamma", name: "Gamma", section: "Image"),
+        ].compactMap { $0 }
+
+        let focusAuto = toggleMapping(camera.focusAuto, key: "focusAuto", name: "Auto Focus", section: "Image")
+        mappings += [
+            focusAuto,
+            numberMapping(
+                camera.focus, key: "focus", name: "Focus", section: "Image", governedBy: focusAuto?.parameter.key),
         ].compactMap { $0 }
 
         let whiteBalanceAuto = toggleMapping(
@@ -196,11 +204,7 @@ struct UVCCameraControls: CameraControls {
                 section: "White Balance", unit: "K", governedBy: whiteBalanceAuto?.parameter.key),
         ].compactMap { $0 }
 
-        let focusAuto = toggleMapping(camera.focusAuto, key: "focusAuto", name: "Auto Focus", section: "Focus")
         mappings += [
-            focusAuto,
-            numberMapping(
-                camera.focus, key: "focus", name: "Focus", section: "Focus", governedBy: focusAuto?.parameter.key),
             numberMapping(camera.zoom, key: "zoom", name: "Zoom", section: "Framing"),
             numberMapping(camera.pan, key: "pan", name: "Pan", section: "Framing", unit: "°", divisor: 3600),
             numberMapping(camera.tilt, key: "tilt", name: "Tilt", section: "Framing", unit: "°", divisor: 3600),
@@ -269,6 +273,27 @@ struct UVCCameraControls: CameraControls {
         let parameter = Parameter(key: key, name: name, defaultIsOn: control.defaultValue != control.minimum)
             .inSection(section)
         return Mapping(parameter: parameter, control: control, conversion: .toggle)
+    }
+
+    /// Maps the power line frequency to a choice of the options the control
+    /// takes: Auto only on a camera whose range reaches it.
+    ///
+    /// - Parameter control: The power line frequency control, or nil.
+    /// - Returns: The mapping, or nil when the camera lacks the control or
+    ///   leaves nothing to choose between.
+    private static func powerLineFrequencyMapping(_ control: UVCControl?) -> Mapping? {
+        guard let control else { return nil }
+        let choices = [(0, "Disabled"), (1, "50 Hz"), (2, "60 Hz"), (3, "Auto")]
+            .filter { control.range.contains($0.0) }
+            .map { Parameter.Choice(value: Double($0.0), name: $0.1) }
+        guard choices.count > 1 else { return nil }
+        let parameter = Parameter(
+            key: "powerLineFrequency",
+            name: "Power Line Frequency",
+            choices: choices,
+            defaultValue: Double(control.defaultValue)
+        ).inSection("Exposure")
+        return Mapping(parameter: parameter, control: control, conversion: .number(divisor: 1))
     }
 
     /// Maps the auto exposure mode to the Auto Exposure toggle: on is the

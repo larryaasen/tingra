@@ -39,6 +39,10 @@
 /// the device takes — a camera's pan moves in whole degrees, and a slider
 /// that left it at -0.003° showed "-0°".
 ///
+/// A **choice** parameter (``Kind/choice``) joined the same way on
+/// 2026-10-30 for a camera's power line frequency: its value is one of a
+/// list of named options, and a host draws a pop-up menu.
+///
 /// Named `EffectParameter` until 2026-09-15, when the declaration widened
 /// past effects; the old name remains as a deprecated alias.
 public struct Parameter: Sendable, Equatable {
@@ -60,6 +64,31 @@ public struct Parameter: Sendable, Equatable {
         /// number still gets an honest answer. Read it with
         /// ``Parameter/isOn(in:)``.
         case toggle
+
+        /// One of ``Parameter/choices`` — a pop-up menu. The payload carries
+        /// the option's ``Choice/value`` as a number;
+        /// ``Parameter/range`` spans the options' values. Read it with
+        /// ``Parameter/choice(in:)``.
+        case choice
+    }
+
+    /// One named option of a ``Kind/choice`` parameter.
+    public struct Choice: Sendable, Equatable {
+        /// The number the payload carries for this option.
+        public let value: Double
+
+        /// A short user-facing name, e.g. "60 Hz".
+        public let name: String
+
+        /// Creates an option.
+        ///
+        /// - Parameters:
+        ///   - value: The number the payload carries for this option.
+        ///   - name: A short user-facing name.
+        public init(value: Double, name: String) {
+            self.value = value
+            self.name = name
+        }
     }
 
     /// How a control maps its travel onto the parameter's range.
@@ -121,6 +150,10 @@ public struct Parameter: Sendable, Equatable {
     /// snaps a control's values to it (``snapped(_:)``; ``ParameterScale``
     /// does so for every slider). Set with ``stepped(by:)``.
     public private(set) var step: Double?
+
+    /// The options of a ``Kind/choice`` parameter, in display order; empty
+    /// for every other kind.
+    public private(set) var choices: [Choice] = []
 
     /// Creates a parameter descriptor.
     ///
@@ -186,6 +219,28 @@ public struct Parameter: Sendable, Equatable {
         self.defaultColor = nil
     }
 
+    /// Creates a choice parameter descriptor — a ``Kind/choice`` parameter a
+    /// host draws a pop-up menu for.
+    ///
+    /// - Parameters:
+    ///   - key: The parameter's stable key in the persisted payload.
+    ///   - name: A short user-facing name.
+    ///   - choices: The options, in display order.
+    ///   - defaultValue: The option's value used when the payload omits the
+    ///     key or holds a value no option has.
+    public init(key: String, name: String, choices: [Choice], defaultValue: Double) {
+        let values = choices.map(\.value)
+        self.key = key
+        self.name = name
+        self.range = (values.min() ?? defaultValue)...(values.max() ?? defaultValue)
+        self.defaultValue = defaultValue
+        self.unit = nil
+        self.scale = .linear
+        self.kind = .choice
+        self.defaultColor = nil
+        self.choices = choices
+    }
+
     /// The same parameter, grouped under a section heading.
     ///
     /// - Parameter section: The short user-facing heading.
@@ -246,6 +301,18 @@ public struct Parameter: Sendable, Equatable {
         if let isOn = payload[key]?.boolValue { return isOn }
         if let number = payload[key]?.doubleValue { return number != 0 }
         return defaultValue != 0
+    }
+
+    /// The option a payload holds — the one whose value it carries, or the
+    /// default option when the payload omits the key or holds a value no
+    /// option has; nil for a parameter with no such option, which every
+    /// parameter that is not a ``Kind/choice`` is.
+    ///
+    /// - Parameter payload: The persisted parameter payload.
+    /// - Returns: The option, or nil.
+    public func choice(in payload: [String: JSONValue]) -> Choice? {
+        let value = value(in: payload)
+        return choices.first { $0.value == value } ?? choices.first { $0.value == defaultValue }
     }
 
     /// Whether the parameter's governing toggle is on in a payload, so its

@@ -56,7 +56,7 @@ Three additive changes to `TingraPlugInKit`, each with a default so every existi
 2. **`Parameter.automaticToggleKey`**, set with `controlledAutomatically(whenOn:)` — the key of a toggle that, while on, hands this parameter to the device's automatic control. A host disables the parameter's control while the toggle is on. White balance temperature is governed by Auto White Balance, exposure time by Auto Exposure, focus by Auto Focus.
 3. **`Input.currentParameters()`** — the values an input holds right now, for a host with nothing stored. Default: an empty payload. **This is what keeps a host from resetting a camera.** Until now a host with no stored values handed an input an empty payload, which restores the declared defaults — right for a generator, whose settings live only in the host, but wrong for a camera, which keeps its own settings in firmware across apps. A camera reports its live values here, and a host with no stored payload applies those (changing nothing) instead of an empty one.
 
-Alongside them, **`Parameter.step`** (set with `stepped(by:)`, read through `snapped(_:)`) declares the increment a number moves in, so a host's slider lands only on values the device takes — added after the first build showed a pan slider resting at -0.003° and reading "-0°", because the camera's pan moves in whole degrees. `ParameterScale` snaps every slider's value to it, and the camera input snaps what it writes. **`Parameter.section`** (set with `inSection(_:)`) names the heading a parameter belongs under, so a host groups a camera's Exposure, Image, White Balance, Focus, and Framing parameters without knowing what a camera is. And **`ParameterScale`** — the pure mapping between a parameter's value and a slider's travel that honors a logarithmic scale — moves from the app into the kit, because a second host (Tingra Cameras) now needs it; it was app code only because only one app drew sliders.
+Alongside them, **`Parameter.step`** (set with `stepped(by:)`, read through `snapped(_:)`) declares the increment a number moves in, so a host's slider lands only on values the device takes — added after the first build showed a pan slider resting at -0.003° and reading "-0°", because the camera's pan moves in whole degrees. `ParameterScale` snaps every slider's value to it, and the camera input snaps what it writes. **`Parameter.section`** (set with `inSection(_:)`) names the heading a parameter belongs under, so a host groups a camera's Exposure, Image, White Balance, and Framing parameters without knowing what a camera is. And **`ParameterScale`** — the pure mapping between a parameter's value and a slider's travel that honors a logarithmic scale — moves from the app into the kit, because a second host (Tingra Cameras) now needs it; it was app code only because only one app drew sliders.
 
 ## The camera input's parameters
 
@@ -68,21 +68,24 @@ Alongside them, **`Parameter.step`** (set with `stepped(by:)`, read through `sna
 | Exposure | `exposureTime` | Exposure Time | exposure time | ms (100 µs units ÷ 10), logarithmic; governed by `exposureAuto` |
 | Exposure | `gain` | Gain | gain | governed by `exposureAuto` |
 | Exposure | `backlightCompensation` | Backlight Compensation | backlight compensation | a toggle when its range is `0`…`1` |
+| Exposure | `powerLineFrequency` | Power Line Frequency | power line frequency | choice: Disabled (`0`), 50 Hz (`1`), 60 Hz (`2`), and Auto (`3`) on a camera whose `GET_MAX` reaches it |
 | Image | `brightness` | Brightness | brightness | |
 | Image | `contrast` | Contrast | contrast | |
 | Image | `saturation` | Saturation | saturation | |
 | Image | `sharpness` | Sharpness | sharpness | |
 | Image | `hue` | Hue | hue | degrees (hundredths ÷ 100) |
 | Image | `gamma` | Gamma | gamma | |
+| Image | `focusAuto` | Auto Focus | focus auto | toggle |
+| Image | `focus` | Focus | focus | governed by `focusAuto` |
 | White Balance | `whiteBalanceAuto` | Auto White Balance | white balance temperature auto | toggle |
 | White Balance | `whiteBalanceTemperature` | Temperature | white balance temperature | K; governed by `whiteBalanceAuto` |
-| Focus | `focusAuto` | Auto Focus | focus auto | toggle |
-| Focus | `focus` | Focus | focus | governed by `focusAuto` |
 | Framing | `zoom` | Zoom | zoom | |
 | Framing | `pan` | Pan | pan | degrees (arc-seconds ÷ 3600) |
 | Framing | `tilt` | Tilt | tilt | degrees (arc-seconds ÷ 3600) |
 
-Only the controls the camera advertises are declared, so a camera without hue shows no hue. Each parameter's range, default, and step are the camera's own (the step is `GET_RES` in display units: 1 for brightness, 10 K for white balance, 0.1 ms for exposure time, 1° for pan and tilt). A number control whose range is just `0`…`1` is declared as a toggle, since a two-position slider is a switch — the Razer's backlight compensation is one. Gain is governed by Auto Exposure because the camera reports it disabled while auto exposure runs. The keys are the stable payload names on the project contract. Power line frequency and auto exposure priority are not mapped: they are choices, and the kit has no choice kind yet.
+Only the controls the camera advertises are declared, so a camera without hue shows no hue. Each parameter's range, default, and step are the camera's own (the step is `GET_RES` in display units: 1 for brightness, 10 K for white balance, 0.1 ms for exposure time, 1° for pan and tilt). A number control whose range is just `0`…`1` is declared as a toggle, since a two-position slider is a switch — the Razer's backlight compensation is one. Gain is governed by Auto Exposure because the camera reports it disabled while auto exposure runs. The keys are the stable payload names on the project contract. Auto exposure priority is not mapped yet.
+
+**Power line frequency's reported range understates it.** The Razer answers `GET_MIN` 1 and `GET_MAX` 2, yet measured on 2026-10-30 it takes `SET_CUR` 0 (Disabled) and reads it back, and stalls on 3 (Auto). So `TingraUVC` treats the control as an option list starting at `0` (`UVCControlKind.Style.option`), with `GET_MAX` deciding how far up it goes, and the Razer offers Disabled, 50 Hz, and 60 Hz. Probing each value at discovery would disturb the camera, so a camera that rejects Disabled shows it anyway: the write is reported as an `input.parameterSet` error and the re-read after it puts the menu back.
 
 - **`currentParameters()`** reads every mapped control's current value.
 - **`setParameters(_:)`** writes only what changed since the last write or read, toggles first (so an Auto switch turned off releases its value before a manual value is written), and never writes a value while its Auto toggle is on — the camera owns it then. A rejected write is reported as an `input.parameterSet` error event naming the control and the camera's reason; the camera keeps running, and the value is tried again on the next apply.
@@ -94,9 +97,11 @@ The camera's live automatic adjustments (an exposure time moving under Auto Expo
 
 ## The Tingra Cameras controls panel
 
-Under the top-aligned preview, the detail column shows the selected camera's parameters as a grouped `Form`: one `Section` per parameter section, a `Slider` with its value and unit for each number, a switch for each toggle, and a governed slider disabled while its Auto switch is on. A slider rests only on the camera's steps and shows its value to the step's precision, and a **double-click returns it to the camera's default** — the reset convention the main app's pan slider and faders already use. The sliders are `NSSlider`s (`CameraSlider`) rather than SwiftUI `Slider`s, for the reason the main app's faders are: the slider tracks each click inside `mouseDown`, so a SwiftUI tap gesture beside it never saw the double-click, and Pan would not return to 0; the subclass catches the second click (`clickCount == 2`) itself. Every control writes straight to the camera through the input (the camera keeps the value until it is unplugged); the app stores nothing. A camera with no controls (the FaceTime HD Camera, a Continuity Camera) shows a short note instead. Each slider reports a `tap` when a drag ends or a double-click resets it, and each switch when it flips (EVENTS.md, "The `tap` convention").
+Under the top-aligned preview, the detail column shows the selected camera's parameters as a grouped `Form`: one `Section` per parameter section, a `Slider` with its value and unit for each number, a switch for each toggle, a pop-up menu for each choice, and a governed slider disabled while its Auto switch is on. A slider rests only on the camera's steps and shows its value to the step's precision, and a **double-click returns it to the camera's default** — the reset convention the main app's pan slider and faders already use. The sliders are `NSSlider`s (`CameraSlider`) rather than SwiftUI `Slider`s, for the reason the main app's faders are: the slider tracks each click inside `mouseDown`, so a SwiftUI tap gesture beside it never saw the double-click, and Pan would not return to 0; the subclass catches the second click (`clickCount == 2`) itself. Every control writes straight to the camera through the input (the camera keeps the value until it is unplugged); the app stores nothing. A camera with no controls (the FaceTime HD Camera, a Continuity Camera) shows a short note instead. Each slider reports a `tap` when a drag ends or a double-click resets it, and each switch when it flips (EVENTS.md, "The `tap` convention").
 
-**An Auto switch that owns one number shares that number's row.** White Balance's Temperature and Focus each carry an **Auto** checkbox at the end of their slider row instead of a switch on a row of their own; the slider is disabled while it is checked. The rule is generic — a toggle that is the `automaticToggleKey` of exactly one number in its own section — so Auto Exposure, which owns both Exposure Time and Gain, keeps its own row.
+**An Auto switch that owns one number shares that number's row.** White Balance's Temperature and Image's Focus each carry an **Auto** checkbox at the end of their slider row instead of a switch on a row of their own; the slider is disabled while it is checked. The rule is generic — a toggle that is the `automaticToggleKey` of exactly one number in its own section — so Auto Exposure, which owns both Exposure Time and Gain, keeps its own row.
+
+The Framing row has no heading, because it names each of its sliders; in a window too narrow to fit them side by side, it stacks them. The parameters still declare the Framing section.
 
 **Framing: Maps-style on the preview, numbers in the form (decided 2026-10-27).** Pan, tilt, and zoom are PTZ, so the app recognises the three by their stable keys (`pan`, `tilt`, `zoom`) and draws them two ways, both driving the same values:
 
@@ -136,7 +141,7 @@ Checked on 2026-10-27 against the Razer Kiyo Pro on the dev Mac, beyond the unit
 ## Not in this slice
 
 - **Profiles** (the other utility's Save / Update / Delete Profile) arrived 2026-10-28 as camera presets (above). The main app does not use them yet: its project already persists input parameters.
-- **Choice parameters** (power line frequency, auto exposure priority) wait for a choice kind in the kit.
+- **Auto exposure priority** is not mapped, though the kit now has a choice kind.
 - **Vendor extension units** and **relative controls** (`*_RELATIVE` selectors).
 - **`tingra-cli`** does not expose camera parameters yet.
 - **The main app's camera controls** (above): a camera layer's inspector.

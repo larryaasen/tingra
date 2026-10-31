@@ -22,7 +22,7 @@ public struct UVCControl: Sendable {
     public let kind: UVCControlKind
 
     /// The smallest value the control accepts (`GET_MIN`). `0` for a
-    /// boolean; the lowest supported bit for a bitmap.
+    /// boolean or an option; the lowest supported bit for a bitmap.
     public let minimum: Int
 
     /// The largest value the control accepts (`GET_MAX`). `1` for a
@@ -162,7 +162,7 @@ public struct UVCControl: Sendable {
     /// - Parameter value: The value to check.
     private func validate(_ value: Int) throws {
         switch kind.style {
-        case .range, .boolean:
+        case .range, .boolean, .option:
             guard range.contains(value) else {
                 throw UVCError.valueOutOfRange(kind, value: value, range: range)
             }
@@ -259,6 +259,12 @@ public struct UVCControl: Sendable {
             maximum = 1
             resolution = 1
             defaultValue = read(.getDefault).map { $0 == 0 ? 0 : 1 } ?? 0
+        case .option:
+            guard let high = read(.getMaximum), read(.getMinimum) != nil else { return nil }
+            minimum = 0
+            maximum = high
+            resolution = 1
+            defaultValue = read(.getDefault).map { min(high, max(0, $0)) } ?? 0
         case .bitmap:
             guard let supported = read(.getResolution), supported & 0xFF != 0 else { return nil }
             let bits = supported & 0xFF

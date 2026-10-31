@@ -271,7 +271,9 @@ final class HardwareModel {
     func setCameraParameter(_ value: JSONValue, for parameter: Parameter) {
         guard cameraParameterValues[parameter.key] != value else { return }
         cameraParameterValues[parameter.key] = value
-        engine?.setCameraParameters(cameraParameterValues, refreshing: parameter.kind == .toggle)
+        // A choice is re-read too, so an option the camera rejects doesn't
+        // stay showing.
+        engine?.setCameraParameters(cameraParameterValues, refreshing: parameter.kind != .number)
     }
 
     /// Returns one of the selected camera's controls to its default — the

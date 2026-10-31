@@ -191,6 +191,44 @@ struct ParameterDescribingTests {
         #expect(gain.isOn(in: ["gainDecibels": .bool(true)]) == nil)
     }
 
+    @Test("a choice reads its option from a payload, widening an integer and defaulting a missing or unknown value")
+    func choiceReadsItsPayload() {
+        let frequency = Parameter(
+            key: "powerLineFrequency",
+            name: "Power Line Frequency",
+            choices: [
+                .init(value: 0, name: "Disabled"), .init(value: 1, name: "50 Hz"), .init(value: 2, name: "60 Hz"),
+            ],
+            defaultValue: 2
+        )
+        #expect(frequency.kind == .choice)
+        #expect(frequency.range == 0...2)
+        #expect(frequency.choice(in: ["powerLineFrequency": .double(0)])?.name == "Disabled")
+        #expect(frequency.choice(in: ["powerLineFrequency": .int(1)])?.name == "50 Hz")
+        #expect(frequency.choice(in: [:])?.name == "60 Hz")
+        #expect(frequency.choice(in: ["powerLineFrequency": .double(3)])?.name == "60 Hz")
+        #expect(frequency.choice(in: ["powerLineFrequency": .string("auto")])?.name == "60 Hz")
+    }
+
+    @Test("a choice with no options has no option to report, and other kinds have none")
+    func parametersWithoutChoices() {
+        let empty = Parameter(key: "mode", name: "Mode", choices: [], defaultValue: 4)
+        #expect(empty.range == 4...4)
+        #expect(empty.choice(in: [:]) == nil)
+        let gain = Parameter(key: "gain", name: "Gain", range: 0...255, defaultValue: 0)
+        #expect(gain.choices.isEmpty)
+        #expect(gain.choice(in: ["gain": .int(0)]) == nil)
+    }
+
+    @Test("parameters that differ only in their options are not equal")
+    func choicesTakePartInEquality() {
+        let one = Parameter(key: "mode", name: "Mode", choices: [.init(value: 0, name: "A")], defaultValue: 0)
+        let same = Parameter(key: "mode", name: "Mode", choices: [.init(value: 0, name: "A")], defaultValue: 0)
+        let other = Parameter(key: "mode", name: "Mode", choices: [.init(value: 0, name: "B")], defaultValue: 0)
+        #expect(one == same)
+        #expect(one != other)
+    }
+
     @Test("section and automatic toggle default to nil and are set by modifiers")
     func modifiersSetSectionAndAutomaticToggle() {
         let plain = Parameter(key: "brightness", name: "Brightness", range: 0...255, defaultValue: 128)

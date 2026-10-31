@@ -103,6 +103,13 @@ public enum UVCControlKind: String, Sendable, CaseIterable {
         /// A bitmap of options; `GET_RES` reports the supported bits and
         /// the value is exactly one of them.
         case bitmap
+
+        /// A numbered option from the specification's list, starting at
+        /// `0`. `GET_MAX` says how far up the list the camera goes, but
+        /// `GET_MIN` can understate it: the Razer Kiyo Pro reports `1` for
+        /// its power line frequency and takes `0` (docs/UVC.md), so the
+        /// control's minimum is always `0`.
+        case option
     }
 
     /// The entity the control lives in.
@@ -121,6 +128,7 @@ public enum UVCControlKind: String, Sendable, CaseIterable {
         switch self {
         case .autoExposureMode: .bitmap
         case .autoExposurePriority, .whiteBalanceTemperatureAuto, .focusAuto: .boolean
+        case .powerLineFrequency: .option
         default: .range
         }
     }

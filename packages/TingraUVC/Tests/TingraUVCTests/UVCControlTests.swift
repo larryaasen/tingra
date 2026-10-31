@@ -67,6 +67,24 @@ struct UVCControlTests {
         #expect(transport.sentRequests.count == sentBefore)
     }
 
+    @Test("power line frequency starts at zero whatever GET_MIN says, and stops at GET_MAX")
+    func powerLineFrequencyOptions() throws {
+        var answers = CameraFixture.razerAnswers()
+        answers.merge(
+            CameraFixture.rangeAnswers(
+                { CameraFixture.processing($0, 0x05) }, size: 1, range: 1...2, defaultValue: 2, current: 2)
+        ) { $1 }
+        let transport = ScriptedTransport(descriptor: CameraFixture.descriptor(), answers: answers)
+        let camera = try UVCCamera(name: "Razer Kiyo Pro", transport: transport)
+        let frequency = try #require(camera.powerLineFrequency)
+        #expect(frequency.range == 0...2)
+        #expect(frequency.defaultValue == 2)
+        try frequency.setValue(0)
+        #expect(transport.writes == [[0x00]])
+        #expect(throws: UVCError.self) { try frequency.setValue(3) }
+        #expect(transport.writes == [[0x00]])
+    }
+
     @Test("a switch takes only zero or one")
     func rejectsANonBooleanSwitchValue() throws {
         let (_, camera) = try CameraFixture.razer()

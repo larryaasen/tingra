@@ -261,8 +261,8 @@ here, under "Left open from “…”", pointing at its record there.
   - [ ] A camera's controls in the main app: its Input Settings popover
     hangs off a mixer strip, and a camera has none; the camera layer's
     inspector is the likely home.
-  - [ ] A choice kind in the kit, for power line frequency and auto
-    exposure priority.
+  - [x] A choice kind in the kit, for power line frequency (2026-10-30).
+  - [ ] Auto exposure priority, now that the kit has a choice kind.
   - [ ] Named profiles in Tingra Cameras, like the vendor utility's.
 
 ## Clock and timing

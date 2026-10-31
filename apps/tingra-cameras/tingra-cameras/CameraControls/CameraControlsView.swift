@@ -12,7 +12,7 @@ import TingraPlugInKit
 
 /// The selected camera's adjustable controls, under the preview: a grouped
 /// form with one section per parameter section the camera declares
-/// (Exposure, Image, White Balance, Focus, Framing) and a row per control.
+/// (Exposure, Image, White Balance, Framing) and a row per control.
 ///
 /// Drawn from the camera's `Parameter` descriptors alone, so it shows
 /// whatever the camera advertises with the camera's own ranges, and nothing
@@ -52,23 +52,14 @@ struct CameraControlsView: View {
                     }
                 }
                 if model.hasFraming {
+                    // No heading: the row names each of its sliders.
                     Section {
                         FramingRow()
-                    } header: {
-                        if let title = framingSectionTitle {
-                            Text(verbatim: title)
-                        }
                     }
                 }
             }
             .formStyle(.grouped)
         }
-    }
-
-    /// The Framing row's heading: the section the camera puts its framing
-    /// controls in.
-    private var framingSectionTitle: String? {
-        HardwareModel.FramingKey.all.lazy.compactMap { model.cameraParameter(forKey: $0)?.section }.first
     }
 
     /// The Auto switches drawn at the end of a number's row, by that

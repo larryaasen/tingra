@@ -54,14 +54,15 @@ extension CameraControlFailure: CustomStringConvertible {
 /// parameters").
 enum CameraParameterPlan {
     /// The value every declared parameter takes under a payload — the
-    /// toggles' booleans and the numbers clamped into range and onto their
-    /// step, with omitted keys at their declared defaults (the
-    /// `setParameters` contract).
+    /// toggles' booleans, the numbers clamped into range and onto their
+    /// step, and the choices' option values, with omitted keys at their
+    /// declared defaults (the `setParameters` contract).
     ///
     /// - Parameters:
     ///   - payload: The host's payload.
     ///   - parameters: The declared parameters.
-    /// - Returns: A payload holding every toggle and number parameter.
+    /// - Returns: A payload holding every toggle, number, and choice
+    ///   parameter.
     static func resolved(_ payload: [String: JSONValue], parameters: [Parameter]) -> [String: JSONValue] {
         var resolved: [String: JSONValue] = [:]
         for parameter in parameters {
@@ -70,6 +71,8 @@ enum CameraParameterPlan {
                 resolved[parameter.key] = .bool(parameter.isOn(in: payload) ?? false)
             case .number:
                 resolved[parameter.key] = .double(parameter.snapped(parameter.value(in: payload)))
+            case .choice:
+                resolved[parameter.key] = .double(parameter.choice(in: payload)?.value ?? parameter.defaultValue)
             case .color:
                 // A camera control is never a color; nothing to resolve.
                 continue

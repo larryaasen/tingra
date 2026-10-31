@@ -120,8 +120,8 @@
         }
       }
     },
-    "Camera Unavailable" : {
-      "comment" : "Title shown in the preview when the selected camera cannot be opened.",
+    "Camera unavailable" : {
+      "comment" : "Status bar reading: the selected camera could not be opened",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -137,8 +137,8 @@
         }
       }
     },
-    "Camera unavailable" : {
-      "comment" : "Status bar reading: the selected camera could not be opened",
+    "Camera Unavailable" : {
+      "comment" : "Title shown in the preview when the selected camera cannot be opened.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
