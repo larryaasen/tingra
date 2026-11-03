@@ -62,7 +62,7 @@ final class HardwareModel {
 
     /// The selected camera's adjustable controls, in display order — empty
     /// when no camera is selected or it has none (a built-in or Continuity
-    /// camera). Drawn by the controls panel under the preview.
+    /// camera). Drawn by the controls in the trailing sidebar.
     private(set) var cameraParameters: [Parameter] = []
 
     /// Whether the preview shows its cross bars — lines through its centre.
@@ -288,6 +288,31 @@ final class HardwareModel {
         }
         engine?.recordTap("cameraParameter.reset", params: params)
         setCameraParameter(.double(parameter.defaultValue), for: parameter)
+    }
+
+    /// Records a tap on Reset All Controls or a button of the dialog
+    /// confirming it, naming the selected camera.
+    ///
+    /// - Parameter name: The tap's name.
+    func recordResetAllTap(_ name: String) {
+        var params: [String: EventValue] = [:]
+        if let selectedCameraID {
+            params["id"] = .string(selectedCameraID)
+        }
+        engine?.recordTap(name, params: params)
+    }
+
+    /// Returns every one of the selected camera's controls to its default,
+    /// recording the confirming tap first. An empty payload is what asks for
+    /// that: an omitted key means its default, and the camera input orders
+    /// the writes so its Auto switches go first. The camera's values are read
+    /// back afterwards, because the values an Auto switch governs are the
+    /// camera's own again.
+    func resetAllCameraParameters() {
+        recordResetAllTap("cameraParameterResetAllConfirm.button")
+        framingGestureValues = [:]
+        cameraParameterValues = [:]
+        engine?.setCameraParameters([:], refreshing: true)
     }
 
     /// The payload keys of the camera's framing controls — its pan, tilt,

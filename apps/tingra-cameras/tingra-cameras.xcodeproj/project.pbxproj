@@ -11,10 +11,27 @@
 		CA0000000000000000000031 /* TingraPlugInKit in Frameworks */ = {isa = PBXBuildFile; productRef = CA0000000000000000000021 /* TingraPlugInKit */; };
 		CA0000000000000000000032 /* TingraHost in Frameworks */ = {isa = PBXBuildFile; productRef = CA0000000000000000000022 /* TingraHost */; };
 		CA0000000000000000000033 /* TingraCapturePlugIns in Frameworks */ = {isa = PBXBuildFile; productRef = CA0000000000000000000023 /* TingraCapturePlugIns */; };
+		CA0000000000000000000035 /* TingraEventBus in Embed Frameworks */ = {isa = PBXBuildFile; productRef = CA0000000000000000000020 /* TingraEventBus */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		CA0000000000000000000036 /* TingraPlugInKit in Embed Frameworks */ = {isa = PBXBuildFile; productRef = CA0000000000000000000021 /* TingraPlugInKit */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 /* End PBXBuildFile section */
 
+/* Begin PBXCopyFilesBuildPhase section */
+		CA0000000000000000000034 /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				CA0000000000000000000035 /* TingraEventBus in Embed Frameworks */,
+				CA0000000000000000000036 /* TingraPlugInKit in Embed Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
-		CA0000000000000000000005 /* tingra-cameras.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "tingra-cameras.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		CA0000000000000000000005 /* Tingra Cameras.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Tingra Cameras.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		CA000000000000000000001A /* Tingra.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Tingra.xcconfig; sourceTree = "<group>"; };
 		CA000000000000000000001B /* Local.xcconfig.example */ = {isa = PBXFileReference; lastKnownFileType = text; path = Local.xcconfig.example; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -55,7 +72,7 @@
 		CA0000000000000000000003 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				CA0000000000000000000005 /* tingra-cameras.app */,
+				CA0000000000000000000005 /* Tingra Cameras.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -70,6 +87,7 @@
 				CA0000000000000000000007 /* Sources */,
 				CA0000000000000000000008 /* Frameworks */,
 				CA0000000000000000000009 /* Resources */,
+				CA0000000000000000000034 /* Embed Frameworks */,
 			);
 			buildRules = (
 			);
@@ -86,7 +104,7 @@
 				CA0000000000000000000020 /* TingraEventBus */,
 			);
 			productName = "tingra-cameras";
-			productReference = CA0000000000000000000005 /* tingra-cameras.app */;
+			productReference = CA0000000000000000000005 /* Tingra Cameras.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -186,7 +204,6 @@
 				COPY_PHASE_STRIP = NO;
 				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = dwarf;
-				DEVELOPMENT_TEAM = R7B3296P2Z;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -204,7 +221,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MACOSX_DEPLOYMENT_TARGET = 26.5;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -250,7 +267,6 @@
 				COPY_PHASE_STRIP = NO;
 				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEVELOPMENT_TEAM = R7B3296P2Z;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -263,7 +279,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MACOSX_DEPLOYMENT_TARGET = 26.5;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				SDKROOT = macosx;
@@ -280,21 +296,23 @@
 				CODE_SIGN_ENTITLEMENTS = "tingra-cameras/tingra-cameras.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = "$(TINGRA_CAMERAS_VERSION)";
 				DEAD_CODE_STRIPPING = YES;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.video";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Tingra Cameras shows a live preview of the selected camera.";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2026 Larry Aasen.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "com.moonwink.tingra-cameras";
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				MARKETING_VERSION = "$(TINGRA_CAMERAS_VERSION)";
+				PRODUCT_BUNDLE_IDENTIFIER = com.moonwink.tingra.cameras;
+				PRODUCT_MODULE_NAME = TingraCameras;
+				PRODUCT_NAME = "Tingra Cameras";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
@@ -312,21 +330,23 @@
 				CODE_SIGN_ENTITLEMENTS = "tingra-cameras/tingra-cameras.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = "$(TINGRA_CAMERAS_VERSION)";
 				DEAD_CODE_STRIPPING = YES;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.video";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Tingra Cameras shows a live preview of the selected camera.";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2026 Larry Aasen.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "com.moonwink.tingra-cameras";
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				MARKETING_VERSION = "$(TINGRA_CAMERAS_VERSION)";
+				PRODUCT_BUNDLE_IDENTIFIER = com.moonwink.tingra.cameras;
+				PRODUCT_MODULE_NAME = TingraCameras;
+				PRODUCT_NAME = "Tingra Cameras";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;

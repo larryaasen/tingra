@@ -358,6 +358,23 @@
         }
       }
     },
+    "Double-click to reset" : {
+      "comment" : "Tooltip on a camera control's slider",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zum Zurücksetzen doppelklicken"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Haz doble clic para restablecer"
+          }
+        }
+      }
+    },
     "Drag to pan and tilt. Pinch or Option-scroll to zoom." : {
       "comment" : "Tooltip on the live preview explaining how to frame the camera by hand.",
       "localizations" : {
@@ -371,6 +388,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Arrastra para la panorámica y la inclinación. Para hacer zoom, pellizca o desplázate con la tecla Opción."
+          }
+        }
+      }
+    },
+    "Every control of %@ returns to its default. Saved presets are not changed." : {
+      "comment" : "Reset All Controls dialog message; the placeholder is the camera's name",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alle Regler von „%@“ kehren zu ihrem Standardwert zurück. Gesicherte Voreinstellungen bleiben unverändert."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Todos los controles de «%@» vuelven a su valor predeterminado. Los preajustes guardados no cambian."
           }
         }
       }
@@ -422,6 +456,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Permitido"
+          }
+        }
+      }
+    },
+    "Hide Inspector" : {
+      "comment" : "View menu item and toolbar tooltip that hides the trailing sidebar",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inspektor ausblenden"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ocultar inspector"
           }
         }
       }
@@ -545,24 +596,6 @@
         }
       }
     },
-    "Microphones" : {
-      "comment" : "Sidebar section header for the list of available microphones.",
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mikrofone"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Micrófonos"
-          }
-        }
-      }
-    },
     "Name" : {
       "comment" : "Name text field label in the camera preset dialogs",
       "localizations" : {
@@ -582,6 +615,23 @@
     },
     "No camera selected" : {
       "comment" : "Status bar reading: no camera is selected or connected",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Kamera ausgewählt"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ninguna cámara seleccionada"
+          }
+        }
+      }
+    },
+    "No Camera Selected" : {
+      "comment" : "Trailing sidebar empty state title",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -678,24 +728,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Abrir Ajustes del Sistema…"
-          }
-        }
-      }
-    },
-    "Pan and Tilt" : {
-      "comment" : "Accessibility label of the pad that points the camera across and up or down.",
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Schwenken und Neigen"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Panorámica e inclinación"
           }
         }
       }
@@ -854,7 +886,7 @@
       }
     },
     "Reset" : {
-      "comment" : "Permissions settings: button that forgets the system's decision for a permission",
+      "comment" : "Permissions settings: button that forgets the system's decision for a permission\nReset All Controls dialog confirm button",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -866,6 +898,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Restablecer"
+          }
+        }
+      }
+    },
+    "Reset All Controls" : {
+      "comment" : "Title of the dialog confirming a reset of the camera's controls",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alle Regler zurücksetzen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Restablecer todos los controles"
+          }
+        }
+      }
+    },
+    "Reset All Controls…" : {
+      "comment" : "Button asking to return every control of the selected camera to its default",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alle Regler zurücksetzen …"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Restablecer todos los controles…"
           }
         }
       }
@@ -972,6 +1038,23 @@
         }
       }
     },
+    "Select a camera to adjust its controls." : {
+      "comment" : "Trailing sidebar empty state description",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wähle eine Kamera aus, um ihre Regler anzupassen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Selecciona una cámara para ajustar sus controles."
+          }
+        }
+      }
+    },
     "Set as Default" : {
       "comment" : "Camera preset context menu: apply this preset at launch",
       "localizations" : {
@@ -1019,6 +1102,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ajustes…"
+          }
+        }
+      }
+    },
+    "Show Inspector" : {
+      "comment" : "View menu item and toolbar tooltip that shows the trailing sidebar",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inspektor einblenden"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostrar inspector"
           }
         }
       }
@@ -1126,7 +1226,7 @@
       }
     },
     "This camera has no adjustable controls." : {
-      "comment" : "Shown under the preview when the selected camera offers no controls to adjust, such as a built-in or Continuity camera.",
+      "comment" : "Shown in the trailing sidebar when the selected camera offers no controls to adjust, such as a built-in or Continuity camera.",
       "localizations" : {
         "de" : {
           "stringUnit" : {

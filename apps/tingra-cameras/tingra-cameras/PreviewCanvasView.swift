@@ -9,45 +9,34 @@
 
 import SwiftUI
 
-/// The right content panel: the rounded live-camera preview frame at the
-/// top, and the selected camera's controls beneath it, drawn on the standard
-/// detail-pane background.
+/// The middle content panel: the rounded live-camera preview frame, aligned to
+/// the top of the column and drawn on the standard detail-pane background.
 struct PreviewCanvasView: View {
     /// The shared hardware-selection state, so the frame follows the
     /// currently selected camera.
     @Environment(HardwareModel.self) private var model
 
-    /// Stacks the preview frame at the top of the available space, centered
-    /// horizontally, over the camera's controls.
+    /// Places the preview frame at the top of the available space.
     var body: some View {
-        VStack(spacing: 0) {
-            // The top-aligned video view window: a 16:9 rounded-rectangle
-            // container that shows the live feed for the selected camera, a
-            // placeholder when none is selected, or a message when the camera
-            // can't be opened — with no layout change between them. It takes
-            // its full width-fitted size first; the controls get the rest.
-            content
-                .aspectRatio(16.0 / 9.0, contentMode: .fit)
-                .clipShape(.rect(cornerRadius: 12))
-                .accessibilityElement()
-                .accessibilityLabel(previewAccessibilityLabel)
-                .overlay(alignment: .bottomTrailing) {
-                    // The Maps-style framing buttons, over a live preview of
-                    // a camera that can be framed.
-                    if showsFraming {
-                        FramingOverlay()
-                            .padding(10)
-                    }
+        // The video view window: a 16:9 rounded-rectangle container that
+        // shows the live feed for the selected camera, a placeholder when
+        // none is selected, or a message when the camera can't be opened —
+        // with no layout change between them.
+        content
+            .aspectRatio(16.0 / 9.0, contentMode: .fit)
+            .clipShape(.rect(cornerRadius: 12))
+            .accessibilityElement()
+            .accessibilityLabel(previewAccessibilityLabel)
+            .overlay(alignment: .bottomTrailing) {
+                // The Maps-style framing buttons, over a live preview of
+                // a camera that can be framed.
+                if showsFraming {
+                    FramingOverlay()
+                        .padding(10)
                 }
-                .padding()
-                .layoutPriority(1)
-
-            if model.selectedCamera != nil {
-                CameraControlsView()
-                    .frame(minHeight: 160)
             }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .padding()
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
     /// Whether the preview shows a live camera whose framing can be moved.

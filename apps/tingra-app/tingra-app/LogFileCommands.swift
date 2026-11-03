@@ -13,8 +13,7 @@ import TingraEventBus
 
 /// The Help menu's Share Log File… item — the Logging settings pane's share
 /// action within reach of an operator who has been asked for a log and does
-/// not know where to look, the Auto Care Plus mirror on the Mac
-/// (ARCHITECTURE.md, "The log file and the Logging settings pane").
+/// not know where to look (ARCHITECTURE.md, "The log file and the Logging settings pane").
 ///
 /// `CommandGroup(after: .help)` puts it beneath the system's own Tingra Help
 /// item, the first item the app adds to that menu. It takes the same dated

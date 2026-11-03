@@ -23,3 +23,15 @@
 #include? "Local.xcconfig"
 
 DEVELOPMENT_TEAM = $(TINGRA_DEVELOPMENT_TEAM)
+
+//  This app's own version, for both CFBundleShortVersionString and
+//  CFBundleVersion. It is separate from the product version Tingra.app and
+//  tingra-cli share, because this app links no CLI and releases on its own
+//  (RELEASE.md, Decision C2). Between releases it carries the next version with
+//  a -dev suffix, as the product version does.
+TINGRA_CAMERAS_VERSION = 0.1.0-dev
+
+//  Apple Silicon only, in every configuration (CLAUDE.md, "Platform Support").
+//  Without this a Release build for a generic Mac destination, which is what
+//  `xcodebuild archive` uses, is universal (RELEASE.md, Decision C5).
+ARCHS = arm64

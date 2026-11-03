@@ -10,8 +10,8 @@
 import SwiftUI
 import TingraPlugInKit
 
-/// The selected camera's adjustable controls, under the preview: a grouped
-/// form with one section per parameter section the camera declares
+/// The selected camera's adjustable controls, in the trailing sidebar: a
+/// grouped form with one section per parameter section the camera declares
 /// (Exposure, Image, White Balance, Framing) and a row per control.
 ///
 /// Drawn from the camera's `Parameter` descriptors alone, so it shows
@@ -27,6 +27,9 @@ import TingraPlugInKit
 struct CameraControlsView: View {
     /// The shared model holding the selected camera's controls and values.
     @Environment(HardwareModel.self) private var model
+
+    /// Whether the dialog confirming Reset All Controls is showing.
+    @State private var isConfirmingReset = false
 
     /// The form, or a short note for a camera with no controls.
     var body: some View {
@@ -57,8 +60,42 @@ struct CameraControlsView: View {
                         FramingRow()
                     }
                 }
+                Section {
+                    Button {
+                        model.recordResetAllTap("cameraParameterResetAll.button")
+                        isConfirmingReset = true
+                    } label: {
+                        Text(
+                            "Reset All Controls…",
+                            comment: "Button asking to return every control of the selected camera to its default"
+                        )
+                    }
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                }
             }
             .formStyle(.grouped)
+            .alert(
+                Text("Reset All Controls", comment: "Title of the dialog confirming a reset of the camera's controls"),
+                isPresented: $isConfirmingReset
+            ) {
+                Button(role: .destructive) {
+                    model.resetAllCameraParameters()
+                } label: {
+                    Text("Reset", comment: "Reset All Controls dialog confirm button")
+                }
+                Button(role: .cancel) {
+                    model.recordResetAllTap("cameraParameterResetAllCancel.button")
+                } label: {
+                    Text("Cancel", comment: "Camera preset dialog cancel button")
+                }
+            } message: {
+                if let camera = model.selectedCamera {
+                    Text(
+                        "Every control of \(camera.name) returns to its default. Saved presets are not changed.",
+                        comment: "Reset All Controls dialog message; the placeholder is the camera's name"
+                    )
+                }
+            }
         }
     }
 
@@ -119,5 +156,5 @@ private struct ParameterSection: Identifiable {
 #Preview {
     CameraControlsView()
         .environment(HardwareModel.preview)
-        .frame(width: 640, height: 400)
+        .frame(width: TrailingSidebar.idealWidth, height: 600)
 }

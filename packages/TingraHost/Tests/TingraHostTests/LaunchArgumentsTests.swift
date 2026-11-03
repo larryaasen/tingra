@@ -1,6 +1,6 @@
 //
 //  LaunchArgumentsTests.swift
-//  tingra-app
+//  TingraHost
 //
 //  Created by Larry Aasen on 2026-10-13.
 //  Copyright © 2026 Larry Aasen.
@@ -10,15 +10,24 @@
 import Foundation
 import Testing
 
-@testable import TingraApp
+@testable import TingraHost
 
-/// Exercises the command-line rule behind `Tingra --version`, the check the
-/// release runs on the signed app before notarizing it.
+/// Exercises the command-line rule behind `Tingra --version` and
+/// `Tingra Cameras --version`, the check a release runs on the signed app
+/// before notarizing it.
 @Suite("LaunchArguments")
 struct LaunchArgumentsTests {
     @Test("--version after the executable asks for the version")
     func flagAsksForVersion() {
         #expect(LaunchArguments.asksForVersion(["/Applications/Tingra.app/Contents/MacOS/Tingra", "--version"]))
+    }
+
+    @Test("--version after an executable path with a space asks for the version")
+    func flagAfterAPathWithASpace() {
+        #expect(
+            LaunchArguments.asksForVersion([
+                "/Applications/Tingra Cameras.app/Contents/MacOS/Tingra Cameras", "--version",
+            ]))
     }
 
     @Test("--version among other arguments still asks for the version")
@@ -53,18 +62,5 @@ struct LaunchArgumentsTests {
     @Test("a bundle that names no version has no version line")
     func noVersionNoLine() {
         #expect(LaunchArguments.versionLine(for: AppVersion(shortVersion: nil, build: "17")) == nil)
-    }
-
-    @Test("the app and the CLI carry one product version")
-    func appVersionMatchesTheProductVersion() throws {
-        // The test bundle sits in the app's PlugIns folder, so the app's own
-        // bundle is the main bundle here.
-        let appVersion = try #require(AppVersion().shortVersion)
-        let repository = URL(filePath: #filePath)
-            .deletingLastPathComponent().deletingLastPathComponent()
-            .deletingLastPathComponent().deletingLastPathComponent()
-        let versionFile = repository.appending(path: "apps/tingra-cli/Sources/TingraCLI/Version.swift")
-        let contents = try String(contentsOf: versionFile, encoding: .utf8)
-        #expect(contents.contains("static let current = \"\(appVersion)\""))
     }
 }

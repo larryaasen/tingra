@@ -105,6 +105,12 @@ struct CameraSlider: NSViewRepresentable {
         slider.maxValue = range.upperBound
         slider.isEnabled = isEnabled
         slider.setAccessibilityLabel(label)
+        // On the `NSSlider` itself, as the label is. Only while enabled,
+        // because a disabled slider takes no double-click.
+        slider.toolTip =
+            isEnabled
+            ? String(localized: "Double-click to reset", comment: "Tooltip on a camera control's slider")
+            : nil
     }
 
     /// Receives the slider's action and turns AppKit's continuous action

@@ -177,24 +177,6 @@
         }
       }
     },
-    "%@ of room left" : {
-      "comment" : "How much recording time the chosen volume still holds",
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Noch %@ Platz"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Queda espacio para %@"
-          }
-        }
-      }
-    },
     "%@ preset" : {
       "comment" : "Main window subtitle naming the active preset; the placeholder is the preset's name",
       "localizations" : {
@@ -259,24 +241,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@, saturado"
-          }
-        }
-      }
-    },
-    "%1$@ (%2$@)" : {
-      "comment" : "Shot bank tile caption: the shot's name, then the shortcut that stages it, e.g. Default (⌘1)",
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%1$@ (%2$@)"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%1$@ (%2$@)"
           }
         }
       }
@@ -730,24 +694,6 @@
         }
       }
     },
-    "Add a new empty preset to the project" : {
-      "comment" : "Tooltip on the sidebar's Add Preset button",
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Eine neue leere Voreinstellung zum Projekt hinzufügen"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Añadir un nuevo preajuste vacío al proyecto"
-          }
-        }
-      }
-    },
     "Add a shot to the active preset" : {
       "comment" : "Tooltip on the Add Shot menu",
       "localizations" : {
@@ -1050,42 +996,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Apariencia"
-          }
-        }
-      }
-    },
-    "Appearance, status bar, monitor output, recording folder and format, sidebar sections, and window positions." : {
-      "comment" : "Data settings: what the preferences hold",
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Erscheinungsbild, Statusleiste, Monitorausgabe, Aufnahmeordner und -format, Seitenleistenbereiche und Fensterpositionen."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Apariencia, barra de estado, salida del monitor, carpeta y formato de grabación, secciones de la barra lateral y posiciones de las ventanas."
-          }
-        }
-      }
-    },
-    "Appearance, status bar, monitor output, recording folder and format, sidebar sections, the last preset and shots on program and preview, and window positions." : {
-      "comment" : "Data settings: what the preferences hold",
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Erscheinungsbild, Statusleiste, Monitorausgabe, Aufnahmeordner und -format, Seitenleistenbereiche, die zuletzt aktive Voreinstellung mit den Einstellungen auf Programm und Vorschau sowie Fensterpositionen."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Apariencia, barra de estado, salida del monitor, carpeta y formato de grabación, secciones de la barra lateral, el último preajuste y las tomas en programa y previsualización, y posiciones de las ventanas."
           }
         }
       }
@@ -2025,24 +1935,6 @@
         }
       }
     },
-    "Devices" : {
-      "comment" : "Accessibility label of the main window's device rail",
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Geräte"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dispositivos"
-          }
-        }
-      }
-    },
     "Diagonal" : {
       "comment" : "Shader picker option: diagonal sweep from the top-left corner",
       "localizations" : {
@@ -2702,24 +2594,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "General"
-          }
-        }
-      }
-    },
-    "Generators" : {
-      "comment" : "Sidebar section heading over the video generators",
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Generatoren"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Generadores"
           }
         }
       }
@@ -3489,24 +3363,6 @@
         }
       }
     },
-    "macOS grants each permission to this app. Tingra checks again whenever it becomes active, so a change made in System Settings appears here when you return, and an input the change allows starts on its own." : {
-      "comment" : "Permissions settings: footer explaining when the statuses update",
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "macOS erteilt jede Berechtigung dieser App. Tingra prüft sie erneut, sobald die App aktiv wird. Eine in den Systemeinstellungen vorgenommene Änderung erscheint hier also bei der Rückkehr, und ein dadurch erlaubter Eingang startet von selbst."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "macOS concede cada permiso a esta app. Tingra vuelve a comprobarlos cada vez que se activa, de modo que un cambio hecho en Ajustes del Sistema aparece aquí al volver, y una entrada que ese cambio permite se inicia por sí sola."
-          }
-        }
-      }
-    },
     "macOS grants each permission to this app. Tingra checks again whenever it becomes active, so a change made in System Settings appears here when you return, and an input the change allows starts on its own. Reset forgets a decision, so macOS asks again the next time the permission is needed." : {
       "comment" : "Permissions settings: footer explaining when the statuses update and what Reset does",
       "localizations" : {
@@ -3520,24 +3376,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "macOS concede cada permiso a esta app. Tingra vuelve a comprobarlos cada vez que se activa, así que un cambio hecho en Ajustes del Sistema aparece aquí al volver, y una entrada que el cambio permite arranca por sí sola. «Restablecer» olvida una decisión, para que macOS vuelva a preguntar la próxima vez que se necesite el permiso."
-          }
-        }
-      }
-    },
-    "macOS keeps the Camera, Microphone, and Screen Recording permissions itself. To reset those too, run “tccutil reset All %@” in Terminal." : {
-      "comment" : "Data settings: footer explaining that permissions are reset with tccutil; the placeholder is the app's bundle identifier",
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "macOS verwaltet die Berechtigungen für Kamera, Mikrofon und Bildschirmaufnahme selbst. Um auch diese zurückzusetzen, führe „tccutil reset All %@“ im Terminal aus."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "macOS conserva por su cuenta los permisos de cámara, micrófono y grabación de pantalla. Para restablecerlos también, ejecuta “tccutil reset All %@” en Terminal."
           }
         }
       }
@@ -3933,42 +3771,6 @@
         }
       }
     },
-    "Movies recorded to the recordings folder. Kept when data is removed." : {
-      "comment" : "Data settings: what the recordings are, and that removal keeps them",
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "In den Aufnahmeordner aufgenommene Filme. Bleiben beim Entfernen der Daten erhalten."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Películas grabadas en la carpeta de grabaciones. Se conservan al eliminar los datos."
-          }
-        }
-      }
-    },
-    "Multiple layers" : {
-      "comment" : "Accessibility label of the glyph on a shot tile with more than one layer",
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mehrere Ebenen"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Varias capas"
-          }
-        }
-      }
-    },
     "Multiview" : {
       "comment" : "Title of the multiview monitoring window, and its View-menu command",
       "localizations" : {
@@ -4122,24 +3924,6 @@
         }
       }
     },
-    "No audio" : {
-      "comment" : "Microphone picker option: stream video only",
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Kein Audio"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sin audio"
-          }
-        }
-      }
-    },
     "No audio generators available" : {
       "comment" : "Sidebar placeholder when no audio generator is registered",
       "localizations" : {
@@ -4204,24 +3988,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "No hay salidas de audio conectadas"
-          }
-        }
-      }
-    },
-    "No cameras" : {
-      "comment" : "Shown in place of the camera row when none is discovered",
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Keine Kameras"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sin cámaras"
           }
         }
       }
@@ -4324,24 +4090,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Sin efectos"
-          }
-        }
-      }
-    },
-    "No generators available" : {
-      "comment" : "Sidebar placeholder when no video generator is registered",
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Keine Generatoren verfügbar"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No hay generadores disponibles"
           }
         }
       }
@@ -4478,24 +4226,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Sin monitorización"
-          }
-        }
-      }
-    },
-    "No other inputs" : {
-      "comment" : "Shown in place of the generator and display row when none is discovered",
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Keine weiteren Eingänge"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sin otras entradas"
           }
         }
       }
@@ -4921,24 +4651,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "En programa"
-          }
-        }
-      }
-    },
-    "One Keychain item per destination that has a key." : {
-      "comment" : "Data settings: what the stream keys are",
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ein Schlüsselbund-Eintrag pro Ziel mit Schlüssel."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Un elemento del llavero por cada destino que tiene una clave."
           }
         }
       }
@@ -5878,24 +5590,6 @@
         }
       }
     },
-    "Removes everything listed above except recordings and the log file, then quits Tingra so its next launch is a first run." : {
-      "comment" : "Data settings: description under the remove-all row",
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Entfernt alles oben Aufgeführte außer den Aufnahmen und der Protokolldatei und beendet dann Tingra, damit der nächste Start ein erster Start ist."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Elimina todo lo anterior salvo las grabaciones y el archivo de registro y luego sale de Tingra, para que el próximo inicio sea el primero."
-          }
-        }
-      }
-    },
     "Removes everything listed above except recordings, snapshots, and the log file, then quits Tingra so its next launch is a first run." : {
       "comment" : "Data settings: description under the remove-all row",
       "localizations" : {
@@ -5909,24 +5603,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Elimina todo lo anterior salvo las grabaciones, las instantáneas y el archivo de registro y luego sale de Tingra, para que el próximo inicio sea el primero."
-          }
-        }
-      }
-    },
-    "Removes everything listed above except recordings, then quits Tingra so its next launch is a first run." : {
-      "comment" : "Data settings: description under the remove-all row",
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Entfernt alles oben Aufgeführte außer den Aufnahmen und beendet dann Tingra, damit der nächste Start ein erster Start ist."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Elimina todo lo anterior salvo las grabaciones y luego sale de Tingra, para que el próximo inicio sea el primero."
           }
         }
       }
@@ -6305,24 +5981,6 @@
         }
       }
     },
-    "Saved destination names and URLs, shared with the tingra-cli daemon." : {
-      "comment" : "Data settings: what the destinations document holds",
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Gesicherte Namen und URLs der Ziele, geteilt mit dem tingra-cli-Daemon."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nombres y URL de los destinos guardados, compartidos con el daemon de tingra-cli."
-          }
-        }
-      }
-    },
     "Saved on This Mac" : {
       "comment" : "Data settings: heading over the list of what the app has saved",
       "localizations" : {
@@ -6438,24 +6096,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Selecciona una capa en la lista o en el monitor de previo."
-          }
-        }
-      }
-    },
-    "Select a layer to edit its frame and opacity." : {
-      "comment" : "Layer editor hint with no selection",
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wähle eine Ebene aus, um ihren Rahmen und ihre Deckkraft zu bearbeiten."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Selecciona una capa para editar su marco y opacidad."
           }
         }
       }
@@ -7633,24 +7273,6 @@
         }
       }
     },
-    "The number that marks a new launch in the log." : {
-      "comment" : "Data settings: what the log session counter is",
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die Nummer, die im Protokoll einen neuen Start markiert."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "El número que marca un nuevo inicio en el registro."
-          }
-        }
-      }
-    },
     "The picture could not be made into an image file. Try again." : {
       "comment" : "Snapshot Not Saved badge tooltip: the picture could not be rendered or encoded",
       "localizations" : {
@@ -7766,24 +7388,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "No se pudo crear la carpeta de grabaciones: %@"
-          }
-        }
-      }
-    },
-    "The show: presets, shots, layers, and audio channels." : {
-      "comment" : "Data settings: what the project document holds",
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die Sendung: Voreinstellungen, Einstellungen, Ebenen und Audiokanäle."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "El programa: preajustes, tomas, capas y canales de audio."
           }
         }
       }
@@ -8094,24 +7698,6 @@
         }
       }
     },
-    "Untitled" : {
-      "comment" : "Default name of a new project file",
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ohne Titel"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sin título"
-          }
-        }
-      }
-    },
     "Untitled Destination" : {
       "comment" : "Streaming settings: heading over a destination whose name is blank",
       "localizations" : {
@@ -8227,24 +7813,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Generadores de vídeo"
-          }
-        }
-      }
-    },
-    "Viewers see and hear nothing. Preview and multiview stay live." : {
-      "comment" : "Hint beside the fade to black control while the program is off air",
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Zuschauer sehen und hören nichts. Vorschau und Multiview bleiben live."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Los espectadores no ven ni oyen nada. La previsualización y el multivista siguen activos."
           }
         }
       }

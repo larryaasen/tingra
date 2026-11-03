@@ -256,14 +256,15 @@ here, under "Left open from “…”", pointing at its record there.
   `automaticToggleKey`, `section`, and `Input.currentParameters()`, the
   camera input's parameters, and the Tingra Cameras controls panel).
   - [ ] Larry: select the Razer in Tingra Cameras and check the panel
-    under the preview — sliders, the three Auto switches, and a governed
+    in the trailing sidebar — sliders, the three Auto switches, and a governed
     slider greying out. A session could not drive the window.
   - [ ] A camera's controls in the main app: its Input Settings popover
     hangs off a mixer strip, and a camera has none; the camera layer's
     inspector is the likely home.
   - [x] A choice kind in the kit, for power line frequency (2026-10-30).
   - [ ] Auto exposure priority, now that the kit has a choice kind.
-  - [ ] Named profiles in Tingra Cameras, like the vendor utility's.
+  - [x] Named profiles in Tingra Cameras, like the vendor utility's: built
+    as camera presets (2026-10-28; UVC.md, "Camera presets").
 
 ## Clock and timing
 
@@ -331,6 +332,13 @@ Nothing open.
 
 ## Release mechanics
 
+- [ ] **Release Tingra Cameras** *(decisions C1–C15 approved 2026-10-31;
+  [RELEASE.md](RELEASE.md), "Releasing Tingra Cameras")*.
+  Ships first, on its own, as a disk image with a `tingra-cameras` cask. An
+  archive does not launch today: the kit frameworks are not embedded, which
+  a Debug build hides.
+  - [x] Larry: approve the decisions (2026-10-31).
+  - [x] Larry: supply the icon (C13) (2026-11-01).
 - [ ] **Release Tingra.app** *(all eleven decisions approved 2026-10-13;
   [RELEASE.md](RELEASE.md))*. The app has no release path: no script, no
   workflow, no cask. Slice 1 is the app alone, in a disk image, with a

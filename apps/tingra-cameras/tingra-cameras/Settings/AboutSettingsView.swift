@@ -9,6 +9,7 @@
 
 import AppKit
 import SwiftUI
+import TingraHost
 
 /// The About settings pane: the app's version, and how long it has been
 /// running.

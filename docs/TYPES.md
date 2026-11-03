@@ -88,6 +88,8 @@ internal surface a reader needs to navigate the target instead.
 
 ## `packages/TingraHost`
 
+- `AppVersion` — an app bundle's version and build, as About prints it.
+- `LaunchArguments` — whether an app's command line asks for the version.
 - `HostClock` — the production `EngineClock` over the host time clock.
 - `KeepAwake` — the seam a session holds the Mac and the process awake by.
 - `KeepAwakeHold` — one hold taken through `KeepAwake`, released once.
@@ -500,7 +502,6 @@ surface is:
 - `ShotRenameDialog` — the shot rename alert as a modifier.
 - `LaunchDiagnostics` — the build and system params of `app.launched`.
 - `LaunchEnvironment` — whether this is the test host or a console run.
-- `LaunchArguments` — whether the command line asks for the version.
 - `ConsoleEventSink` — the dev-run sink printing log-file lines to stdout.
 - `TerminationReason` — why the app is quitting, as far as AppKit can say.
 - `QuitCommands` — the app-menu Quit item, recording its `tap` first.
@@ -693,7 +694,6 @@ surface is:
 - `AppearancePreferences` — where the appearance choice persists.
 - `AppearanceModel` — installs the matching `NSAppearance` on the app.
 - `AppearanceTarget` — the one-property seam it installs through.
-- `AppVersion` — the pure version text the About pane prints.
 - `AppUptime` — the pure uptime wording the About pane prints.
 
 ## `apps/tingra-cameras`
@@ -701,16 +701,20 @@ surface is:
 An app, so it exposes no public API beyond its `@main` entry; its internal
 surface is:
 
-- `TingraCamerasApp` — the `@main` entry owning the shared model.
+- `TingraCamerasMain` — the `@main` entry: answers `--version` or starts it.
+- `TingraCamerasApp` — the app: the scenes, commands, and shared model.
 - `ContentView` — the `NavigationSplitView` two-column layout.
 - `HostWindow` — the window a view is in, for widening it.
 - `HostWindowReader` — the invisible view that fills in a `HostWindow`.
 - `SidebarView` — the Cameras sidebar list.
 - `DeviceRow` — one tappable device row, checkmarked when active.
-- `PreviewCanvasView` — the 16:9 preview frame at the top, controls below.
+- `PreviewCanvasView` — the 16:9 preview frame, centered in its column.
 - `PreviewMessage` — the placeholder or error shown with no live feed.
 - `CameraPreviewView` — the video view: a placeholder or a live feed.
 - `SampleBufferHostView` — the `NSView` hosting the sample buffer layer.
+- `TrailingSidebar` — the right-hand column: the camera's controls.
+- `InspectorCommands` — Show/Hide Inspector in the View menu, ⌥⌘I.
+- `InspectorButton` — the toolbar button showing or hiding the column.
 - `CameraControlsView` — the selected camera's controls, as a grouped form.
 - `ParameterSection` — a run of controls under one section heading.
 - `CameraParameterRow` — one camera control: a switch or a slider.
@@ -743,7 +747,6 @@ surface is:
 - `StatusLabel` — a permission status as a colored symbol and a word.
 - `PermissionsModel` — where each permission stands, re-read on activation.
 - `AboutSettingsView` — the About pane: icon, version, and uptime.
-- `AppVersion` — the bundle's version and build, as About prints it.
 - `AppUptime` — how long the app has been running, as About words it.
 - `StatusBarView` — the bar under the preview: state, camera, resolution.
 - `StatusBarModel` — whether the windows carry a status bar.

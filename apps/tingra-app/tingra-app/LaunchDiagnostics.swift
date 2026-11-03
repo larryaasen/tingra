@@ -9,6 +9,7 @@
 
 import Foundation
 import TingraEventBus
+import TingraHost
 
 /// What the first line of every app log says about the build it came from:
 /// the app's version and build, the macOS version and build, and the Mac's
@@ -17,9 +18,8 @@ import TingraEventBus
 /// file and the Logging settings pane").
 ///
 /// A shared log that does not start by identifying the build cannot be lined
-/// up with the report it came with — the lesson Auto Care Plus's
-/// `app.coldstart` line taught. A value type with injectable readings rather
-/// than lookups inline in the model, so the assembly rule — which keys a
+/// up with the report it came with. A value type with injectable readings
+/// rather than lookups inline in the model, so the assembly rule — which keys a
 /// missing reading drops, what a model identifier looks like — is tested
 /// without booting an engine.
 struct LaunchDiagnostics: Equatable, Sendable {

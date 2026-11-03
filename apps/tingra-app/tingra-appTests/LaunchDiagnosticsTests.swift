@@ -10,6 +10,7 @@
 import Foundation
 import Testing
 import TingraEventBus
+import TingraHost
 
 @testable import TingraApp
 

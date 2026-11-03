@@ -9,13 +9,13 @@
 
 import SwiftUI
 
-/// The application entry point for "Tingra Cameras".
+/// The application for "Tingra Cameras".
 ///
 /// It hosts ``ContentView`` in a window sized for the two-column layout —
 /// File ▸ New Window opens more, all showing the same camera — beside the
 /// settings window (``SettingsView``), and owns the shared ``HardwareModel``
-/// for the session.
-@main
+/// for the session. It is not the `@main` entry: ``TingraCamerasMain`` is,
+/// so `--version` answers before this value and its engine exist.
 struct TingraCamerasApp: App {
     /// The session's hardware-selection state, owned here so it persists for
     /// the window's lifetime and is injected into the view tree. The live
@@ -44,21 +44,21 @@ struct TingraCamerasApp: App {
             ContentView()
                 .environment(model)
                 .environment(statusBar)
-                // The narrowest the preview column stays legible on its own;
-                // the sidebar closes before the window gets this narrow
-                // (see ``ContentView``). The window remains freely resizable
+                // The minimum width follows the trailing sidebar, so it is
+                // set in ``ContentView``. The window remains freely resizable
                 // by the operator.
-                .frame(minWidth: ContentView.minimumWindowWidth, minHeight: 520)
+                .frame(minHeight: 520)
                 // Discover the connected cameras and start
                 // the first camera's live preview once the window appears.
                 .task { await model.start() }
         }
-        // Tall enough for the top-aligned preview and the camera's controls
-        // beneath it.
-        .defaultSize(width: 1040, height: 900)
+        // Tall enough for the camera's controls in the trailing sidebar, and
+        // wide enough to leave the preview a generous column beside them.
+        .defaultSize(width: 1280, height: 900)
         .commands {
             PreviewCommands(model: model)
             PresetCommands(model: model)
+            InspectorCommands(model: model)
             StatusBarCommands(model: model, statusBar: statusBar)
             SettingsCommands(model: model)
         }

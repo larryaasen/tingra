@@ -15,7 +15,7 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "CA0000000000000000000004"
-               BuildableName = "tingra-cameras.app"
+               BuildableName = "Tingra Cameras.app"
                BlueprintName = "tingra-cameras"
                ReferencedContainer = "container:tingra-cameras.xcodeproj">
             </BuildableReference>
@@ -45,7 +45,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "CA0000000000000000000004"
-            BuildableName = "tingra-cameras.app"
+            BuildableName = "Tingra Cameras.app"
             BlueprintName = "tingra-cameras"
             ReferencedContainer = "container:tingra-cameras.xcodeproj">
          </BuildableReference>
@@ -62,7 +62,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "CA0000000000000000000004"
-            BuildableName = "tingra-cameras.app"
+            BuildableName = "Tingra Cameras.app"
             BlueprintName = "tingra-cameras"
             ReferencedContainer = "container:tingra-cameras.xcodeproj">
          </BuildableReference>

@@ -9,6 +9,7 @@
 
 import Foundation
 import SwiftUI
+import TingraHost
 
 /// The process entry point: answers `--version` and exits, or starts the app.
 ///

@@ -27,7 +27,7 @@ import UniformTypeIdentifiers
 ///
 /// **Share is a `ShareLink` over a snapshot taken at share time**
 /// (``LogSnapshot``), not over the live file a sink is still appending to:
-/// the picker receives a text file named for today, the Auto Care Plus rule.
+/// the picker receives a text file named for today.
 /// A `ShareLink` has no action closure, so its `tap` rides a simultaneous
 /// gesture — the one control in the app that reports its tap that way, and
 /// only because the link offers nowhere else to say it.

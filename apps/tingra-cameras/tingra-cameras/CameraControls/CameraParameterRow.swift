@@ -11,8 +11,9 @@ import SwiftUI
 import TingraPlugInKit
 
 /// One camera control: a switch for a toggle, a pop-up menu for a choice, a
-/// slider with its value and unit for a number. A number its Auto switch owns is disabled while that
-/// switch is on, because the camera sets it then; when that switch owns no
+/// slider with its value and unit under its name for a number, because beside
+/// the name the trailing sidebar leaves a slider almost no travel. A number
+/// its Auto switch owns is disabled while that switch is on, because the camera sets it then; when that switch owns no
 /// other number, it is drawn at the end of the number's row as an Auto
 /// checkbox (White Balance's Temperature, Focus) instead of on a row of its
 /// own.
@@ -88,10 +89,11 @@ struct CameraParameterRow: View {
         }
     }
 
-    /// A slider for a number control, with its Auto checkbox after it when
-    /// the row carries one.
+    /// A number control's name over its slider, with its Auto checkbox after
+    /// the slider when the row carries one.
     private var sliderRow: some View {
-        LabeledContent {
+        VStack(alignment: .leading) {
+            Text(verbatim: parameter.name)
             HStack {
                 CameraParameterSlider(parameter: parameter)
                     .disabled(isControlledAutomatically)
@@ -104,8 +106,6 @@ struct CameraParameterRow: View {
                     .accessibilityLabel(Text(verbatim: automaticToggle.name))
                 }
             }
-        } label: {
-            Text(verbatim: parameter.name)
         }
     }
 

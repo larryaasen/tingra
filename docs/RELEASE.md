@@ -1,4 +1,6 @@
-# Releasing Tingra.app
+# Releasing the Tingra apps
+
+*Tingra Cameras has its own plan, at the end of this document ("Releasing Tingra Cameras"), which reuses this one. Everything before it concerns Tingra.app.*
 
 *Plan of 2026-10-13. **All eleven decisions were approved by Larry on 2026-10-13.** The two pieces that wait on nothing were built the same day ("Built so far", below); the spike (Phase 0) comes next and may amend the decisions, as PLUGINS.md's did. `tingra-cli`'s release stays specified in CLI.md, "Distribution"; this document covers the app and what changes around the CLI when the app ships.*
 
@@ -122,7 +124,7 @@ Not designed here; recorded so slice 1 does nothing that blocks it.
 
 - **`Tingra --version` prints the version and exits 0** (Decision 8). `TingraMain` is now the `@main` entry and `TingraApp` is not: creating the `App` value creates the engine model and the plug-in host, and a version request must reach neither. `LaunchArguments` holds the rule (any argument after the executable that is exactly `--version`) and the line printed (the marketing version alone, the form `tingra-cli version` prints). A bundle naming no version exits 1 with the reason on standard error. Run against the Debug build: `0.1.4-dev`, exit 0.
 - **`TINGRA_VERSION` in `Tingra.xcconfig` is the app's version** (Decision 6), read by the app target and the Notes extension for both `CFBundleShortVersionString` and `CFBundleVersion`, as the CLI's Info.plist carries one string in both. It carries the `-dev` suffix between releases. The test target and the fixture bundle keep their own literals: neither ships.
-- **`scripts/release-cli.sh` bumps it** with `TingraCLIVersion.current` and the CLI's Info.plist, reads all three back, and commits them together, so a CLI release cut before the renames of Decision 7 cannot leave the app behind. A test (`LaunchArgumentsTests`) holds the app's bundle version equal to the CLI's constant between releases.
+- **`scripts/release-cli.sh` bumps it** with `TingraCLIVersion.current` and the CLI's Info.plist, reads all three back, and commits them together, so a CLI release cut before the renames of Decision 7 cannot leave the app behind. A test (`LaunchArgumentsTests`, in the app's `AppVersionTests` since C11 moved the rule to `TingraHost`) holds the app's bundle version equal to the CLI's constant between releases.
 - **One thing to carry into `release-app-package.sh`:** a Debug build is coverage-instrumented, and running it wrote a `default.profraw` into the working folder. The release configuration must not be, which is why Decision 8 lists the `__llvm_prf_cnts` assertion.
 
 ## Work list
@@ -150,3 +152,90 @@ Not designed here; recorded so slice 1 does nothing that blocks it.
 9. No updater in the first release; Sparkle behind a seam is the likely later answer, undecided.
 10. The deployment floor stays at macOS 15.0.
 11. The logo does not gate a 0.x release.
+
+# Releasing Tingra Cameras
+
+*Plan of 2026-10-31. **All fifteen decisions were approved by Larry on 2026-10-31.** Nothing here is built yet, and the spike may amend them, as it did Tingra.app's. The spike findings above were measured on Tingra.app and are cited rather than repeated; the Phase 0 below covers only what differs.*
+
+## Why it goes first
+
+Tingra Cameras is the easier app to ship. It carries no restricted entitlement (only `device.camera` and `disable-library-validation`), so it needs no provisioning profile, and that profile was difficulty 1 and 2 of Tingra.app's list. It embeds no extension, so difficulty 3 shrinks to the two kit frameworks, and archiving cannot break a Notes extension the way it did for Tingra.app ("A side effect on the development Mac", above). It has no daemon and no relationship with the CLI. Building its release first produces the packaging script Tingra.app then reuses, and it tests the disk image and cask path with real users on a smaller app.
+
+## What an archive does today
+
+Measured 2026-10-31: `xcodebuild archive` with `CODE_SIGNING_ALLOWED=NO`, into the scratchpad, then run once and deleted.
+
+- **The archived app does not launch.** It stops in `dyld` with `Library not loaded: @rpath/TingraEventBus.framework/Versions/A/TingraEventBus`, because `Contents/Frameworks` does not exist. The kits are dynamic products (PLUGINS.md, Decision 22), and this project has no Embed Frameworks phase, while Tingra.app's project does. **A Debug build hides this:** its rpath includes `Build/Products/Debug/PackageFrameworks` in DerivedData, so the app runs on the Mac that built it and would fail on every other Mac.
+- **It is universal** (`x86_64 arm64`), because the project sets no `ARCHS`. Row B found the same gap in Tingra.app.
+- **Its identity is unfinished:** `com.moonwink.tingra-cameras`, version `1.0`, build `1`, minimum system `26.5`.
+- **It has no icon.** `AppIcon.appiconset` holds only `Contents.json`.
+- **Archiving warns** that no App Category is set.
+- **CI never builds it.** `format-test.yml` builds `apps/tingra-cli` and `apps/tingra-app` but not this app, though CLAUDE.md says every app gets a warning-clean build. The project also has no test target, so the test command in its `CLAUDE.md` has nothing to run.
+
+## The decisions
+
+**C1. It ships on its own, ahead of Tingra.app's slice 1.** Neither release waits on the other.
+
+**C2. Its own version and tags.** `cameras-v<x.y.z>` tags and their own GitHub releases, first version **0.1.0**, with a `TINGRA_CAMERAS_VERSION` line in this app's `Tingra.xcconfig` read for both `CFBundleShortVersionString` and `CFBundleVersion`. Decision 6's single number exists because the CLI will live inside Tingra.app; this app is standalone and links no CLI. Its releases are published with `--latest=false`, so the repository's latest release stays the engine's. *Rejected:* joining the product version, which would make a Cameras fix wait for, or force, an engine release.
+
+**C3. The bundle identifier becomes `com.moonwink.tingra.cameras`,** following the `com.moonwink.tingra.*` rule. This is the last cheap moment: after a release, the change would reset every user's camera permission and preferences. On the development Mac it costs one new camera prompt and the `UserDefaults` values (remembered camera, appearance, sidebar state). Presets are unaffected, since `camera-presets.json` lives by path.
+
+**C4. The target embeds both kit frameworks,** with an Embed Frameworks phase and code-sign-on-copy, as Tingra.app's target does. This is the blocker above.
+
+**C5. `ARCHS = arm64` in this app's `Tingra.xcconfig`,** as in Tingra.app's, and an `LSApplicationCategoryType` of `public.app-category.video` to clear the archive warning.
+
+**C6. The floor is macOS 26.0, not 26.5.** `.glassEffect` sets the floor at 26, which this app's `CLAUDE.md` already states. Nothing found in the code asks for 26.5, and the compiler will name anything that does. Unlike Tingra.app (Decision 10), this app keeps a higher floor than the engine's macOS 15.
+
+**C7. Xcode signs, as row B established:** archive with manual signing and the Developer ID Application identity, then export with the `developer-id` method. An unsigned archive records no entitlements, so export would ship an app without camera access. There is no profile, so no `PROVISIONING_PROFILE_SPECIFIER` and no new secret. The Developer ID certificate's 2027-02-01 expiry applies, but with nothing to regenerate.
+
+**C8. One disk image, `Tingra-Cameras-<version>-arm64.dmg`,** built and notarized as Decision 4 describes: app stapled first, then the image signed, notarized, and stapled.
+
+**C9. A `tingra-cameras` cask in the existing tap,** rendered from `packaging/homebrew/tingra-cameras.rb`: `depends_on arch: :arm64`, `depends_on macos: ">= :tahoe"`, `app "Tingra Cameras.app"`. **Its `zap` names files, never a folder:** `camera-presets.json`, the preferences file, and saved application state. `~/Library/Application Support/Tingra` is shared with Tingra.app and holds its destinations and plug-in settings, so zapping this cask must not remove that folder.
+
+**C10. One packaging script for both apps.** `scripts/release-app-package.sh --app cameras|tingra` holds the shared pipeline from Decision 7 (archive → export → verify → run → notarize → staple → disk image → sha256, and the unregistering of every copy it builds), with a per-app table of project, scheme, product name, and checks. Only Cameras is wired up at first. `scripts/release-cameras.sh` and a manually dispatched `release-cameras.yml` wrap it, gated on `format-test.yml`, and tag, publish, and render the cask. They use the secrets `release-cli.yml` already uses. The product name has a space, so the script quotes every path.
+
+**C11. The release runs the app before notarizing it,** as Decision 8 does. `Tingra Cameras --version` prints the version and exits 0 before any scene or the engine exists, so `TingraCamerasApp` stops being the `@main` entry, as `TingraApp` did. `LaunchArguments` moves from Tingra.app into `TingraHost`, so both apps share one rule; TYPES.md gains the type in that change. This check alone would have caught the missing frameworks. Around it, the script asserts: `codesign --verify --deep --strict` with the `Developer ID Application` authority; exactly the two expected entitlements and no `get-task-allow`; both kit frameworks present and signed; arm64 only; no `__llvm_prf_cnts` section; an icon in the bundle; and `spctl --assess` accepting the app and the image after stapling.
+
+**C12. CI builds it.** `format-test.yml` gains a warning-clean, unsigned build of this app, so the build stops relying on someone opening Xcode. A test target is not a release gate: the logic worth testing (presets, parameters) lives in `TingraHost` and is tested there.
+
+**C13. The icon is a gate here.** This overrides Decision 11 for this app. Tingra.app can wait for the logo because its first users are installing an engine; a small utility with the blank generic icon looks broken in the Dock and Applications. Larry supplies the art, and it need not wait for the Tingra logo.
+
+**C14. No updater in the first release,** as Decision 9. `brew upgrade --cask tingra-cameras`, or replace the app by hand.
+
+**C15. Development and release builds share the identifier,** with the same accepted cost as row F: alternating them moves the camera grant to whichever answered last.
+
+## Built so far
+
+**C3–C6, 2026-10-31.** The target is `com.moonwink.tingra.cameras`, embeds both kit frameworks, is categorized as video, and has a floor of macOS 26.0. `Tingra.xcconfig` holds `ARCHS = arm64` and `TINGRA_CAMERAS_VERSION = 0.1.0-dev`, which both version keys read. The app built at the new floor with no code change, and an archive now launches and stays running instead of stopping in `dyld`.
+
+**`ARCHS` in the xcconfig does not reach the kits (amends C5).** A project's xcconfig applies to its own targets, not to Swift package targets, so the archive's app was arm64 while both kit frameworks stayed `x86_64 arm64`. Passing `ARCHS=arm64` on the `xcodebuild archive` command line makes all three arm64, so **the packaging script must pass it**, keeping the xcconfig line for ordinary builds. Decision 8 asserts the same for Tingra.app and has the same exposure: row B's "arm64 only" may have read only the app's binary. Check the kits there too.
+
+**The Team ID came out of the project file.** Both project-level configurations carried a literal `DEVELOPMENT_TEAM`, which CLAUDE.md forbids and which overrode the xcconfig's `$(TINGRA_DEVELOPMENT_TEAM)`. The commit that last re-added it is 82b9582, so it is in the public history. Xcode re-adds this line when a team is picked in the Signing tab, so watch for it in diffs.
+
+**C13, 2026-11-01.** Both apps' `AppIcon` sets now hold their icon, every size scaled from the masters in `docs/logos`. The masters are opaque, full-bleed squares, and macOS 26 masked both when asked for the built bundles' icons. **macOS 15 is unchecked:** Tingra.app's floor is lower than the system that adds the mask, so its icon may show as a hard-edged square there. Check on a macOS 15 install before Tingra.app ships. Tingra Cameras needs macOS 26, so it is not exposed.
+
+**C11, 2026-11-03.** `Tingra Cameras --version` prints `0.1.0-dev` and exits 0, with nothing on standard error; `TingraCamerasMain` is the `@main` entry and `TingraCamerasApp` is not, as Decision 8 did for Tingra.app. `LaunchArguments` moved into `TingraHost`, and **`AppVersion` moved with it**: `versionLine(for:)` takes one, and the two apps carried identical copies. Their tests moved too, with two new ones (a path holding a space, and reading both keys from a bundle on disk). The app keeps the two tests only its own bundle can run. `Tingra --version` still prints `0.1.4-dev`, exit 0. The release script's assertions around this check belong to C10.
+
+## Phase 0 — the spike
+
+Run on Larry's Mac after C3–C5, with his Developer ID identity. Throwaway commands, nothing committed.
+
+| | Question | Decides |
+|---|---|---|
+| A | Does the exported app hold exactly the two entitlements, the hardened runtime, and both kits Developer ID signed, and does it launch? | C4, C7. |
+| B | Does the Developer ID build stream a camera and drive its controls? Debug builds carry `get-task-allow` and a different signature, so the camera's DAL plug-in loading and `TingraUVC`'s IOUSBHost access have only been seen with a development signature. Check the FaceTime HD Camera and the Razer: preview, a slider, an Auto switch, and a preset recall. | Whether another entitlement is needed. |
+| C | Do both notarizations pass and both staples validate? | C8. |
+| D | On a clean user account, with a quarantined download: does it open with no Gatekeeper override, does the camera prompt name "Tingra Cameras", and does the grant survive replacing the app with a second export? | Whether a fresh install works. |
+| E | With a real `/Applications` copy beside Tingra.app's Debug build, does either app disturb the other? | That sharing the Application Support folder is safe. |
+
+## Work list
+
+1. ~~Larry: approve or veto C1–C15.~~ All approved 2026-10-31. ~~Larry: supply the icon (C13).~~ Installed 2026-11-01.
+2. ~~C3–C6: the identifier, embedded kits, `ARCHS`, category, floor, and version line, checked by archiving and launching.~~ Built 2026-10-31; see "Built so far".
+3. ~~C11: `--version` and the move of `LaunchArguments`, with tests.~~ Built 2026-11-03; see "Built so far".
+4. Run the spike; record findings here; amend the decisions it contradicts.
+5. C10: `release-app-package.sh`, run unsigned and then signed on Larry's Mac.
+6. C9, C10: the cask template, `release-cameras.sh`, and `release-cameras.yml`.
+7. C12: the CI build.
+8. Docs in the same changes: root and app `CLAUDE.md` (scripts, workflows, the build table), `packaging/README.md`, README.md (installing it), and `apps/tingra-cameras/CLAUDE.md`'s test command.
+9. Larry: cut 0.1.0; verify from a consumer's position with `brew install --cask larryaasen/tingra/tingra-cameras`.

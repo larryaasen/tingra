@@ -2351,10 +2351,9 @@ there.
   each step now names its own cause.
 
 - [x] **The log file and the Logging settings pane — decided 2026-09-07, built
-  2026-09-08.** Prompted by reading Auto Care Plus's logging feature (one
-  append-only file, Share Log File and Clear Log File in Settings, a Help
-  menu mirror, an `app.coldstart` line) and by what the read of Tingra turned
-  up: the app attached only its stdout `ConsoleEventSink`, so a Tingra.app
+  2026-09-08.** The shape: one append-only file, Share Log File and Clear Log
+  File in Settings, a Help menu mirror, and a first line naming the build.
+  Prompted by what a read of Tingra turned up: the app attached only its stdout `ConsoleEventSink`, so a Tingra.app
   launched from the Finder recorded nothing anywhere — `OSLogSink` was the
   CLI's alone, the file sink lived in the CLI behind `--log-file`, and the
   only `app` event the app emitted was `app.terminating`. Eight decisions,
