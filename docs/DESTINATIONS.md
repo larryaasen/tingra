@@ -146,11 +146,11 @@ The two questions below were both answered 2026-08-15.
 
 - **Why a plug-in and not the host:** the boundary test. Removing the list breaks one capability — suggestions — not plug-ins in general. It also puts the list with the only code that can vouch for it: a provider offers a template for a URL it can stream to, a third-party output (a WHIP plug-in, say) contributes its own services the same way, and a service is never offered that no registered output can reach.
 - **A template on a scheme its provider does not serve is a plug-in defect**, rejected at registration with `OutputRegistryError.templateSchemeNotServed` — thrown, never trapped, like a duplicate scheme.
-- **The list ships with the release; nothing is fetched.** OBS updates its service list from the network; Tingra deliberately does not — no request leaves the Mac to learn where to stream, and nothing polls. A service that moves its URL is fixed by a release, which on the Homebrew path is one `brew upgrade` away.
+- **The list ships with the release; nothing is fetched.** Some streaming apps update their service lists from the network; Tingra deliberately does not — no request leaves the Mac to learn where to stream, and nothing polls. A service that moves its URL is fixed by a release, which on the Homebrew path is one `brew upgrade` away.
 
 ### The first-party list
 
-The RTMP provider contributes three, each checked on 2026-09-26 against the service's own documentation, OBS's maintained service list, and a DNS lookup:
+The RTMP provider contributes three, each checked on 2026-09-26 against the service's own documentation and a DNS lookup:
 
 | Template | URL | Stream key page |
 |---|---|---|
@@ -158,7 +158,7 @@ The RTMP provider contributes three, each checked on 2026-09-26 against the serv
 | Twitch | `rtmp://live.twitch.tv/app` | `https://dashboard.twitch.tv/settings/stream` |
 | YouTube | `rtmps://a.rtmps.youtube.com/live2` | `https://www.youtube.com/live_dashboard` |
 
-- **Twitch's URL is its auto-routing one.** `live.twitch.tv` resolves to Twitch's geo-routed contribution network (`g.contribute.live-video.net`), so it reaches the nearest server; the per-region servers OBS lists are not offered, and neither is a region picker.
+- **Twitch's URL is its auto-routing one.** `live.twitch.tv` resolves to Twitch's geo-routed contribution network (`g.contribute.live-video.net`), so it reaches the nearest server; the per-region servers are not offered, and neither is a region picker.
 - **RTMPS wherever the service offers it**, since the stream key travels in the clear over plain RTMP. Twitch's documented URL is plain RTMP, so its template is.
 - **Only services with one URL for every account.** A service that hands each account or each broadcast its own URL has no template to offer; the operator adds it as a custom server, as before.
 - **The RTMP application name is the service's convention, not a checked value** — an aside from the same session. `rtmp://live.twitch.tv/apps` streamed to Twitch as well as `/app` does: RTMP carries the URL's path as the application name in its `connect` command and the stream key separately in `publish`, and Twitch identifies the channel by the key alone. The templates carry each service's documented name, since tolerance of any other is undocumented.

@@ -23,7 +23,7 @@ interface is built in SwiftUI and AppKit, so it looks and behaves like a real
 Mac app rather than a transplanted one.
 
 The project targets a narrow but real gap. Native-feeling streaming apps for
-the Mac exist (e.g. Ecamm Live), but they are commercial and closed-source.
+the Mac exist, but they are commercial and closed-source.
 Full-featured open-source tools exist, but none are Swift-native, Metal-based,
 or built with a native Mac UI framework. Tingra aims to be the missing piece:
 an open-source, transparent, genuinely Mac-native broadcaster — not

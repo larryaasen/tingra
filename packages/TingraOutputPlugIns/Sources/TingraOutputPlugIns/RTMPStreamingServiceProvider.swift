@@ -29,8 +29,7 @@ public struct RTMPStreamingServiceProvider: StreamingServiceProvider {
     /// The well-known services this provider streams to, offered when the
     /// operator adds a destination (DESTINATIONS.md, "The first-party
     /// list"). Each URL and stream-key page was checked on 2026-09-26
-    /// against the service's own documentation, OBS's maintained service
-    /// list, and a DNS lookup; RTMPS wherever the service offers it, since
+    /// against the service's own documentation and a DNS lookup; RTMPS wherever the service offers it, since
     /// the stream key crosses plain RTMP in the clear.
     ///
     /// Written as strings because `URL(string:)` is failable and a literal

@@ -69,7 +69,7 @@ public struct MovieMediaProvider: MediaInputProvider {
 /// file whose sound is never offered.
 ///
 /// Per-layer playback behaviour — once, hold last frame, restart on take —
-/// is the next slice; this input is a looping source, the OBS default.
+/// is the next slice; this input loops, the usual default for a video file.
 public final class MovieInput: Input, Sendable {
     /// The tick cadence ceiling: a file faster than this is still read at
     /// its own rate but sampled at this one, latest wins.

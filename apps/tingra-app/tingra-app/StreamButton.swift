@@ -25,8 +25,8 @@ import TingraEventBus
 /// filed there as they are typed. The keys still never enter the model, the
 /// document, or an event (ARCHITECTURE.md, "Streaming the program").
 ///
-/// ⌘G (``ProductionShortcut/goLive``) binds here — Ecamm Live's own Go Live
-/// assignment — bound to the control rather than to a menu item so it carries
+/// ⌘G (``ProductionShortcut/goLive``) binds here — the Go Live assignment
+/// operators already know — bound to the control rather than to a menu item so it carries
 /// the keys and the same disabled rule: nothing to stream to, nothing to
 /// start. The label carries the word as well as the symbol, as Record's does,
 /// so the two red toolbar states cannot read as one: while on air the antenna

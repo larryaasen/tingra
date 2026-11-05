@@ -16,28 +16,27 @@ import SwiftUI
 ///
 /// **Where the assignments come from.** They are not invented: each mirrors
 /// what the professional macOS switchers already do, so an operator arriving
-/// from one of them is not retrained. The survey (2026-08-08) covered
-/// Blackmagic's ATEM Software Control, MixEffect (the native Apple ATEM
-/// controller), Ecamm Live, Telestream Wirecast, Boinx mimoLive, and OBS
-/// Studio, and five actions carry a default in more than one of them:
+/// from one of them is not retrained. The survey (2026-08-08) covered six
+/// switchers and streaming apps, hardware-panel software and native Mac apps
+/// among them, and five actions carry a common default:
 ///
 /// | Action | Prior art |
 /// | --- | --- |
-/// | Stage the *n*th shot | ATEM `1`–`8`, MixEffect ⌘1–⌘0, Ecamm ⌘1–⌘9, Wirecast ⌥+number |
-/// | Cut | MixEffect ⇧⌘↩, ATEM `Space` |
-/// | Fade to black | MixEffect ⌃⌥⌘F, and the latched FTB of every hardware panel |
-/// | Go live | Ecamm ⌘G, MixEffect ⌃⌥⇧⌘S, the OBS ⌃⇧S convention |
-/// | Record | MixEffect ⌃⌥⇧⌘R, Ecamm ⌘P/⌥⇧⌘N, the OBS convention |
+/// | Stage the *n*th shot | a number key, bare or with ⌘ or ⌥ |
+/// | Cut | `Space`, or ⇧⌘↩ |
+/// | Fade to black | a modified F, and the latched FTB of every hardware panel |
+/// | Go live | ⌘G, or a ⇧-modified S |
+/// | Record | a ⇧-modified R, or ⌘P |
 ///
 /// And the take, which is the one worth stating plainly because the guess is
-/// usually wrong: **the industry's take key is Return, not ⌘T** — ATEM's AUTO
-/// is `Return`, MixEffect's Auto Transition is ⌘↩, and Ecamm publishes
-/// preview on `↩`. ⌘T is Show Fonts on macOS and means "new tab" everywhere
-/// else, so it would be the one assignment an operator has to unlearn. The
-/// bare keys those apps use (`1`–`8`, `Space`, `Return`) are Windows-derived
-/// and would swallow typing in every text field this window has, so each is
-/// taken in its ⌘ form — which is also the form the two native Apple apps in
-/// the survey, MixEffect and Ecamm Live, already use.
+/// usually wrong: **the industry's take key is Return, not ⌘T** — the hardware
+/// panels' AUTO is `Return`, and the Mac apps take on ⌘↩ or `↩`. ⌘T is Show
+/// Fonts on macOS and means "new tab" everywhere else, so it would be the one
+/// assignment an operator has to unlearn. The bare keys the panel software
+/// uses (`1`–`8`, `Space`, `Return`) are Windows-derived and would swallow
+/// typing in every text field this window has, so each is taken in its ⌘
+/// form — which is also the form the native Mac apps in the survey already
+/// use.
 ///
 /// The production shortcuts are attached to the controls themselves rather
 /// than to menu items, following the Fade to Black button that already carried

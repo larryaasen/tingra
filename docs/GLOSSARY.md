@@ -182,12 +182,12 @@ A project is the saved file for an entire show. A project contains presets. A pr
 
 **Device connection and disconnection** — inputs appearing and disappearing while running (a camera unplugged mid show, a display added). The engine treats this as a normal event, not an error.
 
-## Coming from OBS?
+## Coming from other streaming software?
 
 A rough translation for the concepts you already know:
 
-| OBS says | Tingra says |
-| :------- | :---------- |
+| Elsewhere | Tingra says |
+| :-------- | :---------- |
 | Source | Input |
 | Scene | Shot |
 | Scene collection | Preset (roughly; a Tingra project can hold several presets) |

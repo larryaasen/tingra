@@ -2683,22 +2683,20 @@ there.
   the *app's own program monitor* also goes black is an open question, not a
   given — see the prior art below.
 
-  **Prior art (checked 2026-07-26 — vMix, TriCaster, ATEM).** All three
+  **Prior art (checked 2026-07-26 — three production switchers).** All three
   implement FTB as a master stage, not a transition, which settles the shape:
-  - **TriCaster** calls FTB "a final overlay layer – one that obscures all
-    other layers when applied," composed above its DSK 1/DSK 2 overlay layers;
-    the button *pulses while active*, confirming the latching model. Unlike
-    DSK 1–4 it gets no local Take/Auto.
-  - **ATEM** puts fade to black "at the extreme end of the processing chain,"
-    explicitly so an operator "doesn't miss a layer."
-  - **vMix** fades its output destinations (recordings, external output,
-    fullscreen) rather than compositing a layer, and diverges from the
-    recommendation below on three points worth deciding deliberately:
-    audio fades only if a **"Fade To Black includes Audio"** setting is
-    ticked (opt-in, not coupled); the duration is **not adjustable at all**
-    (a standing user request — the one place to stay ahead of it); and the
-    operator's own Output window is **deliberately not faded**, "in order to
-    make it easier to queue up a source for later."
+  - **As a final overlay layer** that obscures every other layer, composed
+    above the downstream keys; the button *pulses while active*, confirming
+    the latching model, and gets no local Take/Auto.
+  - **At the extreme end of the processing chain**, explicitly so an operator
+    never misses a layer.
+  - **As a fade on the output destinations** (recordings, external output,
+    fullscreen) rather than a composited layer — the one that diverges from
+    the recommendation below on three points worth deciding deliberately:
+    audio fades only if an opt-in setting is ticked (not coupled); the
+    duration is **not adjustable at all** (a standing user request — the one
+    place to stay ahead of it); and the operator's own output window is
+    **deliberately not faded**, to make the next picture easier to queue up.
 
   **The decisions, in brief — the full record is in ARCHITECTURE.md:**
   - **One control fades video and audio together** (the point flagged as most
@@ -2751,15 +2749,15 @@ there.
     and no device lifecycle change: fading down must not kill a camera
     indicator or drop a microphone.
   - **The app's program monitor goes black too, with a badge** (the second
-    open question; **confirmed** 2026-07-27). vMix keeps its Output window
-    live "to make it easier to queue up a source for later" — a reason that
-    does not transplant, because preview and multiview are what queue up a
-    source in Tingra and both stay live. A monitor showing what viewers are
+    open question; **confirmed** 2026-07-27). The switcher that keeps its output
+    window live does so to make the next picture easier to queue up — a reason
+    that does not transplant, because preview and multiview do that job in
+    Tingra and both stay live. A monitor showing what viewers are
     not seeing would contradict the GLOSSARY.md **Monitor** definition, and
     keeping it live would cost a second program render every tick.
   - **A 0.5 s default duration, as an engine parameter with no UI** — matching
-    `Transition.defaultDissolveDuration`. vMix's real mistake is that the
-    duration is not adjustable *at all*; Tingra's is a parameter from day one.
+    `Transition.defaultDissolveDuration`. The real mistake elsewhere is a
+    duration that is not adjustable *at all*; Tingra's is a parameter from day one.
     No picker, because transitions have none either — exposing durations is
     one later call for all of them.
   - **One event per engine surface**: `composition/program.fadeToBlack` and
@@ -2775,9 +2773,9 @@ there.
     private render target inside the tick, never in the pool.)
 
   **A black *source* is a separate, complementary feature — not the rejected
-  alternative.** TriCaster carries **BLACK** as a selectable source on its
-  Program/Preview rows (beside the cameras, NET 1/2, DDR 1/2, GFX 1/2, FRM BFR,
-  and M/E 1–8), and ATEM the same on its M/E bus — *while also* shipping FTB.
+  alternative.** Production switchers carry **BLACK** as a selectable choice
+  on their program and preview rows, beside the cameras, players, and graphics —
+  *while also* shipping FTB.
   The two are not redundant: a black source is **upstream**, so overlays and
   keys still composite over it (cut the background to black and keep a title
   up), whereas FTB is downstream and obscures everything. Tingra has neither
@@ -2857,9 +2855,9 @@ there.
   **complementary, not alternatives**: a black source is **upstream**, so
   overlays, keys, and titles composite over it (cut the background to black and
   keep a lower third up), where FTB is a downstream master stage that obscures
-  everything. TriCaster carries **BLACK** as a selectable source on its
-  Program/Preview rows and ATEM the same on its M/E bus *while also* shipping
-  FTB; Tingra now has FTB and still has no black source.
+  everything. Production switchers carry **BLACK** as a selectable choice on
+  their program and preview rows *while also* shipping FTB; Tingra now has FTB
+  and still has no black source.
 
   **Shape:** a solid-colour generator in `TingraGeneratorPlugIns` beside bars
   and tone, bound into a layer like any other input — **no new seam, no new
@@ -2883,8 +2881,8 @@ there.
   counters, placeholder frames", so a solid-colour generator is a thing the
   glossary already names and a "black source" entry would only duplicate it.
   The problem is the word *source*, which is on the "Words Tingra does not use"
-  list with **input** as its replacement — the TriCaster/ATEM phrasing above is
-  a boundary reference to those products' vocabulary, which is legitimate when
+  list with **input** as its replacement — the switcher phrasing above is a
+  boundary reference to those products' vocabulary, which is legitimate when
   describing *them*, but Tingra's own feature cannot be called a black source.
   It is a **black generator** (or a **solid generator**, if it takes a colour).
   Renaming this item is the fix; the title is kept here only so the queue stays
@@ -3549,9 +3547,9 @@ there.
   recording needs is headroom, not a fader**: the post-fader master meter is
   the tool that answers "is the recording clipping"; a hot show is fixed on the
   strip that is hot, and riding a master fader during a show is the mistake,
-  not the feature. (4) **The live-streaming tools agree**: OBS, Ecamm, and
-  mimoLive expose per-source faders and a monitoring level and put no master
-  fader on the program mix. **What re-opens it:** a second bus (separate stream
+  not the feature. (4) **The live-streaming tools agree**: the common Mac
+  streaming apps expose per-input faders and a monitoring level and put no
+  master fader on the program mix. **What re-opens it:** a second bus (separate stream
   and recording mixes, or an aux) or a master effect chain with a limiter —
   then a master fader arrives beside a master insert, which is what a console's
   master section is for. Until then the honest master section is meter plus
