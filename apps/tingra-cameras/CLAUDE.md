@@ -113,6 +113,7 @@ Run from `apps/tingra-cameras/`. The app also opens and runs directly from Xcode
 - Keep inline comments focused on "why" not "what".
 - Use clear, descriptive names that reduce the need for comments.
 - Keep the "Swift File Header" convention from the monorepo root `../../CLAUDE.md` (copyright + `SPDX-License-Identifier: MIT`).
+- Name no other product, company, or brand, in code, comments, docs, or UI text, beyond the exceptions the monorepo root `../../CLAUDE.md` allows (real dependencies, shipped integrations, Apple's own apps as platform conventions, and hardware the code handles).
 
 # Other Rules
 
