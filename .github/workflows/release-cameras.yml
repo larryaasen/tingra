@@ -1,0 +1,256 @@
+# The complete Tingra Cameras release, run in CI (see docs/RELEASE.md,
+# "Releasing Tingra Cameras", and packaging/README.md). One manual dispatch does
+# every step the local `scripts/release-cameras.sh` does:
+#
+#   1. gate on the Format & Test workflow (reused via `workflow_call`),
+#   2. bump TINGRA_CAMERAS_VERSION in apps/tingra-cameras/Tingra.xcconfig,
+#      commit that bump and push the branch,
+#   3. archive with the Developer ID identity → export (developer-id) → verify
+#      the signature, entitlements, kits, and icon → run the app → notarize and
+#      staple the app → build, sign, notarize, and staple the disk image
+#      (scripts/release-app-package.sh),
+#   4. tag cameras-v<version> and push it,
+#   5. create the GitHub release, not marked latest, and upload the disk image,
+#   6. render packaging/homebrew/tingra-cameras.rb with this release's version
+#      and sha256 into the larryaasen/homebrew-tingra tap as
+#      Casks/tingra-cameras.rb and push it, and
+#   7. reopen the branch on the next -dev version.
+#
+# The job is a thin wrapper: it prepares a throwaway signing keychain and then
+# runs `scripts/release-cameras.sh --yes`, the same script used locally, so CI
+# and a hand-cut release cannot drift. Re-running with the same version resumes
+# rather than duplicating.
+#
+# There is deliberately no `push: tags` trigger. The version bump is part of the
+# release, so the tag is an output of this workflow, not an input to it.
+#
+# Required repository secrets — the same ones release-cli.yml reads, and
+# documented there and in packaging/README.md, "Release secrets":
+#
+#   TINGRA_RELEASE_TOKEN    PAT with Contents: read/write on larryaasen/tingra
+#                           and larryaasen/homebrew-tingra
+#   TINGRA_CERT_P12         base64 of the Developer ID Application .p12
+#   TINGRA_CERT_PASSWORD    its export password
+#   TINGRA_SIGN_ID          "Developer ID Application: … (TEAMID)"
+#   TINGRA_NOTARY_KEY_P8    base64 of the App Store Connect API key (.p8)
+#   TINGRA_NOTARY_KEY_ID    that key's Key ID
+#
+# Optional:
+#
+#   TINGRA_NOTARY_ISSUER_ID the API key's Issuer ID; required for a Team key,
+#                           rejected for an Individual one
+#
+# No provisioning profile and no installer identity: this app carries no
+# restricted entitlement (Decision C7), and it ships as a disk image, not a .pkg.
+#
+# Nothing personal is committed (CLAUDE.md "Signing"): the Team ID reaches the
+# job only inside TINGRA_SIGN_ID, which Actions masks in the public log, and
+# release-app-package.sh reads the team from its suffix and writes the export
+# options into the git-ignored build folder. Never echo an identity list.
+#
+# The toolchain floor is pinned exactly as in format-test.yml.
+
+name: Release Tingra Cameras
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release, MAJOR.MINOR.PATCH. Blank = the -dev version on the branch with its suffix dropped."
+        required: false
+        type: string
+      dev_bump:
+        description: "Reopen the branch on the next -dev version after publishing"
+        required: false
+        default: true
+        type: boolean
+      dry_run:
+        description: "Rehearse: run every preflight and print the plan, change nothing"
+        required: false
+        default: false
+        type: boolean
+      skip_tests:
+        description: "Skip the Format & Test gate (for resuming a release that already passed it)"
+        required: false
+        default: false
+        type: boolean
+
+# One release at a time; never cancel one in flight, since a cancelled run can
+# leave a pushed tag without a published release.
+concurrency:
+  group: release-cameras
+  cancel-in-progress: false
+
+env:
+  DEVELOPER_DIR: /Applications/Xcode_27.0.app/Contents/Developer
+  # A local label for the keychain profile this job creates — not a secret, and
+  # unrelated to the developer's own profile name.
+  TINGRA_NOTARY_PROFILE: tingra-ci-notary
+
+jobs:
+  verify:
+    name: Pre-release gate
+    if: ${{ !inputs.skip_tests }}
+    uses: ./.github/workflows/format-test.yml
+
+  release:
+    name: Build, sign, notarize, publish & tap
+    needs: verify
+    # `needs` alone would skip this job when the gate is skipped, so accept both
+    # a green gate and a deliberately skipped one.
+    if: ${{ always() && (needs.verify.result == 'success' || needs.verify.result == 'skipped') }}
+    runs-on: xcode-27
+    permissions:
+      contents: write
+    steps:
+      # First, before the checkout: an absent TINGRA_RELEASE_TOKEN would
+      # otherwise surface as an opaque git authentication failure.
+      - name: Check the release secrets are configured
+        env:
+          TINGRA_RELEASE_TOKEN: ${{ secrets.TINGRA_RELEASE_TOKEN }}
+          TINGRA_CERT_P12: ${{ secrets.TINGRA_CERT_P12 }}
+          TINGRA_CERT_PASSWORD: ${{ secrets.TINGRA_CERT_PASSWORD }}
+          TINGRA_SIGN_ID: ${{ secrets.TINGRA_SIGN_ID }}
+          TINGRA_NOTARY_KEY_P8: ${{ secrets.TINGRA_NOTARY_KEY_P8 }}
+          TINGRA_NOTARY_KEY_ID: ${{ secrets.TINGRA_NOTARY_KEY_ID }}
+          TINGRA_NOTARY_ISSUER_ID: ${{ secrets.TINGRA_NOTARY_ISSUER_ID }}
+        run: |
+          # Fail here rather than three quarters of the way through a release:
+          # without these the packaging script falls back to an unsigned image,
+          # which must never reach the tap.
+          missing=()
+          for name in TINGRA_RELEASE_TOKEN TINGRA_CERT_P12 TINGRA_CERT_PASSWORD \
+                      TINGRA_SIGN_ID TINGRA_NOTARY_KEY_P8 TINGRA_NOTARY_KEY_ID; do
+            [ -n "${!name}" ] || missing+=("$name")
+          done
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::missing required repository secrets: ${missing[*]} — see the header of .github/workflows/release-cameras.yml"
+            exit 1
+          fi
+          # An issuer ID that is not a UUID reaches notarytool as a usage error
+          # (exit 64) with no indication of which secret is wrong.
+          if [ -n "$TINGRA_NOTARY_ISSUER_ID" ] &&
+             ! [[ "$TINGRA_NOTARY_ISSUER_ID" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]]; then
+            echo "::error::TINGRA_NOTARY_ISSUER_ID is not a UUID. It must be the Issuer ID shown above the key table on the App Store Connect API page (Team Keys tab) — not the Key ID, which is TINGRA_NOTARY_KEY_ID. An Individual API key has no Issuer ID: delete the secret entirely and this job omits the --issuer argument."
+            exit 1
+          fi
+          echo "all required release secrets are present."
+
+      - uses: actions/checkout@v4
+        with:
+          # Tags are needed: release-cameras.sh refuses a version that already
+          # shipped, and a shallow clone has none of them to check against.
+          fetch-depth: 0
+          # The PAT, not GITHUB_TOKEN — the same credential pushes the bump
+          # commit and tag here and the rendered cask to the tap repo.
+          token: ${{ secrets.TINGRA_RELEASE_TOKEN }}
+
+      - name: Configure git and gh
+        env:
+          GH_TOKEN: ${{ secrets.TINGRA_RELEASE_TOKEN }}
+        run: |
+          # The Actions bot identity, not a person's: CLAUDE.md "Signing" keeps
+          # anything personal to one developer out of tracked files.
+          # release-cameras.sh authors the tap commit with whatever is
+          # configured here.
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # The tap is a second clone in a temp directory, which does not inherit
+          # the per-repo credentials actions/checkout wrote — hence gh's global
+          # credential helper.
+          gh auth setup-git --hostname github.com
+
+      - name: Prepare the signing keychain
+        env:
+          CERT_P12: ${{ secrets.TINGRA_CERT_P12 }}
+          CERT_PASSWORD: ${{ secrets.TINGRA_CERT_PASSWORD }}
+          NOTARY_KEY_P8: ${{ secrets.TINGRA_NOTARY_KEY_P8 }}
+          NOTARY_KEY_ID: ${{ secrets.TINGRA_NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.TINGRA_NOTARY_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          KEYCHAIN="$RUNNER_TEMP/tingra-signing.keychain-db"
+          KEYCHAIN_PW="$(uuidgen)"
+          security create-keychain -p "$KEYCHAIN_PW" "$KEYCHAIN"
+          # Six-hour idle timeout, no lock on sleep: notarization can be slow,
+          # and a relocked keychain mid-release fails with an opaque -60008.
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PW" "$KEYCHAIN"
+
+          # Import the .p12. Never print the identity it contains — the
+          # certificate's common name carries the Team ID and this log is
+          # public.
+          CERT_FILE="$RUNNER_TEMP/application.p12"
+          printf '%s' "$CERT_P12" | base64 --decode > "$CERT_FILE"
+          security import "$CERT_FILE" -k "$KEYCHAIN" -P "$CERT_PASSWORD" -T /usr/bin/codesign
+          rm -f "$CERT_FILE"
+          echo "imported the application identity."
+
+          # Let codesign (which xcodebuild's archive and export call) use the
+          # imported key without a UI prompt, and put the keychain in the search
+          # list ahead of the existing ones, where xcodebuild looks for the
+          # identity.
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PW" "$KEYCHAIN" > /dev/null
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+
+          # Recreate the notarytool keychain profile from the App Store Connect
+          # API key. store-credentials validates the credentials as it writes,
+          # so bad keys stop the release here rather than after the tag is
+          # pushed.
+          KEY_FILE="$RUNNER_TEMP/notary-key.p8"
+          printf '%s' "$NOTARY_KEY_P8" | base64 --decode > "$KEY_FILE"
+          # --issuer is required for a Team API key and rejected for an
+          # Individual one, so it follows the secret rather than being fixed.
+          issuer_arg=()
+          if [ -n "${NOTARY_ISSUER_ID:-}" ]; then
+            issuer_arg=(--issuer "$NOTARY_ISSUER_ID")
+          fi
+          if ! xcrun notarytool store-credentials "$TINGRA_NOTARY_PROFILE" \
+            --key "$KEY_FILE" \
+            --key-id "$NOTARY_KEY_ID" \
+            "${issuer_arg[@]+"${issuer_arg[@]}"}" \
+            --keychain "$KEYCHAIN"; then
+            rm -f "$KEY_FILE"
+            echo "::error::Apple rejected the notarization credentials. Check, in order: (1) an Individual API key must have NO issuer — delete TINGRA_NOTARY_ISSUER_ID; a Team key must have the exact Issuer ID from the App Store Connect API page. (2) TINGRA_NOTARY_KEY_ID must match the key the .p8 came from, with no stray whitespace. (3) the key's role must be Developer or higher. (4) TINGRA_NOTARY_KEY_P8 must be the base64 of that same .p8."
+            exit 1
+          fi
+          rm -f "$KEY_FILE"
+
+          # notarytool reads the login keychain unless told otherwise, so the
+          # packaging script has to be pointed at this one.
+          echo "TINGRA_NOTARY_KEYCHAIN=$KEYCHAIN" >> "$GITHUB_ENV"
+
+      - name: Cut, publish and tap the release
+        env:
+          GH_TOKEN: ${{ secrets.TINGRA_RELEASE_TOKEN }}
+          TINGRA_SIGN_ID: ${{ secrets.TINGRA_SIGN_ID }}
+          TINGRA_RELEASE_BRANCH: ${{ github.ref_name }}
+          # Read into the shell rather than interpolated into it: a dispatch
+          # input is untrusted text and `${{ }}` in a run block is substituted
+          # before bash ever sees it.
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_DEV_BUMP: ${{ inputs.dev_bump }}
+          INPUT_DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          args=(--yes)
+          if [ -n "$INPUT_VERSION" ]; then
+            args+=(--version "$INPUT_VERSION")
+          fi
+          if [ "$INPUT_DEV_BUMP" != "true" ]; then
+            args+=(--no-dev-bump)
+          fi
+          if [ "$INPUT_DRY_RUN" = "true" ]; then
+            args+=(--dry-run)
+          fi
+          scripts/release-cameras.sh "${args[@]}"
+
+      # A copy of what shipped, kept with the run for after-the-fact inspection.
+      # The release itself already carries it; nothing is there on a dry run.
+      - name: Upload the disk image
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: tingra-cameras-arm64
+          if-no-files-found: ignore
+          path: dist/tingra-cameras/*.dmg

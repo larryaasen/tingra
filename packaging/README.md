@@ -1,10 +1,12 @@
 # Packaging
 
-How `tingra-cli` is built, signed, notarized, and distributed, and how
-`TingraPlugInSDK` is built and published. The full rationale lives in
-[docs/CLI.md](../docs/CLI.md) "Distribution" and
+How `tingra-cli` and Tingra Cameras are built, signed, notarized, and
+distributed, and how `TingraPlugInSDK` is built and published. The full
+rationale lives in [docs/CLI.md](../docs/CLI.md) "Distribution",
+[docs/RELEASE.md](../docs/RELEASE.md) "Releasing Tingra Cameras", and
 [docs/PLUGINS.md](../docs/PLUGINS.md), Decision 37; this directory holds the
-concrete recipe. The SDK's part is at the end, in "The plug-in SDK".
+concrete recipe. Tingra Cameras has its own part, "Tingra Cameras", and the
+SDK's is at the end, in "The plug-in SDK".
 
 ## Artifacts
 
@@ -213,6 +215,86 @@ To run any step by hand instead of `release-cli-publish.sh`:
 `.github/workflows/release-cli.yml` automates all three in CI, including the tap
 push — it holds a PAT with write access to both repositories, which is what
 `GITHUB_TOKEN` alone could not give it.
+
+## Tingra Cameras
+
+Tingra Cameras releases on its own version and tags, `cameras-v<x.y.z>`, with
+its own GitHub releases, marked not latest so the repository's latest release
+stays the engine's ([docs/RELEASE.md](../docs/RELEASE.md), Decision C2). Its
+version is `TINGRA_CAMERAS_VERSION` in `apps/tingra-cameras/Tingra.xcconfig`.
+
+**The artifact** is one disk image, `Tingra-Cameras-<version>-arm64.dmg`,
+holding the app and an `/Applications` symlink. The app is notarized and
+stapled before it goes into the image, and the image is then signed,
+notarized, and stapled on its own, so the app opens offline after it is
+dragged out. `scripts/release-app-package.sh --app cameras [version]` builds
+it into `dist/tingra-cameras/`, and touches nothing else in `dist/`:
+
+- **Archive** with the Developer ID Application identity and manual signing,
+  `ARCHS=arm64` on the command line (a project's `ARCHS` does not reach its
+  package frameworks), and the team read from `TINGRA_SIGN_ID`'s suffix.
+  An unsigned archive records no entitlements, so its export would ship an
+  app that cannot open a camera.
+- **Export** with the `developer-id` method. The export options list names the
+  team, so the script generates it into the app's git-ignored
+  `.build/xcodebuild` at run time.
+- **Verify:** the bundle identifier, both version keys, the icon, both kit
+  frameworks embedded, every binary arm64-only and uninstrumented, the
+  Developer ID authority, team, hardened runtime, and timestamp on the app and
+  each kit, and exactly the two expected entitlements (no `get-task-allow`).
+- **Run** `Tingra Cameras --version` on a copy of the staged app. The copy is
+  deliberate: once a bundle whose code is already notarized has run, the
+  system protects it and the stapler cannot write into it (error 73).
+- **Notarize, staple, image, sign, notarize, staple,** then mount the image and
+  run the app inside it.
+- **Unregister** every copy it built from Launch Services on exit, however it
+  exits.
+
+Without `TINGRA_SIGN_ID` it builds, verifies, runs, and images an unsigned
+development app, which must never be published. It reads the same
+`TINGRA_SIGN_ID`, `TINGRA_NOTARY_PROFILE`, and `TINGRA_NOTARY_KEYCHAIN` as the
+CLI's packaging. The app needs no provisioning profile and no installer
+identity.
+
+**Cutting a release.** Normally in CI: Actions → **Release Tingra Cameras** →
+*Run workflow* (`.github/workflows/release-cameras.yml`), which reads the same
+secrets as the CLI's release, minus the installer ones. Locally, with the
+signing environment exported:
+
+```sh
+scripts/release-cameras.sh --dry-run   # preflight and the plan, change nothing
+scripts/release-cameras.sh             # prompts for the version
+```
+
+It bumps the version line, commits and pushes it, packages, tags
+`cameras-v<version>`, creates the release with the disk image, renders
+[`homebrew/tingra-cameras.rb`](homebrew/tingra-cameras.rb) into the tap as
+`Casks/tingra-cameras.rb` with this release's `version` and `sha256`, and
+reopens the branch on the next `-dev` version. A run that stops partway
+resumes when run again with the same version: a tag that already names the
+current commit is reused, and one naming any other commit stops the run.
+
+**The cask** downloads the disk image from the release and copies the app into
+`/Applications`. It depends on arm64 and macOS 26 (`depends_on macos:
+:tahoe`, a minimum). Its `zap` names files, never a folder:
+`~/Library/Application Support/Tingra` is shared with Tingra.app, so zapping
+this cask removes `camera-presets.json` and its `.unreadable` sibling, the
+preferences file, and the saved application state, and leaves the folder and
+everything else in it. Users install with:
+
+```sh
+brew install --cask larryaasen/tingra/tingra-cameras
+```
+
+**Verifying a published release:**
+
+```sh
+gh release view cameras-v<version> --repo larryaasen/tingra    # the image, not a draft, not latest
+gh release download cameras-v<version> --repo larryaasen/tingra --pattern '*.dmg'
+shasum -a 256 Tingra-Cameras-<version>-arm64.dmg                # equals the tap cask's sha256
+xcrun stapler validate Tingra-Cameras-<version>-arm64.dmg
+spctl --assess --type open --context context:primary-signature -vv Tingra-Cameras-<version>-arm64.dmg
+```
 
 ## The plug-in SDK
 

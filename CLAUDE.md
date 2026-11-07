@@ -74,11 +74,13 @@ docs/                           # The project documentation set (ARCHITECTURE.md
 scripts/                        # Formatting scripts (format-swift.sh, check-format.sh), the
                                 #   streaming integration tests (integration-test.sh), and the
                                 #   release scripts (release-cli*.sh, release-sdk.sh,
-                                #   release-app-package.sh)
-packaging/                      # Release templates: the Homebrew formula (homebrew/) and the
-                                #   TingraPlugInSDK repo's manifest and README (sdk/)
+                                #   release-app-package.sh, release-cameras.sh)
+packaging/                      # Release templates: the Homebrew formula and the Tingra
+                                #   Cameras cask (homebrew/) and the TingraPlugInSDK repo's
+                                #   manifest and README (sdk/)
 .github/workflows/              # GitHub Actions CI: format-test.yml, integration.yml,
-                                #   release-cli.yml, release-sdk.yml (see Toolchain & CI)
+                                #   release-cli.yml, release-sdk.yml, release-cameras.yml
+                                #   (see Toolchain & CI)
 ```
 
 The package names are **finalized** (reviewed 2026-07-03; also recorded in "Repository structure" in [ARCHITECTURE.md](docs/ARCHITECTURE.md)): `TingraEventBus`, `TingraPlugInKit`, and `TingraHost` under `packages/`, and `apps/tingra-cli` (executable product `tingra-cli`, module `TingraCLI` — module names can't contain a hyphen).
@@ -152,6 +154,7 @@ Start every Swift source file with this header. `<ModuleName>` is the containing
 | Run the app from a terminal | `scripts/run-app.sh` (builds, signs, and runs it in the foreground so the event log streams to the terminal; `--release`, `--no-run`) |
 | Start the local ingest simulator | `apps/ingest-simulator/sim.sh start` (see [SIMULATOR.md](docs/SIMULATOR.md)) |
 | Run the streaming integration tests | `scripts/integration-test.sh` (generators → simulator, verified server side with ffprobe; needs ffmpeg installed) |
+| Cut a Tingra Cameras release | `scripts/release-cameras.sh` (`--dry-run` to rehearse; bumps, packages, tags `cameras-v<x.y.z>`, publishes, renders the cask; the same script `release-cameras.yml` runs with `--yes`) |
 | Package an app for release | `scripts/release-app-package.sh --app cameras [version]` (archive → export → verify → run → notarize → staple → disk image, into `dist/tingra-cameras/`; signs and notarizes only with `TINGRA_SIGN_ID` and `TINGRA_NOTARY_PROFILE` set, else an unsigned development build; see [RELEASE.md](docs/RELEASE.md), Decision C10) |
 | Format all Swift files | `scripts/format-swift.sh` (swift-format over every package and app; config in the root `.swift-format`) |
 | Check formatting (CI) | `scripts/check-format.sh` (read-only; exits nonzero if `format-swift.sh` would change anything) |
@@ -165,11 +168,12 @@ This repository is public, so **no app secret and nothing personal to one develo
 
 ## Toolchain & CI
 - **Toolchain floor: Xcode 27.0 and Swift 6.4** (pinned 2026-10-03; Xcode 26.6 and Swift 6.3.3 until then). Develop and build with these minimums; every `Package.swift` still declares `swift-tools-version: 6.3.3`, the oldest manifest format it needs (see Swift Language & Idioms). This is the *development* toolchain floor — the *deployment* target (macOS 15.0+, Apple Silicon only) is separate; see Platform Support.
-- **CI runs on GitHub Actions (macOS runners).** Every workflow runs on the `xcode-27` arm64 image (macOS 27) with `DEVELOPER_DIR` pinned to Xcode 27.0 — the image also carries 27.1 and a 27.2 beta, so the pin is explicit rather than the image's default. There are four, each named for what it does:
+- **CI runs on GitHub Actions (macOS runners).** Every workflow runs on the `xcode-27` arm64 image (macOS 27) with `DEVELOPER_DIR` pinned to Xcode 27.0 — the image also carries 27.1 and a 27.2 beta, so the pin is explicit rather than the image's default. There are five, each named for what it does:
   - **`format-test.yml`** — the every-push/every-PR workflow: **formatting verification** (`scripts/check-format.sh`), **unit tests** (`swift test` per package, Swift Testing; generators and mocks mean no camera, microphone, or TCC authorization is needed on runners), and **warning-clean builds** of every package and app (see Other Rules, Strict Compilation). Also `workflow_call`-able, which is how the release workflow gates on it.
   - **`integration.yml`** — **integration tests** against the local ingest simulator ([SIMULATOR.md](docs/SIMULATOR.md)); a separate workflow, run on streaming/output changes rather than blocking every PR.
   - **`release-cli.yml`** — the **whole `tingra-cli` release**, on manual dispatch: gate on `format-test.yml`, bump the version, build, sign, notarize, tag, publish the GitHub release, and push the rendered formula to the Homebrew tap. Apple Silicon (arm64) only. Release artifacts are Developer ID signed (hardened runtime; identifiers under `com.moonwink.tingra.*`) and notarized via `notarytool`; each release ships a zip for the Homebrew tap (bare binaries can't be stapled — Gatekeeper checks the ticket online) plus a stapled `.pkg` for offline installs. It is a thin wrapper over `scripts/release-cli.sh --yes`, the same script used locally, so the two paths cannot drift. See [CLI.md](docs/CLI.md) "Distribution" for the full recipe (embedded `__info_plist`, entitlements, CI verification) and the workflow's own header for the secrets it needs. Signing certificates, the notarization API key, and the release token live in GitHub Actions secrets, never in the repo.
   - **`release-sdk.yml`** — the **`TingraPlugInSDK` release**, on manual dispatch: gate on `format-test.yml`, archive the two kits as arm64 XCFrameworks with Library Evolution and their `.swiftinterface`, build a probe plug-in against the interfaces alone, sign each with the Developer ID Application identity (a library is not notarized), tag `plugin-kit-<x.y.z>` and `event-bus-<x.y.z>` here, and publish the manifest and zips to the public `larryaasen/tingra-plug-in-sdk` (see [PLUGINS.md](docs/PLUGINS.md), Decision 37). The version is `PlugInKitVersion.current`, never bumped by the workflow. A thin wrapper over `scripts/release-sdk.sh --yes`; without `TINGRA_SIGN_ID` the script builds an unsigned development SDK into `dist/sdk` and publishes nothing. Built at the toolchain floor, because a `.swiftinterface` written by a newer compiler may not build under an older Xcode; the script reads the floor from this workflow's `DEVELOPER_DIR`.
+  - **`release-cameras.yml`** — the **Tingra Cameras release**, on manual dispatch: gate on `format-test.yml`, bump `TINGRA_CAMERAS_VERSION`, archive and export with the Developer ID identity, verify and run the app, notarize and staple the app and its disk image, tag `cameras-v<x.y.z>`, publish a GitHub release not marked latest, and push the rendered cask to the Homebrew tap. A thin wrapper over `scripts/release-cameras.sh --yes`, which calls `scripts/release-app-package.sh --app cameras`. It reads the same secrets as `release-cli.yml`, minus the installer identity; the app needs no provisioning profile (see [RELEASE.md](docs/RELEASE.md), "Releasing Tingra Cameras").
   - Any other CI needs as they arise.
 - PRs must pass formatting, build, and unit tests before merge.
 
