@@ -1756,6 +1756,16 @@ there.
   lamp follows the toggle. The later slices are tracked in TODO.md. Record:
   ARCHITECTURE.md, "Audio follows video".
 
+### From “UVC camera controls”
+
+- [x] **Larry: the Tingra Cameras controls panel, checked by hand** *(Larry,
+  2026-11-07)*. With the Razer selected, the trailing sidebar's panel shows
+  the sliders and the three Auto switches, and a slider an Auto switch
+  governs greys out.
+- [x] A choice kind in the kit, for power line frequency (2026-10-30).
+- [x] Named profiles in Tingra Cameras, like the vendor utility's: built
+  as camera presets (2026-10-28; UVC.md, "Camera presets").
+
 ## Clock and timing
 
 - [x] **Streamed audio sat behind video by the time the destination took to

@@ -285,16 +285,11 @@ and timing", unless one of its sections fits better.
   2026-10-27: the `TingraUVC` package, the kit's toggle kind,
   `automaticToggleKey`, `section`, and `Input.currentParameters()`, the
   camera input's parameters, and the Tingra Cameras controls panel).
-  - [ ] Larry: select the Razer in Tingra Cameras and check the panel
-    in the trailing sidebar — sliders, the three Auto switches, and a governed
-    slider greying out. A session could not drive the window.
+  Finished parts are in DONE.md, under "From “UVC camera controls”".
   - [ ] A camera's controls in the main app: its Input Settings popover
     hangs off a mixer strip, and a camera has none; the camera layer's
     inspector is the likely home.
-  - [x] A choice kind in the kit, for power line frequency (2026-10-30).
   - [ ] Auto exposure priority, now that the kit has a choice kind.
-  - [x] Named profiles in Tingra Cameras, like the vendor utility's: built
-    as camera presets (2026-10-28; UVC.md, "Camera presets").
 
 ## Clock and timing
 
