@@ -17,8 +17,10 @@ import TingraPlugInKit
 /// the mixer, each a **column** laid out as a console strip —
 /// the name, the Effects button, the pan slider, the peak-hold readout, the
 /// fader standing beside the meter, the level readout, and the mute at the
-/// foot (GLOSSARY.md, "Mixer", "Channel strip", "Fader"; ARCHITECTURE.md,
-/// "The console mixer"). Every strip mixes into the program audio the
+/// foot, with **Audio Follows Video** and **Remove from Mixer** in the
+/// strip's context menu (GLOSSARY.md, "Mixer", "Channel strip", "Fader",
+/// "Audio follows video"; ARCHITECTURE.md, "The console mixer", "Audio
+/// follows video"). Every strip mixes into the program audio the
 /// stream carries, and muting a strip also stops its device so the
 /// microphone indicator stays honest (ARCHITECTURE.md, "The audio mixer").
 /// Strip settings persist in the active preset; a strip whose device is
@@ -42,7 +44,8 @@ import TingraPlugInKit
 /// Faders read in decibels through ``FaderScale`` while the engine and the
 /// document keep linear gain. Level and pan edits apply live, tick by tick,
 /// like the layer sliders; each control reports its own `tap` event right
-/// where it executes — the mute toggle on flip, the sliders at drag end
+/// where it executes — the mute and the Audio Follows Video menu toggle on
+/// flip, the sliders at drag end
 /// (EVENTS.md, "The `tap` convention"). A double-click returns a fader to
 /// unity and the pan slider to center, the macOS convention for a control
 /// with a meaningful default, each reporting its own reset `tap`.
@@ -396,8 +399,9 @@ struct MixerView: View {
     /// Input Settings buttons — or, while the strip's device is absent, a
     /// **Not connected** caption in their place (``notConnectedCaption``) —
     /// then the controls (``stripControls(_:)``), drawn disabled and dimmed
-    /// while the device is absent, and the column's Remove from Mixer context
-    /// menu, which works either way.
+    /// while the device is absent, and the column's context menu: the Audio
+    /// Follows Video toggle, disabled with the controls, and Remove from
+    /// Mixer, which works either way.
     ///
     /// The name wraps to **two lines** (Larry, 2026-09-13) — a device name
     /// like "MacBook Pro Microphone" is three words, and one line at 92
@@ -450,6 +454,21 @@ struct MixerView: View {
         // The whole column answers the right-click, not just its controls.
         .contentShape(.rect)
         .contextMenu {
+            // Audio follows video is set once per strip and rarely touched,
+            // so it lives here rather than taking a key on the strip's face
+            // (Larry, 2026-11-07). Disabled while the device is absent, like
+            // the strip's other controls; Remove from Mixer works either way.
+            Toggle(isOn: afvBinding(for: strip.id)) {
+                Text(
+                    "Audio Follows Video",
+                    comment:
+                        "Context menu toggle on a channel strip: the strip feeds the program only while its input is on program"
+                )
+            }
+            .disabled(!isConnected)
+
+            Divider()
+
             Button(role: .destructive) {
                 model.eventBus.tap(
                     "mixerRemoveChannel.menuItem",
@@ -670,6 +689,21 @@ struct MixerView: View {
                 params: ["id": .string(id.rawValue), "muted": .bool(newValue)]
             )
             Task { await model.setStripMuted(newValue, forStrip: id) }
+        }
+    }
+
+    /// A live binding to one strip's audio-follows-video setting, reporting
+    /// the `tap` before the model applies it to the mix.
+    private func afvBinding(for id: InputID) -> Binding<Bool> {
+        Binding {
+            model.mixerStrips.first { $0.id == id }?.isFollowingProgram ?? false
+        } set: { newValue in
+            model.eventBus.tap(
+                "mixerAFV.toggle",
+                domain: .audio,
+                params: ["id": .string(id.rawValue), "on": .bool(newValue)]
+            )
+            model.setStripFollowsProgram(newValue, forStrip: id)
         }
     }
 

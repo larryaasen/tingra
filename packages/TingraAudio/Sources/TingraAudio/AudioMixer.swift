@@ -66,6 +66,14 @@ import TingraPlugInKit
 /// going. The two latch independently and their gains multiply, so neither
 /// can undo the other.
 ///
+/// Between the strips and the master sits each strip's **program presence**
+/// (``setProgramPresence(_:forInput:rampDuration:)``), the engine half of
+/// **audio follows video** (GLOSSARY.md): a per-input gain, post-fader and
+/// multiplied with level and pan, that the caller ramps down while the
+/// input's picture is off program and back up when it is taken — over a
+/// transition's duration, or one block for a cut. The mixer knows nothing of
+/// shots; the caller decides presence. An input never set is present.
+///
 /// The mixer emits from its first tick — silence before any strip delivers —
 /// so the program mix, like the program video, is a live canvas at the tick
 /// rate from the moment it starts. Level, pan, and mute changes are gesture-rate
@@ -80,7 +88,8 @@ import TingraPlugInKit
 /// over to every block the mixer yields.
 ///
 /// The mutating controls (``setChannelStrips(_:)``, ``setLevel(_:forInput:)``,
-/// ``setPan(_:forInput:)``, ``setMuted(_:forInput:)``, ``start()``,
+/// ``setPan(_:forInput:)``, ``setMuted(_:forInput:)``,
+/// ``setProgramPresence(_:forInput:rampDuration:)``, ``start()``,
 /// ``stop()``) are meant to be driven
 /// from one context (the app's main actor); they are internally locked but
 /// not designed for concurrent callers racing each other — the same contract
@@ -132,8 +141,87 @@ public final class AudioMixer: Sendable {
         /// long enough not to click.
         var mute = MasterFade()
 
+        /// Each input's **program presence** — whether its strip reaches the
+        /// program mix under audio follows video (GLOSSARY.md, "Audio
+        /// follows video") — keyed by input id **independently of
+        /// ``channels``**, so a caller can set it before the strip joins the
+        /// mix. An input with no entry is present; an entry that comes to
+        /// rest present is dropped, so the map holds only what differs from
+        /// the default. Survives ``AudioMixer/stop()``: it mirrors the
+        /// program, which the caller owns.
+        var presence: [InputID: PresenceRamp] = [:]
+
         /// The running mix task, while started.
         var mixTask: Task<Void, Never>?
+    }
+
+    /// One input's program-presence gain and its ramp, counted in mix blocks
+    /// like the master fade (ARCHITECTURE.md, "Audio follows video").
+    ///
+    /// The gain travels from where it was when last retargeted
+    /// (``startGain``) to the target (`0` or `1`) over a whole number of
+    /// blocks, as an integer position over an integer total — divided, never
+    /// accumulated, for ``MasterFade``'s reason. Unlike the master fade it
+    /// re-times from the **current** gain rather than rescaling a fixed
+    /// full-travel slope: a take made mid-crossfade is a new transition,
+    /// which runs its own duration from wherever the sound had reached, and
+    /// rescaling a long travel onto a one-block cut would round the gain to
+    /// an endpoint — a jump, which clicks. At rest the gain *is* the target,
+    /// returned rather than computed, so both endpoints are exact and a strip
+    /// brought back up mixes byte-identically to one that never went down.
+    struct PresenceRamp {
+        /// The gain the current travel started from, `0`...`1`.
+        var startGain: Double = 1
+
+        /// The gain the travel is heading for: `1` (present) or `0`
+        /// (absent). The **latch**.
+        var targetGain: Double = 1
+
+        /// The number of mix blocks the current travel spans, at least one.
+        var totalBlocks: Int = 1
+
+        /// How far along the current travel the gain sits,
+        /// `0`...``totalBlocks``; at ``totalBlocks`` the ramp is at rest.
+        var position: Int = 1
+
+        /// The input's current presence gain — exactly the target at rest.
+        var gain: Double {
+            guard position < totalBlocks else { return targetGain }
+            return startGain + (targetGain - startGain) * Double(position) / Double(totalBlocks)
+        }
+
+        /// The gain this block ends at — where ``gain`` will be once the
+        /// block has been rendered, for per-sample interpolation across it.
+        var endGain: Double {
+            var next = self
+            next.advance()
+            return next.gain
+        }
+
+        /// Whether the input is present on program or on its way there.
+        var isPresent: Bool { targetGain > 0 }
+
+        /// Whether the ramp is at rest fully present — the default state,
+        /// in which the presence stage leaves a strip untouched.
+        var isRestingPresent: Bool { position >= totalBlocks && targetGain == 1 }
+
+        /// Advances the ramp by one block, stopping at rest.
+        mutating func advance() {
+            if position < totalBlocks { position += 1 }
+        }
+
+        /// Points the ramp at present or absent over `totalBlocks` blocks,
+        /// starting from the gain it has reached.
+        ///
+        /// - Parameters:
+        ///   - present: `true` to head for unity, `false` for silence.
+        ///   - newTotal: The block count the travel spans (at least 1).
+        mutating func retarget(present: Bool, totalBlocks newTotal: Int) {
+            startGain = gain
+            targetGain = present ? 1 : 0
+            totalBlocks = max(1, newTotal)
+            position = 0
+        }
     }
 
     /// The master fade's latching state and its ramp, counted in mix blocks
@@ -451,6 +539,67 @@ public final class AudioMixer: Sendable {
         }
     }
 
+    /// Points one input's **program presence** at present or absent, ramping
+    /// over `rampDuration` — the engine half of **audio follows video**
+    /// (GLOSSARY.md; ARCHITECTURE.md, "Audio follows video").
+    ///
+    /// The presence gain applies **post-fader**, multiplied with the strip's
+    /// level and pan: a strip whose input is absent from program contributes
+    /// nothing to the mix, while its pre-fader strip meter keeps reading what
+    /// the input delivers. Mute still wins — a muted strip is silent whatever
+    /// its presence. The mixer has no idea what a shot is (`TingraAudio` does
+    /// not import `TingraComposition`): the caller decides which inputs are
+    /// on program and drives this, and an input whose presence was never set
+    /// is present, so a caller that never uses audio follows video mixes
+    /// exactly as before.
+    ///
+    /// The ramp is linear, counted in mix blocks, and interpolated per
+    /// sample: a transition's crossfade passes its duration; a **cut** passes
+    /// zero and gets the one-block minimum — instant to the ear, with no
+    /// click. A call while a ramp is in flight re-times from the gain it has
+    /// reached. An input not on the mix yet lands on its presence at once —
+    /// there is nothing audible to ramp — so a strip added absent never
+    /// mixes a single block. Presence is **latching state**: a call with the presence
+    /// already in effect does nothing — not even re-timing an in-flight
+    /// ramp — so the caller can re-assert it freely. Keyed by input id
+    /// independently of the strips, so it may be set before
+    /// ``setChannelStrips(_:)`` adds the input and survives its removal and
+    /// ``stop()``. Gesture-rate, like ``setLevel(_:forInput:)``: reports no
+    /// event.
+    ///
+    /// - Parameters:
+    ///   - present: Whether the input's strip should reach the program mix.
+    ///   - id: The strip's input id.
+    ///   - rampDuration: The ramp length in seconds (default `0`: a cut).
+    ///     Clamped to at least one block.
+    public func setProgramPresence(_ present: Bool, forInput id: InputID, rampDuration: TimeInterval = 0) {
+        let blocks = Self.blockCount(for: rampDuration, format: format)
+        state.withLock { state in
+            var ramp = state.presence[id] ?? PresenceRamp()
+            guard ramp.isPresent != present else { return }
+            guard state.channels[id] != nil else {
+                // Not on the mix, so nothing is audible to ramp: land on the
+                // target at once, so a strip added absent never mixes even
+                // the one declick block a cut would give it.
+                state.presence[id] = present ? nil : PresenceRamp(startGain: 0, targetGain: 0)
+                return
+            }
+            ramp.retarget(present: present, totalBlocks: blocks)
+            state.presence[id] = ramp
+        }
+    }
+
+    /// Whether an input is present on program or on its way there — the
+    /// latch ``setProgramPresence(_:forInput:rampDuration:)`` sets, not the
+    /// ramp's current position. An input never set is present.
+    ///
+    /// - Parameter id: The input to ask about.
+    /// - Returns: Whether the input's strip reaches, or is heading to reach,
+    ///   the program mix.
+    public func isPresentOnProgram(_ id: InputID) -> Bool {
+        state.withLock { $0.presence[id]?.isPresent ?? true }
+    }
+
     /// Fades the **master** — everything leaving the mixer once every channel
     /// strip has contributed (GLOSSARY.md, "Master") — down to silence over
     /// `duration`, or back up, and **latches** there.
@@ -644,7 +793,10 @@ public final class AudioMixer: Sendable {
     /// processors, not generators). While a meter consumer is attached,
     /// the same walk also measures each channel's consumed samples
     /// pre-fader — after the chain, before level, pan, and mute — and
-    /// yields the tick's ``MeterBlock``. Last of all, while the **master
+    /// yields the tick's ``MeterBlock``. Each strip's contribution is also
+    /// scaled by its **program presence** while that is anything but at rest
+    /// present — interpolated per sample, and skipped entirely while absent
+    /// at rest — and every presence ramp advances once. Last of all, while the **master
     /// fade** or the **master mute** is anything but fully open, the summed
     /// block is scaled by the master's ramping gain — the two multiplied — downstream of every strip and upstream of the
     /// post-fader master reading, both of which read the same summed arrays.
@@ -688,25 +840,38 @@ public final class AudioMixer: Sendable {
                             readings[id] = Self.meterReading(over: block, frames: use)
                         }
                         let gain = channel.isMuted ? 0 : Float(max(0, channel.level))
-                        if gain > 0, use > 0 {
+                        // Program presence (audio follows video), post-fader:
+                        // nil while the strip is at rest present — the
+                        // default — so a strip that never left program mixes
+                        // byte-identically to one with no presence at all.
+                        let presence = state.presence[id].flatMap { ramp -> (first: Float, slope: Float)? in
+                            guard !ramp.isRestingPresent else { return nil }
+                            let first = Float(ramp.gain)
+                            return (first, Float(ramp.endGain - ramp.gain) / Float(frames))
+                        }
+                        let isAbsent = presence.map { $0.first == 0 && $0.slope == 0 } ?? false
+                        if gain > 0, use > 0, !isAbsent {
                             let pan = Self.panGains(channel.pan)
                             let leftGain = gain * pan.left
                             let rightGain = gain * pan.right
-                            if block.count == 1 {
-                                // Mono spreads into both program channels through
-                                // the pan gains — a constant-power panner.
-                                let mono = block[0]
+                            // Mono spreads into both program channels through
+                            // the pan gains — a constant-power panner. Stereo
+                            // (and wider) maps its first two channels through
+                            // them — a balance: each channel is scaled, never
+                            // folded into the other; the rest are dropped at
+                            // the mix.
+                            let sourceLeft = block[0]
+                            let sourceRight = block.count == 1 ? block[0] : block[1]
+                            if let presence {
+                                // Interpolated per sample across the block,
+                                // like the master fade, so a crossfade has no
+                                // zipper.
                                 for i in 0..<use {
-                                    left[i] += mono[i] * leftGain
-                                    right[i] += mono[i] * rightGain
+                                    let ramp = presence.first + presence.slope * Float(i)
+                                    left[i] += sourceLeft[i] * leftGain * ramp
+                                    right[i] += sourceRight[i] * rightGain * ramp
                                 }
                             } else {
-                                // Stereo (and wider) maps its first two channels
-                                // through the pan gains — a balance: each channel
-                                // is scaled, never folded into the other; the
-                                // rest are dropped at the mix.
-                                let sourceLeft = block[0]
-                                let sourceRight = block[1]
                                 for i in 0..<use {
                                     left[i] += sourceLeft[i] * leftGain
                                     right[i] += sourceRight[i] * rightGain
@@ -714,6 +879,16 @@ public final class AudioMixer: Sendable {
                             }
                         }
                         state.channels[id] = channel
+                    }
+                    // Every presence ramp advances once per block, whether or
+                    // not its input is on the mixer this tick — time passes
+                    // for a crossfade either way — and one at rest present is
+                    // dropped, since that is the default.
+                    for id in Array(state.presence.keys) {
+                        state.presence[id]?.advance()
+                        if state.presence[id]?.isRestingPresent == true {
+                            state.presence[id] = nil
+                        }
                     }
                     // The master fade, last: downstream of every strip's
                     // chain, level, pan, and mute, and — because it runs

@@ -59,6 +59,63 @@ struct MixerStrip: Identifiable, Equatable {
     /// through the effect registry. Empty for no chain.
     var effects: [EffectConfiguration] = []
 
+    /// Whether the strip's audio **follows video**: it feeds the program mix
+    /// only while its input is in the program shot (GLOSSARY.md, "Audio
+    /// follows video"; ARCHITECTURE.md, "Audio follows video") — what the
+    /// strip's AFV toggle edits. Nil only while unauthored *and* unresolved:
+    /// a dormant strip from a document that never authored it, whose kind
+    /// discovery has not reported yet. Nil reads as off
+    /// (``isFollowingProgram``) and is persisted as an absent key, so the
+    /// sync-back never freezes that guess into the document — the first
+    /// discovery resolves it by kind (``defaultFollowsProgram(for:)``).
+    var followsProgram: Bool?
+
+    /// Whether the strip's audio follows video, nil read as off — what the
+    /// toggle shows and what program presence is computed from.
+    var isFollowingProgram: Bool { followsProgram ?? false }
+
+    /// The audio-follows-video default for an input of a given provenance:
+    /// **on for media**, off for everything else. A clip's sound comes and
+    /// goes with its picture; a microphone stays live across takes, and a
+    /// generator is a test signal the operator patched on purpose.
+    ///
+    /// - Parameter kind: The input's provenance.
+    /// - Returns: Whether a new strip for it follows video.
+    static func defaultFollowsProgram(for kind: InputKind) -> Bool {
+        kind == .media
+    }
+
+    /// Whether the strip reaches the program mix as far as audio follows
+    /// video is concerned: always when AFV is off, and otherwise only while
+    /// its input is on program. Mute and connection are separate questions
+    /// the caller asks beside this one.
+    ///
+    /// - Parameter programInputs: The inputs in the program shot.
+    /// - Returns: Whether the strip is present on program.
+    func isPresent(onProgram programInputs: Set<InputID>) -> Bool {
+        !isFollowingProgram || programInputs.contains(id)
+    }
+
+    /// The program presence the mixer should hold for every strip, given
+    /// the inputs in the program shot — the membership rule of audio follows
+    /// video as a pure function (ARCHITECTURE.md, "Audio follows video").
+    ///
+    /// Across a take, `programInputs` is the **incoming** shot's: an AFV
+    /// strip whose input only the outgoing shot holds is absent (it ramps
+    /// down), one only the incoming shot holds is present (it ramps up), and
+    /// one both hold is present throughout — it stays up. A strip with AFV
+    /// off is always present, so turning AFV off on a strip that was off
+    /// program brings it back.
+    ///
+    /// - Parameters:
+    ///   - strips: The mixer's strips.
+    ///   - programInputs: The inputs in the program shot.
+    /// - Returns: Each strip's presence, keyed by its input id.
+    static func programPresence(of strips: [MixerStrip], onProgram programInputs: Set<InputID>) -> [InputID: Bool] {
+        Dictionary(
+            strips.map { ($0.id, $0.isPresent(onProgram: programInputs)) }, uniquingKeysWith: { first, _ in first })
+    }
+
     /// Seeds the session's strips from the discovered audio inputs — the
     /// no-authored-audio fallback of ``strips(channels:discovered:preferring:)``:
     /// **one** strip, unmuted at unity and centered — the successor of the
@@ -93,11 +150,17 @@ struct MixerStrip: Identifiable, Equatable {
         // is what an operator asked for by launching the app.
         let devices = inputs.filter { $0.kind != .generator && $0.kind != .media }
         guard let live = devices.first(where: { $0.id == defaultMicrophone }) ?? devices.first else { return [] }
-        return [MixerStrip(id: live.id, name: live.name, level: 1, pan: 0, isMuted: false)]
+        return [
+            MixerStrip(
+                id: live.id, name: live.name, level: 1, pan: 0, isMuted: false,
+                followsProgram: defaultFollowsProgram(for: live.kind))
+        ]
     }
 
     /// The strip an operator's **Add Channel** makes for an input: muted at
-    /// unity, centered, with no effect chain. Muted because adding a channel
+    /// unity, centered, with no effect chain, and audio follows video set
+    /// explicitly by the input's kind (``defaultFollowsProgram(for:)``) —
+    /// on for a video file, off for a microphone or a generator. Muted because adding a channel
     /// is a patch, not opening the fader — an operator adding a microphone
     /// mid-show must never put it on air by doing so; the mute is the one
     /// step that does.
@@ -105,14 +168,17 @@ struct MixerStrip: Identifiable, Equatable {
     /// - Parameter input: The audio input being added.
     /// - Returns: The new strip.
     static func added(_ input: EngineModel.InputChoice) -> MixerStrip {
-        MixerStrip(id: input.id, name: input.name, level: 1, pan: 0, isMuted: true)
+        MixerStrip(
+            id: input.id, name: input.name, level: 1, pan: 0, isMuted: true,
+            followsProgram: defaultFollowsProgram(for: input.kind))
     }
 
     /// The strip placing an input in a shot adds, when that input is a
     /// **media file with sound** that is not on the mixer yet — or nil.
     ///
     /// Putting the file in a shot is the use, so its sound needs no separate
-    /// add; the strip arrives muted, like every added strip (``added(_:)``).
+    /// add; the strip arrives muted, like every added strip (``added(_:)``),
+    /// with audio follows video on — the media default.
     /// Only media qualifies: a microphone or a generator is never added
     /// implicitly, and a camera's or display's picture says nothing about a
     /// sound. The audio list is what decides "has sound" — a media input is
@@ -155,6 +221,10 @@ struct MixerStrip: Identifiable, Equatable {
     ///   settings still editable, contributing silence until the device
     ///   returns — the layer-bound-to-an-undiscovered-input semantic, one
     ///   service over.
+    /// - A channel that never authored audio follows video resolves it by
+    ///   its discovered input's kind (``defaultFollowsProgram(for:)``); a
+    ///   dormant one stays unresolved — off — until its device is
+    ///   discovered (ARCHITECTURE.md, "Audio follows video").
     /// - A discovered input with no authored channel is **not** a strip. It
     ///   was one, muted, until 2026-11-07; but the sync-back authored every
     ///   such strip on the next save, so a device seen once stayed on the
@@ -184,7 +254,8 @@ struct MixerStrip: Identifiable, Equatable {
         let channels = authoredChannels.filter { !PrivateAggregateDevice.matches(uid: $0.input.rawValue) }
         let resolved = resolvedInputs(for: channels, discovered: inputs)
         return zip(channels, resolved).map { channel, id in
-            let discoveredName = inputs.first { $0.id == id }?.name
+            let discovered = inputs.first { $0.id == id }
+            let discoveredName = discovered?.name
             let cachedName = channel.name.isEmpty ? channel.input.rawValue : channel.name
             return MixerStrip(
                 id: id,
@@ -192,7 +263,11 @@ struct MixerStrip: Identifiable, Equatable {
                 level: channel.level,
                 pan: channel.pan,
                 isMuted: channel.isMuted,
-                effects: channel.effects ?? []
+                effects: channel.effects ?? [],
+                // Unauthored resolves by the discovered input's kind; a
+                // dormant strip's kind is not known yet, so it stays
+                // unresolved (off) until its device is discovered.
+                followsProgram: channel.followsProgram ?? discovered.map { defaultFollowsProgram(for: $0.kind) }
             )
         }
     }
@@ -247,12 +322,13 @@ struct MixerStrip: Identifiable, Equatable {
     /// of the active preset's audio configuration. A chainless strip
     /// authors no `effects` key (nil, not an empty list), so a document
     /// that never touched effects encodes exactly as it did before the
-    /// chain existed.
+    /// chain existed; an unresolved ``followsProgram`` authors no
+    /// `followsProgram` key, for the same reason.
     ///
     /// - Returns: The strip's `AudioChannel`.
     var audioChannel: AudioChannel {
         AudioChannel(
             input: id, name: name, level: level, pan: pan, isMuted: isMuted,
-            effects: effects.isEmpty ? nil : effects)
+            effects: effects.isEmpty ? nil : effects, followsProgram: followsProgram)
     }
 }

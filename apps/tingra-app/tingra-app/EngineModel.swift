@@ -2520,9 +2520,42 @@ final class EngineModel {
     /// than second-guessed here. The one change the app cannot observe this
     /// way is a transition *finishing*, which ``scheduleTallyRefresh(after:)``
     /// covers.
-    private func syncTally() {
+    ///
+    /// It is also the choke point for **audio follows video**: every change
+    /// to what is on program passes through here, so it brings the mixer's
+    /// program presence in line too (``syncProgramPresence(rampDuration:)``)
+    /// — ramping over the take's transition, or as a cut for every other
+    /// change (ARCHITECTURE.md, "Audio follows video").
+    ///
+    /// - Parameter transition: The transition the program changed with — a
+    ///   take's; every other change is a cut (the default).
+    private func syncTally(changingProgramWith transition: Transition = .cut) {
         programInputIDs = compositor.programInputIDs
         previewInputIDs = Set(compositor.previewShot?.layers.map(\.input) ?? [])
+        syncProgramPresence(rampDuration: transition.duration)
+    }
+
+    /// Sets the mixer's **program presence** for every strip from the
+    /// inputs in the program shot — the app half of audio follows video,
+    /// since `TingraAudio` knows nothing of shots (ARCHITECTURE.md, "Audio
+    /// follows video").
+    ///
+    /// Reads the **incoming** program shot (``Compositor/programShot``), not
+    /// ``programInputIDs``, which unions the outgoing shot while a
+    /// transition runs: the outgoing shot's AFV strips ramp down while the
+    /// incoming shot's ramp up, and an input in both stays up
+    /// (``MixerStrip/programPresence(of:onProgram:)``). Strips with AFV off
+    /// are always present. Presence is a latch in the mixer, so re-applying
+    /// what is already in effect — the tally refresh at the end of a
+    /// transition, say — never disturbs a crossfade in flight.
+    ///
+    /// - Parameter rampDuration: The crossfade length in seconds; `0` (the
+    ///   default) is a cut.
+    private func syncProgramPresence(rampDuration: TimeInterval = 0) {
+        let programInputs = Set(compositor.programShot.layers.map(\.input))
+        for (id, present) in MixerStrip.programPresence(of: mixerStrips, onProgram: programInputs) {
+            mixer.setProgramPresence(present, forInput: id, rampDuration: rampDuration)
+        }
     }
 
     /// Schedules the one tally refresh the app has no other way to learn
@@ -2667,6 +2700,25 @@ final class EngineModel {
         await reconfigureAudio()
     }
 
+    /// Turns one channel strip's **audio follows video** on or off
+    /// (GLOSSARY.md, "Audio follows video"): with it on, the strip feeds the
+    /// program mix only while its input is in the program shot. Applied to
+    /// the mix at once, as a cut — turning it on for a strip whose input is
+    /// off program takes that strip's sound off air, turning it off brings
+    /// it back — and persisted in the active preset like every strip edit.
+    /// Device lifecycle is untouched, so there is no reconfigure pass; the
+    /// toggle's own `tap` carries the observability.
+    ///
+    /// - Parameters:
+    ///   - followsProgram: Whether the strip's audio follows video.
+    ///   - id: The strip's input id.
+    func setStripFollowsProgram(_ followsProgram: Bool, forStrip id: InputID) {
+        guard let index = mixerStrips.firstIndex(where: { $0.id == id }) else { return }
+        mixerStrips[index].followsProgram = followsProgram
+        syncProgramPresence()
+        scheduleAutosave()
+    }
+
     // MARK: Mixer membership
 
     /// The discovered audio inputs that are **not** on the mixer, in listing
@@ -2685,13 +2737,16 @@ final class EngineModel {
     }
 
     /// Whether an input's strip is feeding the program mix right now: on the
-    /// mixer, unmuted, and its device discovered (a dormant strip contributes
-    /// silence). What lights an audio row's program tally in the sidebar.
+    /// mixer, unmuted, its device discovered (a dormant strip contributes
+    /// silence), and — when its audio follows video — its input on program
+    /// (an AFV strip off program contributes nothing). What lights an audio
+    /// row's program tally in the sidebar.
     ///
     /// - Parameter id: The input to ask about.
     /// - Returns: Whether the input is live in the mix.
     func isLiveInMix(_ id: InputID) -> Bool {
-        mixerStrips.contains { $0.id == id && !$0.isMuted } && audioInputs.contains { $0.id == id }
+        mixerStrips.contains { $0.id == id && !$0.isMuted && $0.isPresent(onProgram: programInputIDs) }
+            && audioInputs.contains { $0.id == id }
     }
 
     /// Adds a channel strip for a discovered audio input, at the end of the
@@ -2952,6 +3007,12 @@ final class EngineModel {
             guard let input = activeAudioInputs[strip.id] else { return nil }
             return ChannelStrip(input: input, level: strip.level, pan: strip.pan, isMuted: strip.isMuted)
         }
+        // Program presence first (audio follows video): it is keyed apart
+        // from the strips, so setting it before they join the mix means no
+        // tick ever mixes a newly running AFV strip whose input is off
+        // program — and a strip whose AFV resolved since the last pass (a
+        // device discovered, a preset adopted) picks it up here.
+        syncProgramPresence()
         mixer.setChannelStrips(strips)
         // Each running strip's authored chain is instantiated fresh and
         // handed to its mixer channel (a reconfigure is rare — a mute
@@ -3303,7 +3364,7 @@ final class EngineModel {
         activeShotID = compositor.activeShotID
         // A transient shot taken straight to air is the operator's now.
         let discarded = reconcileTransientShots()
-        syncTally()
+        syncTally(changingProgramWith: transition)
         scheduleTallyRefresh(after: transition)
         if wasHoldingSnapshot || discarded {
             Task { await reconfigure() }
@@ -3413,7 +3474,7 @@ final class EngineModel {
         ensurePreviewStaged()
         // A transient shot that just went to air is the operator's now.
         let discarded = reconcileTransientShots()
-        syncTally()
+        syncTally(changingProgramWith: transition)
         scheduleTallyRefresh(after: transition)
         if wasHoldingSnapshot || discarded {
             Task { await reconfigure() }
@@ -6314,6 +6375,16 @@ final class EngineModel {
 }
 
 extension Transition {
+    /// The transition's length in seconds — `0` for a cut, which has none.
+    /// What a take's audio-follows-video crossfade ramps over, so the sound
+    /// moves with the picture.
+    var duration: TimeInterval {
+        switch self {
+        case .cut: 0
+        case .dissolve(let seconds), .wipe(_, let seconds), .shader(_, let seconds): seconds
+        }
+    }
+
     /// This transition at another length: the same kind, edge, and shader
     /// over `duration` seconds — a cut unchanged, since it has no length.
     /// How the panel's one rate knob applies to whatever transition a take

@@ -9,6 +9,13 @@ Finished items move to [DONE.md](DONE.md) with their full records, so this
 file lists only open work. An open check left inside a finished item stays
 here, under "Left open from “…”", pointing at its record there.
 
+An item moves **in the same change that finishes it**: when the build lands
+with nothing left to check, or when Larry reports the last hand check done.
+No `[x]` item ever stays in this file — the "Left open from “…” (done;
+record in DONE.md)" entry left behind holds only the checks still open.
+Recent finished items go to DONE.md as top-level entries just before "Clock
+and timing", unless one of its sections fits better.
+
 ## Roadmap progress
 
 - [ ] **Left open from “Stream history”** (done; record in DONE.md):
@@ -92,6 +99,14 @@ here, under "Left open from “…”", pointing at its record there.
       connected" under its name with its controls disabled, and comes back
       to life when the device is plugged in again. Not seen by the building
       session, which left the running instance alone mid-stream.
+  - [ ] **Left open from “Audio follows video”** (done; record in DONE.md):
+    - [ ] Later slices, each named in the record: hearing a staged clip
+      before taking it (a pre-fader listen on the monitor), per-layer movie
+      playback (once, loop, hold the last frame, restart on take — today a
+      staged movie loops from the moment it is staged, so a take lands
+      mid-clip), following a chosen video input for a microphone (AFV on a
+      strip with no picture silences it for good), and sends and
+      additional buses.
   - [ ] **Left open from “Bounded frame streams”** (done; record in DONE.md):
     - [ ] **What grew main-thread load over the first eleven minutes** of
       both leaking sessions is not known; with the streams bounded it is a

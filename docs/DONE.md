@@ -1734,6 +1734,28 @@ there.
   same before and after a full test run. Session 16 itself is still in
   Larry's file; only Clear Stream History removes it.
 
+- [x] **Audio follows video. Decided and built 2026-11-07, checked in the
+  running app by Larry the same day.** A staged clip's unmuted strip fed the
+  master — and a live stream — while only its picture was on preview. A
+  strip with **Audio Follows Video** on now feeds the program mix only while
+  its input is in the program shot: a cut switches it at once (a one-block
+  declick), a dissolve, wipe, or shader transition crossfades it over the
+  transition's duration, and mute still wins. On by default for video files,
+  off for microphones and generators. `AudioMixer` gained a per-input,
+  block-counted program-presence gain (`setProgramPresence(_:forInput:rampDuration:)`,
+  `PresenceRamp`), post-fader so the strip meter keeps reading;
+  `AudioChannel.followsProgram` is an optional key within v1, resolved by
+  the input's kind when absent; `EngineModel.syncTally(changingProgramWith:)`
+  sets presence from the incoming program shot on every program change; the
+  sidebar's audio program lamp lights only while the strip reaches program.
+  The toggle was first a key beside the mute and moved, the same day, to
+  the strip's context menu (`mixerAFV.toggle`). Tests: TingraAudio 86,
+  TingraComposition 240, app 958. Checked by hand: a staged movie leaves the
+  master silent while its strip meter reads, a dissolve crossfades its sound
+  in, a cut drops it, a microphone is unaffected, and the tone's sidebar
+  lamp follows the toggle. The later slices are tracked in TODO.md. Record:
+  ARCHITECTURE.md, "Audio follows video".
+
 ## Clock and timing
 
 - [x] **Streamed audio sat behind video by the time the destination took to

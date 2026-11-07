@@ -30,7 +30,12 @@ struct MixerStripTests {
 
         // The other microphones are not strips at all: they stay in the
         // sidebar for the operator to add.
-        #expect(strips == [MixerStrip(id: InputID(rawValue: "mic-1"), name: "mic-1", level: 1, pan: 0, isMuted: false)])
+        #expect(
+            strips == [
+                MixerStrip(
+                    id: InputID(rawValue: "mic-1"), name: "mic-1", level: 1, pan: 0, isMuted: false,
+                    followsProgram: false)
+            ])
     }
 
     @Test("seeding prefers the system default microphone over the first by name")
@@ -480,6 +485,148 @@ struct MixerStripTests {
             id: InputID(rawValue: "mic-1"), name: "Mic", level: 1, pan: 0, isMuted: false,
             effects: [EffectConfiguration(effect: EffectID(rawValue: "gain"))])
         #expect(plain != chained)
+    }
+
+    // MARK: Audio follows video
+
+    @Test("audio follows video defaults on for media and off for microphones and generators")
+    @MainActor
+    func followsProgramDefaultsByKind() {
+        #expect(MixerStrip.defaultFollowsProgram(for: .media))
+        #expect(MixerStrip.defaultFollowsProgram(for: .microphone) == false)
+        #expect(MixerStrip.defaultFollowsProgram(for: .generator) == false)
+    }
+
+    @Test("an added strip writes audio follows video explicitly by its input's kind")
+    @MainActor
+    func addedStripWritesFollowsProgramByKind() {
+        #expect(MixerStrip.added(Self.choice("Ad.mov", kind: .media)).followsProgram == true)
+        #expect(MixerStrip.added(Self.choice("mic-1")).followsProgram == false)
+        #expect(MixerStrip.added(Self.choice("440 Hz Tone", kind: .generator)).followsProgram == false)
+    }
+
+    @Test("a media file placed in a shot adds a strip that follows video")
+    @MainActor
+    func mediaStripFollowsProgram() {
+        let strip = MixerStrip.mediaStrip(
+            for: InputID(rawValue: "Ad.mov"), strips: [], discovered: [Self.choice("Ad.mov", kind: .media)])
+
+        #expect(strip?.followsProgram == true)
+        #expect(strip?.isFollowingProgram == true)
+    }
+
+    @Test("the seeded microphone does not follow video")
+    @MainActor
+    func seededStripDoesNotFollowProgram() {
+        #expect(MixerStrip.seed(from: [Self.choice("mic-1")]).first?.followsProgram == false)
+    }
+
+    @Test("an unauthored channel resolves audio follows video by its discovered input's kind")
+    @MainActor
+    func unauthoredChannelResolvesByKind() {
+        let channels = [
+            AudioChannel(input: InputID(rawValue: "Ad.mov"), name: "Ad.mov"),
+            AudioChannel(input: InputID(rawValue: "mic-1"), name: "mic-1"),
+            AudioChannel(input: InputID(rawValue: "440 Hz Tone"), name: "440 Hz Tone"),
+        ]
+        let discovered = [
+            Self.choice("Ad.mov", kind: .media), Self.choice("mic-1"), Self.choice("440 Hz Tone", kind: .generator),
+        ]
+
+        let strips = MixerStrip.strips(channels: channels, discovered: discovered)
+
+        #expect(strips.map(\.followsProgram) == [true, false, false])
+    }
+
+    @Test("a dormant unauthored channel stays unresolved — off — and authors no key until its device is discovered")
+    @MainActor
+    func dormantChannelResolvesOffUntilDiscovered() {
+        let channel = AudioChannel(input: InputID(rawValue: "Ad.mov"), name: "Ad.mov")
+
+        let dormant = MixerStrip.strips(channels: [channel], discovered: [])
+        #expect(dormant.first?.followsProgram == nil)
+        #expect(dormant.first?.isFollowingProgram == false)
+        // The sync-back cannot freeze the guess into the document.
+        #expect(dormant.first?.audioChannel.followsProgram == nil)
+
+        let found = MixerStrip.strips(channels: [channel], discovered: [Self.choice("Ad.mov", kind: .media)])
+        #expect(found.first?.followsProgram == true)
+        #expect(found.first?.audioChannel.followsProgram == true)
+    }
+
+    @Test("an authored audio-follows-video setting wins over the kind's default")
+    @MainActor
+    func authoredFollowsProgramWins() {
+        let channels = [
+            AudioChannel(input: InputID(rawValue: "Ad.mov"), name: "Ad.mov", followsProgram: false),
+            AudioChannel(input: InputID(rawValue: "mic-1"), name: "mic-1", followsProgram: true),
+        ]
+        let discovered = [Self.choice("Ad.mov", kind: .media), Self.choice("mic-1")]
+
+        let strips = MixerStrip.strips(channels: channels, discovered: discovered)
+
+        #expect(strips.map(\.followsProgram) == [false, true])
+        #expect(strips.map(\.audioChannel.followsProgram) == [false, true])
+    }
+
+    @Test("strips differing only in audio follows video compare not equal")
+    @MainActor
+    func followsProgramAffectsEquality() {
+        let off = MixerStrip(
+            id: InputID(rawValue: "clip"), name: "Clip", level: 1, pan: 0, isMuted: false, followsProgram: false)
+        var on = off
+        on.followsProgram = true
+        #expect(off != on)
+        on.followsProgram = false
+        #expect(off == on)
+    }
+
+    // MARK: Program presence
+
+    /// A strip for the presence tests, unmuted at unity.
+    @MainActor
+    private static func strip(_ id: String, followsProgram: Bool?) -> MixerStrip {
+        MixerStrip(
+            id: InputID(rawValue: id), name: id, level: 1, pan: 0, isMuted: false, followsProgram: followsProgram)
+    }
+
+    @Test("across a take, an outgoing AFV input goes absent, an incoming one present, and a shared one stays up")
+    @MainActor
+    func presenceAcrossATake() {
+        let strips = [
+            Self.strip("outgoing", followsProgram: true),
+            Self.strip("incoming", followsProgram: true),
+            Self.strip("shared", followsProgram: true),
+        ]
+        // The incoming program shot holds the incoming and the shared inputs.
+        let onProgram: Set<InputID> = [InputID(rawValue: "incoming"), InputID(rawValue: "shared")]
+
+        let presence = MixerStrip.programPresence(of: strips, onProgram: onProgram)
+
+        #expect(presence[InputID(rawValue: "outgoing")] == false)
+        #expect(presence[InputID(rawValue: "incoming")] == true)
+        #expect(presence[InputID(rawValue: "shared")] == true)
+        #expect(presence.count == 3)
+    }
+
+    @Test("a strip with audio follows video off is always present, on program or not")
+    @MainActor
+    func nonAFVStripIsAlwaysPresent() {
+        let strips = [Self.strip("mic", followsProgram: false), Self.strip("dormant", followsProgram: nil)]
+
+        let presence = MixerStrip.programPresence(of: strips, onProgram: [])
+
+        #expect(presence[InputID(rawValue: "mic")] == true)
+        #expect(presence[InputID(rawValue: "dormant")] == true)
+    }
+
+    @Test("an AFV strip with nothing on program is absent")
+    @MainActor
+    func afvStripWithEmptyProgramIsAbsent() {
+        #expect(
+            MixerStrip.programPresence(of: [Self.strip("clip", followsProgram: true)], onProgram: []) == [
+                InputID(rawValue: "clip"): false
+            ])
     }
 }
 

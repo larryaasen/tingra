@@ -430,7 +430,7 @@ struct SidebarRowTests {
     @Test("an audio row whose input has no strip carries no mark and no tally")
     @MainActor
     func audioRowOffTheMixerIsPlain() {
-        let rows = SidebarRow.audioRows(from: Self.audioChoices, ofKind: .microphone, strips: [])
+        let rows = SidebarRow.audioRows(from: Self.audioChoices, ofKind: .microphone, strips: [], onProgram: [])
 
         // Listed all the same: the section is the inventory the operator adds from.
         #expect(rows == [SidebarRow(id: "mic", name: "MacBook Pro Microphone", tally: nil)])
@@ -442,7 +442,7 @@ struct SidebarRowTests {
     func audioRowWithAMutedStripIsMarkedButUnlit() {
         let strip = MixerStrip(id: Self.input("mic"), name: "MacBook Pro Microphone", level: 1, pan: 0, isMuted: true)
 
-        let rows = SidebarRow.audioRows(from: Self.audioChoices, ofKind: .microphone, strips: [strip])
+        let rows = SidebarRow.audioRows(from: Self.audioChoices, ofKind: .microphone, strips: [strip], onProgram: [])
 
         #expect(rows.map(\.isOnMixer) == [true])
         #expect(rows.map(\.tally) == [nil])
@@ -453,9 +453,49 @@ struct SidebarRowTests {
     func audioRowWithALiveStripIsOnAir() {
         let strip = MixerStrip(id: Self.input("tone"), name: "440 Hz Tone", level: 1, pan: 0, isMuted: false)
 
-        let rows = SidebarRow.audioRows(from: Self.audioChoices, ofKind: .generator, strips: [strip])
+        let rows = SidebarRow.audioRows(from: Self.audioChoices, ofKind: .generator, strips: [strip], onProgram: [])
 
         #expect(rows == [SidebarRow(id: "tone", name: "440 Hz Tone", tally: .onAir, isOnMixer: true)])
+    }
+
+    @Test("an unmuted strip that follows video lights the tally only while its input is on program")
+    @MainActor
+    func audioRowFollowingVideoLightsOnlyOnProgram() {
+        let strip = MixerStrip(
+            id: Self.input("tone"), name: "440 Hz Tone", level: 1, pan: 0, isMuted: false, followsProgram: true)
+
+        let offProgram = SidebarRow.audioRows(
+            from: Self.audioChoices, ofKind: .generator, strips: [strip], onProgram: [])
+        let onProgram = SidebarRow.audioRows(
+            from: Self.audioChoices, ofKind: .generator, strips: [strip], onProgram: [Self.input("tone")])
+
+        // Off program it is still on the mixer, just not reaching the mix.
+        #expect(offProgram == [SidebarRow(id: "tone", name: "440 Hz Tone", tally: nil, isOnMixer: true)])
+        #expect(onProgram == [SidebarRow(id: "tone", name: "440 Hz Tone", tally: .onAir, isOnMixer: true)])
+    }
+
+    @Test("a muted strip that follows video stays unlit even on program — mute wins")
+    @MainActor
+    func audioRowMutedFollowingVideoStaysUnlit() {
+        let strip = MixerStrip(
+            id: Self.input("tone"), name: "440 Hz Tone", level: 1, pan: 0, isMuted: true, followsProgram: true)
+
+        let rows = SidebarRow.audioRows(
+            from: Self.audioChoices, ofKind: .generator, strips: [strip], onProgram: [Self.input("tone")])
+
+        #expect(rows.map(\.tally) == [nil])
+    }
+
+    @Test("a strip that does not follow video lights the tally whatever is on program")
+    @MainActor
+    func audioRowNotFollowingVideoIgnoresProgram() {
+        let strip = MixerStrip(
+            id: Self.input("mic"), name: "MacBook Pro Microphone", level: 1, pan: 0, isMuted: false,
+            followsProgram: false)
+
+        let rows = SidebarRow.audioRows(from: Self.audioChoices, ofKind: .microphone, strips: [strip], onProgram: [])
+
+        #expect(rows.map(\.tally) == [.onAir])
     }
 
     @Test("audio rows keep the provenance split of the inert rows")
@@ -464,9 +504,11 @@ struct SidebarRowTests {
         let strips = [MixerStrip(id: Self.input("mic"), name: "Mic", level: 1, pan: 0, isMuted: false)]
 
         #expect(
-            SidebarRow.audioRows(from: Self.audioChoices, ofKind: .microphone, strips: strips).map(\.id) == ["mic"])
+            SidebarRow.audioRows(from: Self.audioChoices, ofKind: .microphone, strips: strips, onProgram: []).map(\.id)
+                == ["mic"])
         #expect(
-            SidebarRow.audioRows(from: Self.audioChoices, ofKind: .generator, strips: strips).map(\.id) == ["tone"])
+            SidebarRow.audioRows(from: Self.audioChoices, ofKind: .generator, strips: strips, onProgram: []).map(\.id)
+                == ["tone"])
     }
 
     @Test("rows differing only in their mixer mark compare not equal")

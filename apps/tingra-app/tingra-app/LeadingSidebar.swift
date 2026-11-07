@@ -215,7 +215,9 @@ struct LeadingSidebar: View {
             audioSection(
                 .audioInputs,
                 header: Text("Audio Inputs", comment: "Sidebar section heading over the audio input device list"),
-                rows: SidebarRow.audioRows(from: model.audioInputs, ofKind: .microphone, strips: model.mixerStrips),
+                rows: SidebarRow.audioRows(
+                    from: model.audioInputs, ofKind: .microphone, strips: model.mixerStrips,
+                    onProgram: model.programInputIDs),
                 symbol: "mic",
                 emptyLabel: Text(
                     "No audio inputs connected",
@@ -226,7 +228,9 @@ struct LeadingSidebar: View {
             audioSection(
                 .audioGenerators,
                 header: Text("Audio Generators", comment: "Sidebar section heading over the audio generators"),
-                rows: SidebarRow.audioRows(from: model.audioInputs, ofKind: .generator, strips: model.mixerStrips),
+                rows: SidebarRow.audioRows(
+                    from: model.audioInputs, ofKind: .generator, strips: model.mixerStrips,
+                    onProgram: model.programInputIDs),
                 symbol: "waveform",
                 emptyLabel: Text(
                     "No audio generators available",
@@ -994,7 +998,7 @@ struct LeadingSidebar: View {
     /// - Parameters:
     ///   - id: Which section this is, for its expansion and its `tap` name.
     ///   - header: The section's heading.
-    ///   - rows: The section's rows (``SidebarRow/audioRows(from:ofKind:strips:)``).
+    ///   - rows: The section's rows (``SidebarRow/audioRows(from:ofKind:strips:onProgram:)``).
     ///   - symbol: The SF Symbol each row is labeled with.
     ///   - emptyLabel: What to show when `rows` is empty.
     /// - Returns: The section.

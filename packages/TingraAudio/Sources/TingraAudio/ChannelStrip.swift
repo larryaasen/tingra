@@ -14,7 +14,10 @@ import TingraPlugInKit
 /// "Per-strip pan"). The strip's effect chain is mixer channel state, set
 /// through `AudioMixer.setEffects(_:forInput:)` rather than carried here —
 /// effect instances hold live processing state, where this value type
-/// carries the strip's authored controls.
+/// carries the strip's authored controls. So is its **program presence**
+/// (audio follows video), set through
+/// `AudioMixer.setProgramPresence(_:forInput:rampDuration:)`: it follows
+/// what is on program, which the caller owns, not the strip's settings.
 /// Routing needs no surface here: the program mix is the only bus, so a
 /// strip's routing is its membership in the mix — the strips the caller
 /// passes to ``AudioMixer/setChannelStrips(_:)`` — and its persisted form is

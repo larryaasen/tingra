@@ -1474,3 +1474,230 @@ struct AudioMixerBoundedStreamTests {
         #expect(blocks.last?.time == tickTimes.last)
     }
 }
+
+// MARK: Program presence (audio follows video)
+
+extension AudioMixerTests {
+    /// The length of `count` mix blocks in seconds — a ramp duration that
+    /// lands on exactly that many blocks.
+    private func blocksDuration(_ count: Int) -> TimeInterval {
+        Double(count * format.blockFrames) / format.sampleRate
+    }
+
+    /// The first program channel of each mixed block.
+    private func firstChannels(of blocks: [CapturedAudio]) throws -> [[Float]] {
+        try blocks.map { block in
+            try #require(samples(of: block, sampleRate: format.sampleRate)?.first)
+        }
+    }
+
+    @Test("an input whose presence was never set mixes byte-identically — the presence stage never runs")
+    func untouchedPresenceLeavesTheMixUntouched() async throws {
+        /// One run of the mix, optionally re-asserting presence first.
+        func mixedSamples(assertingPresence: Bool) async throws -> [[Float]] {
+            let mixer = try makeTonedMixer(ticks: 1)
+            await letFillTasksDrain()
+            if assertingPresence { mixer.setProgramPresence(true, forInput: InputID(rawValue: "mic")) }
+            let program = mixer.programAudio(bufferingPolicy: .unbounded)
+            mixer.start()
+            let block = try #require(await collect(program, limit: 1).first)
+            return try #require(samples(of: block, sampleRate: format.sampleRate))
+        }
+
+        #expect(try await mixedSamples(assertingPresence: true) == (try await mixedSamples(assertingPresence: false)))
+    }
+
+    @Test("a cut takes a strip off program in one block, then holds it silent")
+    func aCutIsImmediate() async throws {
+        let mixer = try makeTonedMixer(ticks: 3)
+        await letFillTasksDrain()
+        mixer.setProgramPresence(false, forInput: InputID(rawValue: "mic"))
+
+        let program = mixer.programAudio(bufferingPolicy: .unbounded)
+        mixer.start()
+        let channels = try firstChannels(of: await collect(program, limit: 3))
+
+        // The one block is a declick ramp — descending, never a step on one
+        // sample — and every block after it is exact silence.
+        #expect(channels.count == 3)
+        let first = try #require(channels.first)
+        #expect(try #require(first.first) > 0)
+        #expect(zip(first, first.dropFirst()).allSatisfy { $0 >= $1 })
+        for channel in channels.dropFirst() {
+            #expect(channel.allSatisfy { $0 == 0 })
+        }
+        #expect(mixer.isPresentOnProgram(InputID(rawValue: "mic")) == false)
+    }
+
+    @Test("a crossfade ramps over the requested blocks and lands exactly on silence")
+    func aRampHitsItsEndpointExactly() async throws {
+        let mixer = try makeTonedMixer(ticks: 6)
+        await letFillTasksDrain()
+        mixer.setProgramPresence(false, forInput: InputID(rawValue: "mic"), rampDuration: blocksDuration(4))
+
+        let program = mixer.programAudio(bufferingPolicy: .unbounded)
+        mixer.start()
+        let channels = try firstChannels(of: await collect(program, limit: 6))
+
+        #expect(channels.count == 6)
+        let peaks = channels.map { $0.map(abs).max() ?? 0 }
+        // Blocks 0...3 descend; the ramp's endpoint falls at the end of
+        // block 3, so blocks 4 and 5 are exactly silent.
+        #expect(zip(peaks.prefix(4), peaks.prefix(4).dropFirst()).allSatisfy { $0 > $1 })
+        #expect(peaks[3] > 0)
+        #expect(channels[4].allSatisfy { $0 == 0 })
+        #expect(channels[5].allSatisfy { $0 == 0 })
+    }
+
+    @Test("a presence ramp's endpoints are exact in both directions, at rest present once it is back up")
+    func presenceRampEndpointsAreExact() {
+        var ramp = AudioMixer.PresenceRamp()
+        #expect(ramp.isRestingPresent)
+
+        // Three blocks does not divide evenly — the case an accumulated
+        // float step would leave a residue in.
+        ramp.retarget(present: false, totalBlocks: 3)
+        for _ in 0..<3 { ramp.advance() }
+        #expect(ramp.gain == 0)
+        #expect(ramp.isPresent == false)
+
+        ramp.retarget(present: true, totalBlocks: 3)
+        for _ in 0..<3 { ramp.advance() }
+        #expect(ramp.gain == 1)
+        #expect(ramp.isRestingPresent)
+    }
+
+    @Test("a ramp interrupted mid-travel re-times from where it reached, without a jump")
+    func anInterruptedRampContinuesFromItsGain() {
+        var ramp = AudioMixer.PresenceRamp()
+        ramp.retarget(present: false, totalBlocks: 4)
+        ramp.advance()
+        ramp.advance()
+        #expect(ramp.gain == 0.5)
+
+        // A cut back to program mid-crossfade: the gain stays where it was
+        // and travels to unity over the cut's one block.
+        ramp.retarget(present: true, totalBlocks: 1)
+        #expect(ramp.gain == 0.5)
+        #expect(ramp.endGain == 1)
+        ramp.advance()
+        #expect(ramp.gain == 1)
+        #expect(ramp.isRestingPresent)
+    }
+
+    @Test("re-asserting the presence already in effect leaves an in-flight ramp alone")
+    func reassertingPresenceKeepsTheRamp() async throws {
+        let mixer = try makeTonedMixer(ticks: 3)
+        await letFillTasksDrain()
+        let id = InputID(rawValue: "mic")
+        mixer.setProgramPresence(false, forInput: id, rampDuration: blocksDuration(4))
+        // A cut's worth of the same latch: re-timing it would make block 1
+        // silent; ignoring it keeps the four-block crossfade going.
+        mixer.setProgramPresence(false, forInput: id)
+
+        let program = mixer.programAudio(bufferingPolicy: .unbounded)
+        mixer.start()
+        let channels = try firstChannels(of: await collect(program, limit: 3))
+
+        #expect(channels.count == 3)
+        #expect((channels[1].map(abs).max() ?? 0) > 0)
+        #expect((channels[2].map(abs).max() ?? 0) > 0)
+    }
+
+    @Test("mute beats presence — a muted strip present on program is silent")
+    func muteBeatsPresence() async throws {
+        let audio = try #require(
+            makeAudio(channels: [[Float](repeating: 0.5, count: format.blockFrames)], sampleRate: format.sampleRate))
+        let input = FakeAudioInput(id: "clip", buffers: [audio])
+        let mixer = makeMixer(tickTimes: ticks(1))
+        mixer.setChannelStrips([ChannelStrip(input: input, isMuted: true)])
+        await letFillTasksDrain()
+        mixer.setProgramPresence(true, forInput: input.id)
+
+        let program = mixer.programAudio(bufferingPolicy: .unbounded)
+        mixer.start()
+        let channels = try firstChannels(of: await collect(program, limit: 1))
+
+        #expect(try #require(channels.first).allSatisfy { $0 == 0 })
+    }
+
+    @Test("a strip off program leaves every other strip's contribution byte-identical")
+    func presenceLeavesOtherStripsUntouched() async throws {
+        /// One run of the mix: the quiet strip always, the loud one only
+        /// when asked — and when it is, taken off program before the start.
+        func mixedSamples(withAbsentStrip: Bool) async throws -> [[Float]] {
+            let quiet = try #require(
+                makeAudio(
+                    channels: [[Float](repeating: 0.25, count: format.blockFrames * 2)], sampleRate: format.sampleRate))
+            var strips = [ChannelStrip(input: FakeAudioInput(id: "mic", buffers: [quiet]))]
+            if withAbsentStrip {
+                let loud = try #require(
+                    makeAudio(
+                        channels: [[Float](repeating: 0.5, count: format.blockFrames * 2)],
+                        sampleRate: format.sampleRate))
+                strips.append(ChannelStrip(input: FakeAudioInput(id: "clip", buffers: [loud])))
+            }
+            let mixer = makeMixer(tickTimes: ticks(2))
+            mixer.setChannelStrips(strips)
+            await letFillTasksDrain()
+            mixer.setProgramPresence(false, forInput: InputID(rawValue: "clip"))
+            let program = mixer.programAudio(bufferingPolicy: .unbounded)
+            mixer.start()
+            // The second block, once the cut's declick block has passed.
+            let block = try #require(await collect(program, limit: 2).last)
+            return try #require(samples(of: block, sampleRate: format.sampleRate))
+        }
+
+        #expect(try await mixedSamples(withAbsentStrip: true) == (try await mixedSamples(withAbsentStrip: false)))
+    }
+
+    @Test("a strip off program still reads on its pre-fader meter while the master reads nothing of it")
+    func anAbsentStripStillMeters() async throws {
+        let audio = try #require(
+            makeAudio(
+                channels: [[Float](repeating: 0.5, count: format.blockFrames * 2)], sampleRate: format.sampleRate))
+        let input = FakeAudioInput(id: "clip", buffers: [audio])
+        let mixer = makeMixer(tickTimes: ticks(2))
+        mixer.setChannelStrips([ChannelStrip(input: input)])
+        await letFillTasksDrain()
+        mixer.setProgramPresence(false, forInput: input.id)
+
+        let meters = mixer.meterReadings(bufferingPolicy: .unbounded)
+        mixer.start()
+        let block = try #require(await collectMeters(meters, limit: 2).last)
+
+        #expect(abs(try #require(block.strips[input.id]).peak - 0.5) < 0.0001)
+        #expect(block.master == .floor)
+    }
+
+    @Test("presence set before a strip joins the mix applies from its first block, with no declick block")
+    func presenceSetBeforeTheStripIsAdded() async throws {
+        let audio = try #require(
+            makeAudio(channels: [[Float](repeating: 0.5, count: format.blockFrames)], sampleRate: format.sampleRate))
+        let input = FakeAudioInput(id: "clip", buffers: [audio])
+        let mixer = makeMixer(tickTimes: ticks(1))
+        mixer.setProgramPresence(false, forInput: input.id)
+        mixer.setChannelStrips([ChannelStrip(input: input)])
+        await letFillTasksDrain()
+
+        let program = mixer.programAudio(bufferingPolicy: .unbounded)
+        mixer.start()
+        let channels = try firstChannels(of: await collect(program, limit: 1))
+
+        #expect(try #require(channels.first).allSatisfy { $0 == 0 })
+    }
+
+    @Test("presence survives stop — it mirrors the program, which the caller owns")
+    func presenceSurvivesStop() {
+        let mixer = makeMixer(tickTimes: [])
+        let id = InputID(rawValue: "clip")
+        #expect(mixer.isPresentOnProgram(id))
+        mixer.setProgramPresence(false, forInput: id)
+
+        mixer.stop()
+
+        #expect(mixer.isPresentOnProgram(id) == false)
+        mixer.setProgramPresence(true, forInput: id)
+        #expect(mixer.isPresentOnProgram(id))
+    }
+}

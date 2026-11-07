@@ -65,6 +65,53 @@ struct AudioChannelTests {
         #expect(decoded.pan == 0)
         #expect(decoded.isMuted == false)
         #expect(decoded.effects == nil)
+        #expect(decoded.followsProgram == nil)
+    }
+
+    // MARK: Audio follows video
+
+    @Test("a channel's authored audio-follows-video round-trips through JSON, on and off")
+    func channelFollowsProgramRoundTrips() throws {
+        for followsProgram in [true, false] {
+            let channel = AudioChannel(input: InputID(rawValue: "clip"), name: "Clip", followsProgram: followsProgram)
+            let data = try JSONEncoder().encode(channel)
+            let decoded = try JSONDecoder().decode(AudioChannel.self, from: data)
+            #expect(decoded == channel)
+            #expect(decoded.followsProgram == followsProgram)
+            let object = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+            #expect(object["followsProgram"] as? Bool == followsProgram)
+        }
+    }
+
+    @Test("a channel without audio-follows-video encodes without the followsProgram key and round-trips as unauthored")
+    func channelWithoutFollowsProgramOmitsKey() throws {
+        let data = try JSONEncoder().encode(hotChannel)
+        let object = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(object["followsProgram"] == nil)
+        let decoded = try JSONDecoder().decode(AudioChannel.self, from: data)
+        #expect(decoded.followsProgram == nil)
+        #expect(decoded == hotChannel)
+    }
+
+    @Test("a pre-AFV channel with every other key decodes with audio-follows-video unauthored")
+    func channelMissingFollowsProgramDecodes() throws {
+        let json = Data(#"{"input":"mic-1","name":"Mic","level":0.5,"pan":0.25,"isMuted":true}"#.utf8)
+        let decoded = try JSONDecoder().decode(AudioChannel.self, from: json)
+        #expect(decoded.followsProgram == nil)
+        #expect(decoded.level == 0.5)
+        #expect(decoded.isMuted)
+    }
+
+    @Test("channels differing only in audio-follows-video compare not equal, and equal when it matches")
+    func channelFollowsProgramAffectsEquality() {
+        let id = InputID(rawValue: "clip")
+        let unauthored = AudioChannel(input: id)
+        let on = AudioChannel(input: id, followsProgram: true)
+        let off = AudioChannel(input: id, followsProgram: false)
+        #expect(on == AudioChannel(input: id, followsProgram: true))
+        #expect(unauthored != on)
+        #expect(unauthored != off)
+        #expect(on != off)
     }
 
     @Test("a channel's authored effect chain round-trips through JSON in signal order")

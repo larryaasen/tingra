@@ -1195,6 +1195,23 @@
         }
       }
     },
+    "Audio Follows Video" : {
+      "comment" : "Context menu toggle on a channel strip: the strip feeds the program only while its input is on program",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Audio folgt Video"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El audio sigue al vídeo"
+          }
+        }
+      }
+    },
     "Audio Generators" : {
       "comment" : "Sidebar section heading over the audio generators",
       "localizations" : {

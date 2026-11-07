@@ -43,7 +43,7 @@ struct SidebarRow: Identifiable, Equatable {
     /// one thing across every surface that draws one — the shot bank, the
     /// multiview window, and the sidebar's shot, camera, display, and
     /// generator sections — and the audio sections' program lamp, lit while
-    /// the input's strip feeds the program mix (``audioRows(from:ofKind:strips:)``).
+    /// the input's strip feeds the program mix (``audioRows(from:ofKind:strips:onProgram:)``).
     /// Nil everywhere else, and that is the tally's own rule rather than an
     /// omission: an output device is not on a bus at all, and neither a
     /// preset nor a destination is a thing that goes to air.
@@ -192,7 +192,7 @@ struct SidebarRow: Identifiable, Equatable {
 
     /// The rows for one **kind** of discovered input, without a tally — the
     /// base the audio sections' rows are built on
-    /// (``audioRows(from:ofKind:strips:)``).
+    /// (``audioRows(from:ofKind:strips:onProgram:)``).
     ///
     /// Filtering on ``InputKind`` rather than on `InputMedia` is what splits
     /// the audio sections by provenance, the same question the camera picker
@@ -228,24 +228,30 @@ struct SidebarRow: Identifiable, Equatable {
     /// the question a camera row's lamp answers (ARCHITECTURE.md, "Per-strip
     /// routing", the amendment of 2026-11-07). A muted strip lights nothing:
     /// a lamp's idle state means running, and a muted strip's device is not.
+    /// Nor does a strip whose audio follows video while its input is off
+    /// program: its device runs, but its sound is not reaching the mix
+    /// (ARCHITECTURE.md, "Audio follows video").
     ///
     /// - Parameters:
     ///   - choices: The discovered audio inputs, in row order.
     ///   - kind: The kind this section lists (``rows(from:ofKind:)``'s
     ///     provenance split).
     ///   - strips: The mixer's strips.
+    ///   - programInputs: The inputs contributing to program — what an AFV
+    ///     strip's lamp asks about.
     /// - Returns: One row per matching input, in the given order.
     static func audioRows(
         from choices: [EngineModel.InputChoice],
         ofKind kind: InputKind,
-        strips: [MixerStrip]
+        strips: [MixerStrip],
+        onProgram programInputs: Set<InputID>
     ) -> [SidebarRow] {
         rows(from: choices, ofKind: kind).map { row in
             let strip = strips.first { $0.id.rawValue == row.id }
             return SidebarRow(
                 id: row.id,
                 name: row.name,
-                tally: strip?.isMuted == false ? .onAir : nil,
+                tally: strip.map { !$0.isMuted && $0.isPresent(onProgram: programInputs) } == true ? .onAir : nil,
                 isOnMixer: strip != nil
             )
         }

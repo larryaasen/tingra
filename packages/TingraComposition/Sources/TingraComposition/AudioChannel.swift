@@ -12,7 +12,8 @@ import TingraPlugInKit
 
 /// One authored channel of a preset's audio configuration: a channel strip
 /// as the project document persists it — the input it mixes and the strip
-/// settings the operator authored (level, pan, mute). The live mixing strip
+/// settings the operator authored (level, pan, mute, effects, and whether
+/// its audio follows video). The live mixing strip
 /// stays `TingraAudio.ChannelStrip` (it carries the running input); this is
 /// the document's record of it, living beside ``Preset`` because the
 /// document types live together (the ``ProjectDestination`` precedent).
@@ -58,6 +59,15 @@ public struct AudioChannel: Sendable, Equatable, Codable {
     /// decodes unchanged.
     public let effects: [EffectConfiguration]?
 
+    /// Whether the strip's audio **follows video** — feeds the program mix
+    /// only while its input is in the program shot (GLOSSARY.md, "Audio
+    /// follows video"; ARCHITECTURE.md, "Audio follows video") — or nil
+    /// when never authored. An **optional key within v1** (the pre-release
+    /// rule, no version bump): absent resolves by the discovered input's
+    /// kind — on for media, off for anything else — which is the app's
+    /// policy, not this type's, so every pre-AFV document decodes unchanged.
+    public let followsProgram: Bool?
+
     /// Creates an authored channel.
     ///
     /// - Parameters:
@@ -69,13 +79,16 @@ public struct AudioChannel: Sendable, Equatable, Codable {
     ///   - isMuted: Whether the strip is muted (default no).
     ///   - effects: The strip's authored effect chain, in signal order, or
     ///     nil (default) for no chain.
+    ///   - followsProgram: Whether the strip's audio follows video, or nil
+    ///     (default) when unauthored.
     public init(
         input: InputID,
         name: String = "",
         level: Double = 1,
         pan: Double = 0,
         isMuted: Bool = false,
-        effects: [EffectConfiguration]? = nil
+        effects: [EffectConfiguration]? = nil,
+        followsProgram: Bool? = nil
     ) {
         self.input = input
         self.name = name
@@ -83,6 +96,7 @@ public struct AudioChannel: Sendable, Equatable, Codable {
         self.pan = pan
         self.isMuted = isMuted
         self.effects = effects
+        self.followsProgram = followsProgram
     }
 
     /// The coding keys — stable camelCase names for the project document.
@@ -93,12 +107,13 @@ public struct AudioChannel: Sendable, Equatable, Codable {
         case pan
         case isMuted
         case effects
+        case followsProgram
     }
 
     /// Decodes a channel. `input` is required — a channel without its device
     /// identity is meaningless; every setting decodes forgivingly to the
     /// strip defaults (empty name, unity level, centered pan, unmuted, no
-    /// effect chain).
+    /// effect chain, audio follows video unauthored).
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         input = try container.decode(InputID.self, forKey: .input)
@@ -107,12 +122,13 @@ public struct AudioChannel: Sendable, Equatable, Codable {
         pan = try container.decodeIfPresent(Double.self, forKey: .pan) ?? 0
         isMuted = try container.decodeIfPresent(Bool.self, forKey: .isMuted) ?? false
         effects = try container.decodeIfPresent([EffectConfiguration].self, forKey: .effects)
+        followsProgram = try container.decodeIfPresent(Bool.self, forKey: .followsProgram)
     }
 
     /// Encodes a channel, always writing every settled field so the
-    /// document round-trips exactly; the optional effect chain is written
-    /// only when authored, so a chainless channel encodes as it did before
-    /// effects existed.
+    /// document round-trips exactly; the optional effect chain and audio
+    /// follows video are written only when authored, so a channel without
+    /// them encodes as it did before either existed.
     public func encode(to encoder: any Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(input, forKey: .input)
@@ -121,5 +137,6 @@ public struct AudioChannel: Sendable, Equatable, Codable {
         try container.encode(pan, forKey: .pan)
         try container.encode(isMuted, forKey: .isMuted)
         try container.encodeIfPresent(effects, forKey: .effects)
+        try container.encodeIfPresent(followsProgram, forKey: .followsProgram)
     }
 }
