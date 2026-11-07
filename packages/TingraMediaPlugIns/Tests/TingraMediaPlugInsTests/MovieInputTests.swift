@@ -113,7 +113,15 @@ struct MovieInputTests {
         try await input.start()
         #expect(await frames.next() != nil)
         await input.stop()
-        #expect(await frames.next() == nil)
+        // The clock fires its three ticks at once, so playback may deliver
+        // the later ticks' frames before the stop; a finished stream still
+        // hands those out, then ends — the drain below returns only because
+        // it ends. One playback means at most the two other ticks' frames.
+        var framesDeliveredBeforeStop = 0
+        while await frames.next() != nil {
+            framesDeliveredBeforeStop += 1
+        }
+        #expect(framesDeliveredBeforeStop <= 2)
         #expect(await audio.next() == nil)
         await input.stop()
     }

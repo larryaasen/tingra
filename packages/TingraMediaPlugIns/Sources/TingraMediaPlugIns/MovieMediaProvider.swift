@@ -165,7 +165,12 @@ public final class MovieInput: Input, Sendable {
         // input's streams are already finished, and the task ends with its
         // clock or its cancellation.
         let consumers = self.consumers
-        let task = Task { [url, clock, eventBus, id] in
+        // The reader's sample reads block (`DedicatedThreadExecutor`), so the
+        // task runs on a thread of its own rather than the cooperative pool;
+        // the thread exits when playback ends.
+        let executor = DedicatedThreadExecutor(name: "com.moonwink.tingra.media.movie")
+        let task = Task(executorPreference: executor) { [url, clock, eventBus, id] in
+            defer { executor.shutDown() }
             await Self.play(url, description, clock: clock, eventBus: eventBus, inputID: id) { frame in
                 consumers.state.withLock { _ = $0.video?.yield(frame) }
             } deliverAudio: { audio in
