@@ -81,7 +81,27 @@ jobs:
           fi
       - name: Test
         working-directory: ${{ matrix.package }}
+        # Well past any package's run (seconds), short of the job's limit, so
+        # a hang leaves time for the stacks below.
+        timeout-minutes: 5
         run: swift test --skip-build
+      - name: Show where a stuck test run is waiting
+        # A hung run prints nothing (its output is lost when it is killed),
+        # and its test process outlives the step, so sample every thread of
+        # what is still running to name the call it is stuck in.
+        if: failure()
+        run: |
+          pids=$(pgrep -f 'swiftpm-testing|xctest|\.xctest' || true)
+          if [ -z "$pids" ]; then
+            echo "No test process is still running."
+            exit 0
+          fi
+          for pid in $pids; do
+            echo "::group::$(ps -o pid=,etime=,command= -p "$pid")"
+            sample "$pid" 2 -mayDie -file "$RUNNER_TEMP/sample-$pid.txt" > /dev/null 2>&1 || true
+            cat "$RUNNER_TEMP/sample-$pid.txt" 2>/dev/null || echo "sample could not read process $pid"
+            echo "::endgroup::"
+          done
 
   app:
     name: Build & test (apps/tingra-app)
