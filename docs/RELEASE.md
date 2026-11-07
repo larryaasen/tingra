@@ -216,6 +216,14 @@ Measured 2026-10-31: `xcodebuild archive` with `CODE_SIGNING_ALLOWED=NO`, into t
 
 **C11, 2026-11-03.** `Tingra Cameras --version` prints `0.1.0-dev` and exits 0, with nothing on standard error; `TingraCamerasMain` is the `@main` entry and `TingraCamerasApp` is not, as Decision 8 did for Tingra.app. `LaunchArguments` moved into `TingraHost`, and **`AppVersion` moved with it**: `versionLine(for:)` takes one, and the two apps carried identical copies. Their tests moved too, with two new ones (a path holding a space, and reading both keys from a bundle on disk). The app keeps the two tests only its own bundle can run. `Tingra --version` still prints `0.1.4-dev`, exit 0. The release script's assertions around this check belong to C10.
 
+**C10's packaging script, 2026-11-06.** `scripts/release-app-package.sh --app cameras [version]` runs the pipeline from archive to sha256 with the spike's recipes. Its per-app table holds Cameras alone; `--app tingra` refuses and names what Tingra.app still needs. Without `TINGRA_SIGN_ID` it archives with `CODE_SIGNING_ALLOWED=NO` and skips the export, the signature checks, and notarization. It verifies, runs, and images the unsigned app, and warns that the result must not be published. With it, the team is read from the identity's suffix, and the export options list is generated into the app's git-ignored `.build/xcodebuild`, so no tracked file names the signer. It writes only `dist/tingra-cameras/`, leaving the rest of `dist/` alone. Run on Larry's Mac both ways: unsigned, then signed and notarized, where every check passed, both submissions were Accepted, and the app inside the mounted image ran. No copy was left registered, even a minute after exit. Three things the runs found, each now in the script:
+
+- **The staged app must never be run.** Once a bundle whose code the notary service has already accepted has run, the system protects it with a `com.apple.macl` attribute, and the stapler can no longer write the ticket into it: error 73, "Could not remove existing ticket". A release's code is new at run time, so the first signed run stapled. A rerun that rebuilt identical code did not. `--version` therefore runs on a `ditto` copy, which is byte for byte the staged app, and the copy is deleted afterwards.
+- **The staged app is copied out of the export, never moved.** The exported bundle carries the same attribute, which `ditto` does not copy.
+- **Unregistering is not enough for a copy left on disk.** After one notarized run, Launch Services re-registered the export's copy *after* the exit trap had unregistered it. The export is now deleted once the app is copied out of it. The trap still unregisters every copy under the build folder and `dist/tingra-cameras/`, asking Launch Services which ones it holds rather than guessing paths.
+
+**A Team ID came back into the project file during row E.** Larry's Xcode re-added `DEVELOPMENT_TEAM` to both project-level configurations at 08:18 on 2026-11-06, seven minutes before the script first ran, with nothing else changed. It was reverted, since `Local.xcconfig` holds the value. This is the hazard the paragraph above names: watch every diff of this project file.
+
 ## Phase 0 — the spike
 
 Run on Larry's Mac after C3–C5, with his Developer ID identity. Throwaway commands, nothing committed.
@@ -228,13 +236,63 @@ Run on Larry's Mac after C3–C5, with his Developer ID identity. Throwaway comm
 | D | On a clean user account, with a quarantined download: does it open with no Gatekeeper override, does the camera prompt name "Tingra Cameras", and does the grant survive replacing the app with a second export? | Whether a fresh install works. |
 | E | With a real `/Applications` copy beside Tingra.app's Debug build, does either app disturb the other? | That sharing the Application Support folder is safe. |
 
+### Spike findings
+
+**Row A, 2026-11-05: the exported app is what C4, C7, and C11 describe, and it launches.** Archived with the shape C7 names: `xcodebuild archive` for `generic/platform=macOS`, with `ARCHS=arm64 CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="Developer ID Application"` and `DEVELOPMENT_TEAM` read from the Developer ID identity in the keychain, all on the command line, and no profile. The archive built with no warnings. It was exported with `-exportArchive` and a generated options list: `method` `developer-id`, `signingStyle` `manual`, the same certificate and team. Both steps succeeded on the first try, and the app holds:
+
+- the `Developer ID Application` authority, the hardened runtime (`flags=0x10000(runtime)`), and a secure timestamp. `codesign --verify --deep --strict` passes, and the app satisfies its designated requirement;
+- **exactly** `device.camera` and `cs.disable-library-validation`, with no `get-task-allow` and no `embedded.provisionprofile`;
+- `TingraEventBus.framework` and `TingraPlugInKit.framework` in `Contents/Frameworks`, each signed with Developer ID, with the runtime flag and a timestamp, and each verifying on its own. The binary links both through `@rpath`, and its one rpath is `@executable_path/../Frameworks`;
+- **arm64 only in all three binaries.** C5's amendment holds: `ARCHS=arm64` on the command line reaches the package frameworks;
+- no `__llvm_prf_cnts` section in any of the three;
+- `AppIcon.icns` and `Assets.car`, with `com.moonwink.tingra.cameras`, `0.1.0-dev` in both version keys, a floor of 26.0, and the video category.
+
+`Tingra Cameras --version` prints `0.1.0-dev` and exits 0. The GUI binary ran for six seconds and was still running when it was terminated. Nothing in row A contradicts a decision.
+
+**Row C, 2026-11-05: both notarizations pass and both staples validate.** The app was zipped with `ditto -c -k --keepParent` and submitted with `notarytool --keychain-profile TINGRA_NOTARY --wait`. It was **Accepted** in about 25 seconds, and the notary log lists no issues. After stapling, `stapler validate` passes and `spctl --assess --type execute` reads `source=Notarized Developer ID`. The disk image was made with `hdiutil create -format UDZO -fs HFS+` over the stapled app and an `/Applications` symlink, volume name "Tingra Cameras", and came to 1.7 MB. It was signed with the Developer ID identity and `--timestamp`, submitted on its own, **Accepted** in about 25 seconds, and stapled. It is `accepted` under `--type open --context context:primary-signature`. A copy carrying the `com.apple.quarantine` attribute a browser writes was mounted with `hdiutil attach -nobrowse -readonly`. Its app's staple validates, `spctl` accepts it as notarized, `syspolicy_check distribution` passes, and `--version` exits 0. C8 stands as written.
+
+**For row D, a second build whose code differs.** A re-export of the same archive would carry the same code directory hash, so a surviving grant would prove nothing. A second archive was therefore built with `TINGRA_CAMERAS_VERSION=0.1.1-dev` on the command line, leaving the tracked xcconfig untouched, then exported, notarized, stapled, and imaged the same way (both submissions Accepted). Its code directory hash differs from the first build's. Its designated requirement is identical: the identifier plus the Developer ID leaf certificate's team. That requirement is what TCC keys a grant to, so the grant should survive the replacement, and row D checks that it does.
+
+**Row B, 2026-11-05: the Developer ID build streams both cameras and drives the Razer's controls, so no entitlement is missing.** Larry ran row A's export through `open`, not from Terminal, so TCC asked on behalf of the app and not the terminal. He checked the FaceTime HD Camera and the Razer Kiyo Pro and reports every item a pass: preview, a slider, an Auto switch, and a preset recall. The event log he captured shows the Razer half:
+
+- discovery of all four cameras;
+- the Razer's 16 controls read through `TingraUVC`;
+- the default preset applied at launch;
+- `input.started` and `preview.firstFrame`;
+- Brightness slider moves and a reset;
+- `whiteBalanceAuto` flipped on and off.
+
+The log file stops before the FaceTime HD Camera was selected, so that half rests on Larry's report. Standard output to a file is block-buffered, and its tail was not written out. Two things the log shows that were not asked:
+
+- **The camera prompt was new.** The release build logged `camera=notDetermined` on a Mac where the Debug build holds the grant: row F's TCC result, as C15 expects. The `authorization.changed … to=granted` event comes about 20 seconds after the first frame, because the permission is re-read on app activation, not when the prompt is answered.
+- **The preset reached the Razer before the camera grant existed.** Control access goes through IOUSBHost, which TCC does not gate, so `cameraPreset.applied` precedes `authorization.status`. That is how USB control transfers work, not a release defect. It does mean a denied camera permission leaves the controls writable.
+
+Row B contradicts no decision.
+
+**Row D, 2026-11-05: a fresh install works.** Larry ran it on a clean user account on a second Mac, following the row's checklist: both disk images quarantined as a browser download is, then installed `0.1.0-dev` from its image into `/Applications`. Then he replaced it with `0.1.1-dev`, the build whose code hash differs. He reports every check a pass:
+
+- the app opened with only Gatekeeper's standard first-launch dialog, and no System Settings override;
+- the camera prompt named "Tingra Cameras";
+- the grant survived the replacement with no second prompt, and the preview went live.
+
+TCC therefore keys this app's grant to its designated requirement, not its code hash, as row C's comparison predicted. A release that replaces the app keeps the user's camera permission. Row D contradicts no decision.
+
+**Row E, 2026-11-06: the release build and Tingra.app's Debug build leave each other alone.** Row D's second build was copied into `/Applications` on the development Mac with `ditto`. Larry then ran it on the same camera as a running Tingra.app Debug build and reports every step a pass:
+
+- Tingra's camera input kept streaming while Cameras opened the camera, and a Razer control changed in Cameras showed in Tingra's picture, as one piece of hardware should;
+- after quitting both and relaunching, Tingra.app's destinations, project, and plug-in settings were intact, and so were Cameras' presets.
+
+Checksums of `~/Library/Application Support/Tingra` taken before row E match the ones taken after, file for file. The one exception is `log-session-id`, which Tingra.app advances on every launch. Sharing the folder is safe: each app writes only its own files, and C9's `zap` rule (files, never the folder) stands. Row E's checklist asked for a new preset to be saved, and Larry saved none, which is why `camera-presets.json` is unchanged since 2026-10-29. So the release build read the presets but never wrote one. Writing is a plain file write through `CameraPresetStore`, the same code a Debug build runs, and it needs no entitlement, so nothing about the release signature bears on it.
+
+**Launch Services, as for Tingra.app.** The archive registers its staging copy (`ArchiveIntermediates/…/InstallationBuildProductsLocation/Applications/Tingra Cameras.app`), and mounting the image registers the copy on the volume. Earlier sessions' scratch builds had left seven more registrations behind. This app embeds no extension, so the stray copies broke nothing, but they do crowd Open With and Launch Services' choice of copy. All of them were unregistered with `lsregister -u`, leaving only the Xcode Debug build and the copy row B runs. C10's rule to unregister every copy it builds applies to this app unchanged.
+
 ## Work list
 
 1. ~~Larry: approve or veto C1–C15.~~ All approved 2026-10-31. ~~Larry: supply the icon (C13).~~ Installed 2026-11-01.
 2. ~~C3–C6: the identifier, embedded kits, `ARCHS`, category, floor, and version line, checked by archiving and launching.~~ Built 2026-10-31; see "Built so far".
 3. ~~C11: `--version` and the move of `LaunchArguments`, with tests.~~ Built 2026-11-03; see "Built so far".
-4. Run the spike; record findings here; amend the decisions it contradicts.
-5. C10: `release-app-package.sh`, run unsigned and then signed on Larry's Mac.
+4. ~~Run the spike; record findings here; amend the decisions it contradicts.~~ Run 2026-11-05 and 2026-11-06; all five rows passed and no decision was amended. See "Spike findings".
+5. ~~C10: `release-app-package.sh`, run unsigned and then signed on Larry's Mac.~~ Built 2026-11-06; see "Built so far".
 6. C9, C10: the cask template, `release-cameras.sh`, and `release-cameras.yml`.
 7. C12: the CI build.
 8. Docs in the same changes: root and app `CLAUDE.md` (scripts, workflows, the build table), `packaging/README.md`, README.md (installing it), and `apps/tingra-cameras/CLAUDE.md`'s test command.

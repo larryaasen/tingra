@@ -73,7 +73,8 @@ docs/                           # The project documentation set (ARCHITECTURE.md
                                 #   and screenshots
 scripts/                        # Formatting scripts (format-swift.sh, check-format.sh), the
                                 #   streaming integration tests (integration-test.sh), and the
-                                #   release scripts (release-cli*.sh, release-sdk.sh)
+                                #   release scripts (release-cli*.sh, release-sdk.sh,
+                                #   release-app-package.sh)
 packaging/                      # Release templates: the Homebrew formula (homebrew/) and the
                                 #   TingraPlugInSDK repo's manifest and README (sdk/)
 .github/workflows/              # GitHub Actions CI: format-test.yml, integration.yml,
@@ -151,6 +152,7 @@ Start every Swift source file with this header. `<ModuleName>` is the containing
 | Run the app from a terminal | `scripts/run-app.sh` (builds, signs, and runs it in the foreground so the event log streams to the terminal; `--release`, `--no-run`) |
 | Start the local ingest simulator | `apps/ingest-simulator/sim.sh start` (see [SIMULATOR.md](docs/SIMULATOR.md)) |
 | Run the streaming integration tests | `scripts/integration-test.sh` (generators → simulator, verified server side with ffprobe; needs ffmpeg installed) |
+| Package an app for release | `scripts/release-app-package.sh --app cameras [version]` (archive → export → verify → run → notarize → staple → disk image, into `dist/tingra-cameras/`; signs and notarizes only with `TINGRA_SIGN_ID` and `TINGRA_NOTARY_PROFILE` set, else an unsigned development build; see [RELEASE.md](docs/RELEASE.md), Decision C10) |
 | Format all Swift files | `scripts/format-swift.sh` (swift-format over every package and app; config in the root `.swift-format`) |
 | Check formatting (CI) | `scripts/check-format.sh` (read-only; exits nonzero if `format-swift.sh` would change anything) |
 
