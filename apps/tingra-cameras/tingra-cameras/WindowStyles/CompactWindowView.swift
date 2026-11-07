@@ -72,12 +72,10 @@ struct CompactWindowView: View {
         .safeAreaInset(edge: .bottom, spacing: 0) {
             StatusBarView()
         }
-        // Named for the Window menu's window list, as the standard window
-        // is; the picker already shows the name, so the title bar doesn't.
-        // Device names are proper nouns from the system, and the product
-        // name is the same in every language.
-        .navigationTitle(Text(verbatim: session.selectedCamera?.name ?? "Tingra Cameras"))
-        .toolbar(removing: .title)
+        // The product's name in the title bar: the picker right under it
+        // already names the camera. The product name is the same in every
+        // language.
+        .navigationTitle(Text(verbatim: "Tingra Cameras"))
         .frame(
             minWidth: Self.minimumWidth,
             idealWidth: Self.idealWidth,
