@@ -486,7 +486,10 @@ struct AppDataStoreTests {
         #expect(!fixture.exists(fixture.store.destinationsFileURL))
         #expect(!fixture.exists(fixture.store.logSessionFileURL))
         #expect(try fixture.secureStorage.accounts().isEmpty)
-        #expect(fixture.defaults.persistentDomain(forName: fixture.domain) == nil)
+        // A removed domain reads back as nil through macOS 26 and as an empty
+        // dictionary from macOS 27 (the CI runners); either way no
+        // preference is left.
+        #expect(fixture.defaults.persistentDomain(forName: fixture.domain)?.isEmpty ?? true)
         #expect(!fixture.exists(fixture.supportDirectory))
         for item in fixture.store.inventory() {
             #expect(item.isEmpty, "\(item.kind)")
@@ -520,7 +523,7 @@ struct AppDataStoreTests {
         #expect(failures.map(\.kind) == [.streamKeys])
         #expect(failures.first?.reason == SecureStorageError.keychain(-34018).description)
         #expect(!fixture.exists(fixture.store.projectStore.fileURL))
-        #expect(fixture.defaults.persistentDomain(forName: fixture.domain) == nil)
+        #expect(fixture.defaults.persistentDomain(forName: fixture.domain)?.isEmpty ?? true)
         #expect(try fixture.secureStorage.accounts() == ["a"])
     }
 
