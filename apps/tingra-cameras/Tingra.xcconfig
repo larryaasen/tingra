@@ -29,7 +29,7 @@ DEVELOPMENT_TEAM = $(TINGRA_DEVELOPMENT_TEAM)
 //  tingra-cli share, because this app links no CLI and releases on its own
 //  (RELEASE.md, Decision C2). Between releases it carries the next version with
 //  a -dev suffix, as the product version does.
-TINGRA_CAMERAS_VERSION = 0.1.0
+TINGRA_CAMERAS_VERSION = 0.1.1-dev
 
 //  Apple Silicon only, in every configuration (CLAUDE.md, "Platform Support").
 //  Without this a Release build for a generic Mac destination, which is what
