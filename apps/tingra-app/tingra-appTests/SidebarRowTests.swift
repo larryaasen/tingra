@@ -244,6 +244,81 @@ struct SidebarRowTests {
         #expect(SidebarRow.rows(destinations: []).isEmpty)
     }
 
+    @Test("an enabled destination with a streamable URL reads ready")
+    @MainActor
+    func enabledDestinationWithURLIsReady() {
+        let rows = SidebarRow.rows(destinations: [
+            DestinationEdit(id: ProjectDestinationID(rawValue: "a"), urlText: "rtmp://a.example/live", name: "Twitch")
+        ])
+
+        #expect(rows.map(\.destinationReadiness) == [.ready])
+    }
+
+    @Test("a destination turned off reads off, even with a streamable URL")
+    @MainActor
+    func disabledDestinationIsOff() {
+        let rows = SidebarRow.rows(destinations: [
+            DestinationEdit(
+                id: ProjectDestinationID(rawValue: "a"),
+                urlText: "rtmp://a.example/live",
+                name: "Twitch",
+                isEnabled: false
+            )
+        ])
+
+        // The case that prompted the state: a fully configured destination
+        // whose switch was off looked ready while Start Streaming sat gray.
+        #expect(rows.map(\.destinationReadiness) == [.off])
+    }
+
+    @Test("an enabled destination with an empty or unsupported URL reads needs-URL")
+    @MainActor
+    func enabledDestinationWithoutURLNeedsURL() {
+        let rows = SidebarRow.rows(destinations: [
+            DestinationEdit(id: ProjectDestinationID(rawValue: "a"), urlText: "", name: "Twitch"),
+            DestinationEdit(id: ProjectDestinationID(rawValue: "b"), urlText: "https://b.example/live", name: "Web"),
+            DestinationEdit(id: ProjectDestinationID(rawValue: "c"), urlText: "rtm", name: "Typo"),
+        ])
+
+        #expect(rows.map(\.destinationReadiness) == [.needsURL, .needsURL, .needsURL])
+    }
+
+    @Test("off wins over a missing URL")
+    @MainActor
+    func offWinsOverMissingURL() {
+        let rows = SidebarRow.rows(destinations: [
+            DestinationEdit(id: ProjectDestinationID(rawValue: "a"), urlText: "", name: "Twitch", isEnabled: false)
+        ])
+
+        // The switch is the operator's own decision and the first thing to
+        // change; the missing URL shows once it is back on.
+        #expect(rows.map(\.destinationReadiness) == [.off])
+    }
+
+    @Test("a destination reads ready exactly when Start Streaming would stream to it")
+    @MainActor
+    func readinessMatchesIsStreamable() {
+        let destinations = [
+            DestinationEdit(id: ProjectDestinationID(rawValue: "a"), urlText: "rtmp://a.example/live"),
+            DestinationEdit(id: ProjectDestinationID(rawValue: "b"), urlText: "srt://b.example:9000", isEnabled: false),
+            DestinationEdit(id: ProjectDestinationID(rawValue: "c"), urlText: ""),
+            DestinationEdit(id: ProjectDestinationID(rawValue: "d"), urlText: "rtmps://d.example/app"),
+        ]
+
+        let rows = SidebarRow.rows(destinations: destinations)
+
+        // The sidebar and the Start control must agree on which destinations
+        // count, or one of them is lying.
+        #expect(rows.map { $0.destinationReadiness == .ready } == destinations.map(\.isStreamable))
+    }
+
+    @Test("rows outside the destination section carry no readiness")
+    func nonDestinationRowsCarryNoReadiness() {
+        let presetRows = SidebarRow.rows(presets: [Preset(name: "Main")], active: nil)
+
+        #expect(presetRows.map(\.destinationReadiness) == [nil])
+    }
+
     // MARK: Camera rows
 
     @Test("camera rows carry the input's tally")

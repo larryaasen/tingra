@@ -1,6 +1,40 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "%@ is off. Turn it on in Settings ▸ Streaming to stream to it." : {
+      "comment" : "Sidebar destination row tooltip while the destination is turned off; the placeholder is its name",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ ist deaktiviert. Aktivieren Sie das Ziel unter Einstellungen ▸ Streaming, um dorthin zu streamen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ está desactivado. Actívelo en Ajustes ▸ Transmisión para transmitir a este destino."
+          }
+        }
+      }
+    },
+    "%@ needs an rtmp://, rtmps://, or srt:// URL in Settings ▸ Streaming before it can be streamed to." : {
+      "comment" : "Sidebar destination row tooltip while the destination is on but has no usable URL; the placeholder is its name",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ benötigt unter Einstellungen ▸ Streaming eine rtmp://-, rtmps://- oder srt://-URL, bevor dorthin gestreamt werden kann."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ necesita una URL rtmp://, rtmps:// o srt:// en Ajustes ▸ Transmisión antes de poder transmitir a este destino."
+          }
+        }
+      }
+    },
     "%lld of %lld destinations off air" : {
       "comment" : "Status bar warning: how many of the stream's destinations are not being streamed to",
       "localizations" : {
@@ -14,6 +48,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%1$lld de %2$lld destinos fuera del aire"
+          }
+        }
+      }
+    },
+    "Needs a URL" : {
+      "comment" : "VoiceOver value of a sidebar destination row whose destination is on but has no usable URL",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "URL fehlt"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Falta la URL"
+          }
+        }
+      }
+    },
+    "Off" : {
+      "comment" : "VoiceOver value of a sidebar destination row whose destination is turned off",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deaktiviert"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Desactivado"
           }
         }
       }

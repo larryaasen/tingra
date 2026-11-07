@@ -58,6 +58,38 @@ struct SidebarRow: Identifiable, Equatable {
     /// and cannot be confused with a lamp.
     let isCurrent: Bool
 
+    /// Whether a destination row's destination will be streamed to, or nil for
+    /// every row that is not a destination.
+    ///
+    /// Added 2026-11-07, after a destination switched off in the Streaming
+    /// settings pane read in the sidebar exactly like a ready one while Start
+    /// Streaming sat gray with nothing on screen saying why. The row stays
+    /// inert — turning a destination on is still the pane's decision alone —
+    /// but it now says which state it is in.
+    let destinationReadiness: DestinationReadiness?
+
+    /// Whether a destination contributes a leg to the next stream — the
+    /// sidebar's reading of ``DestinationEdit/isStreamable``, split by the
+    /// reason it is not.
+    ///
+    /// A readiness, not a live state: whether the destination is on air,
+    /// reconnecting, or rejected is the streaming panel's to report (see
+    /// ``rows(destinations:)``). This answers only "will Start Streaming
+    /// stream here".
+    enum DestinationReadiness: Equatable {
+        /// Turned on, with a URL Tingra can stream to.
+        case ready
+
+        /// Turned off in the Streaming settings pane. Wins over ``needsURL``,
+        /// because the switch is the operator's own decision and the first
+        /// thing to change; a missing URL shows once it is back on.
+        case off
+
+        /// Turned on, but its URL is empty or not an rtmp://, rtmps://, or
+        /// srt:// address, so Start Streaming skips it.
+        case needsURL
+    }
+
     /// Creates a row.
     ///
     /// - Parameters:
@@ -67,11 +99,20 @@ struct SidebarRow: Identifiable, Equatable {
     ///     stage.
     ///   - isCurrent: Whether this row is its section's current one (default
     ///     no, which is every section but the presets).
-    init(id: String, name: String, tally: MultiviewTile.Tally?, isCurrent: Bool = false) {
+    ///   - destinationReadiness: A destination row's readiness (default nil,
+    ///     which is every section but the destinations).
+    init(
+        id: String,
+        name: String,
+        tally: MultiviewTile.Tally?,
+        isCurrent: Bool = false,
+        destinationReadiness: DestinationReadiness? = nil
+    ) {
         self.id = id
         self.name = name
         self.tally = tally
         self.isCurrent = isCurrent
+        self.destinationReadiness = destinationReadiness
     }
 
     /// The rows for the active preset's **authored** shots, in switcher order.
@@ -192,10 +233,30 @@ struct SidebarRow: Identifiable, Equatable {
     /// two-colour lamp would have to flatten into something misleading. The
     /// streaming panel owns that reporting.
     ///
+    /// Each row does carry its ``DestinationReadiness`` — whether Start
+    /// Streaming will stream to it — read from the same `isEnabled` and `url`
+    /// that ``DestinationEdit/isStreamable`` combines, so the sidebar and the
+    /// button cannot disagree about which destinations count.
+    ///
     /// - Parameter destinations: The project's destinations, in panel order.
     /// - Returns: One row per destination, in the given order.
     static func rows(destinations: [DestinationEdit]) -> [SidebarRow] {
-        destinations.map { SidebarRow(id: $0.id.rawValue, name: $0.displayName, tally: nil) }
+        destinations.map { destination in
+            let readiness: DestinationReadiness =
+                if !destination.isEnabled {
+                    .off
+                } else if destination.url == nil {
+                    .needsURL
+                } else {
+                    .ready
+                }
+            return SidebarRow(
+                id: destination.id.rawValue,
+                name: destination.displayName,
+                tally: nil,
+                destinationReadiness: readiness
+            )
+        }
     }
 
     /// The rows for the system's audio **output** devices.

@@ -1034,11 +1034,12 @@ struct LeadingSidebar: View {
                 // the full text stays reachable as a help tag.
                 Text(verbatim: row.name)
                     .lineLimit(1)
-                    .help(Text(verbatim: row.name))
+                    .foregroundStyle(row.destinationReadiness == .off ? .secondary : .primary)
+                    .help(nameHelp(row))
             } icon: {
-                Image(systemName: symbol)
-                    .foregroundStyle(row.tally?.borderTint ?? .secondary)
+                rowIcon(row, symbol: symbol)
             }
+            .accessibilityValue(accessibilityValue(row))
 
             if row.isCurrent {
                 Spacer(minLength: 0)
@@ -1048,6 +1049,79 @@ struct LeadingSidebar: View {
                         Text("Active", comment: "Accessibility label of the checkmark marking the active preset")
                     )
             }
+        }
+    }
+
+    /// A row's symbol: the section's own, lit by the row's tally — or, for a
+    /// destination Start Streaming will skip, a symbol saying why.
+    ///
+    /// A destination that is **off** draws the slashed antenna, the same
+    /// symbol the status bar uses for "not streaming", so the off state reads
+    /// by shape and not only by the dimmed name beside it. One that is on but
+    /// has **no usable URL** draws the yellow warning triangle the Library
+    /// and the Plug-ins pane use for something that needs the operator's
+    /// attention.
+    ///
+    /// - Parameters:
+    ///   - row: The row to draw the symbol for.
+    ///   - symbol: The SF Symbol for the row's section.
+    /// - Returns: The symbol.
+    @ViewBuilder private func rowIcon(_ row: SidebarRow, symbol: String) -> some View {
+        switch row.destinationReadiness {
+        case .off:
+            Image(systemName: "antenna.radiowaves.left.and.right.slash")
+                .foregroundStyle(.secondary)
+        case .needsURL:
+            Image(systemName: "exclamationmark.triangle")
+                .foregroundStyle(.yellow)
+        case .ready, nil:
+            Image(systemName: symbol)
+                .foregroundStyle(row.tally?.borderTint ?? .secondary)
+        }
+    }
+
+    /// A row's help tag: its name, which a narrow column may truncate — and,
+    /// for a destination Start Streaming will skip, why and where to fix it,
+    /// since the fix lives in another window (Settings ▸ Streaming).
+    ///
+    /// - Parameter row: The row to describe.
+    /// - Returns: The help text.
+    private func nameHelp(_ row: SidebarRow) -> Text {
+        switch row.destinationReadiness {
+        case .off:
+            Text(
+                "\(row.name) is off. Turn it on in Settings ▸ Streaming to stream to it.",
+                comment:
+                    "Sidebar destination row tooltip while the destination is turned off; the placeholder is its name"
+            )
+        case .needsURL:
+            Text(
+                "\(row.name) needs an rtmp://, rtmps://, or srt:// URL in Settings ▸ Streaming before it can be streamed to.",
+                comment:
+                    "Sidebar destination row tooltip while the destination is on but has no usable URL; the placeholder is its name"
+            )
+        case .ready, nil:
+            Text(verbatim: row.name)
+        }
+    }
+
+    /// The state VoiceOver reads after a row's name — today, only a
+    /// destination Start Streaming will skip, which a sighted operator tells
+    /// by its symbol; empty for every other row.
+    ///
+    /// - Parameter row: The row to describe.
+    /// - Returns: The accessibility value.
+    private func accessibilityValue(_ row: SidebarRow) -> Text {
+        switch row.destinationReadiness {
+        case .off:
+            Text("Off", comment: "VoiceOver value of a sidebar destination row whose destination is turned off")
+        case .needsURL:
+            Text(
+                "Needs a URL",
+                comment: "VoiceOver value of a sidebar destination row whose destination is on but has no usable URL"
+            )
+        case .ready, nil:
+            Text(verbatim: "")
         }
     }
 }
