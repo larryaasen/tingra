@@ -24,9 +24,43 @@
 name: Format & Test
 
 on:
+  # The paths-ignore lists name files no job here reads: documentation, the
+  # release templates and scripts, the ingest simulator, and the other
+  # workflows. A change touching only these runs nothing; one touching any
+  # other file runs everything. The two lists are kept identical. A Markdown
+  # file under packages/ or apps/ other than an agent-rules file is not
+  # ignored, since it could be a test fixture.
   push:
     branches: [main]
+    paths-ignore:
+      - "docs/**"
+      - "*.md"
+      - "**/CLAUDE.md"
+      - "**/AGENTS.md"
+      - "LICENSE"
+      - "packaging/**"
+      - "apps/ingest-simulator/**"
+      - "scripts/integration-test.sh"
+      - "scripts/release-*.sh"
+      - "scripts/run-app.sh"
+      - "scripts/sign-app.sh"
+      - ".github/workflows/integration.yml"
+      - ".github/workflows/release-*.yml"
   pull_request:
+    paths-ignore:
+      - "docs/**"
+      - "*.md"
+      - "**/CLAUDE.md"
+      - "**/AGENTS.md"
+      - "LICENSE"
+      - "packaging/**"
+      - "apps/ingest-simulator/**"
+      - "scripts/integration-test.sh"
+      - "scripts/release-*.sh"
+      - "scripts/run-app.sh"
+      - "scripts/sign-app.sh"
+      - ".github/workflows/integration.yml"
+      - ".github/workflows/release-*.yml"
   # Called by release-cli.yml, release-sdk.yml, and release-cameras.yml as the
   # pre-release gate.
   workflow_call:
