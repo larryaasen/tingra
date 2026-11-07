@@ -109,6 +109,8 @@ struct EffectChainView: View {
                         parameterColorWell(parameter, at: index, in: configuration)
                     case .toggle:
                         parameterToggle(parameter, at: index, in: configuration)
+                    case .choice:
+                        parameterChoice(parameter, at: index, in: configuration)
                     @unknown default:
                         UnsupportedParameterRow(parameter: parameter)
                     }
@@ -141,6 +143,32 @@ struct EffectChainView: View {
                 ]
             )
             model.setEffectParameter(.bool(isOn), forKey: parameter.key, ofEffectAt: index, onStrip: stripID)
+        }
+    }
+
+    /// One declared choice parameter's pop-up menu — no built-in audio effect
+    /// declares one, but the descriptor's kind is handled exhaustively so a
+    /// third-party effect that does gets its control. A pick is one discrete
+    /// change, so it reports its `tap` and applies the option's value at once.
+    private func parameterChoice(
+        _ parameter: Parameter,
+        at index: Int,
+        in configuration: EffectConfiguration
+    ) -> some View {
+        EffectParameterPicker(parameter: parameter, selection: parameter.choice(in: configuration.parameters)) {
+            choice in
+            model.eventBus.tap(
+                "effectParameter.choice",
+                domain: .audio,
+                params: [
+                    "id": .string(stripID.rawValue),
+                    "effect": .string(configuration.effect.rawValue),
+                    "index": .int(index),
+                    "key": .string(parameter.key),
+                    "value": .double(choice.value),
+                ]
+            )
+            model.setEffectParameter(.double(choice.value), forKey: parameter.key, ofEffectAt: index, onStrip: stripID)
         }
     }
 

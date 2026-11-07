@@ -58,6 +58,8 @@ struct InputParametersView: View {
                     parameterColorWell(parameter)
                 case .toggle:
                     parameterToggle(parameter)
+                case .choice:
+                    parameterChoice(parameter)
                 @unknown default:
                     UnsupportedParameterRow(parameter: parameter)
                 }
@@ -92,6 +94,24 @@ struct InputParametersView: View {
                 ]
             )
             model.setInputParameter(.bool(isOn), forKey: parameter.key, ofInput: inputID)
+        }
+    }
+
+    /// One choice parameter's pop-up menu (a camera's power-line frequency,
+    /// say), drawn by the shared picker. A pick is one discrete change, so it
+    /// reports its `tap` and applies the option's value at once.
+    private func parameterChoice(_ parameter: Parameter) -> some View {
+        EffectParameterPicker(parameter: parameter, selection: parameter.choice(in: payload)) { choice in
+            model.eventBus.tap(
+                "inputParameter.choice",
+                domain: .capture,
+                params: [
+                    "id": .string(inputID.rawValue),
+                    "key": .string(parameter.key),
+                    "value": .double(choice.value),
+                ]
+            )
+            model.setInputParameter(.double(choice.value), forKey: parameter.key, ofInput: inputID)
         }
     }
 

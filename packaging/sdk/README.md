@@ -11,7 +11,7 @@ The SDK is two binary frameworks, `TingraPlugInKit` (the plug-in protocols) and
 with Library Evolution, so a bundle built against one release keeps loading in
 later Tingra releases with the same major version.
 
-**Requirements:** Xcode 27.0 or later, macOS 15 or later, Apple silicon (arm64).
+**Requirements:** Xcode 27.2 or later, macOS 15 or later, Apple silicon (arm64).
 
 ## Adding the SDK
 

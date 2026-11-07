@@ -440,6 +440,7 @@ surface is:
 - `EffectSlotOrdinal` — the "1." ordinal before each chain slot's name.
 - `EffectParameterField` — the value field beside a parameter's slider.
 - `EffectParameterToggle` — the switch every editor draws for a toggle.
+- `EffectParameterPicker` — the pop-up menu every editor draws for a choice.
 - `EffectParameterFormat` — the pure unit and percent conversions for it.
 - `UnsupportedParameterRow` — the row for a parameter kind this build lacks.
 - `EffectColorWell` — the color well drawn for a color parameter.

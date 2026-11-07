@@ -9,6 +9,7 @@
 
 @preconcurrency import AVFoundation
 import CoreMedia
+import Synchronization
 import Testing
 import TingraEventBus
 import TingraPlugInKit
@@ -1354,6 +1355,66 @@ struct AudioMixerTests {
     }
 }
 
+/// A synthetic clock that also reports when its consumer has finished with
+/// the last scripted tick, so a test can wait for the mixer to have mixed
+/// every block rather than sleeping and hoping it has.
+///
+/// The tick stream is built by unfolding: the mix loop asks for the next tick
+/// only after its body — the whole synchronous `mixBlock` — has run, so the
+/// request that finds no tick left proves every block was mixed and yielded.
+private final class ExhaustionSignalingClock: EngineClock {
+    /// The times the tick stream yields, in order.
+    let tickTimes: [CMTime]
+
+    /// The index of the next tick to hand out, shared with the unfolding
+    /// closure.
+    private let nextIndex = Mutex(0)
+
+    /// Finishes once the consumer has asked for a tick past the last one.
+    private let exhausted: AsyncStream<Void>
+
+    /// The continuation that finishes ``exhausted``.
+    private let exhaustedContinuation: AsyncStream<Void>.Continuation
+
+    /// Creates the clock over the scripted tick times.
+    ///
+    /// - Parameter tickTimes: The times the tick stream yields, in order.
+    init(tickTimes: [CMTime]) {
+        self.tickTimes = tickTimes
+        (exhausted, exhaustedContinuation) = AsyncStream.makeStream()
+    }
+
+    /// The first scripted time, as ``SyntheticClock`` reports it.
+    var now: CMTime { tickTimes.first ?? .zero }
+
+    /// Yields the scripted times regardless of the requested duration, then
+    /// signals exhaustion when asked for one more.
+    func tick(every duration: CMTime) -> AsyncStream<CMTime> {
+        AsyncStream(unfolding: { [self] in
+            nextTick()
+        })
+    }
+
+    /// Hands out the next scripted time, or finishes ``exhausted`` and
+    /// returns nil once every time has been handed out.
+    private func nextTick() -> CMTime? {
+        let index = nextIndex.withLock { index in
+            defer { index += 1 }
+            return index
+        }
+        guard index < tickTimes.count else {
+            exhaustedContinuation.finish()
+            return nil
+        }
+        return tickTimes[index]
+    }
+
+    /// Returns once the consumer has mixed every scripted tick.
+    func waitUntilExhausted() async {
+        for await _ in exhausted {}
+    }
+}
+
 /// The program-audio and meter streams hold at most a second of un-taken
 /// blocks by default, so a stalled consumer loses old blocks rather than
 /// growing the buffer without limit (ARCHITECTURE.md, "Bounded frame
@@ -1370,9 +1431,11 @@ struct AudioMixerBoundedStreamTests {
         }
     }
 
-    /// A mixer over a synthetic clock that fires every tick at once.
-    private func makeMixer(tickTimes: [CMTime]) -> AudioMixer {
-        AudioMixer(clock: SyntheticClock(tickTimes: tickTimes), format: format, eventBus: EventBus())
+    /// A mixer over a synthetic clock that fires every tick at once, and the
+    /// clock, so a test can wait for the mixer to have mixed every tick.
+    private func makeMixer(tickTimes: [CMTime]) -> (mixer: AudioMixer, clock: ExhaustionSignalingClock) {
+        let clock = ExhaustionSignalingClock(tickTimes: tickTimes)
+        return (AudioMixer(clock: clock, format: format, eventBus: EventBus()), clock)
     }
 
     @Test("the default bound is one second of blocks")
@@ -1384,11 +1447,11 @@ struct AudioMixerBoundedStreamTests {
     @Test("a consumer attaching after more than a second of ticks receives the newest second of program audio")
     func stalledProgramConsumerGetsTheNewestSecond() async {
         let tickTimes = ticks(AudioMixer.bufferedBlockCount + 12)
-        let mixer = makeMixer(tickTimes: tickTimes)
+        let (mixer, clock) = makeMixer(tickTimes: tickTimes)
 
         let program = mixer.programAudio()
         mixer.start()
-        await letFillTasksDrain()
+        await clock.waitUntilExhausted()
 
         let blocks = await collect(program, limit: AudioMixer.bufferedBlockCount)
         #expect(blocks.count == AudioMixer.bufferedBlockCount)
@@ -1399,11 +1462,11 @@ struct AudioMixerBoundedStreamTests {
     @Test("a consumer attaching after more than a second of ticks receives the newest second of meter blocks")
     func stalledMeterConsumerGetsTheNewestSecond() async {
         let tickTimes = ticks(AudioMixer.bufferedBlockCount + 12)
-        let mixer = makeMixer(tickTimes: tickTimes)
+        let (mixer, clock) = makeMixer(tickTimes: tickTimes)
 
         let meters = mixer.meterReadings()
         mixer.start()
-        await letFillTasksDrain()
+        await clock.waitUntilExhausted()
 
         let blocks = await collectMeters(meters, limit: AudioMixer.bufferedBlockCount)
         #expect(blocks.count == AudioMixer.bufferedBlockCount)

@@ -128,46 +128,51 @@ struct MediaFixtures {
         try #require(writer.startWriting())
         writer.startSession(atSourceTime: .zero)
 
-        for index in 0..<frameCount {
-            while !videoInput.isReadyForMoreMediaData { try await Task.sleep(for: .milliseconds(5)) }
-            let pool = try #require(adaptor.pixelBufferPool)
-            var bufferOut: CVPixelBuffer?
-            CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, pool, &bufferOut)
-            let buffer = try #require(bufferOut)
-            CVPixelBufferLockBaseAddress(buffer, [])
-            let gray = UInt8(min(255, index * Self.grayStep))
-            let base = try #require(CVPixelBufferGetBaseAddress(buffer))
-            let bytesPerRow = CVPixelBufferGetBytesPerRow(buffer)
-            for row in 0..<size {
-                let rowPointer = base.advanced(by: row * bytesPerRow).assumingMemoryBound(to: UInt8.self)
-                for column in 0..<size {
-                    rowPointer[column * 4] = gray
-                    rowPointer[column * 4 + 1] = gray
-                    rowPointer[column * 4 + 2] = gray
-                    rowPointer[column * 4 + 3] = 255
-                }
+        // Feed whichever track the writer will take, the earlier one first.
+        // Writing one track to the end and then the other deadlocks: the
+        // writer interleaves the file, so once the video runs a couple of
+        // seconds ahead it stops taking video until audio arrives — and how
+        // far ahead that is depends on the encoder, which is why a
+        // video-then-audio fixture passed here and hung on a CI runner,
+        // whose virtual machine has no hardware encoder.
+        let sampleRate = 48000
+        let totalAudioFrames = audioInput == nil ? 0 : sampleRate * frameCount / Int(frameRate)
+        let blockFrames = 1024
+        var frameIndex = 0
+        var audioPosition = 0
+        if frameCount == 0 { videoInput.markAsFinished() }
+        if totalAudioFrames == 0 { audioInput?.markAsFinished() }
+        while frameIndex < frameCount || audioPosition < totalAudioFrames {
+            let videoWanted = frameIndex < frameCount
+            let audioWanted = audioPosition < totalAudioFrames
+            let videoOpen = videoWanted && videoInput.isReadyForMoreMediaData
+            let audioOpen = audioWanted && (audioInput?.isReadyForMoreMediaData ?? false)
+            guard videoOpen || audioOpen else {
+                var pending: [AVAssetWriterInput] = []
+                if videoWanted { pending.append(videoInput) }
+                if audioWanted, let audioInput { pending.append(audioInput) }
+                try await Self.waitUntilAnyIsReady(pending, writer: writer)
+                continue
             }
-            CVPixelBufferUnlockBaseAddress(buffer, [])
-            try #require(
-                adaptor.append(buffer, withPresentationTime: CMTime(value: CMTimeValue(index), timescale: frameRate)))
-        }
-        videoInput.markAsFinished()
-
-        if let audioInput {
-            let sampleRate = 48000
-            let totalFrames = sampleRate * frameCount / Int(frameRate)
-            let blockFrames = 1024
-            var position = 0
-            while position < totalFrames {
-                while !audioInput.isReadyForMoreMediaData { try await Task.sleep(for: .milliseconds(5)) }
-                let count = min(blockFrames, totalFrames - position)
+            let videoTime = Double(frameIndex) / Double(frameRate)
+            let audioTime = Double(audioPosition) / Double(sampleRate)
+            if videoOpen && (!audioOpen || videoTime <= audioTime) {
+                let pool = try #require(adaptor.pixelBufferPool)
+                let buffer = try Self.makeGrayFrame(level: UInt8(min(255, frameIndex * Self.grayStep)), from: pool)
+                try #require(
+                    adaptor.append(
+                        buffer, withPresentationTime: CMTime(value: CMTimeValue(frameIndex), timescale: frameRate)))
+                frameIndex += 1
+                if frameIndex == frameCount { videoInput.markAsFinished() }
+            } else if let audioInput {
+                let count = min(blockFrames, totalAudioFrames - audioPosition)
                 let sample = try Self.makeAudioSample(
                     frames: count, sampleRate: sampleRate,
-                    presentationTime: CMTime(value: CMTimeValue(position), timescale: CMTimeScale(sampleRate)))
+                    presentationTime: CMTime(value: CMTimeValue(audioPosition), timescale: CMTimeScale(sampleRate)))
                 try #require(audioInput.append(sample))
-                position += count
+                audioPosition += count
+                if audioPosition == totalAudioFrames { audioInput.markAsFinished() }
             }
-            audioInput.markAsFinished()
         }
         await writer.finishWriting()
         try #require(
@@ -177,6 +182,79 @@ struct MediaFixtures {
 
     /// The gray-level step between successive fixture frames.
     static let grayStep = 20
+
+    /// How long ``waitUntilAnyIsReady(_:writer:)`` waits before giving up.
+    /// The fixture clip is about a second long, so a wait this long means the
+    /// writer has stalled, and the test should say so rather than hang.
+    private static let readinessTimeout = Duration.seconds(10)
+
+    /// The fixture writer stopped taking media: no input it still had samples
+    /// for became ready within ``readinessTimeout``.
+    struct MovieWriterStalled: Error, CustomStringConvertible {
+        /// The writer's status when the wait gave up.
+        let status: AVAssetWriter.Status
+
+        /// The writer's error, if it reported one.
+        let underlying: (any Error)?
+
+        /// Names the stall and the writer's state, for the test's failure.
+        var description: String {
+            "movie fixture: the writer took no media for \(MediaFixtures.readinessTimeout) "
+                + "(status \(status.rawValue), error: \(underlying.map(String.init(describing:)) ?? "none"))"
+        }
+    }
+
+    /// Returns once any of `inputs` is ready for more media, woken by each
+    /// input's key-value observation of `isReadyForMoreMediaData` rather than
+    /// by checking on a timer.
+    ///
+    /// - Parameters:
+    ///   - inputs: The inputs that still have samples to append.
+    ///   - writer: Their writer, whose state names a stall.
+    /// - Throws: ``MovieWriterStalled`` when none becomes ready within
+    ///   ``readinessTimeout``.
+    private static func waitUntilAnyIsReady(_ inputs: [AVAssetWriterInput], writer: AVAssetWriter) async throws {
+        let (changes, continuation) = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
+        let observations = inputs.map { input in
+            input.observe(\.isReadyForMoreMediaData) { _, _ in continuation.yield() }
+        }
+        let deadline = Task {
+            try? await Task.sleep(for: readinessTimeout)
+            continuation.finish()
+        }
+        defer {
+            deadline.cancel()
+            observations.forEach { $0.invalidate() }
+        }
+        // Checked after observing, so a change between the caller's check and
+        // the observation is not lost.
+        if inputs.contains(where: \.isReadyForMoreMediaData) { return }
+        for await _ in changes where inputs.contains(where: \.isReadyForMoreMediaData) {
+            return
+        }
+        throw MovieWriterStalled(status: writer.status, underlying: writer.error)
+    }
+
+    /// A BGRA frame from `pool`, every pixel opaque gray at `level`.
+    private static func makeGrayFrame(level: UInt8, from pool: CVPixelBufferPool) throws -> CVPixelBuffer {
+        var bufferOut: CVPixelBuffer?
+        CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, pool, &bufferOut)
+        let buffer = try #require(bufferOut)
+        CVPixelBufferLockBaseAddress(buffer, [])
+        defer { CVPixelBufferUnlockBaseAddress(buffer, []) }
+        let base = try #require(CVPixelBufferGetBaseAddress(buffer))
+        let bytesPerRow = CVPixelBufferGetBytesPerRow(buffer)
+        for row in 0..<CVPixelBufferGetHeight(buffer) {
+            let rowPointer = base.advanced(by: row * bytesPerRow).assumingMemoryBound(to: UInt8.self)
+            for column in 0..<CVPixelBufferGetWidth(buffer) {
+                rowPointer[column * 4] = level
+                rowPointer[column * 4 + 1] = level
+                rowPointer[column * 4 + 2] = level
+                rowPointer[column * 4 + 3] = 255
+            }
+        }
+        return buffer
+    }
 
     /// One block of a 440 Hz mono 16-bit sine at the given position.
     private static func makeAudioSample(frames: Int, sampleRate: Int, presentationTime: CMTime) throws -> CMSampleBuffer

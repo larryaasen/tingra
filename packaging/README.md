@@ -349,7 +349,7 @@ checks them against the checksums the pushed manifest pins.
 
 **Build it at the toolchain floor.** Each `.swiftinterface` records the
 compiler that wrote it, and an older compiler may not read a newer one's. CI
-pins Xcode 27.0; locally, point `DEVELOPER_DIR` at it. The script reads the
+pins Xcode 27.2; locally, point `DEVELOPER_DIR` at it. The script reads the
 floor from `release-sdk.yml`'s `DEVELOPER_DIR`, warns when `xcodebuild` is
 another Xcode, asks before publishing such a build, and refuses to publish one
 unattended.

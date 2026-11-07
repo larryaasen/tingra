@@ -236,7 +236,9 @@ here, under "Left open from “…”", pointing at its record there.
         - [ ] Larry: create the public `larryaasen/tingra-plug-in-sdk`
           (empty is fine) and extend `TINGRA_RELEASE_TOKEN` to it.
         - [ ] Larry: the first publish, through Actions → Release
-          TingraPlugInSDK (Xcode 27.0, the same as a local build here).
+          TingraPlugInSDK (Xcode 27.2 since 2026-11-07, the same as a
+          local build here; the runner's 27.2 was the release candidate
+          when pinned, so check `xcodebuild -version` in the run's log).
         - [ ] Larry: run the app half of the end-to-end check — an
           SDK-built bundle in the user folder, loaded by Tingra.app. His
           debug instance was running, so a session could not.

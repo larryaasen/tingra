@@ -101,7 +101,7 @@ struct DestinationsListToolTests {
     @Test("a destinations document that does not decode returns a structured error naming the file")
     func unreadableStore() async throws {
         let fixture = try await DestinationFixture(destinations: [savedDestination()])
-        let fileURL = await fixture.store.fileURL
+        let fileURL = fixture.store.fileURL
         try Data("not a destinations document".utf8).write(to: fileURL, options: [.atomic])
 
         let error = await #expect(throws: ToolError.self) {

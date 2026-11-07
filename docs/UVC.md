@@ -125,7 +125,7 @@ Parameter and section names are supplied by the plug-in in English, like effect 
 
 ## The main app
 
-The main app's load path applies `currentParameters()` to an input with no stored values instead of an empty payload — so opening a project no longer resets a camera's picture — and keeps those device-held values (`EngineModel.deviceInputParameters`, never written to the document) as what a settings editor shows and starts its first edit from. The Input Settings popover gains the toggle kind, the disabled state for a governed value, and section headings; both effect chain editors draw a toggle parameter as a switch (`EffectParameterToggle`, shared) and disable a governed number.
+The main app's load path applies `currentParameters()` to an input with no stored values instead of an empty payload — so opening a project no longer resets a camera's picture — and keeps those device-held values (`EngineModel.deviceInputParameters`, never written to the document) as what a settings editor shows and starts its first edit from. The Input Settings popover gains the toggle kind, the disabled state for a governed value, and section headings; both effect chain editors draw a toggle parameter as a switch (`EffectParameterToggle`, shared) and disable a governed number. A choice parameter is drawn the same way in all three, as a pop-up menu of its options (`EffectParameterPicker`, shared; 2026-11-07) — until then the editors fell through to the row meant for a kind newer than the app.
 
 **The main app has no place to open a camera's controls yet.** Its Input Settings popover hangs off a mixer channel strip, and a camera has no strip. The natural home is the camera layer's inspector — a later slice.
 

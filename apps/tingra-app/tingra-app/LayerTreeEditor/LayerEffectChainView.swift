@@ -102,6 +102,8 @@ struct LayerEffectChainView: View {
                         parameterColorWell(parameter, at: index, in: configuration)
                     case .toggle:
                         parameterToggle(parameter, at: index, in: configuration)
+                    case .choice:
+                        parameterChoice(parameter, at: index, in: configuration)
                     @unknown default:
                         UnsupportedParameterRow(parameter: parameter)
                     }
@@ -196,6 +198,34 @@ struct LayerEffectChainView: View {
             )
             model.beginLayerGesture()
             model.setLayerEffectParameter(.bool(isOn), forKey: parameter.key, ofEffectAt: index, atLayer: layerIndex)
+            model.endLayerGesture(.adjustEffect)
+        }
+    }
+
+    /// One declared choice parameter's pop-up menu, drawn generically from
+    /// its descriptor. A pick is one discrete change — one gesture, one undo
+    /// step, one `tap` — like a toggle's flip.
+    private func parameterChoice(
+        _ parameter: Parameter,
+        at index: Int,
+        in configuration: EffectConfiguration
+    ) -> some View {
+        EffectParameterPicker(parameter: parameter, selection: parameter.choice(in: configuration.parameters)) {
+            choice in
+            model.eventBus.tap(
+                "layerEffectParameter.choice",
+                domain: .composition,
+                params: [
+                    "layer": .int(layerIndex),
+                    "effect": .string(configuration.effect.rawValue),
+                    "index": .int(index),
+                    "key": .string(parameter.key),
+                    "value": .double(choice.value),
+                ]
+            )
+            model.beginLayerGesture()
+            model.setLayerEffectParameter(
+                .double(choice.value), forKey: parameter.key, ofEffectAt: index, atLayer: layerIndex)
             model.endLayerGesture(.adjustEffect)
         }
     }
