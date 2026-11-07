@@ -79,6 +79,19 @@ here, under "Left open from “…”", pointing at its record there.
     - [ ] Later slices, each named in the record: typed dB entry, a scale
       beside the meter, narrow/wide strips, solo as pre-fader listen on the
       monitor bus (never in place), strip color and icon, in-place rename.
+  - [ ] **Left open from “The mixer shows what the show uses”** (built
+    2026-11-07; ARCHITECTURE.md, "Per-strip routing", the amendment):
+    - [ ] Check by hand: the Add Channel menu beside the Mixer heading, a
+      sidebar audio row dragged onto the strips, Remove from Mixer on a
+      strip, the fader mark and program tally on the sidebar's audio rows,
+      and a video file with sound placed in a shot adding its strip. Not
+      seen by the building session.
+    - [ ] Remove the strips every existing project authored by the old
+      append policy, once, with Remove from Mixer (no migration).
+    - [ ] Check by hand: a strip whose device is unplugged shows "Not
+      connected" under its name with its controls disabled, and comes back
+      to life when the device is plugged in again. Not seen by the building
+      session, which left the running instance alone mid-stream.
   - [ ] **Left open from “Bounded frame streams”** (done; record in DONE.md):
     - [ ] **What grew main-thread load over the first eleven minutes** of
       both leaking sessions is not known; with the streams bounded it is a

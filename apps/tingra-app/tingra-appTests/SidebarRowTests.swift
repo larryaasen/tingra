@@ -425,6 +425,58 @@ struct SidebarRowTests {
         #expect(SidebarRow.rows(from: [AudioMonitorDevice(uid: "u", name: "n")]).allSatisfy { $0.tally == nil })
     }
 
+    // MARK: Audio rows
+
+    @Test("an audio row whose input has no strip carries no mark and no tally")
+    @MainActor
+    func audioRowOffTheMixerIsPlain() {
+        let rows = SidebarRow.audioRows(from: Self.audioChoices, ofKind: .microphone, strips: [])
+
+        // Listed all the same: the section is the inventory the operator adds from.
+        #expect(rows == [SidebarRow(id: "mic", name: "MacBook Pro Microphone", tally: nil)])
+        #expect(rows.allSatisfy { !$0.isOnMixer })
+    }
+
+    @Test("an audio row whose strip is muted is marked on the mixer but unlit")
+    @MainActor
+    func audioRowWithAMutedStripIsMarkedButUnlit() {
+        let strip = MixerStrip(id: Self.input("mic"), name: "MacBook Pro Microphone", level: 1, pan: 0, isMuted: true)
+
+        let rows = SidebarRow.audioRows(from: Self.audioChoices, ofKind: .microphone, strips: [strip])
+
+        #expect(rows.map(\.isOnMixer) == [true])
+        #expect(rows.map(\.tally) == [nil])
+    }
+
+    @Test("an audio row whose strip is unmuted lights the program tally")
+    @MainActor
+    func audioRowWithALiveStripIsOnAir() {
+        let strip = MixerStrip(id: Self.input("tone"), name: "440 Hz Tone", level: 1, pan: 0, isMuted: false)
+
+        let rows = SidebarRow.audioRows(from: Self.audioChoices, ofKind: .generator, strips: [strip])
+
+        #expect(rows == [SidebarRow(id: "tone", name: "440 Hz Tone", tally: .onAir, isOnMixer: true)])
+    }
+
+    @Test("audio rows keep the provenance split of the inert rows")
+    @MainActor
+    func audioRowsSplitByKind() {
+        let strips = [MixerStrip(id: Self.input("mic"), name: "Mic", level: 1, pan: 0, isMuted: false)]
+
+        #expect(
+            SidebarRow.audioRows(from: Self.audioChoices, ofKind: .microphone, strips: strips).map(\.id) == ["mic"])
+        #expect(
+            SidebarRow.audioRows(from: Self.audioChoices, ofKind: .generator, strips: strips).map(\.id) == ["tone"])
+    }
+
+    @Test("rows differing only in their mixer mark compare not equal")
+    @MainActor
+    func mixerMarkAffectsEquality() {
+        let plain = SidebarRow(id: "mic", name: "Mic", tally: nil)
+        #expect(plain == SidebarRow(id: "mic", name: "Mic", tally: nil, isOnMixer: false))
+        #expect(plain != SidebarRow(id: "mic", name: "Mic", tally: nil, isOnMixer: true))
+    }
+
     @Test("input rows keep the order they were given")
     @MainActor
     func inputRowsKeepCallerOrder() {

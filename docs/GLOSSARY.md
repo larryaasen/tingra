@@ -76,7 +76,7 @@ A project is the saved file for an entire show. A project contains presets. A pr
 
 ## Audio
 
-**Mixer** — the audio surface of the engine: combines every audio input into the program mix.
+**Mixer** — the audio surface of the engine: combines the audio inputs the operator has added to it, one channel strip each, into the program mix. A connected input is not on the mixer until it is added.
 
 **Channel strip** — one input's slot in the mixer: its level, mute, pan, meter, routing, and audio effect chain.
 

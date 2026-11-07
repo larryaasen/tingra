@@ -20,9 +20,15 @@ import TingraPlugInKit
 ///
 /// Strip settings **persist in the active preset** as its authored audio
 /// channels (`TingraComposition.AudioChannel`), synced back and autosaved
-/// like shot edits; the session strips are built by ``strips(channels:discovered:)``
-/// merging the authored channels with live discovery (see ARCHITECTURE.md,
-/// "Per-strip routing").
+/// like shot edits; the session strips are built by
+/// ``strips(channels:discovered:preferring:)`` from the authored channels,
+/// named from live discovery (see ARCHITECTURE.md, "Per-strip routing").
+///
+/// **The mixer holds what the show uses, not what is connected** (the
+/// amendment of 2026-11-07). Discovery never adds a strip: a strip exists
+/// because the operator added it (``added(_:)``), because a fresh project
+/// seeded one (``seed(from:preferring:)``), or because a video file with
+/// sound was placed in a shot (``mediaStrip(for:strips:discovered:)``).
 struct MixerStrip: Identifiable, Equatable {
     /// The audio input's stable identifier — the device UID, so a persisted
     /// strip finds its device again across launches.
@@ -54,59 +60,121 @@ struct MixerStrip: Identifiable, Equatable {
     var effects: [EffectConfiguration] = []
 
     /// Seeds the session's strips from the discovered audio inputs — the
-    /// no-authored-audio fallback of ``strips(channels:discovered:)``: the
-    /// first **captured** input unmuted at unity — the successor of the
-    /// CLI-era "first microphone streams" default — and every other input
-    /// muted at unity, present on the panel but silent (and not capturing)
-    /// until the operator unmutes it. Every strip seeds centered.
+    /// no-authored-audio fallback of ``strips(channels:discovered:preferring:)``:
+    /// **one** strip, unmuted at unity and centered — the successor of the
+    /// CLI-era "first microphone streams" default. The inputs the seed
+    /// passes over are not strips at all; they stay in the sidebar for the
+    /// operator to add (ARCHITECTURE.md, "Per-strip routing", the amendment
+    /// of 2026-11-07).
     ///
-    /// A **generator is never seeded unmuted**, even when it sorts first by
-    /// name (the 440 Hz tone does). Unmuting also starts the input, so
-    /// seeding a generator would put a test tone on the program mix — and on
-    /// any stream — the first time an operator opened a fresh project. When
-    /// the only audio inputs are generators, every strip seeds muted: a
-    /// silent mix the operator can unmute is right where an unrequested tone
-    /// is not.
+    /// The strip is the **system default microphone** when discovery holds
+    /// it, so a fresh project opens on the microphone macOS is already
+    /// using, and otherwise the first captured input in listing order.
     ///
-    /// - Parameter inputs: The discovered audio inputs, in listing order.
-    /// - Returns: One strip per input.
-    static func seed(from inputs: [EngineModel.InputChoice]) -> [MixerStrip] {
+    /// A **generator or a media file is never seeded**, even when it sorts
+    /// first by name (the 440 Hz tone does), and even when it is passed as
+    /// the default. Unmuting also starts the input, so seeding a generator
+    /// would put a test tone on the program mix — and on any stream — the
+    /// first time an operator opened a fresh project. When the only audio
+    /// inputs are generators or media, the seed is empty: an empty mixer the
+    /// operator can add to is right where an unrequested tone is not.
+    ///
+    /// - Parameters:
+    ///   - inputs: The discovered audio inputs, in listing order.
+    ///   - defaultMicrophone: The system default microphone's id, or nil when
+    ///     there is none (or in a test that does not care).
+    /// - Returns: The seeded strip, or no strips when no device is discovered.
+    static func seed(
+        from inputs: [EngineModel.InputChoice],
+        preferring defaultMicrophone: InputID? = nil
+    ) -> [MixerStrip] {
         // A device, never a generator or a media file: the seed is what is
         // live out of the box, and neither a test tone nor a movie's sound
         // is what an operator asked for by launching the app.
-        let liveID = inputs.first { $0.kind != .generator && $0.kind != .media }?.id
-        return inputs.map { input in
-            MixerStrip(id: input.id, name: input.name, level: 1, pan: 0, isMuted: input.id != liveID)
-        }
+        let devices = inputs.filter { $0.kind != .generator && $0.kind != .media }
+        guard let live = devices.first(where: { $0.id == defaultMicrophone }) ?? devices.first else { return [] }
+        return [MixerStrip(id: live.id, name: live.name, level: 1, pan: 0, isMuted: false)]
     }
 
-    /// Merges a preset's authored audio channels with the discovered audio
-    /// inputs into the session's strips (ARCHITECTURE.md, "Per-strip
-    /// routing"):
+    /// The strip an operator's **Add Channel** makes for an input: muted at
+    /// unity, centered, with no effect chain. Muted because adding a channel
+    /// is a patch, not opening the fader — an operator adding a microphone
+    /// mid-show must never put it on air by doing so; the mute is the one
+    /// step that does.
+    ///
+    /// - Parameter input: The audio input being added.
+    /// - Returns: The new strip.
+    static func added(_ input: EngineModel.InputChoice) -> MixerStrip {
+        MixerStrip(id: input.id, name: input.name, level: 1, pan: 0, isMuted: true)
+    }
+
+    /// The strip placing an input in a shot adds, when that input is a
+    /// **media file with sound** that is not on the mixer yet — or nil.
+    ///
+    /// Putting the file in a shot is the use, so its sound needs no separate
+    /// add; the strip arrives muted, like every added strip (``added(_:)``).
+    /// Only media qualifies: a microphone or a generator is never added
+    /// implicitly, and a camera's or display's picture says nothing about a
+    /// sound. The audio list is what decides "has sound" — a media input is
+    /// in it only when the file has an audio track.
+    ///
+    /// - Parameters:
+    ///   - input: The input just placed in a shot.
+    ///   - strips: The current strips.
+    ///   - discovered: The discovered audio inputs.
+    /// - Returns: The strip to append, or nil when there is nothing to add.
+    static func mediaStrip(
+        for input: InputID,
+        strips: [MixerStrip],
+        discovered: [EngineModel.InputChoice]
+    ) -> MixerStrip? {
+        guard !strips.contains(where: { $0.id == input }),
+            let choice = discovered.first(where: { $0.id == input }),
+            choice.kind == .media
+        else { return nil }
+        return added(choice)
+    }
+
+    /// Builds the session's strips from a preset's authored audio channels,
+    /// named from the discovered audio inputs (ARCHITECTURE.md, "Per-strip
+    /// routing", as amended 2026-11-07):
     ///
     /// - An authored channel naming a private aggregate device
     ///   (`PrivateAggregateDevice.matches(uid:)`) is dropped before any of
     ///   this, so a document that authored one is cleaned on its next sync.
     /// - Passed `nil` — no authored audio configuration — it falls back to
-    ///   the ``seed(from:)`` policy over discovery alone.
-    /// - Authored channels come first, in document order (the panel order
-    ///   *is* the persisted array order), each with its authored settings. A
-    ///   channel whose device is discovered takes the freshly discovered
-    ///   name; one whose device is **absent** stays a dormant strip — the
-    ///   document's cached name (falling back to the raw id), settings still
-    ///   editable, contributing silence until the device returns — the
-    ///   layer-bound-to-an-undiscovered-input semantic, one service over.
-    /// - Discovered inputs with no authored channel append after, in
-    ///   discovery order, **muted** at unity, centered: a device the preset
-    ///   never authorized is never surprise-live on program.
+    ///   the ``seed(from:preferring:)`` policy over discovery alone.
+    /// - The strips are the authored channels, in document order (the panel
+    ///   order *is* the persisted array order), each with its authored
+    ///   settings. A channel whose device is discovered takes the freshly
+    ///   discovered name; one whose id is not discovered first looks for its
+    ///   device **by name**, since a USB device without a serial number
+    ///   changes id with its port (``resolvedInputs(for:discovered:)``); one
+    ///   whose device is still not found is **absent** and stays a dormant
+    ///   strip — the document's cached name (falling back to the raw id),
+    ///   settings still editable, contributing silence until the device
+    ///   returns — the layer-bound-to-an-undiscovered-input semantic, one
+    ///   service over.
+    /// - A discovered input with no authored channel is **not** a strip. It
+    ///   was one, muted, until 2026-11-07; but the sync-back authored every
+    ///   such strip on the next save, so a device seen once stayed on the
+    ///   mixer for good. Now a newly connected device appears in the sidebar
+    ///   and nowhere else — a stronger "never surprise-live" than the muted
+    ///   append was.
     ///
     /// - Parameters:
     ///   - channels: The active preset's authored channels, or `nil` when it
     ///     has none.
     ///   - inputs: The discovered audio inputs, in listing order.
-    /// - Returns: The merged strips, in panel order.
-    static func strips(channels: [AudioChannel]?, discovered inputs: [EngineModel.InputChoice]) -> [MixerStrip] {
-        guard let authoredChannels = channels else { return seed(from: inputs) }
+    ///   - defaultMicrophone: The system default microphone, which the seed
+    ///     prefers when `channels` is nil (default: none).
+    /// - Returns: The strips, in panel order.
+    static func strips(
+        channels: [AudioChannel]?,
+        discovered inputs: [EngineModel.InputChoice],
+        preferring defaultMicrophone: InputID? = nil
+    ) -> [MixerStrip] {
+        guard let authoredChannels = channels else { return seed(from: inputs, preferring: defaultMicrophone) }
         // A channel naming one of macOS's private aggregate devices is not a
         // dormant strip waiting for its device: the device was the monitor's
         // own plumbing, dead with the launch that authored it, and no
@@ -114,11 +182,12 @@ struct MixerStrip: Identifiable, Equatable {
         // document that authored one before the capture plug-in declined
         // them — on the next sync, with no migration.
         let channels = authoredChannels.filter { !PrivateAggregateDevice.matches(uid: $0.input.rawValue) }
-        let authored = channels.map { channel in
-            let discoveredName = inputs.first { $0.id == channel.input }?.name
+        let resolved = resolvedInputs(for: channels, discovered: inputs)
+        return zip(channels, resolved).map { channel, id in
+            let discoveredName = inputs.first { $0.id == id }?.name
             let cachedName = channel.name.isEmpty ? channel.input.rawValue : channel.name
             return MixerStrip(
-                id: channel.input,
+                id: id,
                 name: discoveredName ?? cachedName,
                 level: channel.level,
                 pan: channel.pan,
@@ -126,11 +195,52 @@ struct MixerStrip: Identifiable, Equatable {
                 effects: channel.effects ?? []
             )
         }
-        let authoredIDs = Set(channels.map(\.input))
-        let appended = inputs.filter { !authoredIDs.contains($0.id) }.map { input in
-            MixerStrip(id: input.id, name: input.name, level: 1, pan: 0, isMuted: true)
+    }
+
+    /// The input each authored channel binds to, in channel order: its own
+    /// id when discovery holds it, and otherwise — **found by name** — the
+    /// one discovered device that is plainly the same device under a new id.
+    ///
+    /// A USB audio device without a serial number gets its uniqueID from its
+    /// **USB port** (`AppleUSBAudioEngine:Dell:Dell AC511 USB SoundBar:113000:2,1`,
+    /// the location ID before the interface numbers), so the same soundbar
+    /// moved to another port is a different id, and its channel would sit
+    /// dormant beside a live device that is not on the mixer. The camera
+    /// presets met the same fact and find their camera by id, then by name
+    /// (docs/UVC.md); this is that rule for strips (ARCHITECTURE.md,
+    /// "Per-strip routing", the amendment of 2026-11-07, found the same day).
+    ///
+    /// A channel takes a device by name only when the match is unambiguous
+    /// and the device is free:
+    /// - the channel's id is not discovered, and it has a cached name;
+    /// - exactly **one** discovered input has that name (two identical
+    ///   webcams cannot be told apart by name, so neither is guessed);
+    /// - no other channel holds that device by its exact id, and no earlier
+    ///   channel has taken it by name — a device is never two strips.
+    ///
+    /// Anything else stays bound to its own id, a dormant strip as before.
+    /// The rebound strip carries the device's current id, so the next sync
+    /// writes it into the preset and the document follows the device.
+    ///
+    /// - Parameters:
+    ///   - channels: The authored channels, in document order.
+    ///   - inputs: The discovered audio inputs.
+    /// - Returns: One input id per channel, in the same order.
+    private static func resolvedInputs(
+        for channels: [AudioChannel],
+        discovered inputs: [EngineModel.InputChoice]
+    ) -> [InputID] {
+        let discoveredIDs = Set(inputs.map(\.id))
+        var claimed = Set(channels.map(\.input).filter { discoveredIDs.contains($0) })
+        return channels.map { channel in
+            guard !discoveredIDs.contains(channel.input), !channel.name.isEmpty else { return channel.input }
+            let sameName = inputs.filter { $0.name == channel.name }
+            guard sameName.count == 1, let device = sameName.first, !claimed.contains(device.id) else {
+                return channel.input
+            }
+            claimed.insert(device.id)
+            return device.id
         }
-        return authored + appended
     }
 
     /// The strip as the project document persists it — one authored channel

@@ -421,6 +421,7 @@ surface is:
 - `SidebarRow` — the pure row derivation behind the leading sidebar.
 - `SidebarSection` — the closed list of the sidebar's eleven sections.
 - `SidebarPreferences` — which sidebar sections are open, per Mac.
+- `WindowLayoutPreferences` — whether the inspector column is shown, per Mac.
 - `ContentView` — the main window's detail column: monitors over controls.
 - `TransitionPanel` — the Cut, Take, transition, and duration controls.
 - `TakeTransitionKind` — the transition kinds the switcher's picker offers.
@@ -445,7 +446,7 @@ surface is:
 - `UnsupportedParameterRow` — the row for a parameter kind this build lacks.
 - `EffectColorWell` — the color well drawn for a color parameter.
 - `ColorWellRepresentable` — the `NSColorWell` wrapper beneath it.
-- `MixerStrip` — the pure strip state merging authored channels and devices.
+- `MixerStrip` — the pure strip state built from the authored channels.
 - `MuteLabel` — the fixed-size speaker label every mute toggle shares.
 - `StripMeter` — one strip's pre-fader meter capsule beside its fader.
 - `PeakReadout` — a meter's peak-hold readout; a click resets the hold.
@@ -621,6 +622,7 @@ surface is:
 - `AddShotMenu` — the Add Shot menu beside the Shots heading.
 - `AddShotMenuItems` — the Add Shot items every surface shares.
 - `AddShotMenuSurface` — which surface the items are on, for `tap` names.
+- `AddChannelMenu` — the Add Channel menu beside the Mixer heading.
 - `DraggedInput` — the `Transferable` payload of a dragged sidebar input.
 - `WindowPickerSheet` — the Add Window sheet: open windows by application.
 - `WindowChoice` — the pure rules turning a picked window into an input.

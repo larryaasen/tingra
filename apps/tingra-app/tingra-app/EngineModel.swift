@@ -1357,6 +1357,12 @@ final class EngineModel {
     /// TCC reads in production, a scripted answer in tests.
     @ObservationIgnored private let authorization: any AuthorizationChecking
 
+    /// Reads the system default microphone's input id — what a fresh
+    /// project's mixer seeds its one strip on (``MixerStrip/seed(from:preferring:)``).
+    /// The capture plug-in's `SystemDefaultInputs` in production, the same
+    /// read the CLI's `--mic` default makes; a fixed answer in tests.
+    @ObservationIgnored private let defaultMicrophoneID: @Sendable () -> InputID?
+
     /// Where each system permission stands (Camera, Microphone, Screen
     /// Recording): the Permissions settings pane's model, refreshed on every
     /// app activation so a grant made in System Settings starts the inputs
@@ -1860,6 +1866,9 @@ final class EngineModel {
     ///   - streamHistoryStore: Where the stream history persists (the file
     ///     in Tingra's Application Support folder by default; one over a
     ///     temporary folder in tests).
+    ///   - defaultMicrophoneID: Reads the system default microphone, which a
+    ///     fresh project's mixer seeds on (the capture plug-in's read by
+    ///     default; a fixed answer in tests).
     init(
         monitor: any AudioMonitor = AVAudioEngineMonitor(),
         monitorPreferences: MonitorPreferences = MonitorPreferences(),
@@ -1869,9 +1878,11 @@ final class EngineModel {
         keepAwakePreferences: KeepAwakePreferences = KeepAwakePreferences(),
         keepAwake: any KeepAwake = ProcessActivityKeepAwake(),
         liveStreamRecord: LiveStreamRecord = LiveStreamRecord(),
-        streamHistoryStore: StreamHistoryStore = StreamHistoryStore(directory: ProjectStore().directoryURL)
+        streamHistoryStore: StreamHistoryStore = StreamHistoryStore(directory: ProjectStore().directoryURL),
+        defaultMicrophoneID: @escaping @Sendable () -> InputID? = { SystemDefaultInputs.microphoneID }
     ) {
         self.monitor = monitor
+        self.defaultMicrophoneID = defaultMicrophoneID
         self.liveStreamRecord = liveStreamRecord
         self.streamHistoryStore = streamHistoryStore
         self.projectURL = ProjectStore().fileURL
@@ -2020,13 +2031,14 @@ final class EngineModel {
             await readDeviceLists()
         }
         await loadDestinations()
-        // The strips merge the loaded preset's authored audio channels with
-        // discovery — the seed policy (first audio input unmuted) is the
-        // fallback when the document authored none (a fresh project, or one
-        // written before routing landed).
+        // The strips are the loaded preset's authored audio channels, named
+        // from discovery — the seed policy (one strip, on the system default
+        // microphone, unmuted) is the fallback when the document authored
+        // none (a fresh project, or one written before routing landed).
         mixerStrips = MixerStrip.strips(
             channels: presets.first { $0.id == activePresetID }?.audioChannels,
-            discovered: audioInputs
+            discovered: audioInputs,
+            preferring: defaultMicrophoneID()
         )
 
         let program = compositor.programFrames()
@@ -2309,9 +2321,11 @@ final class EngineModel {
         await reconfigure()
     }
 
-    /// Re-merges the mixer's strips against the refreshed audio inputs, so a
-    /// departed device's strip goes dormant and a new device appears as a
-    /// strip.
+    /// Rebuilds the mixer's strips against the refreshed audio inputs, so a
+    /// departed device's strip goes dormant and a returning one's comes back
+    /// to life. A device the preset never authored gets no strip: it appears
+    /// in the sidebar, for the operator to add (ARCHITECTURE.md, "Per-strip
+    /// routing", the amendment of 2026-11-07).
     ///
     /// **The active preset is synced first, and that is load-bearing rather
     /// than tidiness.** It preserves the operator's un-autosaved level, pan,
@@ -2322,8 +2336,8 @@ final class EngineModel {
     /// so a newly connected microphone that happened to sort first by name
     /// would go live on the program mix, and on any stream, without being
     /// asked. The seed is a boot-time fallback only; every refresh takes the
-    /// authored path, where a device the preset never authored appends
-    /// **muted** (ARCHITECTURE.md, "Live device lists in the app").
+    /// authored path, where a device the preset never authored gets no strip
+    /// at all (ARCHITECTURE.md, "Live device lists in the app").
     private func refreshMixerStrips() async {
         syncActivePreset()
         guard let channels = presets.first(where: { $0.id == activePresetID })?.audioChannels else { return }
@@ -2651,6 +2665,83 @@ final class EngineModel {
         mixer.setMuted(isMuted, forInput: id)
         scheduleAutosave()
         await reconfigureAudio()
+    }
+
+    // MARK: Mixer membership
+
+    /// The discovered audio inputs that are **not** on the mixer, in listing
+    /// order — what the Add Channel menu offers. An absent device that is
+    /// not yet a strip cannot be offered: the list draws from discovery.
+    var audioInputsOffMixer: [InputChoice] {
+        audioInputs.filter { !isOnMixer($0.id) }
+    }
+
+    /// Whether an input has a channel strip on the mixer — dormant or not.
+    ///
+    /// - Parameter id: The input to ask about.
+    /// - Returns: Whether the active preset's mix holds a strip for it.
+    func isOnMixer(_ id: InputID) -> Bool {
+        mixerStrips.contains { $0.id == id }
+    }
+
+    /// Whether an input's strip is feeding the program mix right now: on the
+    /// mixer, unmuted, and its device discovered (a dormant strip contributes
+    /// silence). What lights an audio row's program tally in the sidebar.
+    ///
+    /// - Parameter id: The input to ask about.
+    /// - Returns: Whether the input is live in the mix.
+    func isLiveInMix(_ id: InputID) -> Bool {
+        mixerStrips.contains { $0.id == id && !$0.isMuted } && audioInputs.contains { $0.id == id }
+    }
+
+    /// Adds a channel strip for a discovered audio input, at the end of the
+    /// row, **muted** at unity and centered (``MixerStrip/added(_:)``):
+    /// adding a channel is a patch, not opening the fader, so it starts no
+    /// device and changes nothing on air. Persisted in the active preset
+    /// like any strip edit. An input already on the mixer, or one discovery
+    /// does not hold, changes nothing. The control that called it reports
+    /// its own `tap` (ARCHITECTURE.md, "Per-strip routing", the amendment of
+    /// 2026-11-07).
+    ///
+    /// - Parameter id: The audio input to add.
+    /// - Returns: Whether a strip was added.
+    @discardableResult
+    func addStrip(for id: InputID) -> Bool {
+        guard !isOnMixer(id), let input = audioInputs.first(where: { $0.id == id }) else { return false }
+        mixerStrips.append(MixerStrip.added(input))
+        scheduleAutosave()
+        return true
+    }
+
+    /// Removes a channel strip from the mixer — and so from the active
+    /// preset's authored channels, with its level, pan, and effect chain.
+    /// A running device stops (the audio pass reports `input.stopped` with
+    /// reason `stripMutedOrRemoved`), and the mixer drops the strip from
+    /// the next mix tick. The input itself stays discovered and listed in
+    /// the sidebar, ready to be added again.
+    ///
+    /// - Parameter id: The strip's input id.
+    func removeStrip(_ id: InputID) async {
+        guard let index = mixerStrips.firstIndex(where: { $0.id == id }) else { return }
+        mixerStrips.remove(at: index)
+        scheduleAutosave()
+        await reconfigureAudio()
+    }
+
+    /// Adds the muted strip for a **video file with sound** just placed in a
+    /// shot, when it is not on the mixer yet (``MixerStrip/mediaStrip(for:strips:discovered:)``).
+    /// Putting the file in a shot is the use, so its sound needs no separate
+    /// add; removing the layer later leaves the strip, since its settings
+    /// are the operator's work. Called from every edit that binds an input
+    /// to a shot.
+    ///
+    /// - Parameter input: The input just placed in a shot.
+    private func addStripForMediaSound(_ input: InputID) {
+        guard let strip = MixerStrip.mediaStrip(for: input, strips: mixerStrips, discovered: audioInputs) else {
+            return
+        }
+        mixerStrips.append(strip)
+        scheduleAutosave()
     }
 
     // MARK: The monitor
@@ -3411,6 +3502,7 @@ final class EngineModel {
         let shot = ShotEdit.shot(showing: input, named: inputName(for: input), frame: frame)
         shots.append(shot)
         compositor.addShot(shot)
+        addStripForMediaSound(input)
         // Staging the new shot is also what discards the transient shot it
         // replaces, if the last click made one.
         setPreview(shot.id)
@@ -3442,6 +3534,7 @@ final class EngineModel {
         let position = min(max(index ?? end, 0), shots.count)
         shots.insert(shot, at: position)
         compositor.addShot(shot, at: position)
+        addStripForMediaSound(input)
         // The first shot of an empty pool is the one preview was waiting for.
         ensurePreviewStaged()
         syncTally()
@@ -3772,8 +3865,8 @@ final class EngineModel {
     }
 
     /// Adopts a newly active preset's authored audio configuration as the
-    /// session strips: its channels merge with live discovery (see
-    /// ``MixerStrip/strips(channels:discovered:)``) and the audio
+    /// session strips: its channels, named from live discovery (see
+    /// ``MixerStrip/strips(channels:discovered:preferring:)``), and the audio
     /// reconfigure pass applies them — levels, pans, and mutes take effect
     /// from the next mix tick, and devices start or stop where the mutes
     /// differ. A preset with **no** authored audio changes nothing: the
@@ -3798,6 +3891,7 @@ final class EngineModel {
     func addLayer(boundTo input: InputID) async {
         let frame = newLayerFrame(forInput: input)
         applyShotEdit(.addLayer) { LayerTreeEdit.addingLayer(boundTo: input, to: $0, frame: frame) }
+        addStripForMediaSound(input)
         await reconfigure()
     }
 
@@ -3853,6 +3947,7 @@ final class EngineModel {
     ///   - input: The input the layer binds to from now on.
     func rebindLayer(at index: Int, to input: InputID) async {
         applyShotEdit(.changeInput) { LayerTreeEdit.rebindingLayer(at: index, to: input, in: $0) }
+        addStripForMediaSound(input)
         // Choosing an input is the operator asking for it now, so a silent
         // one gets another attempt (``silentInputs``).
         silentInputs.remove(input)
@@ -5890,7 +5985,8 @@ final class EngineModel {
         ensurePreviewStaged()
         syncTally()
         await reconfigure()
-        mixerStrips = MixerStrip.strips(channels: preset.audioChannels, discovered: audioInputs)
+        mixerStrips = MixerStrip.strips(
+            channels: preset.audioChannels, discovered: audioInputs, preferring: defaultMicrophoneID())
         await reconfigureAudio()
     }
 

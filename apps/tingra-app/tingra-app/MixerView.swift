@@ -13,8 +13,8 @@ import TingraAudio
 import TingraEventBus
 import TingraPlugInKit
 
-/// The mixer panel: one channel strip per authored audio channel and per
-/// discovered audio input, each a **column** laid out as a console strip —
+/// The mixer panel: one channel strip per audio input the operator added to
+/// the mixer, each a **column** laid out as a console strip —
 /// the name, the Effects button, the pan slider, the peak-hold readout, the
 /// fader standing beside the meter, the level readout, and the mute at the
 /// foot (GLOSSARY.md, "Mixer", "Channel strip", "Fader"; ARCHITECTURE.md,
@@ -24,6 +24,13 @@ import TingraPlugInKit
 /// Strip settings persist in the active preset; a strip whose device is
 /// absent stays on the panel, marked not connected, its settings editable
 /// and kept for the device's return (ARCHITECTURE.md, "Per-strip routing").
+///
+/// **The mixer holds what the show uses, not what is connected**
+/// (ARCHITECTURE.md, "Per-strip routing", the amendment of 2026-11-07). A
+/// discovered input is not a strip until the operator adds it — through the
+/// plus button beside the heading (``AddChannelMenu``), or by dropping a
+/// sidebar audio row on the strips — and a strip's context menu takes it off
+/// again with **Remove from Mixer**.
 ///
 /// The strips sit side by side in a horizontal scroll view, so a show with
 /// many audio inputs grows the panel sideways rather than taller; the
@@ -56,24 +63,34 @@ struct MixerView: View {
     /// whether the strips leave room under them for the scroller.
     @State private var scrollerStyle = NSScroller.preferredScrollerStyle
 
+    /// Whether a dragged input is over the strips, drawing the drop
+    /// highlight — view-local, like any drag feedback.
+    @State private var isDropTargeted = false
+
     /// A strip column's width in points: enough for a fader beside a meter,
     /// a short pan slider, and a truncating name.
     static let stripWidth: CGFloat = 92
 
-    /// The panel body: the heading, then the strips — one column per audio
-    /// input in a horizontal scroll, or a placeholder when none is
-    /// discovered — with the master column standing at the panel's trailing
-    /// edge.
+    /// The panel body: the heading with its Add Channel menu, then the
+    /// strips — one column per added audio input in a horizontal scroll, or
+    /// a placeholder saying how to add one — with the master column standing
+    /// at the panel's trailing edge.
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Mixer", comment: "Section heading over the audio channel strips")
-                .font(.headline)
+            HStack(spacing: 6) {
+                Text("Mixer", comment: "Section heading over the audio channel strips")
+                    .font(.headline)
+                AddChannelMenu(model: model)
+            }
 
             HStack(alignment: .top, spacing: 12) {
                 if model.mixerStrips.isEmpty {
-                    Text("No audio inputs found", comment: "Mixer placeholder when no audio input is discovered")
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Text(
+                        "No channels. Add an audio input with the + button, or drag one here from the sidebar.",
+                        comment: "Mixer placeholder when no audio input has been added to the mixer"
+                    )
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 } else {
                     ScrollView(.horizontal) {
                         HStack(alignment: .top, spacing: 12) {
@@ -94,6 +111,20 @@ struct MixerView: View {
             // height it is offered, and inside the window's scroll view
             // that offer is unbounded — so the row sizes to its content.
             .fixedSize(horizontal: false, vertical: true)
+            // A sidebar audio row dropped here adds its strip. Anything else
+            // a row can carry — a camera, a display — has no sound, so it
+            // adds nothing and the drop is refused.
+            .dropDestination(for: DraggedInput.self) { items, _ in
+                addStrips(for: items)
+            } isTargeted: {
+                isDropTargeted = $0
+            }
+            .background {
+                if isDropTargeted {
+                    RoundedRectangle(cornerRadius: 6)
+                        .strokeBorder(.tint, lineWidth: 2)
+                }
+            }
         }
         .task {
             // Made before the style is read, so a change in between is not
@@ -105,6 +136,25 @@ struct MixerView: View {
                 scrollerStyle = NSScroller.preferredScrollerStyle
             }
         }
+    }
+
+    /// Adds a strip for each dropped input that is an audio input not yet on
+    /// the mixer, reporting the drop's `tap` first.
+    ///
+    /// - Parameter items: The dropped inputs.
+    /// - Returns: Whether any strip was added — false refuses the drop.
+    private func addStrips(for items: [DraggedInput]) -> Bool {
+        let addable = items.map(\.id).filter { id in model.audioInputsOffMixer.contains { $0.id == id } }
+        guard !addable.isEmpty else { return false }
+        model.eventBus.tap(
+            "mixerAddChannel.drop",
+            domain: .audio,
+            params: ["ids": .string(addable.map(\.rawValue).joined(separator: ","))]
+        )
+        for id in addable {
+            model.addStrip(for: id)
+        }
+        return true
     }
 
     /// The room the strips leave under them for the scroll view's scroller.
@@ -342,9 +392,12 @@ struct MixerView: View {
         }
     }
 
-    /// One channel strip's column, top to bottom: the name (marked when the
-    /// strip's device is absent), Effects, pan, the peak readout, the fader
-    /// beside the meter, the level readout, and the mute.
+    /// One channel strip's column, top to bottom: the name, the Effects and
+    /// Input Settings buttons — or, while the strip's device is absent, a
+    /// **Not connected** caption in their place (``notConnectedCaption``) —
+    /// then the controls (``stripControls(_:)``), drawn disabled and dimmed
+    /// while the device is absent, and the column's Remove from Mixer context
+    /// menu, which works either way.
     ///
     /// The name wraps to **two lines** (Larry, 2026-09-13) — a device name
     /// like "MacBook Pro Microphone" is three words, and one line at 92
@@ -353,73 +406,130 @@ struct MixerView: View {
     /// pan, and fader sit at the same height across the row. A name longer
     /// still truncates at the end, with the full name as the help tag.
     private func stripColumn(_ strip: MixerStrip) -> some View {
-        VStack(spacing: 8) {
-            HStack(spacing: 4) {
-                Text(strip.name)
-                    .fontWeight(.semibold)
-                    .multilineTextAlignment(.center)
-                    .lineLimit(2, reservesSpace: true)
-                    .truncationMode(.tail)
-                    .foregroundStyle(strip.isMuted || !isConnected(strip) ? .secondary : .primary)
-                if !isConnected(strip) {
-                    // A dormant strip: its authored channel persists while its
-                    // device is absent — silence until the device returns.
-                    Image(systemName: "mic.slash")
-                        .foregroundStyle(.secondary)
-                        .help(Text("Not connected", comment: "Help tag on a channel strip whose device is absent"))
-                        .accessibilityLabel(
-                            Text("Not connected", comment: "Help tag on a channel strip whose device is absent"))
-                }
-            }
-            .help(Text(strip.name))
+        let isConnected = isConnected(strip)
+        return VStack(spacing: 8) {
+            Text(strip.name)
+                .fontWeight(.semibold)
+                .multilineTextAlignment(.center)
+                .lineLimit(2, reservesSpace: true)
+                .truncationMode(.tail)
+                .foregroundStyle(strip.isMuted || !isConnected ? .secondary : .primary)
+                .help(Text(strip.name))
 
+            // Where Effects and Input Settings sit, or — while the device is
+            // absent and they would do nothing — the Not connected caption,
+            // drawn over the buttons' own space so the rows below stay level
+            // with every other strip's.
             HStack(spacing: 4) {
                 effectsButton(for: strip)
                 settingsButton(for: strip)
             }
-
-            panSlider(for: strip)
-
-            PeakReadout(displayLink: model.meterDisplayLink, subject: .strip(strip.id), eventBus: model.eventBus)
-
-            HStack(spacing: 6) {
-                MixerSlider(
-                    value: levelPositionBinding(for: strip.id),
-                    in: 0...1,
-                    label: String(localized: "Level", comment: "Accessibility label of a channel strip's level slider"),
-                    onDoubleClick: {
-                        model.eventBus.tap(
-                            "mixerLevel.reset",
-                            domain: .audio,
-                            params: ["id": .string(strip.id.rawValue)]
-                        )
-                        model.setStripLevel(1, forStrip: strip.id)
-                    }
-                ) { editing in
-                    guard !editing else { return }
-                    let level = model.mixerStrips.first { $0.id == strip.id }?.level ?? 0
-                    model.eventBus.tap(
-                        "mixerLevel.slider",
-                        domain: .audio,
-                        params: ["id": .string(strip.id.rawValue), "value": .double(level)]
-                    )
+            .opacity(isConnected ? 1 : 0)
+            .disabled(!isConnected)
+            .accessibilityHidden(!isConnected)
+            .overlay {
+                if !isConnected {
+                    notConnectedCaption
                 }
-                .frame(height: MasterMeter.length)
-
-                StripMeter(displayLink: model.meterDisplayLink, id: strip.id)
             }
 
-            levelReadout(gain: strip.level, dimmed: strip.isMuted)
-
-            Toggle(isOn: muteBinding(for: strip.id)) {
-                MuteLabel(isMuted: strip.isMuted)
+            // A dormant strip's controls are drawn disabled and dimmed: its
+            // device is gone, so there is nothing to mute, ride, or pan, and
+            // a strip that answered every click read as a device still
+            // plugged in (Larry, 2026-11-07, unplugging a Vocaster). Its
+            // settings are kept and apply when the device returns; the
+            // column's context menu, outside this group, still removes it.
+            VStack(spacing: 8) {
+                stripControls(strip)
             }
-            .toggleStyle(.button)
-            .help(Text("Mute", comment: "Help tag on a channel strip's mute toggle"))
-            .accessibilityLabel(Text("Mute", comment: "Help tag on a channel strip's mute toggle"))
+            .disabled(!isConnected)
+            .opacity(isConnected ? 1 : 0.5)
         }
         .frame(width: Self.stripWidth)
         .controlSize(.small)
+        // The whole column answers the right-click, not just its controls.
+        .contentShape(.rect)
+        .contextMenu {
+            Button(role: .destructive) {
+                model.eventBus.tap(
+                    "mixerRemoveChannel.menuItem",
+                    domain: .audio,
+                    params: ["id": .string(strip.id.rawValue), "name": .string(strip.name)]
+                )
+                if chainStripID == strip.id { chainStripID = nil }
+                if settingsStripID == strip.id { settingsStripID = nil }
+                Task { await model.removeStrip(strip.id) }
+            } label: {
+                Text("Remove from Mixer", comment: "Context menu item removing an audio input's channel strip")
+            }
+        }
+    }
+
+    /// The **Not connected** caption a dormant strip shows in place of its
+    /// Effects and Input Settings buttons. It replaced a lone `mic.slash`
+    /// glyph beside the name, which was the only sign of a missing device and
+    /// too small to read as one; it sits under the name rather than taking a
+    /// line of it, so the name keeps the two lines every strip wraps into
+    /// (Larry, 2026-11-07: a one-line "Vocaster One…" looked bad).
+    private var notConnectedCaption: some View {
+        Label {
+            Text("Not connected", comment: "Help tag on a channel strip whose device is absent")
+        } icon: {
+            Image(systemName: "mic.slash")
+        }
+        .font(.caption)
+        .labelStyle(.titleAndIcon)
+        .foregroundStyle(.secondary)
+        .lineLimit(1)
+        .fixedSize()
+    }
+
+    /// A strip's controls below the Effects row, top to bottom: pan, the
+    /// peak readout, the fader beside the meter, the level readout, and the
+    /// mute.
+    ///
+    /// - Parameter strip: The strip.
+    /// - Returns: The controls.
+    @ViewBuilder private func stripControls(_ strip: MixerStrip) -> some View {
+        panSlider(for: strip)
+
+        PeakReadout(displayLink: model.meterDisplayLink, subject: .strip(strip.id), eventBus: model.eventBus)
+
+        HStack(spacing: 6) {
+            MixerSlider(
+                value: levelPositionBinding(for: strip.id),
+                in: 0...1,
+                label: String(localized: "Level", comment: "Accessibility label of a channel strip's level slider"),
+                onDoubleClick: {
+                    model.eventBus.tap(
+                        "mixerLevel.reset",
+                        domain: .audio,
+                        params: ["id": .string(strip.id.rawValue)]
+                    )
+                    model.setStripLevel(1, forStrip: strip.id)
+                }
+            ) { editing in
+                guard !editing else { return }
+                let level = model.mixerStrips.first { $0.id == strip.id }?.level ?? 0
+                model.eventBus.tap(
+                    "mixerLevel.slider",
+                    domain: .audio,
+                    params: ["id": .string(strip.id.rawValue), "value": .double(level)]
+                )
+            }
+            .frame(height: MasterMeter.length)
+
+            StripMeter(displayLink: model.meterDisplayLink, id: strip.id)
+        }
+
+        levelReadout(gain: strip.level, dimmed: strip.isMuted)
+
+        Toggle(isOn: muteBinding(for: strip.id)) {
+            MuteLabel(isMuted: strip.isMuted)
+        }
+        .toggleStyle(.button)
+        .help(Text("Mute", comment: "Help tag on a channel strip's mute toggle"))
+        .accessibilityLabel(Text("Mute", comment: "Help tag on a channel strip's mute toggle"))
     }
 
     /// One strip's Effects button: opens the chain popover, badged with

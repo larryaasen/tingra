@@ -1,91 +1,6 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
-    "%@ is off. Turn it on in Settings ▸ Streaming to stream to it." : {
-      "comment" : "Sidebar destination row tooltip while the destination is turned off; the placeholder is its name",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ ist deaktiviert. Aktivieren Sie das Ziel unter Einstellungen ▸ Streaming, um dorthin zu streamen."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ está desactivado. Actívelo en Ajustes ▸ Transmisión para transmitir a este destino."
-          }
-        }
-      }
-    },
-    "%@ needs an rtmp://, rtmps://, or srt:// URL in Settings ▸ Streaming before it can be streamed to." : {
-      "comment" : "Sidebar destination row tooltip while the destination is on but has no usable URL; the placeholder is its name",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ benötigt unter Einstellungen ▸ Streaming eine rtmp://-, rtmps://- oder srt://-URL, bevor dorthin gestreamt werden kann."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ necesita una URL rtmp://, rtmps:// o srt:// en Ajustes ▸ Transmisión antes de poder transmitir a este destino."
-          }
-        }
-      }
-    },
-    "%lld of %lld destinations off air" : {
-      "comment" : "Status bar warning: how many of the stream's destinations are not being streamed to",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%1$lld von %2$lld Zielen nicht auf Sendung"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%1$lld de %2$lld destinos fuera del aire"
-          }
-        }
-      }
-    },
-    "Needs a URL" : {
-      "comment" : "VoiceOver value of a sidebar destination row whose destination is on but has no usable URL",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "URL fehlt"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Falta la URL"
-          }
-        }
-      }
-    },
-    "Off" : {
-      "comment" : "VoiceOver value of a sidebar destination row whose destination is turned off",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Deaktiviert"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Desactivado"
-          }
-        }
-      }
-    },
     "“%@” is still being recorded. Stop the recording before moving it to the Trash." : {
       "comment" : "Reason a recording could not be moved to the Trash: it is the take being recorded; the placeholder is the file's name",
       "localizations" : {
@@ -228,6 +143,23 @@
         }
       }
     },
+    "%@ is off. Turn it on in Settings ▸ Streaming to stream to it." : {
+      "comment" : "Sidebar destination row tooltip while the destination is turned off; the placeholder is its name",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ ist deaktiviert. Aktivieren Sie das Ziel unter Einstellungen ▸ Streaming, um dorthin zu streamen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ está desactivado. Actívelo en Ajustes ▸ Transmisión para transmitir a este destino."
+          }
+        }
+      }
+    },
     "%@ Layer" : {
       "comment" : "Snapshot file name subject for the layer monitor: the layer's input name, then “Layer”",
       "localizations" : {
@@ -245,6 +177,23 @@
         }
       }
     },
+    "%@ needs an rtmp://, rtmps://, or srt:// URL in Settings ▸ Streaming before it can be streamed to." : {
+      "comment" : "Sidebar destination row tooltip while the destination is on but has no usable URL; the placeholder is its name",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ benötigt unter Einstellungen ▸ Streaming eine rtmp://-, rtmps://- oder srt://-URL, bevor dorthin gestreamt werden kann."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ necesita una URL rtmp://, rtmps:// o srt:// en Ajustes ▸ Transmisión antes de poder transmitir a este destino."
+          }
+        }
+      }
+    },
     "%@ preset" : {
       "comment" : "Main window subtitle naming the active preset; the placeholder is the preset's name",
       "localizations" : {
@@ -258,6 +207,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Preajuste %@"
+          }
+        }
+      }
+    },
+    "%@ preset — Safe Mode" : {
+      "comment" : "Main window subtitle naming the active preset in a launch that loaded no plug-in bundles; the placeholder is the preset's name",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Voreinstellung „%@“ — Sicherer Modus"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Preajuste %@ — Modo seguro"
           }
         }
       }
@@ -500,6 +466,82 @@
                 "stringUnit" : {
                   "state" : "translated",
                   "value" : "%lld claves"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld of %lld destinations off air" : {
+      "comment" : "Status bar warning: how many of the stream's destinations are not being streamed to",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$lld von %2$lld Zielen nicht auf Sendung"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$lld de %2$lld destinos fuera del aire"
+          }
+        }
+      }
+    },
+    "%lld plug-ins in other apps are off" : {
+      "comment" : "Plug-ins settings: how many app extensions are off; the placeholder is the count",
+      "localizations" : {
+        "de" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld Plug-in in anderen Apps ist aus"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld Plug-ins in anderen Apps sind aus"
+                }
+              }
+            }
+          }
+        },
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "new",
+                  "value" : "%lld plug-in in other apps is off"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "new",
+                  "value" : "%lld plug-ins in other apps are off"
+                }
+              }
+            }
+          }
+        },
+        "es" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld complemento de otras apps está desactivado"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld complementos de otras apps están desactivados"
                 }
               }
             }
@@ -779,6 +821,40 @@
         }
       }
     },
+    "Add an audio input to the mixer" : {
+      "comment" : "Tooltip on the mixer's Add Channel menu",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einen Audioeingang zum Mischpult hinzufügen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Añadir una entrada de audio al mezclador"
+          }
+        }
+      }
+    },
+    "Add Channel" : {
+      "comment" : "Accessibility label of the mixer's Add Channel menu",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kanal hinzufügen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Añadir canal"
+          }
+        }
+      }
+    },
     "Add Destination" : {
       "comment" : "Button that adds a stream destination",
       "localizations" : {
@@ -945,6 +1021,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Añadir a medios"
+          }
+        }
+      }
+    },
+    "Add to Mixer" : {
+      "comment" : "Sidebar audio input row context menu: adds the input's channel strip, muted",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zum Mischpult hinzufügen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Añadir al mezclador"
           }
         }
       }
@@ -1272,6 +1365,23 @@
         }
       }
     },
+    "Built In" : {
+      "comment" : "Plug-ins settings: heading over the plug-ins that come with Tingra",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Integriert"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Integrados"
+          }
+        }
+      }
+    },
     "Camera" : {
       "comment" : "Camera input picker label\nPermissions settings: the camera permission's name\nShot: camera full-frame",
       "localizations" : {
@@ -1574,6 +1684,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Vaciar…"
+          }
+        }
+      }
+    },
+    "Close" : {
+      "comment" : "File menu item closing the frontmost window, when it is not the main window",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schließen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cerrar"
           }
         }
       }
@@ -2105,6 +2232,40 @@
         }
       }
     },
+    "Don't Resume" : {
+      "comment" : "Launch alert button: leave the interrupted stream stopped",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht fortsetzen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No reanudar"
+          }
+        }
+      }
+    },
+    "Done" : {
+      "comment" : "Plug-ins settings: button closing the Manage sheet",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fertig"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OK"
+          }
+        }
+      }
+    },
     "Drag a camera, display, or generator here, or choose Add Shot." : {
       "comment" : "Placeholder tile in the shot bank when the preset has no shots",
       "localizations" : {
@@ -2462,6 +2623,23 @@
         }
       }
     },
+    "Every audio input is on the mixer" : {
+      "comment" : "Add Channel menu placeholder when every discovered audio input already has a strip",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alle Audioeingänge sind im Mischpult"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Todas las entradas de audio están en el mezclador"
+          }
+        }
+      }
+    },
     "Every destination was lost and not recovered." : {
       "comment" : "Stream error shown when the last live destination was lost",
       "localizations" : {
@@ -2802,6 +2980,23 @@
         }
       }
     },
+    "Hold Shift while opening Tingra to open it without the plug-ins you installed." : {
+      "comment" : "Plug-ins settings: footer teaching the safe-mode key",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Halte beim Öffnen von Tingra die Umschalttaste gedrückt, um es ohne die von dir installierten Plug-ins zu öffnen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mantén pulsada la tecla Mayúsculas al abrir Tingra para abrirlo sin los complementos que instalaste."
+          }
+        }
+      }
+    },
     "How long a dissolve, wipe, or shader transition runs, in seconds. A cut is instant." : {
       "comment" : "Tooltip on the transition duration field and stepper",
       "localizations" : {
@@ -2938,6 +3133,23 @@
         }
       }
     },
+    "Installed" : {
+      "comment" : "Plug-ins settings: heading over the plug-ins the operator installed",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Installiert"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Instalados"
+          }
+        }
+      }
+    },
     "Iris" : {
       "comment" : "Shader picker option: circular reveal opening from the center",
       "localizations" : {
@@ -2955,6 +3167,23 @@
         }
       }
     },
+    "Its panes and commands are turned on and off in Manage…" : {
+      "comment" : "Plug-ins settings: a plug-in with both halves, whose app half the system's browser switches",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seine Bereiche und Befehle werden unter „Verwalten…“ ein- und ausgeschaltet"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sus paneles y comandos se activan y desactivan en Gestionar…"
+          }
+        }
+      }
+    },
     "Keep" : {
       "comment" : "Button on a transient shot tile keeping the shot in the preset",
       "localizations" : {
@@ -2968,6 +3197,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Conservar"
+          }
+        }
+      }
+    },
+    "Keep Mac Awake While Streaming or Recording" : {
+      "comment" : "General settings: checkbox that stops the Mac and its displays from sleeping while a stream or a recording runs",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mac beim Streamen oder Aufnehmen aktiv halten"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mantener el Mac activo al transmitir o grabar"
           }
         }
       }
@@ -3244,6 +3490,23 @@
         }
       }
     },
+    "Live Stream Marker" : {
+      "comment" : "Data settings: the name of the file marking a stream on air, read after a crash to offer resuming",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Livestream-Markierung"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Marcador de transmisión en directo"
+          }
+        }
+      }
+    },
     "Load Earlier Lines" : {
       "comment" : "Log window: button at the top of the list that reads older lines",
       "localizations" : {
@@ -3257,6 +3520,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Cargar líneas anteriores"
+          }
+        }
+      }
+    },
+    "Loaded plug-ins: %@." : {
+      "comment" : "Launch alert text naming the plug-in bundles the last run loaded; the placeholder is their names",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Geladene Plug-ins: %@."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Complementos cargados: %@."
           }
         }
       }
@@ -3482,6 +3762,23 @@
         }
       }
     },
+    "Manage…" : {
+      "comment" : "Plug-ins settings: button presenting the system's switches for app extensions",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verwalten…"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gestionar…"
+          }
+        }
+      }
+    },
     "Master" : {
       "comment" : "Label of the mixer's master strip",
       "localizations" : {
@@ -3568,7 +3865,7 @@
       }
     },
     "Media" : {
-      "comment" : "Library tab listing the project's media files\nSidebar section heading over the project's media files",
+      "comment" : "Library tab listing the project's media files\nLibrary tab listing the project's media files\nSidebar section heading over the project's media files\nSidebar section heading over the project's media files",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -3924,6 +4221,23 @@
         }
       }
     },
+    "Needs a URL" : {
+      "comment" : "VoiceOver value of a sidebar destination row whose destination is on but has no usable URL",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "URL fehlt"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Falta la URL"
+          }
+        }
+      }
+    },
     "New destination" : {
       "comment" : "Placeholder label for a destination with no name or URL yet",
       "localizations" : {
@@ -4028,6 +4342,7 @@
     },
     "No audio inputs found" : {
       "comment" : "Mixer placeholder when no audio input is discovered",
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -4073,6 +4388,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "No hay cámaras conectadas"
+          }
+        }
+      }
+    },
+    "No channels. Add an audio input with the + button, or drag one here from the sidebar." : {
+      "comment" : "Mixer placeholder when no audio input has been added to the mixer",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Kanäle. Füge einen Audioeingang mit der Taste + hinzu oder ziehe ihn aus der Seitenleiste hierher."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No hay canales. Añade una entrada de audio con el botón + o arrástrala aquí desde la barra lateral."
           }
         }
       }
@@ -4311,6 +4643,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "No hay imagen que guardar"
+          }
+        }
+      }
+    },
+    "No plug-ins installed." : {
+      "comment" : "Plug-ins settings: shown under Installed when there are none",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Plug-ins installiert."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No hay complementos instalados."
           }
         }
       }
@@ -4655,6 +5004,23 @@
         }
       }
     },
+    "Off" : {
+      "comment" : "VoiceOver value of a sidebar destination row whose destination is turned off",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deaktiviert"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Desactivado"
+          }
+        }
+      }
+    },
     "OK" : {
       "comment" : "Button dismissing an alert that reports a problem",
       "localizations" : {
@@ -4723,6 +5089,23 @@
         }
       }
     },
+    "On the mixer" : {
+      "comment" : "Help tag and accessibility label of the mark on a sidebar audio row whose input has a channel strip",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Im Mischpult"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "En el mezclador"
+          }
+        }
+      }
+    },
     "Opacity" : {
       "comment" : "Layer opacity slider label",
       "localizations" : {
@@ -4736,6 +5119,57 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Opacidad"
+          }
+        }
+      }
+    },
+    "Open in Safe Mode" : {
+      "comment" : "Launch alert button: open the app without the plug-ins the operator installed",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Im sicheren Modus öffnen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abrir en modo seguro"
+          }
+        }
+      }
+    },
+    "Open Normally" : {
+      "comment" : "Launch alert button: open the app with its plug-ins as usual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Normal öffnen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abrir normalmente"
+          }
+        }
+      }
+    },
+    "Open Plug-ins Folder" : {
+      "comment" : "Plug-ins settings: button opening the plug-ins folder",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Plug-ins-Ordner öffnen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abrir carpeta de complementos"
           }
         }
       }
@@ -5063,6 +5497,23 @@
         }
       }
     },
+    "Plug-in Settings" : {
+      "comment" : "Settings source list: heading over the settings panes plug-ins registered",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Plug-in-Einstellungen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ajustes de complementos"
+          }
+        }
+      }
+    },
     "Plug-in Unavailable" : {
       "comment" : "Title shown in a plug-in's window when the plug-in is disabled or not installed",
       "localizations" : {
@@ -5093,6 +5544,57 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Complementos"
+          }
+        }
+      }
+    },
+    "Plug-ins Folder" : {
+      "comment" : "Plug-ins settings: label of the row naming the plug-ins folder",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Plug-ins-Ordner"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Carpeta de complementos"
+          }
+        }
+      }
+    },
+    "Plug-ins in Other Apps" : {
+      "comment" : "Plug-ins settings: label of the row managing app extensions",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Plug-ins in anderen Apps"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Complementos de otras apps"
+          }
+        }
+      }
+    },
+    "Plug-ins Turned Off" : {
+      "comment" : "Data settings: the name of the file recording which installed plug-ins are turned off",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deaktivierte Plug-ins"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Complementos desactivados"
           }
         }
       }
@@ -5556,6 +6058,23 @@
         }
       }
     },
+    "Remove from Mixer" : {
+      "comment" : "Context menu item removing an audio input's channel strip",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aus dem Mischpult entfernen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quitar del mezclador"
+          }
+        }
+      }
+    },
     "Remove from Project" : {
       "comment" : "Library row context menu item removing the file from the project",
       "localizations" : {
@@ -5862,6 +6381,40 @@
         }
       }
     },
+    "Resume Stream" : {
+      "comment" : "Launch alert button: go live again to the destinations the interrupted stream had",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Streaming fortsetzen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reanudar transmisión"
+          }
+        }
+      }
+    },
+    "Resuming starts a new stream to the same destinations. A recording is not resumed." : {
+      "comment" : "Launch alert text explaining what Resume Stream does",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beim Fortsetzen wird ein neuer Stream an dieselben Ziele gestartet. Eine Aufnahme wird nicht fortgesetzt."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Al reanudar se inicia una nueva transmisión a los mismos destinos. Una grabación no se reanuda."
+          }
+        }
+      }
+    },
     "Reveal in Finder" : {
       "comment" : "Logging settings: button that shows the log file in the Finder\nMenu item showing a file in the Finder\nMenu item that reveals the file in Finder",
       "localizations" : {
@@ -5960,6 +6513,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "s"
+          }
+        }
+      }
+    },
+    "Safe Mode" : {
+      "comment" : "Main window subtitle for a launch that loaded no plug-in bundles, before a preset is active\nPlug-ins settings: title of the safe-mode banner",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sicherer Modus"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modo seguro"
+          }
+        }
+      }
+    },
+    "Safe mode opens Tingra without the plug-ins you installed, for this launch only. Nothing is removed." : {
+      "comment" : "Launch alert text explaining safe mode",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Im sicheren Modus öffnet Tingra ohne die von Ihnen installierten Plug-ins, nur für diesen Start. Es wird nichts entfernt."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El modo seguro abre Tingra sin los complementos que instalaste, solo en este inicio. No se elimina nada."
           }
         }
       }
@@ -6372,6 +6959,23 @@
         }
       }
     },
+    "Shift was held as Tingra opened, so the plug-ins you installed were not loaded. They load again the next time Tingra opens." : {
+      "comment" : "Plug-ins settings: safe-mode banner text after Shift was held at launch",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beim Öffnen von Tingra war die Umschalttaste gedrückt, daher wurden die von dir installierten Plug-ins nicht geladen. Sie werden beim nächsten Öffnen von Tingra wieder geladen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se mantuvo pulsada la tecla Mayúsculas al abrir Tingra, así que no se cargaron los complementos que instalaste. Se cargarán de nuevo la próxima vez que abras Tingra."
+          }
+        }
+      }
+    },
     "Shortcuts" : {
       "comment" : "Settings window pane: the keyboard shortcuts listing",
       "localizations" : {
@@ -6453,6 +7057,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Mostrar las %lld sesiones"
+          }
+        }
+      }
+    },
+    "Show in Finder" : {
+      "comment" : "Plug-ins settings: button revealing a refused plug-in bundle",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Im Finder anzeigen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostrar en el Finder"
           }
         }
       }
@@ -6984,6 +7605,23 @@
         }
       }
     },
+    "Stops the Mac and its displays from going to sleep when idle, so a stream or a recording is not paused. Closing the lid or choosing Sleep still puts the Mac to sleep." : {
+      "comment" : "General settings: footer explaining what the keep awake checkbox does and does not prevent",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verhindert, dass der Mac und seine Displays bei Inaktivität in den Ruhezustand wechseln, damit ein Stream oder eine Aufnahme nicht angehalten wird. Beim Schließen des Displays oder mit „Ruhezustand“ wechselt der Mac weiterhin in den Ruhezustand."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impide que el Mac y sus pantallas entren en reposo por inactividad, para que una transmisión o una grabación no se detenga. Al cerrar la tapa o elegir Reposo, el Mac entra en reposo igualmente."
+          }
+        }
+      }
+    },
     "Stream History" : {
       "comment" : "The record of streamed sessions — the Data settings kind and the Streaming settings heading",
       "localizations" : {
@@ -7201,6 +7839,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Saca del aire todo el programa —imagen y sonido— o lo devuelve"
+          }
+        }
+      }
+    },
+    "Takes effect the next time Tingra opens" : {
+      "comment" : "Plug-ins settings: a changed toggle applies at the next launch",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wird beim nächsten Öffnen von Tingra wirksam"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se aplica la próxima vez que se abra Tingra"
           }
         }
       }
@@ -7494,6 +8149,23 @@
         }
       }
     },
+    "The stream to %@ went live %@." : {
+      "comment" : "Launch alert text; the first placeholder is the destinations' names, the second is the date and time the stream went live",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Stream an %@ ging %@ live."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La transmisión a %@ salió en directo el %@."
+          }
+        }
+      }
+    },
     "This empties the %@ Tingra has recorded so far. New activity is still logged, so the next log you share covers only the problem you are reporting. This cannot be undone." : {
       "comment" : "Confirmation alert message before emptying the log file; the placeholder is its size",
       "localizations" : {
@@ -7609,6 +8281,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Registro de Tingra"
+          }
+        }
+      }
+    },
+    "Tingra quit unexpectedly while plug-ins you installed were loaded." : {
+      "comment" : "Launch alert title after the app's last run ended while plug-in bundles were loaded",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tingra wurde unerwartet beendet, während von Ihnen installierte Plug-ins geladen waren."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tingra se cerró inesperadamente mientras había complementos que instalaste cargados."
+          }
+        }
+      }
+    },
+    "Tingra quit while it was live." : {
+      "comment" : "Launch alert title after the app's last run ended while a stream was live",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tingra wurde beendet, während es live war."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tingra se cerró mientras estaba en directo."
           }
         }
       }
@@ -7749,6 +8455,57 @@
         }
       }
     },
+    "Turn their panes and commands on and off in Manage…" : {
+      "comment" : "Plug-ins settings: shown under Plug-ins in Other Apps when none are off",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schalte ihre Bereiche und Befehle unter „Verwalten…“ ein und aus"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Activa y desactiva sus paneles y comandos en Gestionar…"
+          }
+        }
+      }
+    },
+    "Turned off because Tingra quit unexpectedly while loading it." : {
+      "comment" : "Plug-ins settings: a bundle the load-crash guard turned off",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ausgeschaltet, weil Tingra beim Laden unerwartet beendet wurde."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Desactivado porque Tingra se cerró inesperadamente mientras lo cargaba."
+          }
+        }
+      }
+    },
+    "Turned on and off in Manage…" : {
+      "comment" : "Plug-ins settings: an installed app extension, switched in the system's browser",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wird unter „Verwalten…“ ein- und ausgeschaltet"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se activa y desactiva en Gestionar…"
+          }
+        }
+      }
+    },
     "Unit" : {
       "comment" : "Layer inspector: the pixels/percent unit toggle's accessibility label",
       "localizations" : {
@@ -7881,6 +8638,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Generadores de vídeo"
+          }
+        }
+      }
+    },
+    "Warning" : {
+      "comment" : "Plug-ins settings: accessibility label of a row's warning symbol",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Warnung"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Advertencia"
           }
         }
       }
@@ -8072,473 +8846,6 @@
         }
       }
     },
-    "Safe Mode" : {
-      "comment" : "Main window subtitle for a launch that loaded no plug-in bundles, before a preset is active\nPlug-ins settings: title of the safe-mode banner",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sicherer Modus"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Modo seguro"
-          }
-        }
-      }
-    },
-    "%@ preset — Safe Mode" : {
-      "comment" : "Main window subtitle naming the active preset in a launch that loaded no plug-in bundles; the placeholder is the preset's name",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Voreinstellung „%@“ — Sicherer Modus"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Preajuste %@ — Modo seguro"
-          }
-        }
-      }
-    },
-    "Tingra quit unexpectedly while plug-ins you installed were loaded." : {
-      "comment" : "Launch alert title after the app's last run ended while plug-in bundles were loaded",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tingra wurde unerwartet beendet, während von Ihnen installierte Plug-ins geladen waren."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tingra se cerró inesperadamente mientras había complementos que instalaste cargados."
-          }
-        }
-      }
-    },
-    "Tingra quit while it was live." : {
-      "comment" : "Launch alert title after the app's last run ended while a stream was live",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tingra wurde beendet, während es live war."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tingra se cerró mientras estaba en directo."
-          }
-        }
-      }
-    },
-    "The stream to %@ went live %@." : {
-      "comment" : "Launch alert text; the first placeholder is the destinations' names, the second is the date and time the stream went live",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Der Stream an %@ ging %@ live."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "La transmisión a %@ salió en directo el %@."
-          }
-        }
-      }
-    },
-    "Resuming starts a new stream to the same destinations. A recording is not resumed." : {
-      "comment" : "Launch alert text explaining what Resume Stream does",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Beim Fortsetzen wird ein neuer Stream an dieselben Ziele gestartet. Eine Aufnahme wird nicht fortgesetzt."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Al reanudar se inicia una nueva transmisión a los mismos destinos. Una grabación no se reanuda."
-          }
-        }
-      }
-    },
-    "Resume Stream" : {
-      "comment" : "Launch alert button: go live again to the destinations the interrupted stream had",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Streaming fortsetzen"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Reanudar transmisión"
-          }
-        }
-      }
-    },
-    "Don't Resume" : {
-      "comment" : "Launch alert button: leave the interrupted stream stopped",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nicht fortsetzen"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No reanudar"
-          }
-        }
-      }
-    },
-    "Open in Safe Mode" : {
-      "comment" : "Launch alert button: open the app without the plug-ins the operator installed",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Im sicheren Modus öffnen"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Abrir en modo seguro"
-          }
-        }
-      }
-    },
-    "Open Normally" : {
-      "comment" : "Launch alert button: open the app with its plug-ins as usual",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Normal öffnen"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Abrir normalmente"
-          }
-        }
-      }
-    },
-    "Safe mode opens Tingra without the plug-ins you installed, for this launch only. Nothing is removed." : {
-      "comment" : "Launch alert text explaining safe mode",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Im sicheren Modus öffnet Tingra ohne die von Ihnen installierten Plug-ins, nur für diesen Start. Es wird nichts entfernt."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "El modo seguro abre Tingra sin los complementos que instalaste, solo en este inicio. No se elimina nada."
-          }
-        }
-      }
-    },
-    "Loaded plug-ins: %@." : {
-      "comment" : "Launch alert text naming the plug-in bundles the last run loaded; the placeholder is their names",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Geladene Plug-ins: %@."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Complementos cargados: %@."
-          }
-        }
-      }
-    },
-    "Live Stream Marker" : {
-      "comment" : "Data settings: the name of the file marking a stream on air, read after a crash to offer resuming",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Livestream-Markierung"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Marcador de transmisión en directo"
-          }
-        }
-      }
-    },
-    "Plug-ins Turned Off" : {
-      "comment" : "Data settings: the name of the file recording which installed plug-ins are turned off",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Deaktivierte Plug-ins"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Complementos desactivados"
-          }
-        }
-      }
-    },
-    "Plug-in Settings" : {
-      "comment" : "Settings source list: heading over the settings panes plug-ins registered",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Plug-in-Einstellungen"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ajustes de complementos"
-          }
-        }
-      }
-    },
-    "No plug-ins installed." : {
-      "comment" : "Plug-ins settings: shown under Installed when there are none",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Keine Plug-ins installiert."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No hay complementos instalados."
-          }
-        }
-      }
-    },
-    "Installed" : {
-      "comment" : "Plug-ins settings: heading over the plug-ins the operator installed",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Installiert"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Instalados"
-          }
-        }
-      }
-    },
-    "Built In" : {
-      "comment" : "Plug-ins settings: heading over the plug-ins that come with Tingra",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Integriert"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Integrados"
-          }
-        }
-      }
-    },
-    "Hold Shift while opening Tingra to open it without the plug-ins you installed." : {
-      "comment" : "Plug-ins settings: footer teaching the safe-mode key",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Halte beim Öffnen von Tingra die Umschalttaste gedrückt, um es ohne die von dir installierten Plug-ins zu öffnen."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mantén pulsada la tecla Mayúsculas al abrir Tingra para abrirlo sin los complementos que instalaste."
-          }
-        }
-      }
-    },
-    "Manage…" : {
-      "comment" : "Plug-ins settings: button presenting the system's switches for app extensions",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Verwalten…"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Gestionar…"
-          }
-        }
-      }
-    },
-    "Plug-ins in Other Apps" : {
-      "comment" : "Plug-ins settings: label of the row managing app extensions",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Plug-ins in anderen Apps"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Complementos de otras apps"
-          }
-        }
-      }
-    },
-    "%lld plug-ins in other apps are off" : {
-      "comment" : "Plug-ins settings: how many app extensions are off; the placeholder is the count",
-      "localizations" : {
-        "de" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld Plug-in in anderen Apps ist aus"
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld Plug-ins in anderen Apps sind aus"
-                }
-              }
-            }
-          }
-        },
-        "en" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "new",
-                  "value" : "%lld plug-in in other apps is off"
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "new",
-                  "value" : "%lld plug-ins in other apps are off"
-                }
-              }
-            }
-          }
-        },
-        "es" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld complemento de otras apps está desactivado"
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld complementos de otras apps están desactivados"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "Turn their panes and commands on and off in Manage…" : {
-      "comment" : "Plug-ins settings: shown under Plug-ins in Other Apps when none are off",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Schalte ihre Bereiche und Befehle unter „Verwalten…“ ein und aus"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Activa y desactiva sus paneles y comandos en Gestionar…"
-          }
-        }
-      }
-    },
-    "Open Plug-ins Folder" : {
-      "comment" : "Plug-ins settings: button opening the plug-ins folder",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Plug-ins-Ordner öffnen"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Abrir carpeta de complementos"
-          }
-        }
-      }
-    },
-    "Plug-ins Folder" : {
-      "comment" : "Plug-ins settings: label of the row naming the plug-ins folder",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Plug-ins-Ordner"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Carpeta de complementos"
-          }
-        }
-      }
-    },
     "You chose to open Tingra without the plug-ins you installed after it quit unexpectedly. They load again the next time Tingra opens." : {
       "comment" : "Plug-ins settings: safe-mode banner text after the operator chose Open in Safe Mode",
       "localizations" : {
@@ -8552,193 +8859,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Elegiste abrir Tingra sin los complementos que instalaste después de que se cerrara inesperadamente. Se cargarán de nuevo la próxima vez que abras Tingra."
-          }
-        }
-      }
-    },
-    "Shift was held as Tingra opened, so the plug-ins you installed were not loaded. They load again the next time Tingra opens." : {
-      "comment" : "Plug-ins settings: safe-mode banner text after Shift was held at launch",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Beim Öffnen von Tingra war die Umschalttaste gedrückt, daher wurden die von dir installierten Plug-ins nicht geladen. Sie werden beim nächsten Öffnen von Tingra wieder geladen."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Se mantuvo pulsada la tecla Mayúsculas al abrir Tingra, así que no se cargaron los complementos que instalaste. Se cargarán de nuevo la próxima vez que abras Tingra."
-          }
-        }
-      }
-    },
-    "Warning" : {
-      "comment" : "Plug-ins settings: accessibility label of a row's warning symbol",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Warnung"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Advertencia"
-          }
-        }
-      }
-    },
-    "Turned off because Tingra quit unexpectedly while loading it." : {
-      "comment" : "Plug-ins settings: a bundle the load-crash guard turned off",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ausgeschaltet, weil Tingra beim Laden unerwartet beendet wurde."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Desactivado porque Tingra se cerró inesperadamente mientras lo cargaba."
-          }
-        }
-      }
-    },
-    "Takes effect the next time Tingra opens" : {
-      "comment" : "Plug-ins settings: a changed toggle applies at the next launch",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wird beim nächsten Öffnen von Tingra wirksam"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Se aplica la próxima vez que se abra Tingra"
-          }
-        }
-      }
-    },
-    "Turned on and off in Manage…" : {
-      "comment" : "Plug-ins settings: an installed app extension, switched in the system's browser",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wird unter „Verwalten…“ ein- und ausgeschaltet"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Se activa y desactiva en Gestionar…"
-          }
-        }
-      }
-    },
-    "Its panes and commands are turned on and off in Manage…" : {
-      "comment" : "Plug-ins settings: a plug-in with both halves, whose app half the system's browser switches",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Seine Bereiche und Befehle werden unter „Verwalten…“ ein- und ausgeschaltet"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sus paneles y comandos se activan y desactivan en Gestionar…"
-          }
-        }
-      }
-    },
-    "Show in Finder" : {
-      "comment" : "Plug-ins settings: button revealing a refused plug-in bundle",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Im Finder anzeigen"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mostrar en el Finder"
-          }
-        }
-      }
-    },
-    "Done" : {
-      "comment" : "Plug-ins settings: button closing the Manage sheet",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Fertig"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "OK"
-          }
-        }
-      }
-    },
-    "Keep Mac Awake While Streaming or Recording" : {
-      "comment" : "General settings: checkbox that stops the Mac and its displays from sleeping while a stream or a recording runs",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mac beim Streamen oder Aufnehmen aktiv halten"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mantener el Mac activo al transmitir o grabar"
-          }
-        }
-      }
-    },
-    "Stops the Mac and its displays from going to sleep when idle, so a stream or a recording is not paused. Closing the lid or choosing Sleep still puts the Mac to sleep." : {
-      "comment" : "General settings: footer explaining what the keep awake checkbox does and does not prevent",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Verhindert, dass der Mac und seine Displays bei Inaktivität in den Ruhezustand wechseln, damit ein Stream oder eine Aufnahme nicht angehalten wird. Beim Schließen des Displays oder mit „Ruhezustand“ wechselt der Mac weiterhin in den Ruhezustand."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Impide que el Mac y sus pantallas entren en reposo por inactividad, para que una transmisión o una grabación no se detenga. Al cerrar la tapa o elegir Reposo, el Mac entra en reposo igualmente."
-          }
-        }
-      }
-    },
-    "Close" : {
-      "comment" : "File menu item closing the frontmost window, when it is not the main window",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Schließen"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cerrar"
           }
         }
       }

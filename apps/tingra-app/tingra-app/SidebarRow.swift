@@ -42,10 +42,11 @@ struct SidebarRow: Identifiable, Equatable {
     /// ``MultiviewTile/Tally`` rather than a second enum, so the tally means
     /// one thing across every surface that draws one — the shot bank, the
     /// multiview window, and the sidebar's shot, camera, display, and
-    /// generator sections. Nil everywhere else, and that is the tally's own
-    /// rule rather than an omission: a microphone is on no bus the operator
-    /// stages, an output device is not on a bus at all, and neither a preset
-    /// nor a destination is a thing that goes to air.
+    /// generator sections — and the audio sections' program lamp, lit while
+    /// the input's strip feeds the program mix (``audioRows(from:ofKind:strips:)``).
+    /// Nil everywhere else, and that is the tally's own rule rather than an
+    /// omission: an output device is not on a bus at all, and neither a
+    /// preset nor a destination is a thing that goes to air.
     let tally: MultiviewTile.Tally?
 
     /// Whether this row is the current one among its section's alternatives —
@@ -67,6 +68,15 @@ struct SidebarRow: Identifiable, Equatable {
     /// inert — turning a destination on is still the pane's decision alone —
     /// but it now says which state it is in.
     let destinationReadiness: DestinationReadiness?
+
+    /// Whether an audio row's input has a channel strip on the mixer — false
+    /// for every row that is not an audio input.
+    ///
+    /// A separate mark beside the tally, not a tally state: the tally answers
+    /// "is this feeding the program", and a muted strip is on the mixer
+    /// without feeding anything (ARCHITECTURE.md, "Per-strip routing", the
+    /// amendment of 2026-11-07).
+    let isOnMixer: Bool
 
     /// Whether a destination contributes a leg to the next stream — the
     /// sidebar's reading of ``DestinationEdit/isStreamable``, split by the
@@ -101,18 +111,22 @@ struct SidebarRow: Identifiable, Equatable {
     ///     no, which is every section but the presets).
     ///   - destinationReadiness: A destination row's readiness (default nil,
     ///     which is every section but the destinations).
+    ///   - isOnMixer: Whether an audio row's input has a strip on the mixer
+    ///     (default no, which is every section but the audio inputs).
     init(
         id: String,
         name: String,
         tally: MultiviewTile.Tally?,
         isCurrent: Bool = false,
-        destinationReadiness: DestinationReadiness? = nil
+        destinationReadiness: DestinationReadiness? = nil,
+        isOnMixer: Bool = false
     ) {
         self.id = id
         self.name = name
         self.tally = tally
         self.isCurrent = isCurrent
         self.destinationReadiness = destinationReadiness
+        self.isOnMixer = isOnMixer
     }
 
     /// The rows for the active preset's **authored** shots, in switcher order.
@@ -177,7 +191,8 @@ struct SidebarRow: Identifiable, Equatable {
     }
 
     /// The rows for one **kind** of discovered input, without a tally — the
-    /// sidebar's inert sections.
+    /// base the audio sections' rows are built on
+    /// (``audioRows(from:ofKind:strips:)``).
     ///
     /// Filtering on ``InputKind`` rather than on `InputMedia` is what splits
     /// the audio sections by provenance, the same question the camera picker
@@ -199,6 +214,41 @@ struct SidebarRow: Identifiable, Equatable {
         choices
             .filter { $0.kind == kind }
             .map { SidebarRow(id: $0.id.rawValue, name: $0.name, tally: nil) }
+    }
+
+    /// The rows for one **kind** of discovered audio input, each saying
+    /// whether it is on the mixer and whether it is feeding the program —
+    /// the sidebar's Audio Inputs and Audio Generators sections.
+    ///
+    /// Every discovered input is listed, on the mixer or not: the sections are
+    /// the inventory the operator adds from, and where a newly connected
+    /// device first shows up. A row whose input has a strip carries the
+    /// on-the-mixer mark; one whose strip is unmuted and whose device is
+    /// discovered — feeding the program mix — lights the **program tally**,
+    /// the question a camera row's lamp answers (ARCHITECTURE.md, "Per-strip
+    /// routing", the amendment of 2026-11-07). A muted strip lights nothing:
+    /// a lamp's idle state means running, and a muted strip's device is not.
+    ///
+    /// - Parameters:
+    ///   - choices: The discovered audio inputs, in row order.
+    ///   - kind: The kind this section lists (``rows(from:ofKind:)``'s
+    ///     provenance split).
+    ///   - strips: The mixer's strips.
+    /// - Returns: One row per matching input, in the given order.
+    static func audioRows(
+        from choices: [EngineModel.InputChoice],
+        ofKind kind: InputKind,
+        strips: [MixerStrip]
+    ) -> [SidebarRow] {
+        rows(from: choices, ofKind: kind).map { row in
+            let strip = strips.first { $0.id.rawValue == row.id }
+            return SidebarRow(
+                id: row.id,
+                name: row.name,
+                tally: strip?.isMuted == false ? .onAir : nil,
+                isOnMixer: strip != nil
+            )
+        }
     }
 
     /// The rows for the project's **presets**, in switcher order, with the

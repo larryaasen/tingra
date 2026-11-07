@@ -85,15 +85,22 @@ import TingraPlugInKit
 /// menu both in reach, a third always-visible control for the same action
 /// was one more than the sidebar needed.
 ///
-/// The audio sections and the destination section stay inert, which is the
+/// The audio sections and the destination section do not stage, which is the
 /// same rule rather than an inconsistency: staging has no meaning for a
 /// microphone, a tone, an output device, or a destination — a preview bus
-/// carries picture — and whether an audio input is in the mix, which output
-/// the operator monitors through, and which destinations are streamed to all
-/// have controls that own those decisions: the mixer's channel strips, the
-/// master strip's monitor picker, and the streaming panel. The one thing an
-/// inert row does offer is **Delete**, on the destinations, behind the same
+/// carries picture — and which output the operator monitors through and
+/// which destinations are streamed to have controls that own those
+/// decisions: the master strip's monitor picker and the streaming panel. The
+/// one thing a destination row does offer is **Delete**, behind the same
 /// confirmation the shot rows raise.
+///
+/// **An audio input row is how an input reaches the mixer** (ARCHITECTURE.md,
+/// "Per-strip routing", the amendment of 2026-11-07). The sections list every
+/// discovered input, because they are the inventory the operator adds from;
+/// a row whose input is on the mixer carries a fader mark, and one whose
+/// strip is feeding the program lights the program tally. The row's context
+/// menu offers **Add to Mixer** or **Remove from Mixer**, and the row drags
+/// onto the mixer's strips.
 ///
 /// **The lists are live and event-driven, with no work of their own.** Each
 /// device section reads a model list the engine already keeps current from the
@@ -205,10 +212,10 @@ struct LeadingSidebar: View {
 
             mediaSection
 
-            section(
+            audioSection(
                 .audioInputs,
                 header: Text("Audio Inputs", comment: "Sidebar section heading over the audio input device list"),
-                rows: SidebarRow.rows(from: model.audioInputs, ofKind: .microphone),
+                rows: SidebarRow.audioRows(from: model.audioInputs, ofKind: .microphone, strips: model.mixerStrips),
                 symbol: "mic",
                 emptyLabel: Text(
                     "No audio inputs connected",
@@ -216,10 +223,10 @@ struct LeadingSidebar: View {
                 )
             )
 
-            section(
+            audioSection(
                 .audioGenerators,
                 header: Text("Audio Generators", comment: "Sidebar section heading over the audio generators"),
-                rows: SidebarRow.rows(from: model.audioInputs, ofKind: .generator),
+                rows: SidebarRow.audioRows(from: model.audioInputs, ofKind: .generator, strips: model.mixerStrips),
                 symbol: "waveform",
                 emptyLabel: Text(
                     "No audio generators available",
@@ -978,6 +985,90 @@ struct LeadingSidebar: View {
         }
     }
 
+    /// One audio input section: its heading over a row per discovered input,
+    /// or the given caption when there is nothing to list. The rows do not
+    /// stage; they say whether their input is on the mixer and feeding the
+    /// program, and they are how an input is added to or taken off the mixer
+    /// (``audioRow(_:symbol:)``).
+    ///
+    /// - Parameters:
+    ///   - id: Which section this is, for its expansion and its `tap` name.
+    ///   - header: The section's heading.
+    ///   - rows: The section's rows (``SidebarRow/audioRows(from:ofKind:strips:)``).
+    ///   - symbol: The SF Symbol each row is labeled with.
+    ///   - emptyLabel: What to show when `rows` is empty.
+    /// - Returns: The section.
+    private func audioSection(
+        _ id: SidebarSection,
+        header: Text,
+        rows: [SidebarRow],
+        symbol: String,
+        emptyLabel: Text
+    ) -> some View {
+        Section(isExpanded: expansion(of: id)) {
+            if rows.isEmpty {
+                emptyLabel
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(rows) { row in
+                    audioRow(row, symbol: symbol)
+                }
+            }
+        } header: {
+            header
+        }
+    }
+
+    /// One audio input row: the label, draggable onto the mixer, with a
+    /// context menu that adds the input's strip or removes it — whichever
+    /// the row's state calls for, so the menu never offers what has already
+    /// happened.
+    ///
+    /// - Parameters:
+    ///   - row: The row to draw.
+    ///   - symbol: The SF Symbol for the row's section.
+    /// - Returns: The row.
+    private func audioRow(_ row: SidebarRow, symbol: String) -> some View {
+        // Exact: `InputID` is a raw-string wrapper, so the row's id is the
+        // input's own identifier and nothing is inferred.
+        let input = InputID(rawValue: row.id)
+        return label(row, symbol: symbol)
+            // The whole row answers the drag and the right-click, not just
+            // the glyph and the text.
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(.rect)
+            .draggable(DraggedInput(id: input))
+            .contextMenu {
+                if row.isOnMixer {
+                    Button(role: .destructive) {
+                        model.eventBus.tap(
+                            "sidebarAudioRemoveFromMixer.menuItem",
+                            domain: .audio,
+                            params: ["id": .string(row.id), "name": .string(row.name)]
+                        )
+                        Task { await model.removeStrip(input) }
+                    } label: {
+                        Text("Remove from Mixer", comment: "Context menu item removing an audio input's channel strip")
+                    }
+                } else {
+                    Button {
+                        model.eventBus.tap(
+                            "sidebarAudioAddToMixer.menuItem",
+                            domain: .audio,
+                            params: ["id": .string(row.id), "name": .string(row.name)]
+                        )
+                        model.addStrip(for: input)
+                    } label: {
+                        Text(
+                            "Add to Mixer",
+                            comment: "Sidebar audio input row context menu: adds the input's channel strip, muted"
+                        )
+                    }
+                }
+            }
+    }
+
     /// A binding to whether one section is open, reporting the disclosure's
     /// own `tap` and persisting the new state as it changes.
     ///
@@ -1047,6 +1138,29 @@ struct LeadingSidebar: View {
                     .foregroundStyle(.tint)
                     .accessibilityLabel(
                         Text("Active", comment: "Accessibility label of the checkmark marking the active preset")
+                    )
+            }
+
+            if row.isOnMixer {
+                Spacer(minLength: 0)
+                // A mark, not a lamp: on the mixer is not on air — a muted
+                // strip is on the mixer and feeds nothing — so it is drawn
+                // in the secondary colour beside the tally rather than as one.
+                Image(systemName: "slider.vertical.3")
+                    .foregroundStyle(.secondary)
+                    .help(
+                        Text(
+                            "On the mixer",
+                            comment:
+                                "Help tag and accessibility label of the mark on a sidebar audio row whose input has a channel strip"
+                        )
+                    )
+                    .accessibilityLabel(
+                        Text(
+                            "On the mixer",
+                            comment:
+                                "Help tag and accessibility label of the mark on a sidebar audio row whose input has a channel strip"
+                        )
                     )
             }
         }

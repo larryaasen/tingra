@@ -63,10 +63,11 @@ struct TingraApp: App {
     /// present a sheet itself.
     @State private var isCustomSizePresented = false
 
-    /// Whether the main window's trailing inspector column is shown — shown
-    /// by default and not persisted, the sidebar's own rule: the column is
-    /// part of the window's shape, not a preference (``InspectorCommands``).
-    @State private var isInspectorPresented = true
+    /// Whether the main window's trailing inspector column is shown
+    /// (``InspectorCommands``) — restored at launch from, and written back
+    /// to, ``WindowLayoutPreferences``, so the column reopens as the operator
+    /// left it. Shown on a fresh install.
+    @State private var isInspectorPresented = WindowLayoutPreferences().isInspectorPresented
 
     /// The delegate that holds quitting open until a recording in flight is
     /// finalized (see ``TingraAppDelegate``).
@@ -133,6 +134,12 @@ struct TingraApp: App {
             // (PLUGINS.md, Decision 31).
             .navigationSubtitle(windowSubtitle)
             .navigationDocument(model.projectURL)
+            // Written on every change, whichever control made it — the View
+            // menu's item or the toolbar button — so the column reopens at
+            // the next launch as it was left.
+            .onChange(of: isInspectorPresented) { _, isPresented in
+                WindowLayoutPreferences().setInspectorPresented(isPresented)
+            }
             .task {
                 // The unit tests' host launches the app only so the test
                 // bundle can load; the engine stays down so a test run never
