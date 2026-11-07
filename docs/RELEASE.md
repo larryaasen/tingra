@@ -300,6 +300,6 @@ Checksums of `~/Library/Application Support/Tingra` taken before row E match the
 4. ~~Run the spike; record findings here; amend the decisions it contradicts.~~ Run 2026-11-05 and 2026-11-06; all five rows passed and no decision was amended. See "Spike findings".
 5. ~~C10: `release-app-package.sh`, run unsigned and then signed on Larry's Mac.~~ Built 2026-11-06; see "Built so far".
 6. ~~C9, C10: the cask template, `release-cameras.sh`, and `release-cameras.yml`.~~ Built 2026-11-07; see "Built so far". Not yet run against GitHub.
-7. C12: the CI build.
-8. Docs in the same changes: root and app `CLAUDE.md` (scripts, workflows, the build table), `packaging/README.md`, README.md (installing it), and `apps/tingra-cameras/CLAUDE.md`'s test command.
+7. ~~C12: the CI build.~~ Built 2026-11-07: `format-test.yml`'s `cameras` job builds the app unsigned and warning-clean, so every release's gate builds it too.
+8. ~~Docs in the same changes: root and app `CLAUDE.md` (scripts, workflows, the build table), `packaging/README.md`, README.md (installing it), and `apps/tingra-cameras/CLAUDE.md`'s test command.~~ Done 2026-11-07. The app's `CLAUDE.md` now says it has no test target and points at `TingraHost`'s tests.
 9. Larry: cut 0.1.0; verify from a consumer's position with `brew install --cask larryaasen/tingra/tingra-cameras`.

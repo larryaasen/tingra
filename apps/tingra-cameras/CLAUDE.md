@@ -50,10 +50,12 @@ tingra-cameras/                    # App source folder (synchronized root group)
 | Action | Command |
 |--------|---------|
 | Build (Debug, macOS) | `xcodebuild -project tingra-cameras.xcodeproj -scheme tingra-cameras -configuration Debug -destination 'platform=macOS' build` |
-| Run tests | `xcodebuild -project tingra-cameras.xcodeproj -scheme tingra-cameras -destination 'platform=macOS' test` |
+| Run tests | None here: the project has no test target. The logic worth testing (presets, parameters, the launch rule) lives in `TingraHost`, so test it there with `cd ../../packages/TingraHost && swift test` (docs/RELEASE.md, Decision C12) |
 | Format all Swift files | `../../scripts/format-swift.sh` |
+| Package for release | `../../scripts/release-app-package.sh --app cameras` (unsigned without `TINGRA_SIGN_ID`; see docs/RELEASE.md, "Releasing Tingra Cameras") |
+| Cut a release | `../../scripts/release-cameras.sh` (`--dry-run` to rehearse), or Actions → Release Tingra Cameras |
 
-Run from `apps/tingra-cameras/`. The app also opens and runs directly from Xcode (⌘R).
+Run from `apps/tingra-cameras/`. The app also opens and runs directly from Xcode (⌘R). CI builds it unsigned and warning-clean in `format-test.yml`'s `cameras` job.
 
 ## SwiftUI & UI Design
 - Use SwiftUI for all UI. Build the two-column layout with `NavigationSplitView` and standard controls (`List`, `Section`, `Label`).

@@ -8,12 +8,12 @@
 # 27.2 beta, so DEVELOPER_DIR pins 27.0 explicitly rather than trusting the
 # image's default (pinned 2026-10-03; until then, Xcode 26.6 on `macos-26`).
 #
-# The other two workflows are release-cli.yml (build → sign → notarize → tag →
-# GitHub release → Homebrew tap, on demand) and integration.yml (streaming
-# tests against the ingest simulator, on streaming/output changes rather than
-# blocking every PR). This workflow is also `workflow_call`-able, and
-# release-cli.yml calls it as its pre-release gate so a release can only be cut
-# from a green tree.
+# The other workflows are integration.yml (streaming tests against the ingest
+# simulator, on streaming/output changes rather than blocking every PR) and
+# the three releases, run on demand: release-cli.yml, release-sdk.yml, and
+# release-cameras.yml. This workflow is also `workflow_call`-able, and each
+# release calls it as its pre-release gate so a release can only be cut from a
+# green tree.
 #
 # Deferred job, tracked in docs/TODO.md "CI follow-ups": the API-diff job for
 # TingraPlugInKit and TingraEventBus (needs their first tags).
@@ -24,7 +24,8 @@ on:
   push:
     branches: [main]
   pull_request:
-  # Called by release-cli.yml as the pre-release gate.
+  # Called by release-cli.yml, release-sdk.yml, and release-cameras.yml as the
+  # pre-release gate.
   workflow_call:
 
 env:
@@ -107,6 +108,38 @@ jobs:
             | grep -v "SourcePackages" \
             | grep -v "appintentsmetadataprocessor" \
             | grep -v "Failed to parse executable"; then
+            echo "::error::xcodebuild produced warnings (listed above)"
+            exit 1
+          fi
+
+  cameras:
+    name: Build (apps/tingra-cameras)
+    runs-on: xcode-27
+    steps:
+      - uses: actions/checkout@v4
+      # Tingra Cameras is its own Xcode project (docs/RELEASE.md, Decision
+      # C12). It has no test target: the logic worth testing, its presets and
+      # parameters, lives in TingraHost and is tested in the matrix above. So
+      # this job only builds, unsigned for the reason the app job gives, and
+      # holds the build warning-clean so it stops relying on someone opening
+      # Xcode. The signed Release archive is release-cameras.yml's.
+      - name: Build (warning-clean)
+        working-directory: apps/tingra-cameras
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project tingra-cameras.xcodeproj \
+            -scheme tingra-cameras \
+            -destination 'platform=macOS,arch=arm64' \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee "$RUNNER_TEMP/cameras-build.log"
+          # Warning-clean per CLAUDE.md "Strict Compilation", with the app
+          # job's exclusions that apply here: package checkouts under
+          # SourcePackages, and appintentsmetadataprocessor's note that the
+          # app declares no App Intents.
+          if grep "warning:" "$RUNNER_TEMP/cameras-build.log" \
+            | grep -v "SourcePackages" \
+            | grep -v "appintentsmetadataprocessor"; then
             echo "::error::xcodebuild produced warnings (listed above)"
             exit 1
           fi

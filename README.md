@@ -474,6 +474,15 @@ standard SwiftUI Liquid Glass look rather than any bespoke theme (see its own
 beyond its `@main` entry. User-facing strings are localized
 (`Localizable.xcstrings`, en/de/es).
 
+It releases on its own version, separately from the engine. Install it with
+Homebrew, or download the disk image from a `cameras-v<x.y.z>` release and
+drag the app to Applications. It needs an Apple Silicon Mac running macOS 26
+(Tahoe) or later:
+
+```sh
+brew install --cask larryaasen/tingra/tingra-cameras
+```
+
 **Types:** [`tingra-cameras` in TYPES.md](docs/TYPES.md#appstingra-cameras)
 
 ## License
