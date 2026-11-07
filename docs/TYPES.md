@@ -706,13 +706,15 @@ surface is:
 
 - `TingraCamerasMain` — the `@main` entry: answers `--version` or starts it.
 - `TingraCamerasApp` — the app: the scenes, commands, and shared model.
-- `ContentView` — the `NavigationSplitView` two-column layout.
+- `ContentView` — the standard window's `NavigationSplitView` layout.
 - `HostWindow` — the window a view is in, for widening it.
 - `HostWindowReader` — the invisible view that fills in a `HostWindow`.
 - `SidebarView` — the Cameras sidebar list.
 - `DeviceRow` — one tappable device row, checkmarked when active.
-- `PreviewCanvasView` — the 16:9 preview frame, centered in its column.
-- `PreviewMessage` — the placeholder or error shown with no live feed.
+- `PreviewCanvasView` — the standard window's column holding the preview frame.
+- `PreviewFrame` — the 16:9 preview frame: live feed or placeholder, or error.
+- `PreviewErrorCard` — why the camera can't show, as tall as its message.
+- `PreviewMessage` — the placeholder shown with no camera selected.
 - `CameraPreviewView` — the video view: a placeholder or a live feed.
 - `SampleBufferHostView` — the `NSView` hosting the sample buffer layer.
 - `TrailingSidebar` — the right-hand column: the camera's controls.
@@ -729,8 +731,13 @@ surface is:
 - `FramingRow` — pan, tilt, and zoom as one row of three sliders.
 - `PreviewCommands` — Copy in the Edit menu, Cross Bars in the View menu.
 - `FrameClipboard` — puts a camera frame on the pasteboard as an image.
-- `HardwareModel` — the observable device selection state.
+- `HardwareModel` — the app-wide state: cameras, presets, permission.
+- `CameraSession` — one window's camera, its preview state, and its controls.
+- `WindowSession` — the modifier giving a window its own `CameraSession`.
 - `CaptureEngine` — the one type the app reaches the capture engine through.
+- `CameraFeed` — one window's way into the engine: its camera and frames.
+- `CameraSubscriber` — a feed's frame and control-value handlers on a camera.
+- `RunningCamera` — a camera started once and drawn in every window showing it.
 - `Device` — one camera the picker lists.
 - `PixelDimensions` — a camera frame's size, the status bar's resolution.
 - `PreviewState` — where the selected camera's preview stands.
@@ -759,6 +766,15 @@ surface is:
 - `PresetRow` — one preset row, recalling the preset when clicked.
 - `PresetContextMenu` — recall, default, update, rename, delete a preset.
 - `PresetCommands` — the Presets menu: save, recall, Default Preset.
+- `PresetMenuItems` — the Presets menu's items, shared with the compact window.
 - `PresetDialog` — the Save, Rename, or Delete preset dialog.
 - `PresetDialogPresenter` — which preset dialog a window shows.
 - `PresetDialogs` — the preset dialogs, presented over a window.
+- `WindowStyle` — standard (three columns) or compact (one narrow column).
+- `WindowStylePreferences` — where the style a launch opens persists.
+- `WindowStyleSwitcher` — the key window's style and window, for the switch.
+- `WindowStyleCommands` — Switch to Compact/Standard Window in the Window menu.
+- `NewWindowCommands` — File ▸ New Window, opening the operator's window style.
+- `CompactWindowView` — the compact window: picker, preview, and controls.
+- `CompactCameraPicker` — the compact window's camera pop-up button.
+- `CompactPresetsMenu` — the compact window's Presets pull-down button.

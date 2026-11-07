@@ -9,9 +9,10 @@
 
 import SwiftUI
 
-/// The root layout: a translucent selection sidebar on the left, the
-/// live-camera preview canvas in the middle, and the selected camera's
-/// controls in the trailing sidebar (``TrailingSidebar``) on the right.
+/// The standard window's root layout (``WindowStyle/standard``): a
+/// translucent selection sidebar on the left, the live-camera preview canvas
+/// in the middle, and the selected camera's controls in the trailing sidebar
+/// (``TrailingSidebar``) on the right.
 ///
 /// A `NavigationSplitView` provides the native macOS sidebar chrome — the
 /// vibrant material behind the traffic-light controls and the drag-to-resize
@@ -33,8 +34,8 @@ struct ContentView: View {
     /// narrowest the preview column stays legible.
     static let minimumWindowWidth: CGFloat = 410
 
-    /// The shared hardware-selection state, injected by the app.
-    @Environment(HardwareModel.self) private var model
+    /// The window's camera session (``WindowSession``).
+    @Environment(CameraSession.self) private var session
 
     /// Whether the sidebar is closed, remembered per window.
     @SceneStorage("sidebar.isHidden") private var isSidebarHidden = false
@@ -140,7 +141,7 @@ struct ContentView: View {
             PreviewCanvasView()
                 // Device names are proper nouns from the system, and the
                 // product name is the same in every language.
-                .navigationTitle(Text(verbatim: model.selectedCamera?.name ?? "Tingra Cameras"))
+                .navigationTitle(Text(verbatim: session.selectedCamera?.name ?? "Tingra Cameras"))
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     StatusBarView()
                 }
@@ -173,15 +174,12 @@ struct ContentView: View {
         }
         .background(HostWindowReader(host: hostWindow))
         .frame(minWidth: currentMinimumWindowWidth)
-        // On the window's root rather than the sidebar, so the Presets menu
-        // can open a dialog with the sidebar collapsed.
-        .presetDialogs(model: model)
     }
 }
 
 #Preview {
     ContentView()
-        .environment(HardwareModel.preview)
+        .previewEnvironment()
         .environment(StatusBarModel())
         .frame(width: 900, height: 560)
 }

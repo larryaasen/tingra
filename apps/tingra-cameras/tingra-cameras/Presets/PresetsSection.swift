@@ -25,6 +25,9 @@ struct PresetsSection: View {
     /// The shared model holding the presets.
     @Environment(HardwareModel.self) private var model
 
+    /// The window's camera session, whose camera Save Preset… saves.
+    @Environment(CameraSession.self) private var session
+
     /// Opens a preset dialog over the window.
     @Environment(\.presetDialogPresenter) private var presetDialogPresenter
 
@@ -60,17 +63,21 @@ struct PresetsSection: View {
                 } label: {
                     Text("Save Preset…", comment: "Command saving the selected camera's settings as a new preset")
                 }
-                .disabled(!model.canSavePreset)
+                .disabled(!session.canSavePreset)
             }
         }
     }
 }
 
 /// One preset row: the preset's name over its camera's name, a trailing
-/// Default label on the default preset, recalling the preset when clicked.
+/// Default label on the default preset, recalling the preset in the window
+/// when clicked.
 private struct PresetRow: View {
     /// The shared model holding the presets.
     @Environment(HardwareModel.self) private var model
+
+    /// The window's camera session, which a recalled preset goes to.
+    @Environment(CameraSession.self) private var session
 
     /// Opens a preset dialog over the window.
     @Environment(\.presetDialogPresenter) private var presetDialogPresenter
@@ -83,7 +90,7 @@ private struct PresetRow: View {
         let isAvailable = model.camera(for: preset) != nil
         Button {
             model.recordPresetTap("cameraPreset.row", preset: preset)
-            model.recallPreset(preset.id)
+            session.recallPreset(preset.id)
         } label: {
             HStack {
                 Label {
@@ -116,16 +123,22 @@ private struct PresetRow: View {
                 )
         )
         .contextMenu {
-            PresetContextMenu(preset: preset, isAvailable: isAvailable)
+            PresetContextMenu(preset: preset, isAvailable: isAvailable, tapKind: "menu")
         }
     }
 }
 
 /// A preset row's context menu: recall it, make it the default, update it
-/// with the camera's current settings, rename it, and delete it.
-private struct PresetContextMenu: View {
+/// with the camera's current settings, rename it, and delete it. The compact
+/// window's Presets pull-down shows the same items as one submenu per preset
+/// (``CompactPresetsMenu``).
+struct PresetContextMenu: View {
     /// The shared model holding the presets.
     @Environment(HardwareModel.self) private var model
+
+    /// The window's camera session: the camera a recalled preset goes to and
+    /// whose settings Update with Current Settings takes.
+    @Environment(CameraSession.self) private var session
 
     /// Opens a preset dialog over the window.
     @Environment(\.presetDialogPresenter) private var presetDialogPresenter
@@ -136,18 +149,23 @@ private struct PresetContextMenu: View {
     /// Whether the preset's camera is connected.
     let isAvailable: Bool
 
+    /// The kind of control the items' taps are reported as, the last part of
+    /// each tap name: `menu` for the row's context menu, `pullDownItem` in
+    /// the compact window (EVENTS.md, "The `tap` convention").
+    let tapKind: String
+
     /// The items.
     var body: some View {
         Button {
-            model.recordPresetTap("cameraPresetRecall.menu", preset: preset)
-            model.recallPreset(preset.id)
+            model.recordPresetTap("cameraPresetRecall.\(tapKind)", preset: preset)
+            session.recallPreset(preset.id)
         } label: {
             Text("Recall", comment: "Camera preset context menu: apply this preset to its camera")
         }
         .disabled(!isAvailable)
 
         Button {
-            model.recordPresetTap("cameraPresetDefault.menu", preset: preset)
+            model.recordPresetTap("cameraPresetDefault.\(tapKind)", preset: preset)
             model.makeDefaultPreset(preset.id)
         } label: {
             Text("Set as Default", comment: "Camera preset context menu: apply this preset at launch")
@@ -155,27 +173,27 @@ private struct PresetContextMenu: View {
         .disabled(model.presets.isDefault(preset.id))
 
         Button {
-            model.recordPresetTap("cameraPresetUpdate.menu", preset: preset)
-            model.updatePreset(preset.id)
+            model.recordPresetTap("cameraPresetUpdate.\(tapKind)", preset: preset)
+            session.updatePreset(preset.id)
         } label: {
             Text(
                 "Update with Current Settings",
                 comment: "Camera preset context menu: replace this preset's settings with the camera's current ones"
             )
         }
-        .disabled(!model.canUpdatePreset(preset))
+        .disabled(!session.canUpdatePreset(preset))
 
         Divider()
 
         Button {
-            model.recordPresetTap("cameraPresetRename.menu", preset: preset)
+            model.recordPresetTap("cameraPresetRename.\(tapKind)", preset: preset)
             presetDialogPresenter?.present(.rename(preset), model: model)
         } label: {
             Text("Rename…", comment: "Camera preset context menu: rename this preset")
         }
 
         Button(role: .destructive) {
-            model.recordPresetTap("cameraPresetDelete.menu", preset: preset)
+            model.recordPresetTap("cameraPresetDelete.\(tapKind)", preset: preset)
             presetDialogPresenter?.present(.delete(preset), model: model)
         } label: {
             Text("Delete Preset…", comment: "Camera preset context menu: delete this preset, after confirming")

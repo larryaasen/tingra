@@ -16,7 +16,7 @@ import TingraPlugInKit
 /// the frames the engine delivers for the selected camera.
 ///
 /// This is the integration seam for the Tingra engine. The view registers a
-/// frame sink with the ``HardwareModel`` on appear; the engine pulls frames
+/// frame sink with the window's ``CameraSession`` on appear; the engine pulls frames
 /// from the selected camera's `Input` and hands each `CapturedFrame`
 /// (`IOSurface`-backed 32BGRA) here, where it is enqueued onto the display
 /// layer for the GPU to present — no capture framework or session is
@@ -33,30 +33,35 @@ import TingraPlugInKit
 /// preview), the same two commands the Edit and View menus carry
 /// (``PreviewCommands``).
 struct CameraPreviewView: NSViewRepresentable {
-    /// The shared model, used to register and remove the frame sink.
+    /// The shared model, for the cross bars every window's preview shows.
     @Environment(HardwareModel.self) private var model
 
-    /// Creates the display-layer host view and wires it as the model's frame
-    /// sink so live frames flow straight to the layer.
+    /// The window's camera session, used to register and remove the frame
+    /// sink and to move the framing of the window's camera.
+    @Environment(CameraSession.self) private var session
+
+    /// Creates the display-layer host view and wires it as the session's
+    /// frame sink so live frames flow straight to the layer.
     func makeNSView(context: Context) -> SampleBufferHostView {
         let view = SampleBufferHostView()
-        model.attachPreview(
+        session.attachPreview(
             id: ObjectIdentifier(view),
             renderFrame: { [weak view] frame in view?.enqueue(frame) },
             flush: { [weak view] in view?.flush() }
         )
         let model = model
-        view.onFramingDrag = { [weak model] translation, size in
-            model?.dragFraming(by: translation, in: size)
+        let session = session
+        view.onFramingDrag = { [weak session] translation, size in
+            session?.dragFraming(by: translation, in: size)
         }
-        view.onFramingZoom = { [weak model] fraction in
-            model?.zoomFraming(byFraction: fraction)
+        view.onFramingZoom = { [weak session] fraction in
+            session?.zoomFraming(byFraction: fraction)
         }
-        view.onFramingGestureEnded = { [weak model] gesture in
-            model?.endFramingGesture(gesture.tapName)
+        view.onFramingGestureEnded = { [weak session] gesture in
+            session?.endFramingGesture(gesture.tapName)
         }
-        view.onCopy = { [weak model] in
-            model?.copyFrame(from: "contextMenu")
+        view.onCopy = { [weak session] in
+            session?.copyFrame(from: "contextMenu")
         }
         view.onToggleCrossBars = { [weak model] in
             model?.toggleCrossBars(from: "contextMenu")
@@ -72,26 +77,25 @@ struct CameraPreviewView: NSViewRepresentable {
     }
 
     /// Removes this preview's frame sink when it is torn down so the engine
-    /// stops drawing into a dead view, leaving any other window's preview
-    /// drawing.
+    /// stops drawing into a dead view.
     static func dismantleNSView(_ nsView: SampleBufferHostView, coordinator: Coordinator) {
-        coordinator.model.detachPreview(id: ObjectIdentifier(nsView))
+        coordinator.session.detachPreview(id: ObjectIdentifier(nsView))
     }
 
-    /// Creates the coordinator that retains the model for teardown.
+    /// Creates the coordinator that retains the session for teardown.
     func makeCoordinator() -> Coordinator {
-        Coordinator(model: model)
+        Coordinator(session: session)
     }
 
-    /// Holds the model so ``dismantleNSView(_:coordinator:)`` can detach the
-    /// preview sink; the representable value itself is not kept around.
+    /// Holds the session so ``dismantleNSView(_:coordinator:)`` can detach
+    /// the preview sink; the representable value itself is not kept around.
     final class Coordinator {
-        /// The model whose preview sink this view registered.
-        let model: HardwareModel
+        /// The session whose preview sink this view registered.
+        let session: CameraSession
 
-        /// Creates a coordinator retaining the given model.
-        init(model: HardwareModel) {
-            self.model = model
+        /// Creates a coordinator retaining the given session.
+        init(session: CameraSession) {
+            self.session = session
         }
     }
 }

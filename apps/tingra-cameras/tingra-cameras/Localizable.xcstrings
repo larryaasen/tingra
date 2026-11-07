@@ -104,7 +104,7 @@
       }
     },
     "Camera" : {
-      "comment" : "Permissions settings: the camera permission's name",
+      "comment" : "Permissions settings: the camera permission's name; also the compact window's camera picker label",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -201,6 +201,24 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Comprobando…"
+          }
+        }
+      }
+    },
+    "Compact Window" : {
+      "comment" : "Title of the narrow one-column camera window",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kompaktes Fenster"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ventana compacta"
           }
         }
       }
@@ -579,6 +597,23 @@
         }
       }
     },
+    "Manage Presets" : {
+      "comment" : "Compact window Presets pull-down submenu: update, rename, or delete each preset",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Voreinstellungen verwalten"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gestionar preajustes"
+          }
+        }
+      }
+    },
     "Microphone" : {
       "comment" : "Permissions settings: the microphone permission's name",
       "localizations" : {
@@ -609,6 +644,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Nombre"
+          }
+        }
+      }
+    },
+    "New Window" : {
+      "comment" : "File menu item opening another camera window",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neues Fenster"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nueva ventana"
           }
         }
       }
@@ -1153,6 +1205,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Iniciando…"
+          }
+        }
+      }
+    },
+    "Switch to Compact Window" : {
+      "comment" : "Window menu item replacing the three-column window with the narrow one-column window",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zum kompakten Fenster wechseln"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cambiar a la ventana compacta"
+          }
+        }
+      }
+    },
+    "Switch to Standard Window" : {
+      "comment" : "Window menu item replacing the narrow one-column window with the three-column window",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zum Standardfenster wechseln"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cambiar a la ventana estándar"
           }
         }
       }

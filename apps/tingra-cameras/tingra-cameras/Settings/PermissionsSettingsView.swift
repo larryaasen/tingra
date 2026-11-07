@@ -133,7 +133,13 @@ struct PermissionRow: View {
     static func name(of permission: AuthorizationPermission) -> LocalizedStringResource {
         switch permission {
         case .camera:
-            LocalizedStringResource("Camera", comment: "Permissions settings: the camera permission's name")
+            // The compact window's camera picker label shares this word and
+            // its comment, so the catalog keeps one entry for both.
+            LocalizedStringResource(
+                "Camera",
+                comment:
+                    "Permissions settings: the camera permission's name; also the compact window's camera picker label"
+            )
         case .microphone:
             LocalizedStringResource("Microphone", comment: "Permissions settings: the microphone permission's name")
         case .screenRecording:

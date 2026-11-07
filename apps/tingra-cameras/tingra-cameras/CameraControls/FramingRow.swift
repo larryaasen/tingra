@@ -16,12 +16,13 @@ import TingraPlugInKit
 /// (docs/UVC.md, "The Tingra Cameras controls panel"). Each slider
 /// double-clicks back to the camera's default like every other slider.
 struct FramingRow: View {
-    /// The shared model holding the camera's framing.
-    @Environment(HardwareModel.self) private var model
+    /// The window's camera session: the camera it shows and that camera's
+    /// controls and values.
+    @Environment(CameraSession.self) private var session
 
     /// The framing controls the camera has, in pan, tilt, zoom order.
     private var parameters: [Parameter] {
-        HardwareModel.FramingKey.all.compactMap { model.cameraParameter(forKey: $0) }
+        CameraSession.FramingKey.all.compactMap { session.cameraParameter(forKey: $0) }
     }
 
     /// The narrowest a slider and its value may be side by side, so the row

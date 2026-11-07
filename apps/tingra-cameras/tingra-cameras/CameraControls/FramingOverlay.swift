@@ -16,23 +16,24 @@ import SwiftUI
 /// keyboard users reach the framing (docs/UVC.md, "The Tingra Cameras
 /// controls panel").
 struct FramingOverlay: View {
-    /// The shared model whose camera framing the buttons change.
-    @Environment(HardwareModel.self) private var model
+    /// The window's camera session: the camera it shows and that camera's
+    /// controls and values.
+    @Environment(CameraSession.self) private var session
 
     /// The buttons a camera's framing calls for: zoom only when it has a
     /// zoom, reset always.
     var body: some View {
         VStack(spacing: 0) {
-            if model.cameraParameter(forKey: HardwareModel.FramingKey.zoom) != nil {
+            if session.cameraParameter(forKey: CameraSession.FramingKey.zoom) != nil {
                 Button {
-                    model.stepZoom(by: 1)
+                    session.stepZoom(by: 1)
                 } label: {
                     Label("Zoom In", systemImage: "plus")
                 }
                 .help(Text("Zoom In"))
                 Divider()
                 Button {
-                    model.stepZoom(by: -1)
+                    session.stepZoom(by: -1)
                 } label: {
                     Label("Zoom Out", systemImage: "minus")
                 }
@@ -40,7 +41,7 @@ struct FramingOverlay: View {
                 Divider()
             }
             Button {
-                model.resetFraming()
+                session.resetFraming()
             } label: {
                 Label("Reset Framing", systemImage: "arrow.counterclockwise")
             }
@@ -69,6 +70,6 @@ private struct FramingButtonStyle: ButtonStyle {
 
 #Preview {
     FramingOverlay()
-        .environment(HardwareModel.preview)
+        .previewEnvironment()
         .padding()
 }

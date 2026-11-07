@@ -20,12 +20,19 @@ import TingraPlugInKit
 /// and drives the selected camera's `Input` so its frames reach the
 /// preview.
 ///
-/// Everything the app needs from the engine passes through this one type;
-/// the view layer depends only on ``Device`` values and a frame sink, never
-/// on the `Input` seam or a capture framework directly (ARCHITECTURE.md,
-/// "Dependency Injection Pattern"). Camera capture is the only live feed —
-/// the plug-in is asked for cameras only, so the Mac's microphones are never
-/// discovered.
+/// Everything the app needs from the engine passes through this one type
+/// and the per-window ``CameraFeed``s it makes; the view layer depends only
+/// on ``Device`` values and a frame sink, never on the `Input` seam or a
+/// capture framework directly (ARCHITECTURE.md, "Dependency Injection
+/// Pattern"). Camera capture is the only live feed — the plug-in is asked
+/// for cameras only, so the Mac's microphones are never discovered.
+///
+/// **Each window shows its own camera.** A window's ``CameraFeed`` chooses
+/// the camera; the engine runs it. A camera input has one frame consumer at
+/// a time, so two windows showing the same camera share one running camera
+/// (``RunningCamera``): the engine starts it for the first window that
+/// subscribes, draws each frame in every subscribed window, and stops it
+/// when the last one leaves.
 @MainActor
 final class CaptureEngine {
     /// The host's event bus. The capture plug-in reports device discovery
@@ -66,109 +73,29 @@ final class CaptureEngine {
     /// prints the events itself — the same approach as the main Tingra app.)
     private var consoleTask: Task<Void, Never>?
 
-    /// The camera input currently feeding the preview, or `nil` when none is
-    /// showing. Retained so it can be stopped when the selection changes.
-    private var currentInput: (any Input)?
-
-    /// The task consuming the current camera's frame stream. Cancelled and
-    /// replaced whenever the selected camera changes.
-    private var previewTask: Task<Void, Never>?
-
-    /// The newest frame the selected camera delivered, kept so Copy can put
-    /// the picture on the pasteboard; `nil` when no camera is showing.
-    /// Holding one frame pins a single buffer of the camera's pool — the
-    /// latest-frame-wins rule the compositor follows — and each new frame
-    /// releases the last.
-    private var latestFrame: CapturedFrame?
-
-    /// The camera switch in flight: stopping the previous camera and
-    /// starting the selected one. A newer selection cancels it and waits for
-    /// it to settle before starting its own camera, so only the latest
-    /// choice ever reaches the preview — a slow or silent camera's start can
-    /// no longer finish late and overwrite the camera the operator picked
-    /// since.
-    private var switchTask: Task<Void, Never>?
-
-    /// The selected camera whose controls the panel adjusts, or nil when no
-    /// camera is selected. Set as soon as a switch resolves the camera —
-    /// before it starts, because a camera's controls work whether or not it
-    /// is capturing.
-    private var controlledInput: (any Input)?
-
-    /// The latest parameter write in flight. Each write waits for the one
-    /// before it, so the camera receives them in the order the operator
-    /// made them.
-    private var parameterTask: Task<Void, Never>?
-
     /// The long-lived task refreshing the device lists from device
     /// connect/disconnect events. Runs for the engine's lifetime.
     private var deviceEventsTask: Task<Void, Never>?
 
-    /// One preview's frame sink: how to draw a frame in it and how to clear
-    /// it.
-    private struct PreviewSink {
-        /// Draws one captured frame in the preview.
-        let render: @MainActor (CapturedFrame) -> Void
-        /// Drops any displayed frame, called when switching cameras so the
-        /// previous camera's last frame does not linger.
-        let flush: @MainActor () -> Void
-    }
+    /// The cameras some window is showing or starting, by camera
+    /// identifier: one running camera however many windows show it.
+    private var runningCameras: [Device.ID: RunningCamera] = [:]
 
-    /// Every preview on screen, keyed by its view. One per window: each
-    /// window the operator opens with New Window draws the same camera, so
-    /// every frame goes to all of them. A single sink, replaced by each
-    /// preview that appeared, froze the earlier windows' previews — and
-    /// cleared by the one that went away, froze the rest for good.
-    private var previewSinks: [ObjectIdentifier: PreviewSink] = [:]
-
-    /// The size of the frames the selected camera is delivering, or nil
-    /// before its first frame. Compared on each frame so a change in size is
-    /// reported once, never per frame.
-    private var frameDimensions: PixelDimensions?
+    /// The stops in flight, by camera identifier. A camera chosen again
+    /// while its last window's stop is still releasing it waits for the stop
+    /// before starting, so one input never starts while it is stopping.
+    private var stoppingCameras: [Device.ID: Task<Void, Never>] = [:]
 
     /// Reports the discovered cameras whenever the set of connected devices
     /// changes, so the sidebar stays current.
     var onDevicesChanged: (@MainActor (_ cameras: [Device]) -> Void)?
 
-    /// Reports a user-facing preview error (authorization denied, device
-    /// unavailable), or `nil` once a camera is showing again.
-    var onPreviewError: (@MainActor (String?) -> Void)?
-
-    /// Reports the selected camera's adjustable controls and their current
-    /// values — empty when no camera is selected or it has none (docs/UVC.md,
-    /// "The Tingra Cameras controls panel").
-    var onCameraParametersChanged: (@MainActor (_ parameters: [Parameter], _ values: [String: JSONValue]) -> Void)?
-
-    /// Reports the size of the frames the selected camera delivers when it
-    /// first shows and whenever it changes, or nil when no camera is showing
-    /// — the status bar's resolution reading.
-    var onFrameDimensionsChanged: (@MainActor (PixelDimensions?) -> Void)?
-
-    /// Adds a preview to the set every frame is drawn in, showing it the
-    /// newest frame straight away so a window opened mid-stream is not blank
-    /// until the next one arrives.
+    /// Makes the feed a window shows its camera through. Each window has
+    /// its own, so each can show a different camera.
     ///
-    /// - Parameters:
-    ///   - id: The preview's identity, used to remove it again.
-    ///   - render: Draws one captured frame in the preview.
-    ///   - flush: Clears any displayed frame.
-    func addPreviewSink(
-        id: ObjectIdentifier,
-        render: @escaping @MainActor (CapturedFrame) -> Void,
-        flush: @escaping @MainActor () -> Void
-    ) {
-        previewSinks[id] = PreviewSink(render: render, flush: flush)
-        if let latestFrame {
-            render(latestFrame)
-        }
-    }
-
-    /// Removes a preview from the set, when its view goes away, leaving every
-    /// other preview drawing.
-    ///
-    /// - Parameter id: The identity the preview was added under.
-    func removePreviewSink(id: ObjectIdentifier) {
-        previewSinks[id] = nil
+    /// - Returns: A feed showing no camera yet.
+    func makeFeed() -> CameraFeed {
+        CameraFeed(engine: self)
     }
 
     /// Activates the capture plug-in, starts observing device changes, and
@@ -194,129 +121,170 @@ final class CaptureEngine {
         return await currentCameras()
     }
 
-    /// Shows the camera with the given identifier in the preview, stopping
-    /// whichever camera was showing before.
+    /// The registered camera input with an identifier, or nil when no camera
+    /// with it is connected.
     ///
-    /// Passing `nil` (or an identifier no longer registered) stops the
-    /// preview. Authorization denial and device unavailability surface
-    /// through ``onPreviewError`` rather than crashing (CLAUDE.md,
-    /// never-crash rule).
-    ///
-    /// The latest call wins: a camera still starting when another is chosen
-    /// — a built-in camera behind a closed lid waits out the input's whole
-    /// verification window before it reports itself silent — is cancelled,
-    /// and its outcome never reaches the preview.
-    ///
-    /// - Parameters:
-    ///   - id: The selected camera's identifier, or `nil` to stop.
-    ///   - values: Control values to write to the camera before its controls
-    ///     are read and shown — a recalled camera preset's — or nil to leave
-    ///     the camera's own values.
-    func showCamera(id: Device.ID?, applying values: [String: JSONValue]? = nil) async {
-        let previousSwitch = switchTask
-        previousSwitch?.cancel()
-        let currentSwitch = Task { [weak self] in
-            // Let the superseded switch release its camera first, so two
-            // capture sessions are never starting at once.
-            await previousSwitch?.value
-            guard !Task.isCancelled else { return }
-            await self?.switchCamera(to: id, applying: values)
-        }
-        switchTask = currentSwitch
-        await currentSwitch.value
+    /// - Parameter id: The camera's identifier.
+    /// - Returns: The input, or nil.
+    func cameraInput(withID id: Device.ID) async -> (any Input)? {
+        await inputs.input(withID: InputID(rawValue: id))
     }
 
-    /// Stops the camera showing now and starts the given one, the body of a
-    /// single switch. Runs inside ``switchTask``, whose cancellation means a
-    /// newer selection has superseded this one.
+    /// Subscribes a feed to a camera: starts the camera if no window is
+    /// showing it yet, and returns once it is delivering frames, which then
+    /// reach the subscriber's handler. A camera another window already shows
+    /// returns at once, after handing over its newest frame so the new window
+    /// is not blank until the next one.
+    ///
+    /// Cancelling the calling task returns at once with `CancellationError`,
+    /// leaving the subscriber registered: the feed unsubscribes as it tears
+    /// down, and the camera's start is cancelled only if no other window
+    /// still waits for it.
     ///
     /// - Parameters:
-    ///   - id: The camera to show, or `nil` to stop the preview.
-    ///   - values: Control values to write before the controls are read, or
-    ///     nil.
-    private func switchCamera(to id: Device.ID?, applying values: [String: JSONValue]?) async {
-        // Tear down the previous feed first: cancel its consumer and stop
-        // the device so only one camera is ever open at a time.
-        previewTask?.cancel()
-        previewTask = nil
-        if let previous = currentInput {
-            await previous.stop()
-            currentInput = nil
-            eventBus.event(
+    ///   - subscriber: The feed's frame and control-value handlers.
+    ///   - input: The camera to show.
+    /// - Throws: The camera's start error — authorization denied, device
+    ///   unavailable — or `CancellationError`.
+    func subscribe(_ subscriber: CameraSubscriber, to input: any Input) async throws {
+        try Task.checkCancellation()
+        let id = input.id.rawValue
+        let camera: RunningCamera
+        if let running = runningCameras[id] {
+            camera = running
+        } else {
+            camera = RunningCamera(input: input)
+            runningCameras[id] = camera
+            let pendingStop = stoppingCameras[id]
+            camera.startTask = Task { [weak self] in
+                await pendingStop?.value
+                await self?.start(camera)
+            }
+        }
+        camera.subscribers[subscriber.id] = subscriber
+        guard camera.isStarting else {
+            if let latestFrame = camera.latestFrame {
+                subscriber.onFrame(latestFrame)
+            }
+            return
+        }
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                camera.waiters[subscriber.id] = continuation
+            }
+        } onCancel: {
+            // Runs after the continuation is stored: the body above runs
+            // synchronously on the main actor, and this hops back onto it.
+            Task { @MainActor in
+                camera.waiters.removeValue(forKey: subscriber.id)?.resume(throwing: CancellationError())
+            }
+        }
+    }
+
+    /// Removes a feed from a camera, stopping the camera when no window shows
+    /// it any longer. Safe to call for a camera the feed never subscribed
+    /// to, or one whose start failed.
+    ///
+    /// - Parameters:
+    ///   - subscriberID: The feed's identity.
+    ///   - cameraID: The camera it was showing.
+    func unsubscribe(_ subscriberID: ObjectIdentifier, from cameraID: Device.ID) async {
+        guard let camera = runningCameras[cameraID] else { return }
+        camera.subscribers[subscriberID] = nil
+        camera.waiters.removeValue(forKey: subscriberID)?.resume(throwing: CancellationError())
+        guard camera.subscribers.isEmpty else { return }
+        runningCameras[cameraID] = nil
+        let stop = Task { [weak self] in
+            camera.startTask?.cancel()
+            camera.frameTask?.cancel()
+            // Let a start in flight settle — cancelled, it tears its own
+            // session down — before releasing a camera that came up.
+            await camera.startTask?.value
+            guard camera.isRunning else { return }
+            await camera.input.stop()
+            self?.eventBus.event(
                 "input.stopped",
                 domain: .capture,
-                params: ["id": .string(previous.id.rawValue), "name": .string(previous.name)]
+                params: ["id": .string(camera.input.id.rawValue), "name": .string(camera.input.name)]
             )
         }
-        for sink in previewSinks.values {
-            sink.flush()
+        stoppingCameras[cameraID] = stop
+        await stop.value
+        if stoppingCameras[cameraID] == stop {
+            stoppingCameras[cameraID] = nil
         }
-        latestFrame = nil
-        frameDimensions = nil
-        onFrameDimensionsChanged?(nil)
-        controlledInput = nil
-        onCameraParametersChanged?([], [:])
+    }
 
-        guard let id, let input = await inputs.input(withID: InputID(rawValue: id)) else { return }
-
-        // A preset's values go in before the controls are read, so the panel
-        // shows what the camera holds once they are written — the camera
-        // takes them whether or not it is capturing.
-        if let values {
-            await input.setParameters(values)
-            guard !Task.isCancelled else { return }
+    /// Tells every other window showing a camera that its control values
+    /// changed, so each window's controls show what the camera holds.
+    ///
+    /// - Parameters:
+    ///   - values: The camera's control values now.
+    ///   - cameraID: The camera.
+    ///   - subscriberID: The feed that changed them, which already shows
+    ///     them.
+    func cameraParametersChanged(
+        _ values: [String: JSONValue],
+        of cameraID: Device.ID,
+        by subscriberID: ObjectIdentifier
+    ) {
+        guard let camera = runningCameras[cameraID] else { return }
+        for (id, subscriber) in camera.subscribers where id != subscriberID {
+            subscriber.onParameters(values)
         }
+    }
 
-        // Show the camera's controls while it starts: they adjust the camera
-        // whether or not it is capturing, and a slow start should not hide
-        // them.
-        await showControls(of: input)
-        guard !Task.isCancelled else { return }
-
+    /// Starts a running camera's input and, once it delivers, its frame
+    /// fan-out — the body of the camera's start task. Every window waiting
+    /// for the camera is told how the start went.
+    ///
+    /// - Parameter camera: The camera to start.
+    private func start(_ camera: RunningCamera) async {
+        let input = camera.input
         do {
             try await input.start()
-        } catch is CancellationError {
-            // A newer selection superseded this one; the start tore its
-            // session down, and the newer switch reports its own outcome.
-            return
         } catch {
-            // Report the failure on the bus (CLAUDE.md: report errors as
-            // `error` events; code never logs directly) in addition to the
-            // UI-facing closure, so a denied/unavailable camera is visible
-            // in the console, not just silently reflected in the preview.
-            eventBus.error(
-                "input.start",
-                domain: .capture,
-                params: [
-                    "id": .string(input.id.rawValue),
-                    "name": .string(input.name),
-                    "error": .string(Self.message(for: error)),
-                ]
-            )
-            // A superseded start's error is still logged above, but the
-            // preview belongs to the newer selection.
-            guard !Task.isCancelled else { return }
-            onPreviewError?(Self.message(for: error))
+            camera.state = .stopped
+            if runningCameras[input.id.rawValue] === camera {
+                runningCameras[input.id.rawValue] = nil
+            }
+            if !(error is CancellationError) {
+                // Report the failure on the bus (CLAUDE.md: report errors as
+                // `error` events; code never logs directly) in addition to
+                // the windows' previews, so a denied/unavailable camera is
+                // visible in the console, not just silently reflected.
+                eventBus.error(
+                    "input.start",
+                    domain: .capture,
+                    params: [
+                        "id": .string(input.id.rawValue),
+                        "name": .string(input.name),
+                        "error": .string(Self.message(for: error)),
+                    ]
+                )
+            }
+            camera.resumeWaiters(throwing: error)
             return
         }
         guard !Task.isCancelled else {
-            // The first frame landed just as a newer selection superseded
-            // this one: release the camera rather than show it.
+            // The first frame landed just as the last window left: release
+            // the camera rather than show it.
+            camera.state = .stopped
             await input.stop()
+            camera.resumeWaiters(throwing: CancellationError())
             return
         }
-        currentInput = input
-        onPreviewError?(nil)
+        camera.state = .running
         eventBus.event(
             "input.started",
             domain: .capture,
             params: ["id": .string(input.id.rawValue), "name": .string(input.name)]
         )
 
-        // Pull frames on the main actor and hand each straight to the
-        // preview sink, transferring ownership at the yield (the frame
+        // Pull frames on the main actor and hand each straight to every
+        // window's handler, transferring ownership at the yield (the frame
         // ownership rule) — no per-frame SwiftUI invalidation is involved.
-        previewTask = Task { [weak self] in
+        camera.frameTask = Task { [weak self, weak camera] in
             var receivedFirstFrame = false
             for await frame in input.frames() {
                 if Task.isCancelled { break }
@@ -328,115 +296,10 @@ final class CaptureEngine {
                         params: ["id": .string(input.id.rawValue), "name": .string(input.name)]
                     )
                 }
-                self?.present(frame)
+                camera?.present(frame)
             }
         }
-    }
-
-    /// Draws a frame in every preview, keeps it for Copy, and reports its
-    /// size when that differs from the last frame's.
-    ///
-    /// - Parameter frame: The newest frame from the selected camera.
-    private func present(_ frame: CapturedFrame) {
-        latestFrame = frame
-        let dimensions = PixelDimensions(
-            width: CVPixelBufferGetWidth(frame.pixelBuffer),
-            height: CVPixelBufferGetHeight(frame.pixelBuffer)
-        )
-        if dimensions != frameDimensions {
-            frameDimensions = dimensions
-            onFrameDimensionsChanged?(dimensions)
-        }
-        for sink in previewSinks.values {
-            sink.render(frame)
-        }
-    }
-
-    /// Reads a camera's controls and current values and reports them, unless
-    /// a newer selection has superseded this switch meanwhile.
-    ///
-    /// - Parameter input: The selected camera.
-    private func showControls(of input: any Input) async {
-        let values = await input.currentParameters()
-        guard !Task.isCancelled else { return }
-        controlledInput = input
-        onCameraParametersChanged?(input.parameters, values)
-    }
-
-    /// Writes the selected camera's control values — the panel's whole
-    /// payload, of which the camera writes only what changed — after any
-    /// write still in flight.
-    ///
-    /// - Parameters:
-    ///   - values: Every control's value, keyed by parameter.
-    ///   - refreshing: Whether to read the camera's values back afterwards
-    ///     and report them: true after an Auto switch flips, because the
-    ///     values it governs are the camera's again (an exposure time chosen
-    ///     under Auto Exposure becomes the manual starting point). A response
-    ///     to the operator's action, never a poll.
-    func setCameraParameters(_ values: [String: JSONValue], refreshing: Bool) {
-        guard let input = controlledInput else { return }
-        let previous = parameterTask
-        parameterTask = Task { [weak self] in
-            await previous?.value
-            await input.setParameters(values)
-            guard refreshing else { return }
-            let fresh = await input.currentParameters()
-            guard let self, self.controlledInput?.id == input.id else { return }
-            self.onCameraParametersChanged?(input.parameters, fresh)
-        }
-    }
-
-    /// Writes control values to a camera that is already selected — a
-    /// recalled camera preset's — once any switch in flight has settled,
-    /// then reads the camera's values back and reports them. Dropped when a
-    /// different camera has been selected meanwhile, so one camera's preset
-    /// never reaches another.
-    ///
-    /// - Parameters:
-    ///   - values: The control values, keyed by parameter.
-    ///   - id: The camera they are for.
-    func applyCameraParameters(_ values: [String: JSONValue], toCamera id: Device.ID) async {
-        await switchTask?.value
-        guard controlledInput?.id.rawValue == id else { return }
-        setCameraParameters(values, refreshing: true)
-        await parameterTask?.value
-    }
-
-    /// Puts the selected camera's newest frame on the general pasteboard as
-    /// an image, at the camera's full resolution and without the preview's
-    /// cross bars, reporting a `preview.copied` event — or a `preview.copy`
-    /// error when there is no frame to copy or it cannot be converted.
-    func copyCurrentFrame() {
-        guard let frame = latestFrame, let input = currentInput else {
-            eventBus.error(
-                "preview.copy",
-                domain: .capture,
-                params: ["error": .string("No camera frame to copy: no camera is showing yet.")]
-            )
-            return
-        }
-        guard let image = FrameClipboard.image(from: frame.pixelBuffer) else {
-            eventBus.error(
-                "preview.copy",
-                domain: .capture,
-                params: [
-                    "id": .string(input.id.rawValue),
-                    "error": .string("The camera frame could not be converted to an image."),
-                ]
-            )
-            return
-        }
-        FrameClipboard.copy(image)
-        eventBus.event(
-            "preview.copied",
-            domain: .capture,
-            params: [
-                "id": .string(input.id.rawValue),
-                "width": .int(image.width),
-                "height": .int(image.height),
-            ]
-        )
+        camera.resumeWaiters(throwing: nil)
     }
 
     /// Records a UI tap on the event bus with its own parameters, for a
@@ -468,28 +331,14 @@ final class CaptureEngine {
         eventBus.tap(name, domain: .capture, params: params)
     }
 
-    /// Stops the preview and releases the camera, e.g. when the window
-    /// closes. Safe to call more than once.
+    /// Stops every camera any window shows and the engine's own tasks, e.g.
+    /// as the app quits. Safe to call more than once.
     func stop() async {
-        // Settle any switch in flight first, so a camera still starting
-        // cannot come up after the preview has stopped.
-        switchTask?.cancel()
-        await switchTask?.value
-        switchTask = nil
-        previewTask?.cancel()
-        previewTask = nil
-        if let current = currentInput {
-            await current.stop()
-            currentInput = nil
-            eventBus.event(
-                "input.stopped",
-                domain: .capture,
-                params: ["id": .string(current.id.rawValue), "name": .string(current.name)]
-            )
+        for (cameraID, camera) in runningCameras {
+            for subscriberID in Array(camera.subscribers.keys) {
+                await unsubscribe(subscriberID, from: cameraID)
+            }
         }
-        latestFrame = nil
-        frameDimensions = nil
-        onFrameDimensionsChanged?(nil)
         deviceEventsTask?.cancel()
         deviceEventsTask = nil
         consoleTask?.cancel()
@@ -544,7 +393,7 @@ final class CaptureEngine {
     }
 
     /// Turns an engine error into a short, user-facing preview message.
-    private static func message(for error: any Error) -> String {
+    static func message(for error: any Error) -> String {
         if let captureError = error as? CaptureInputError {
             return captureError.description
         }

@@ -19,8 +19,9 @@ import SwiftUI
 /// safe-area inset on the detail column, where macOS puts a status bar beside
 /// a sidebar: the sidebar's material runs the full height of the window.
 struct StatusBarView: View {
-    /// The shared hardware model, read only: the bar reports and never acts.
-    @Environment(HardwareModel.self) private var model
+    /// The window's camera session, read only: the bar reports and never
+    /// acts.
+    @Environment(CameraSession.self) private var session
 
     /// Whether the bar is shown.
     @Environment(StatusBarModel.self) private var statusBar
@@ -39,7 +40,7 @@ struct StatusBarView: View {
                 HStack(spacing: 10) {
                     stateReading
 
-                    if let camera = model.selectedCamera {
+                    if let camera = session.selectedCamera {
                         Divider()
                             .frame(height: 12)
                         // A device name is a proper noun from the system,
@@ -49,7 +50,7 @@ struct StatusBarView: View {
                             .truncationMode(.middle)
                     }
 
-                    if let dimensions = model.frameDimensions {
+                    if let dimensions = session.frameDimensions {
                         Divider()
                             .frame(height: 12)
                         // Plain digits: a resolution is read as one figure,
@@ -83,7 +84,7 @@ struct StatusBarView: View {
 
     /// The preview state's word.
     private var stateName: Text {
-        switch model.previewState {
+        switch session.previewState {
         case .noCamera:
             Text("No camera selected", comment: "Status bar reading: no camera is selected or connected")
         case .starting:
@@ -97,7 +98,7 @@ struct StatusBarView: View {
 
     /// The preview state's SF Symbol.
     private var stateSymbol: String {
-        switch model.previewState {
+        switch session.previewState {
         case .noCamera: "video.slash"
         case .starting: "circle.dotted"
         case .live: "circle.fill"
@@ -107,7 +108,7 @@ struct StatusBarView: View {
 
     /// The preview state's symbol color: the system's semantic colors.
     private var stateColor: Color {
-        switch model.previewState {
+        switch session.previewState {
         case .noCamera, .starting: .secondary
         case .live: .green
         case .unavailable: .orange

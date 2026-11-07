@@ -27,8 +27,11 @@ import TingraEventBus
 /// operator reaches for to set a camera up, so it sits above the cameras it
 /// recalls settings onto.
 struct SidebarView: View {
-    /// The shared hardware-selection state driving the active row.
+    /// The shared model: the connected cameras, and the tap record.
     @Environment(HardwareModel.self) private var model
+
+    /// The window's camera session, whose camera is the active row.
+    @Environment(CameraSession.self) private var session
 
     /// The sections currently open, seeded from ``SidebarPreferences`` when
     /// the window opens and written back as the operator opens and closes
@@ -71,10 +74,11 @@ struct SidebarView: View {
                         DeviceRow(
                             name: camera.name,
                             systemImage: "video",
-                            isActive: model.selectedCameraID == camera.id
+                            isActive: session.selectedCameraID == camera.id
                         ) {
-                            // Selecting a camera switches the live preview to it.
-                            model.selectCamera(camera.id)
+                            // Selecting a camera switches this window's live
+                            // preview to it.
+                            session.selectCamera(camera.id)
                         }
                     }
                 }
@@ -143,7 +147,7 @@ private struct DeviceRow: View {
 #Preview {
     NavigationSplitView {
         SidebarView()
-            .environment(HardwareModel.preview)
+            .previewEnvironment()
     } detail: {
         Color.clear
     }
@@ -153,7 +157,7 @@ private struct DeviceRow: View {
 #Preview {
     NavigationSplitView {
         SidebarView()
-            .environment(HardwareModel.preview)
+            .previewEnvironment()
     } detail: {
         Color.clear
     }

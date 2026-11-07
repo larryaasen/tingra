@@ -10,8 +10,9 @@
 import AppKit
 import SwiftUI
 
-/// The window a view is in, for the one thing SwiftUI can't do: widening a
-/// window that is already open. Held weakly, so a view's state never keeps
+/// The window a view is in, for the two things SwiftUI can't do: widening a
+/// window that is already open, and closing one window of a group from the
+/// menu bar (``WindowStyleCommands``). Held weakly, so a view's state never keeps
 /// its own window alive.
 final class HostWindow {
     /// The window, once the reader has been added to it.
@@ -29,6 +30,12 @@ final class HostWindow {
             frame.origin.x = max(visible.minX, visible.maxX - width)
         }
         window.setFrame(frame, display: true)
+    }
+
+    /// Closes the window, as its close button would — how switching window
+    /// styles retires the window it switched from.
+    func close() {
+        window?.close()
     }
 }
 

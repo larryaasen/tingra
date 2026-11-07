@@ -25,15 +25,16 @@ import TingraPlugInKit
 /// one Framing row, ``FramingRow``, beside the preview's own Maps-style
 /// framing. Auto Exposure owns two numbers, so it keeps a row of its own.
 struct CameraControlsView: View {
-    /// The shared model holding the selected camera's controls and values.
-    @Environment(HardwareModel.self) private var model
+    /// The window's camera session: the camera it shows and that camera's
+    /// controls and values.
+    @Environment(CameraSession.self) private var session
 
     /// Whether the dialog confirming Reset All Controls is showing.
     @State private var isConfirmingReset = false
 
     /// The form, or a short note for a camera with no controls.
     var body: some View {
-        if model.cameraParameters.isEmpty {
+        if session.cameraParameters.isEmpty {
             Text("This camera has no adjustable controls.")
                 .foregroundStyle(.secondary)
                 .padding()
@@ -54,7 +55,7 @@ struct CameraControlsView: View {
                         }
                     }
                 }
-                if model.hasFraming {
+                if session.hasFraming {
                     // No heading: the row names each of its sliders.
                     Section {
                         FramingRow()
@@ -62,7 +63,7 @@ struct CameraControlsView: View {
                 }
                 Section {
                     Button {
-                        model.recordResetAllTap("cameraParameterResetAll.button")
+                        session.recordResetAllTap("cameraParameterResetAll.button")
                         isConfirmingReset = true
                     } label: {
                         Text(
@@ -79,17 +80,17 @@ struct CameraControlsView: View {
                 isPresented: $isConfirmingReset
             ) {
                 Button(role: .destructive) {
-                    model.resetAllCameraParameters()
+                    session.resetAllCameraParameters()
                 } label: {
                     Text("Reset", comment: "Reset All Controls dialog confirm button")
                 }
                 Button(role: .cancel) {
-                    model.recordResetAllTap("cameraParameterResetAllCancel.button")
+                    session.recordResetAllTap("cameraParameterResetAllCancel.button")
                 } label: {
                     Text("Cancel", comment: "Camera preset dialog cancel button")
                 }
             } message: {
-                if let camera = model.selectedCamera {
+                if let camera = session.selectedCamera {
                     Text(
                         "Every control of \(camera.name) returns to its default. Saved presets are not changed.",
                         comment: "Reset All Controls dialog message; the placeholder is the camera's name"
@@ -104,14 +105,14 @@ struct CameraControlsView: View {
     /// section.
     private var pairedToggles: [String: Parameter] {
         var governed: [String: [Parameter]] = [:]
-        for parameter in model.cameraParameters {
+        for parameter in session.cameraParameters {
             guard let toggleKey = parameter.automaticToggleKey else { continue }
             governed[toggleKey, default: []].append(parameter)
         }
         var paired: [String: Parameter] = [:]
         for (toggleKey, numbers) in governed {
             guard numbers.count == 1, let number = numbers.first,
-                let toggle = model.cameraParameter(forKey: toggleKey),
+                let toggle = session.cameraParameter(forKey: toggleKey),
                 toggle.kind == .toggle, toggle.section == number.section
             else { continue }
             paired[number.key] = toggle
@@ -128,8 +129,8 @@ struct CameraControlsView: View {
     /// - Returns: The sections.
     private func sections(omitting omittedKeys: Set<String>) -> [ParameterSection] {
         var sections: [ParameterSection] = []
-        let hiddenKeys = Set(HardwareModel.FramingKey.all).union(omittedKeys)
-        for parameter in model.cameraParameters where !hiddenKeys.contains(parameter.key) {
+        let hiddenKeys = Set(CameraSession.FramingKey.all).union(omittedKeys)
+        for parameter in session.cameraParameters where !hiddenKeys.contains(parameter.key) {
             if let last = sections.last, last.title == parameter.section {
                 sections[sections.count - 1].parameters.append(parameter)
             } else {
@@ -155,6 +156,6 @@ private struct ParameterSection: Identifiable {
 
 #Preview {
     CameraControlsView()
-        .environment(HardwareModel.preview)
+        .previewEnvironment()
         .frame(width: TrailingSidebar.idealWidth, height: 600)
 }

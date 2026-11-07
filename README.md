@@ -464,9 +464,11 @@ deferred packaging, tracked alongside the CLI's distribution recipe.
 
 ### `apps/tingra-cameras`
 
-A standalone "Tingra Cameras" macOS app: a camera picker — a sidebar listing the
-available cameras beside a large live-camera preview canvas, with the selected
-camera's controls in a sidebar on the right. A native Xcode project
+A standalone "Tingra Cameras" macOS app: a camera picker — a compact window with
+a camera pop-up over a live-camera preview over the camera's controls, or,
+switched to from the Window menu, a standard window with a sidebar listing the
+available cameras, a large preview, and the controls in a sidebar on the right.
+Each window shows its own camera. A native Xcode project
 (`tingra-cameras.xcodeproj`, single app target) that drives the engine packages
 (`TingraHost`, `TingraCapturePlugIns`) through the `Input` seam, and styled with the
 standard SwiftUI Liquid Glass look rather than any bespoke theme (see its own

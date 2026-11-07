@@ -21,13 +21,14 @@ struct TrailingSidebar: View {
     /// The widest the sidebar may be, so it never starves the preview.
     private static let maximumWidth: CGFloat = 440
 
-    /// The shared hardware-selection state, for the selected camera.
-    @Environment(HardwareModel.self) private var model
+    /// The window's camera session: the camera it shows and that camera's
+    /// controls and values.
+    @Environment(CameraSession.self) private var session
 
     /// The controls, or the empty state.
     var body: some View {
         Group {
-            if model.selectedCamera != nil {
+            if session.selectedCamera != nil {
                 CameraControlsView()
             } else {
                 ContentUnavailableView {
@@ -50,6 +51,6 @@ struct TrailingSidebar: View {
 
 #Preview {
     TrailingSidebar()
-        .environment(HardwareModel.preview)
+        .previewEnvironment()
         .frame(width: TrailingSidebar.idealWidth, height: 600)
 }

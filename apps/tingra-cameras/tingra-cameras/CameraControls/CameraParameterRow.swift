@@ -22,8 +22,9 @@ import TingraPlugInKit
 /// when an option is picked, the slider when a drag ends, the reset when it is double-clicked (EVENTS.md,
 /// "The `tap` convention").
 struct CameraParameterRow: View {
-    /// The shared model holding the camera's values.
-    @Environment(HardwareModel.self) private var model
+    /// The window's camera session: the camera it shows and that camera's
+    /// controls and values.
+    @Environment(CameraSession.self) private var session
 
     /// The control this row adjusts.
     let parameter: Parameter
@@ -52,7 +53,7 @@ struct CameraParameterRow: View {
 
     /// Whether the parameter's Auto switch is on, so the camera owns it.
     private var isControlledAutomatically: Bool {
-        parameter.isControlledAutomatically(in: model.cameraParameterValues, among: model.cameraParameters)
+        parameter.isControlledAutomatically(in: session.cameraParameterValues, among: session.cameraParameters)
     }
 
     /// A switch for an on/off control.
@@ -82,10 +83,10 @@ struct CameraParameterRow: View {
     /// camera and records its tap.
     private var choiceBinding: Binding<Double> {
         Binding {
-            parameter.choice(in: model.cameraParameterValues)?.value ?? parameter.defaultValue
+            parameter.choice(in: session.cameraParameterValues)?.value ?? parameter.defaultValue
         } set: { value in
-            model.setCameraParameter(.double(value), for: parameter)
-            model.recordCameraParameterTap("cameraParameter.choice", parameter: parameter)
+            session.setCameraParameter(.double(value), for: parameter)
+            session.recordCameraParameterTap("cameraParameter.choice", parameter: parameter)
         }
     }
 
@@ -116,10 +117,10 @@ struct CameraParameterRow: View {
     /// - Returns: The binding.
     private func isOnBinding(for toggle: Parameter) -> Binding<Bool> {
         Binding {
-            toggle.isOn(in: model.cameraParameterValues) ?? false
+            toggle.isOn(in: session.cameraParameterValues) ?? false
         } set: { isOn in
-            model.setCameraParameter(.bool(isOn), for: toggle)
-            model.recordCameraParameterTap("cameraParameter.toggle", parameter: toggle)
+            session.setCameraParameter(.bool(isOn), for: toggle)
+            session.recordCameraParameterTap("cameraParameter.toggle", parameter: toggle)
         }
     }
 }
@@ -131,8 +132,9 @@ struct CameraParameterRow: View {
 /// **double-click** returns it to the camera's default — the reset
 /// convention the main app's pan slider and faders set.
 struct CameraParameterSlider: View {
-    /// The shared model holding the camera's values.
-    @Environment(HardwareModel.self) private var model
+    /// The window's camera session: the camera it shows and that camera's
+    /// controls and values.
+    @Environment(CameraSession.self) private var session
 
     /// The number control this slider adjusts.
     let parameter: Parameter
@@ -147,25 +149,25 @@ struct CameraParameterSlider: View {
 
     /// The slider, then the value.
     var body: some View {
-        let value = parameter.value(in: model.cameraParameterValues)
+        let value = parameter.value(in: session.cameraParameterValues)
         HStack {
             CameraSlider(
                 value: Binding {
                     ParameterScale.position(of: value, for: parameter)
                 } set: { position in
                     let newValue = ParameterScale.value(at: position, for: parameter)
-                    model.setCameraParameter(.double(newValue), for: parameter)
+                    session.setCameraParameter(.double(newValue), for: parameter)
                 },
                 in: 0...1,
                 // Control names come from the capture plug-in, like device
                 // names.
                 label: parameter.name,
                 onDoubleClick: {
-                    model.resetCameraParameter(parameter)
+                    session.resetCameraParameter(parameter)
                 },
                 onEditingChanged: { isEditing in
                     guard !isEditing else { return }
-                    model.recordCameraParameterTap("cameraParameter.slider", parameter: parameter)
+                    session.recordCameraParameterTap("cameraParameter.slider", parameter: parameter)
                 }
             )
             Text(verbatim: parameter.formattedValue(value))

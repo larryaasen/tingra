@@ -10,24 +10,28 @@
 import SwiftUI
 
 /// The preview's commands in the menu bar: **Copy** in the Edit menu puts
-/// the camera's current frame on the pasteboard, and **Cross Bars** in the
+/// the key window's camera's current frame on the pasteboard, and **Cross Bars** in the
 /// View menu shows lines through the centre of the preview. The preview's
 /// context menu offers the same two (``SampleBufferHostView``).
 ///
 /// Copy replaces the Edit menu's pasteboard group: the app has no text to
 /// cut, paste, or select, so the frame is the only thing to copy.
 struct PreviewCommands: Commands {
-    /// The shared model the commands act on.
+    /// The shared model the commands act on: the cross bars.
     let model: HardwareModel
+
+    /// The key window's camera session, whose frame Copy copies, or nil with
+    /// none open.
+    @FocusedValue(\.cameraSession) private var session
 
     /// Copy in the Edit menu, Cross Bars in the View menu.
     var body: some Commands {
         CommandGroup(replacing: .pasteboard) {
             Button("Copy") {
-                model.copyFrame(from: "menu")
+                session?.copyFrame(from: "menu")
             }
             .keyboardShortcut("c")
-            .disabled(!model.canCopyFrame)
+            .disabled(!(session?.canCopyFrame ?? false))
         }
         CommandGroup(before: .sidebar) {
             Toggle(

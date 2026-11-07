@@ -7,12 +7,15 @@
 //  SPDX-License-Identifier: MIT
 //
 
+import AppKit
 import SwiftUI
 
 /// The application for "Tingra Cameras".
 ///
-/// It hosts ``ContentView`` in a window sized for the two-column layout —
-/// File ▸ New Window opens more, all showing the same camera — beside the
+/// It hosts ``CompactWindowView`` in the narrow compact window, the
+/// default, and ``ContentView`` in the standard three-column window the
+/// Window menu switches to (``WindowStyle``) — File ▸ New Window opens more
+/// of the operator's style, each showing its own camera — beside the
 /// settings window (``SettingsView``), and owns the shared ``HardwareModel``
 /// for the session. It is not the `@main` entry: ``TingraCamerasMain`` is,
 /// so `--version` answers before this value and its engine exist.
@@ -34,34 +37,67 @@ struct TingraCamerasApp: App {
     /// uptime counts from here (see ``AppUptime``).
     @State private var uptime = AppUptime()
 
+    /// Where the window style a launch and File ▸ New Window open persists,
+    /// and the Window menu writes it.
+    private let windowStylePreferences = WindowStylePreferences()
+
+    /// The window style this launch opens: the one the operator last
+    /// switched to, read once, because only a launch acts on it.
+    private let launchStyle = WindowStylePreferences().launchStyle
+
     /// The identifier the app menu's Settings… command opens.
     static let settingsWindowID = "settings"
 
-    /// The app's scene graph: a single resizable window presenting the
-    /// hardware picker.
+    /// Turns off window tabbing before any window exists: a window here is a
+    /// camera of its own, never a tab, so View ▸ Show Tab Bar and the Window
+    /// menu's tab items have no place in the app.
+    init() {
+        NSWindow.allowsAutomaticWindowTabbing = false
+    }
+
+    /// The app's scene graph: the compact and the standard windows, any
+    /// number of either, each showing its own camera (``CameraSession``), and
+    /// the settings window. A launch and File ▸ New Window open the window
+    /// style the operator last switched to, compact until they switch
+    /// (``WindowStyle``).
     var body: some Scene {
-        WindowGroup {
+        // The compact window, the default, sized by its content within the
+        // width bounds ``CompactWindowView`` sets.
+        WindowGroup(id: WindowStyle.compact.sceneID) {
+            CompactWindowView()
+                .windowSession(.compact)
+                .environment(model)
+                .environment(statusBar)
+        }
+        .windowResizability(.contentSize)
+        .defaultSize(width: CompactWindowView.idealWidth, height: CompactWindowView.idealHeight)
+        .defaultLaunchBehavior(launchStyle == .compact ? .presented : .suppressed)
+        .commands {
+            NewWindowCommands(model: model, preferences: windowStylePreferences)
+            PreviewCommands(model: model)
+            PresetCommands(model: model)
+            InspectorCommands(model: model)
+            StatusBarCommands(model: model, statusBar: statusBar)
+            SettingsCommands(model: model)
+            WindowStyleCommands(model: model, preferences: windowStylePreferences)
+        }
+
+        // The standard window: the sidebar, the preview, and the trailing
+        // sidebar.
+        WindowGroup(id: WindowStyle.standard.sceneID) {
             ContentView()
+                .windowSession(.standard)
                 .environment(model)
                 .environment(statusBar)
                 // The minimum width follows the trailing sidebar, so it is
                 // set in ``ContentView``. The window remains freely resizable
                 // by the operator.
                 .frame(minHeight: 520)
-                // Discover the connected cameras and start
-                // the first camera's live preview once the window appears.
-                .task { await model.start() }
         }
         // Tall enough for the camera's controls in the trailing sidebar, and
         // wide enough to leave the preview a generous column beside them.
         .defaultSize(width: 1280, height: 900)
-        .commands {
-            PreviewCommands(model: model)
-            PresetCommands(model: model)
-            InspectorCommands(model: model)
-            StatusBarCommands(model: model, statusBar: statusBar)
-            SettingsCommands(model: model)
-        }
+        .defaultLaunchBehavior(launchStyle == .standard ? .presented : .suppressed)
 
         // Settings is a `Window` rather than the `Settings` scene, so its
         // source list runs the full height of the window as the main

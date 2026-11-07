@@ -83,6 +83,9 @@ struct PresetDialogs: ViewModifier {
     /// The shared model the dialogs act on.
     let model: HardwareModel
 
+    /// The window's camera session, whose camera Save Preset saves.
+    let session: CameraSession
+
     /// The window's dialog state, owned here for the window's lifetime.
     @State private var presenter = PresetDialogPresenter()
 
@@ -103,7 +106,7 @@ struct PresetDialogs: ViewModifier {
                 }
                 Button {
                     model.recordPresetTap("cameraPresetSaveConfirm.button")
-                    model.savePreset(named: presenter.name)
+                    session.savePreset(named: presenter.name)
                 } label: {
                     Text("Save", comment: "Save Preset dialog confirm button")
                 }
@@ -113,7 +116,7 @@ struct PresetDialogs: ViewModifier {
                     Text("Cancel", comment: "Camera preset dialog cancel button")
                 }
             } message: {
-                if let camera = model.selectedCamera {
+                if let camera = session.selectedCamera {
                     Text(
                         "The preset keeps the current settings of \(camera.name).",
                         comment: "Save Preset dialog message; the placeholder is the camera's name"
@@ -190,9 +193,12 @@ struct PresetDialogs: ViewModifier {
 extension View {
     /// Hosts the camera preset dialogs over this view (``PresetDialogs``).
     ///
-    /// - Parameter model: The shared model the dialogs act on.
+    /// - Parameters:
+    ///   - model: The shared model the dialogs act on.
+    ///   - session: The window's camera session, whose camera Save Preset
+    ///     saves.
     /// - Returns: The view with the dialogs attached.
-    func presetDialogs(model: HardwareModel) -> some View {
-        modifier(PresetDialogs(model: model))
+    func presetDialogs(model: HardwareModel, session: CameraSession) -> some View {
+        modifier(PresetDialogs(model: model, session: session))
     }
 }
