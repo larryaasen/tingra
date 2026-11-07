@@ -17,7 +17,10 @@ import UniformTypeIdentifiers
 
 @testable import TingraMediaPlugIns
 
-@Suite("TextInput")
+// A hung test fails by name after a minute instead of holding a CI runner
+// until the job times out with nothing in its log; the suite runs in
+// well under a second.
+@Suite("TextInput", .timeLimit(.minutes(1)))
 struct TextInputTests {
     /// The clock every text test stamps deliveries from.
     private let clock = SyntheticClock(tickTimes: [.zero])

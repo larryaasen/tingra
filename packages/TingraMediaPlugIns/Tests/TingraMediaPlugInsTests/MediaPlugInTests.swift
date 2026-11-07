@@ -50,7 +50,10 @@ private struct NoTools: ToolRegistering {
     func register(_ tool: any Tool) async throws {}
 }
 
-@Suite("MediaPlugIn")
+// A hung test fails by name after a minute instead of holding a CI runner
+// until the job times out with nothing in its log; the suite runs in
+// well under a second.
+@Suite("MediaPlugIn", .timeLimit(.minutes(1)))
 struct MediaPlugInTests {
     /// A context over the given media registry.
     private func context(media: any MediaRegistering) -> PlugInContext {

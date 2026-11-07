@@ -168,7 +168,7 @@ jobs:
           fi
           echo "all required release secrets are present."
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # Tags are needed: release-cli.sh refuses a version that already
           # shipped, and a shallow clone has none of them to check against.
@@ -292,7 +292,7 @@ jobs:
       # The release itself already carries these; `dist/` is empty on a dry run.
       - name: Upload the artifacts
         if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: tingra-cli-arm64
           if-no-files-found: ignore

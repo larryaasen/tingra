@@ -46,7 +46,7 @@ jobs:
     runs-on: xcode-27
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install ffprobe
         run: command -v ffprobe > /dev/null || brew install ffmpeg
       - name: Run the integration scenarios

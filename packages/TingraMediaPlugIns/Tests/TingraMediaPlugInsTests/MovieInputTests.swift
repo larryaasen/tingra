@@ -16,7 +16,10 @@ import UniformTypeIdentifiers
 
 @testable import TingraMediaPlugIns
 
-@Suite("MovieInput")
+// A hung test fails by name after a minute instead of holding a CI runner
+// until the job times out with nothing in its log; the suite runs in
+// well under a second.
+@Suite("MovieInput", .timeLimit(.minutes(1)))
 struct MovieInputTests {
     /// Tick times at the fixture's 12 fps, starting at a non-zero master
     /// time so the remap onto the clock is visible.
