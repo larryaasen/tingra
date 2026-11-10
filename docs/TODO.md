@@ -357,13 +357,6 @@ Nothing open.
 
 ## Release mechanics
 
-- [ ] **Release Tingra Cameras** *(decisions C1–C15 approved 2026-10-31;
-  [RELEASE.md](RELEASE.md), "Releasing Tingra Cameras")*.
-  Ships first, on its own, as a disk image with a `tingra-cameras` cask. An
-  archive does not launch today: the kit frameworks are not embedded, which
-  a Debug build hides.
-  - [x] Larry: approve the decisions (2026-10-31).
-  - [x] Larry: supply the icon (C13) (2026-11-01).
 - [ ] **Release Tingra.app** *(all eleven decisions approved 2026-10-13;
   [RELEASE.md](RELEASE.md))*. The app has no release path: no script, no
   workflow, no cask. Slice 1 is the app alone, in a disk image, with a

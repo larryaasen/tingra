@@ -3744,6 +3744,23 @@ there.
   `GITHUB_TOKEN` cannot reach a second repository. `ci.yml` was renamed
   `format-test.yml` in the same pass — with three workflows, "CI" named nothing.
 
+- [x] **Release Tingra Cameras** *(decisions C1–C15 approved 2026-10-31;
+  0.1.0 released 2026-11-07; [RELEASE.md](RELEASE.md), "Releasing Tingra
+  Cameras")*. Shipped first, on its own, as a disk image with a
+  `tingra-cameras` cask. When planned, an archive did not launch: the kit
+  frameworks were not embedded, which a Debug build hid.
+  - [x] Larry: approve the decisions (2026-10-31).
+  - [x] Larry: supply the icon (C13) (2026-11-01).
+  - [x] Cut 0.1.0 (2026-11-07): a CI dry run, then `release-cameras.yml`
+    with the gate skipped on a docs-only commit over a green one. Tag
+    `cameras-v0.1.0`, a release not marked latest, a notarized and stapled
+    arm64 disk image, `Casks/tingra-cameras.rb` in the tap, and `main`
+    reopened on `0.1.1-dev`. The first run signed with the Developer ID
+    identity from the runner's throwaway keychain without a change.
+  - [x] Larry: installed it with `brew install --cask
+    larryaasen/tingra/tingra-cameras`, which put the app in `/Applications`
+    (2026-11-07).
+
 ## Generator plug-ins
 
 - [x] **Synthesis failures are silently dropped, never reported** *(fixed
