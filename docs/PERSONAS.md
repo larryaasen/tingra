@@ -11,7 +11,7 @@ them counts as missing.
 **One gap sits above all the others.** `Tingra.app` has not shipped. Today a
 user can install `tingra-cli` and Tingra Cameras with Homebrew, and the CLI
 streams one camera and one microphone, with no shots and no compositing. Every
-persona from 2 to 11 needs the app, so for them every ✅ below means "built in
+persona from 2 to 18 needs the app, so for them every ✅ below means "built in
 the app, waiting on its release" (TODO.md, "Release Tingra.app").
 
 **Key:** ✅ has it · 🟡 has part of it, or a workaround · ❌ missing.
@@ -24,30 +24,39 @@ the app, waiting on its release" (TODO.md, "Release Tingra.app").
 | 1 | Set-and-forget camera | One camera, always on, no one watching | Good for someone at home in a terminal; poor for anyone else |
 | 2 | Recorder | One camera or one screen, recorded, never live | Strong in the app; the CLI cannot record without streaming |
 | 3 | Solo talker | One webcam, one mic, one service | Strong |
-| 4 | Audio show | Mics, music, a still picture; sound is the show | Weak: no audio files, no playlist, no limiter |
-| 5 | Screen streamer | A screen or one window and a voice: live coding, drawing, a walkthrough | Strong, until the Mac's own sound is needed |
-| 6 | Musician | An instrument and a voice through an audio interface, a camera or two | Fair: the interface works; level control and sync do not exist yet |
-| 7 | Teacher or presenter | Screen, face in a corner, slides, a recording | Good, with two big holes: Mac and app sound, and sending the program to a video call |
-| 8 | Video podcaster | Two to four hosts, a mic and camera each, sometimes a remote guest | Fair: the mixer is good, voice processing and per-track recording are missing |
-| 9 | Game streamer | Game capture, face cam, overlays, alerts, chat, several services | Weak: no game sound, no green screen, no web widgets, no global hotkeys |
-| 10 | Worship or community volunteer team | Several cameras, lyrics and titles, a weekly show run by rotating volunteers | Fair: switching and safety are good, titles, macros, and schedules are missing |
-| 11 | Live event producer | Many cameras, multiview, contribution over SRT, replays, graphics | Fair on switching, weak on what a crew expects: ISO recording, replay, NDI, tally |
-| 12 | Automation and agent operator | No screen; scripts, a daemon, or an AI agent run the stream | Strong, and where Tingra stands apart |
-| 13 | Plug-in developer | Builds inputs, effects, outputs, or app panes for others | Strong design, waiting on the SDK's first publish and 1.0 |
+| 4 | Fitness or yoga instructor | One wide camera, a wireless mic, music, a class following along | Weak: no flip, no music files, no ducking, no timer |
+| 5 | Audio show | Mics, music, a still picture; sound is the show | Weak: no audio files, no playlist, no limiter |
+| 6 | Screen streamer | A screen or one window and a voice: live coding, drawing, a walkthrough | Strong, until the Mac's own sound is needed |
+| 7 | Live seller | A face camera, a product camera, prices on screen, a chat full of orders | Weak to fair: the cameras work, the graphics do not exist yet |
+| 8 | Reaction or watch-along streamer | A face cam over a video or a web page | Weak: no sound from the Mac or a browser |
+| 9 | Musician | An instrument and a voice through an audio interface, a camera or two | Fair: the interface works; level control and sync do not exist yet |
+| 10 | Teacher or presenter | Screen, face in a corner, slides, a recording | Good, with two big holes: Mac and app sound, and sending the program to a video call |
+| 11 | Avatar streamer | An animated character from a face-tracking app, over a game or a backdrop | Unknown until window transparency is checked |
+| 12 | Video podcaster | Two to four hosts, a mic and camera each, sometimes a remote guest | Fair: the mixer is good, voice processing and per-track recording are missing |
+| 13 | Game streamer | Game capture, face cam, overlays, alerts, chat, several services | Weak: no game sound, no green screen, no web widgets, no global hotkeys |
+| 14 | Company webinar or all-hands producer | Slides, speakers in other cities, the company's look, a private server | Fair: the switching is there; remote speakers and captions are not |
+| 15 | Worship or community volunteer team | Several cameras, lyrics and titles, a weekly show run by rotating volunteers | Fair: switching and safety are good, titles, macros, and schedules are missing |
+| 16 | Public meetings | Many open mics, fixed cameras, sessions of four hours or more, a legal duty to caption | Fair to weak: no automixer, no captions, no chapter marks |
+| 17 | Live event producer | Many cameras, multiview, contribution over SRT, replays, graphics | Fair on switching, weak on what a crew expects: ISO recording, replay, NDI, tally |
+| 18 | Two-person team: talent and remote producer | One person on camera, another switching from another room or device | Weak, and blocked by a design rule until it is decided |
+| 19 | Automation and agent operator | No screen; scripts, a daemon, or an AI agent run the stream | Strong, and where Tingra stands apart |
+| 20 | Plug-in developer | Builds inputs, effects, outputs, or app panes for others | Strong design, waiting on the SDK's first publish and 1.0 |
 
 ## Which personas Tingra serves best
 
 Of the simple setups, Tingra serves three well today: the **solo talker** (3),
-the **recorder** (2), and the **screen streamer** (5). They share a shape: one
+the **recorder** (2), and the **screen streamer** (6). They share a shape: one
 or two video inputs, a voice from a microphone, no sound from the Mac itself,
 and no web graphics. Inside that shape nearly every need is ✅.
 
-The other low-end personas each fall on one missing piece. The **audio show**
-(4) has no way to play music files or a playlist. The **musician** (6) has no
-limiter and no sync offset. The **set-and-forget camera** (1) works, but only
-for someone who can write a terminal command and keep it running; nothing
-starts it at login. And the shape breaks for anyone who needs the Mac's own
-sound, which is why personas 4, 5, 7, 8, and 9 all list that gap.
+The other simple personas each fall on one or two missing pieces. The **audio
+show** (5) has no way to play music files or a playlist. The **musician** (9)
+has no limiter and no sync offset. The **fitness instructor** (4) cannot flip
+the picture or duck the music. The **live seller** (7) has no price titles,
+countdown, or chat. The **set-and-forget camera** (1) works, but only for
+someone who can write a terminal command and keep it running; nothing starts
+it at login. And the shape breaks for anyone who needs the Mac's own sound,
+which is why personas 5, 6, 8, 10, 12, and 13 all list that gap.
 
 ## 1. Set-and-forget camera
 
@@ -106,7 +115,25 @@ that nothing will go wrong.
 | Come back after a crash | ✅ | Resume Stream offer after a crash while live |
 | A simple first run | 🟡 | The app opens as a full switcher; no simple mode or setup guide on record |
 
-## 4. Audio show
+## 4. Fitness or yoga instructor
+
+Leads a class from a studio or a living room: one wide camera, a wireless
+mic, music, and students who follow along live, often on a private server or
+inside a video call. Moves the whole time, so cannot reach the keyboard.
+
+| Need | Status | Notes |
+|---|---|---|
+| A wide camera and a wireless mic | ✅ | Any camera and any audio input |
+| Flip the picture left to right, so "raise your right arm" matches | ❌ | No flip effect; Crop, Frame, Blur, and Color Adjust only |
+| Music under the voice | 🟡 | A video file with sound plays, looping; no audio files or playlist |
+| Music that dips when the instructor speaks (ducking) | ❌ | Not on record |
+| An interval or session timer on screen | ❌ | Not on record |
+| Teach inside a video call | ❌ | No virtual camera output |
+| Stream to a private server | ✅ | A custom RTMP(S) or SRT destination |
+| Switch shots without touching the Mac | 🟡 | No global hotkeys, pedal, or control surface; an agent over MCP could switch on spoken orders |
+| Record the class for members who missed it | ✅ | Local recording |
+
+## 5. Audio show
 
 A radio-style show, a DJ set, a sermon or reading streamed as sound, a talk
 show with no cameras. Mics and music carry it; the picture is a still image,
@@ -124,7 +151,7 @@ a logo, or black.
 | Talk over the music (ducking) | ❌ | Not on record |
 | A higher audio bit rate | 🟡 | `--audio-bitrate` in the CLI; no app setting on record |
 
-## 5. Screen streamer
+## 6. Screen streamer
 
 Codes live, draws, edits a photo, plays chess online, walks through a
 spreadsheet. The screen or one app's window is the picture; a voice explains
@@ -142,7 +169,40 @@ it; a small face cam is optional.
 | A "be right back" shot | ✅ | Shots, with an image or text layer |
 | Switch shots while another app has focus | ❌ | No global hotkeys |
 
-## 6. Musician
+## 7. Live seller
+
+Sells live: shows each product to the camera, reads out the price, counts down
+a timed deal, and answers questions as orders come in. Often a phone as the
+face camera and a second camera looking down at the table.
+
+| Need | Status | Notes |
+|---|---|---|
+| Two cameras: the seller and the product table | ✅ | Any two cameras, an iPhone included, as shots |
+| Product photos | ✅ | Image files as layers |
+| Price and deal titles, changed on air | 🟡 | Text files as layers; no title templates and no quick way to change a price live |
+| A countdown for a timed deal | ❌ | Not on record |
+| Orders and questions on screen | ❌ | No web page input |
+| Portrait for phone viewers and landscape for others, at once | ❌ | One program format per show |
+| Jump to the product shot quickly | 🟡 | ⌘1–⌘9, while Tingra is in front |
+| Several services at once | ✅ | Multiple destinations |
+
+## 8. Reaction or watch-along streamer
+
+Watches a trailer, a match, a video, or a web page with viewers and talks over
+it, face in a corner. The clip's sound is half the show.
+
+| Need | Status | Notes |
+|---|---|---|
+| Capture the browser or player window | ✅ | Window capture |
+| The clip's sound | ❌ | No system or app audio input: without it there is no show |
+| Play a downloaded video with its sound | ✅ | Video file input with its own strip |
+| The clip's sound dips when the streamer talks | ❌ | No ducking |
+| Pause or restart the clip on air | ❌ | Not on record; play once, hold, and restart on take are planned slices |
+| Face cam over the clip | ✅ | Layers, Crop, Frame |
+| A web page as an input, not a captured window | ❌ | No web page input |
+| Viewers' chat on screen | ❌ | No web page input |
+
+## 9. Musician
 
 Plays guitar, keys, or a drum kit, and sings. Sound comes in through an audio
 interface; one camera shows the player, another the hands. Sound quality
@@ -160,7 +220,7 @@ matters more than anything else.
 | A separate track per instrument in the recording | ❌ | The recording holds the stereo program mix only |
 | Several services at once | ✅ | Multiple destinations |
 
-## 7. Teacher or presenter
+## 10. Teacher or presenter
 
 Teaches a class, runs a webinar, or makes software tutorials. Shows a screen or
 one window with their face in a corner, flips between slides, a demo, and a
@@ -177,10 +237,27 @@ full-face shot, and often records for later rather than going live.
 | Send the program into a video call as a camera | ❌ | No virtual camera output |
 | Speaker notes beside the program | 🟡 | The Notes plug-in pane; no prompter |
 | Record for upload later | ✅ | `.mov`/`.mp4`, the Library's Recordings tab |
+| Mark chapters in the recording | ❌ | Not on record |
 | Captions | ❌ | Not on record |
 | Draw or point on the screen | ❌ | Not on record |
 
-## 8. Video podcaster
+## 11. Avatar streamer
+
+Streams as an animated character. A face-tracking app reads their face from
+the camera and draws the character; the streamer puts the character over a
+game, a backdrop, or a chat shot. Otherwise needs what the game streamer (13)
+needs.
+
+| Need | Status | Notes |
+|---|---|---|
+| Capture the avatar app's window | ✅ | Window capture |
+| Keep the window's transparency, so only the character shows | 🟡 | Not on record; needs checking in the code |
+| Green screen, for avatar apps that draw on a flat color | ❌ | No keying effect |
+| A voice changer that appears as a mic | 🟡 | Likely works, since a virtual audio device macOS lists as an input appears as one; not checked |
+| Game and app sound | ❌ | No system or app audio input |
+| Alerts, chat, and global hotkeys | ❌ | As for the game streamer |
+
+## 12. Video podcaster
 
 Two to four hosts around a table, each with a mic and often a camera, sometimes
 a guest who calls in. Cares most about sound, and edits the recording after.
@@ -190,6 +267,7 @@ a guest who calls in. Cares most about sound, and edits the recording after.
 | A strip per mic: fader, mute, pan, meter | ✅ | The console mixer, in dB |
 | Headphone mix for the operator | ✅ | The monitor path to a chosen output device |
 | Clean up voices: compressor, limiter, gate, EQ, noise removal | 🟡 | Only gain, high-pass, and low-pass today |
+| Turn down the mics nobody is speaking into (automixer) | ❌ | Not on record |
 | Listen to one mic alone (solo) | ❌ | Planned: solo as pre-fade listen |
 | Line up sound with slow cameras (sync offset) | ❌ | Planned: designed in CLOCK.md, not built |
 | Sound that follows the shot | ✅ | Audio follows video |
@@ -200,18 +278,21 @@ a guest who calls in. Cares most about sound, and edits the recording after.
 | Name titles (lower thirds) | 🟡 | A text file as a layer; no title templates |
 | Stream to several services at once | ✅ | One program, many destinations |
 
-## 9. Game streamer
+## 13. Game streamer
 
 Plays a game on the same Mac, with a face cam, a logo, alerts for new
 followers, the chat on screen, and switches between "playing", "be right back",
 and "just talking". Often streams to more than one service, and makes short
-portrait clips.
+portrait clips. Tabletop and board game streams belong here too, with an
+overhead camera and players who may join from afar.
 
 | Need | Status | Notes |
 |---|---|---|
 | Capture the game's window or display | ✅ | Window and display inputs |
 | Game sound and voice-chat sound | ❌ | No system or app audio input: the biggest gap for this persona |
 | Face cam, cropped, framed | ✅ | Crop and Frame effects |
+| An overhead camera on a table or board | ✅ | Any camera, as its own shot |
+| Players joining from afar | ❌ | No call-in path |
 | Green screen (chroma key) | ❌ | GLOSSARY.md names keying; no effect yet |
 | Background removal without a green screen | ❌ | Not on record |
 | A logo or frame above every shot | 🟡 | A layer in each shot; no overlay that sits above all shots |
@@ -224,11 +305,32 @@ portrait clips.
 | Save the last 30 seconds (replay buffer) | ❌ | Not on record |
 | Low cost while the game runs | ✅ | GPU-resident frames, hardware compression |
 
-## 10. Worship or community volunteer team
+## 14. Company webinar or all-hands producer
 
-A church, a school, a town council. Two to five cameras, often through capture
-cards; a computer showing lyrics or slides; a house mixing desk feeding sound
-in. The same show every week, run by whichever volunteer turned up.
+Runs a product launch, an all-hands, or a customer webinar. Slides come from a
+presenter's Mac, speakers join from other cities, every shot carries the
+company's look, the stream often goes to a private server, and IT installs
+the software.
+
+| Need | Status | Notes |
+|---|---|---|
+| Slides from the presenter's computer | 🟡 | Through a capture card, which appears as a camera; NDI is planned |
+| Remote speakers | ❌ | No call-in path; WHIP/WHEP waits on `RTCHaishinKit` |
+| The company's look on every shot | 🟡 | Layers in each shot; no overlay above all shots, no title templates |
+| Captions | ❌ | Not on record |
+| Stream to a private server | ✅ | A custom RTMP(S) or SRT destination |
+| A countdown before the start | ❌ | Not on record |
+| Audience questions on screen | ❌ | No web page input |
+| Installed and set up by IT on managed Macs | 🟡 | A signed, notarized `.pkg` for the CLI; managed settings for the app not on record |
+| Stream keys kept out of logs and files | ✅ | Keychain storage, redaction at every boundary |
+| A recording for those who missed it | ✅ | Local recording |
+
+## 15. Worship or community volunteer team
+
+A church, a temple, a school assembly. Two to five cameras, often through
+capture cards; a computer showing lyrics or slides; a house mixing desk
+feeding sound in. The same show every week, run by whichever volunteer turned
+up. (Council and board meetings, with their legal duties, are persona 16.)
 
 | Need | Status | Notes |
 |---|---|---|
@@ -239,6 +341,7 @@ in. The same show every week, run by whichever volunteer turned up.
 | Sound from the house desk | ✅ | An audio interface appears as an input |
 | Lyrics and scripture on screen | 🟡 | Text and Markdown files; no lyric or slide feed, no title templates |
 | A feed from the slides computer over the network | ❌ | Planned: NDI as an external plug-in |
+| Walk-in music before the start | 🟡 | A video file with sound; no audio files or playlist |
 | A countdown before the start | ❌ | Not on record |
 | Start at a set time | ❌ | Not on record |
 | One button for "record, go live, show welcome" | ❌ | GLOSSARY.md defines macros; not built |
@@ -248,17 +351,39 @@ in. The same show every week, run by whichever volunteer turned up.
 | The app in Spanish or German | ✅ | English, German, Spanish |
 | Captions for those who cannot hear | ❌ | Not on record |
 
-## 11. Live event producer
+## 16. Public meetings
 
-Sports, conferences, weddings, concerts: a small crew, many cameras, sometimes
-a feed sent to a far site over SRT. Expects the tools of a broadcast
-switcher.
+A city council, a school board, a court, a zoning hearing. Many mics open
+around a table, two or three fixed cameras, sessions that run four hours or
+more, and a legal duty to stream, caption, and keep the record. Clerks run it,
+not video staff.
+
+| Need | Status | Notes |
+|---|---|---|
+| Many open mics, turned down when no one speaks into them (automixer) | ❌ | Not on record; each strip is a manual fader |
+| Choose channels on the room's audio interface | ❌ | Not on record |
+| Several fixed cameras | ✅ | Shots |
+| A "recess" or "starting soon" shot | ✅ | Shots with image or text layers |
+| Captions, often required by law | ❌ | Not on record |
+| Long sessions recorded without a gap | 🟡 | Fragmented recording survives a crash; dropped frames under study; splitting by hour or size not on record |
+| Mark each agenda item in the recording (chapters) | ❌ | Not on record |
+| The agenda item on screen | 🟡 | Text files as layers; no title templates |
+| Remote members and public comment by call-in | ❌ | No call-in path |
+| Start at a set time | ❌ | Not on record |
+| Easy for a clerk | 🟡 | As for volunteers: macros and a simple mode would help most |
+
+## 17. Live event producer
+
+Sports, conferences, weddings, concerts, tournaments: a small crew, many
+cameras, sometimes a feed sent to a far site over SRT. Expects the tools of a
+broadcast switcher.
 
 | Need | Status | Notes |
 |---|---|---|
 | See every input at once (multiview) | ✅ | Multiview window with tally |
 | Preview and program, many transitions | ✅ | Cut, dissolve, wipe, shaders |
 | Up to 4K, up to 60 frames a second | ✅ | Program format menu |
+| A camera per player at a tournament | ✅ | Capture cards and cameras as inputs, multiview |
 | Send over SRT | 🟡 | SRT output works; a dropped SRT link is never reported, so it never reconnects (TODO.md) |
 | Send to several services, each reconnecting | ✅ | Multiple destinations |
 | A file per camera (ISO recording) | ❌ | Not on record |
@@ -268,10 +393,26 @@ switcher.
 | Tally lights on the cameras | ❌ | Not on record |
 | Delay a slow input's sound | ❌ | Planned: sync offset, not built |
 | Solo, sends, and extra buses for crew feeds | ❌ | Planned as later mixer slices |
+| One audio track per language, for interpreters | ❌ | The stream and the recording carry one stereo mix |
 | A log to review after the show | ✅ | Log window, log file, stream history |
 | A hardware control surface | ❌ | Not on record |
 
-## 12. Automation and agent operator
+## 18. Two-person team: talent and remote producer
+
+One person is on camera; another runs the show from another room, another
+Mac, or a tablet. Common for a creator with an editor or a partner, and for
+small companies.
+
+| Need | Status | Notes |
+|---|---|---|
+| Switch shots from another device | ❌ | MCP is local by design: a per-user Unix socket, and MCP.md forbids a TCP listener. Remote control needs a design decision first |
+| The producer sees the program | ❌ | Nothing leaves the Mac but the stream; a `program.snapshot` tool is planned for agents |
+| Cues from the producer to the talent | ❌ | Not on record; an app-tier plug-in could add one |
+| Both work on one project | ❌ | One project, open on one Mac |
+| Control from a phone or tablet | ❌ | Not on record; Tingra is Mac-only |
+| An AI agent as the producer | ✅ | On the same Mac, through MCP (persona 19) |
+
+## 19. Automation and agent operator
 
 No one sits at the switcher. A script runs a stream around the clock, a lab
 streams a camera, a developer tests a streaming server, or an AI agent runs the
@@ -291,7 +432,7 @@ show on spoken orders: "go live to my Twitch", "take the wide shot".
 | Run steps when an event fires | ❌ | Macros not built |
 | Test without hardware | ✅ | Bars, tone, black, PLUGE generators |
 
-## 13. Plug-in developer
+## 20. Plug-in developer
 
 Builds what Tingra does not: an NDI input, a new streaming protocol, an effect,
 a rundown pane, a chat panel. Needs a stable API and a way to reach users.
@@ -309,31 +450,45 @@ a rundown pane, a chat panel. Needs a stable API and a way to reach users.
 | A worked example | ✅ | The Notes plug-in, the fixture plug-in |
 | A place to list and share plug-ins | ❌ | Planned: the plug-in gallery, proposed |
 
+## Out of scope: streaming on the move
+
+Streamers who walk and talk, with a phone and a cellular link, are not
+Tingra's. Tingra is a Mac app for a desk, by design (ARCHITECTURE.md, design
+principles). They are listed here so the question stays answered.
+
 ## The gaps, ranked by how many personas they block
 
 | Gap | Blocks | Tracked? |
 |---|---|---|
-| Release `Tingra.app` | 2–11 | Yes, TODO.md |
-| Voice processing: compressor, limiter, gate, EQ, noise removal | 4, 6, 8, 9, 10, 11 | No |
-| System and app audio capture | 4, 5, 7, 8, 9 | No |
-| Global hotkeys, macros, and control surfaces | 5, 9, 10, 11, 12 | Macros defined in GLOSSARY.md only |
-| Overlays above every shot, and title templates | 8, 9, 10, 11 | Defined in GLOSSARY.md only |
-| ISO and per-track recording | 6, 7, 8, 11 | No |
-| Sync offset | 6, 8, 10, 11 | Yes, CLOCK.md |
-| Web page input (alerts, chat, scoreboards) | 5, 9, 11 | No |
-| Remote guests | 7, 8, 11 | WHIP/WHEP waits on `RTCHaishinKit` |
-| Captions | 7, 10, 11 | No |
-| Chroma key and background removal | 3, 7, 9 | Keying defined in GLOSSARY.md only |
-| Recording and compression settings in the app: pause, HEVC, audio bit rate | 2, 4, 6 | No |
-| Audio files, playlists, and play-once clips | 4, 10 | Play-once is a planned slice |
-| Starting on its own: at login, or at a set time, with a countdown | 1, 10 | No |
-| Virtual camera output | 7, 8 | No |
-| Choosing channels on a multichannel audio interface | 6, 10 | Not on record |
-| NDI | 10, 11 | Yes, TODO.md |
-| Replay | 9, 11 | No |
+| Release `Tingra.app` | 2–18 | Yes, TODO.md |
+| Voice processing: compressor, limiter, gate, EQ, noise removal | 4, 5, 9, 12, 13, 14, 15, 16, 17 | No |
+| Global hotkeys, macros, and control surfaces | 4, 6, 7, 13, 15, 16, 17, 19 | Macros defined in GLOSSARY.md only |
+| Overlays above every shot, and title templates | 7, 12, 13, 14, 15, 16, 17 | Defined in GLOSSARY.md only |
+| System and app audio capture | 5, 6, 8, 10, 11, 12, 13 | No |
+| Timers, and starting on its own: at login, at a set time, with a countdown | 1, 4, 7, 14, 15, 16 | No |
+| Web page input (alerts, chat, orders, scoreboards) | 6, 7, 8, 13, 14, 17 | No |
+| Remote guests and call-in | 10, 12, 13, 14, 16, 17 | WHIP/WHEP waits on `RTCHaishinKit` |
+| Captions | 10, 14, 15, 16, 17 | No |
+| ISO and per-track recording, one track per language included | 9, 10, 12, 17 | No |
+| Sync offset | 9, 12, 15, 17 | Yes, CLOCK.md |
+| Virtual camera output | 4, 10, 12, 14 | No |
+| Recording and compression settings in the app: pause, HEVC, audio bit rate, splitting | 2, 5, 9, 16 | No |
+| Audio files, playlists, and play-once or pausable clips | 4, 5, 8, 15 | Play-once is a planned slice |
+| Chroma key and background removal | 3, 11, 13 | Keying defined in GLOSSARY.md only |
+| Ducking: music or a clip dips under a voice | 4, 5, 8 | No |
+| Choosing channels on a multichannel audio interface | 9, 15, 16 | Not on record |
+| NDI | 14, 15, 17 | Yes, TODO.md |
+| Automixer for many open mics | 12, 16 | No |
+| Chapter marks in a recording | 10, 16 | No |
+| Landscape and portrait at the same time | 7, 13 | No |
+| Replay | 13, 17 | No |
+| Flip the picture left to right | 4 | No |
+| Window capture that keeps transparency | 11 | Not on record; check the code |
+| Settings IT can manage on many Macs | 14 | No |
+| Remote control from another device | 18 | No, and MCP.md forbids a TCP listener; needs a decision |
 
 Where Tingra already leads: a native Mac app with a GPU-resident path, several
 services at once with per-destination reconnect, recovery after a crash, and,
 above all, control by scripts and AI agents through the CLI and MCP, where
-Tingra stands apart. The plug-in design gives persona 13 a path to fill the
+Tingra stands apart. The plug-in design gives persona 20 a path to fill the
 gaps above without waiting on the core.
