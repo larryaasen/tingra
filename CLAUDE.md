@@ -69,7 +69,7 @@ packages/                       # Engine libraries
   (UI packages)                 # Phase 2 — arrive once the engine is proven
 docs/                           # The project documentation set (ARCHITECTURE.md, GLOSSARY.md, CLI.md,
                                 #   SIMULATOR.md, CLOCK.md, EVENTS.md, MCP.md, DESTINATIONS.md,
-                                #   UVC.md, TYPES.md, TODO.md, DONE.md)
+                                #   UVC.md, TYPES.md, PERSONAS.md, TODO.md, DONE.md)
                                 #   and screenshots
 scripts/                        # Formatting scripts (format-swift.sh, check-format.sh), the
                                 #   streaming integration tests (integration-test.sh), and the
