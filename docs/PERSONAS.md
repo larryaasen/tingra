@@ -44,9 +44,7 @@ The sizes leave the release out, since every one of them shares it.
 | 5 | Plug-in developer | Strong design | Publish the SDK; app-tier plug-ins also need the app | — |
 | 6 | Set-and-forget camera | Good for someone at home in a terminal | Reconnect without a limit, start at login | S, M |
 | 7 | Audio show | Weak | A limiter, ducking | S, M |
-| 8 | Fitness or yoga instructor | Weak | Flip, a timer, ducking | S, S, M |
-| 7 | Audio show | Weak | Audio files, a limiter, ducking | S, S, M |
-| 8 | Fitness or yoga instructor | Weak | Flip, audio files, ducking | S, S, M |
+| 8 | Fitness or yoga instructor | Weak | Flip, ducking | S, M |
 | 9 | Musician | Fair | A limiter, an audio bit rate setting, channel choice, sync offset | S, S, M, M |
 | 10 | Avatar streamer | Unknown | Check window transparency, or a chroma key | S or M |
 | 11 | Reaction or watch-along streamer | Weak | System and app audio, ducking, clips that pause | M, M, M |
@@ -71,8 +69,9 @@ inputs, a voice from a microphone, no sound from the Mac itself, and no web
 graphics.
 
 The next five (6 to 10) are each a few small pieces away, and most of those
-pieces are plug-ins on seams that already exist: a limiter, a flip effect,
-a timer generator (audio files as a media provider were the first built). The larger pieces among
+pieces are plug-ins on seams that already exist: a limiter and a flip effect
+(audio files as a media provider and the time generators were the first
+built). The larger pieces among
 them, each M, are ducking, sync offset, and starting at login. That makes them
 the cheapest personas to win next.
 
@@ -232,8 +231,7 @@ Leads a class from a studio or a living room: one wide camera, a wireless
 mic, music, and students who follow along live, often on a private server or
 inside a video call. Moves the whole time, so cannot reach the keyboard.
 
-**To succeed:** a flip effect, a timer, and ducking. Classes held inside a video call also need virtual camera output (L). **Size:** S, S, M.
-**To succeed:** a flip effect, audio files, and ducking. Classes held inside a video call also need virtual camera output (L). **Size:** S, S, M.
+**To succeed:** a flip effect and ducking. Classes held inside a video call also need virtual camera output (L). **Size:** S, M.
 
 | Need | Status | Notes |
 |---|---|---|
@@ -387,8 +385,6 @@ up. (Council and board meetings, with their legal duties, are persona 17.)
 | Lyrics and scripture on screen | 🟡 | Text and Markdown files; no lyric or slide feed, no title templates |
 | A feed from the slides computer over the network | ❌ | Planned: NDI as an external plug-in |
 | Walk-in music before the start | 🟡 | An audio file on its own channel strip, looping until muted; no playlist |
-| A countdown before the start | ❌ | Not on record |
-| Walk-in music before the start | 🟡 | A video file with sound; no audio files or playlist |
 | A countdown before the start | ✅ | The countdown generator as a layer, counting to a time of day or through a duration |
 | Start at a set time | ❌ | Not on record |
 | One button for "record, go live, show welcome" | ❌ | GLOSSARY.md defines macros; not built |
