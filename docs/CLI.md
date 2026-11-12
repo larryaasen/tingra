@@ -255,6 +255,9 @@ Note that no reconnect attempt is ever made for the **initial** connection, on a
 | `--video-generator pluge` | PLUGE (Picture Line-Up Generation Equipment) black-level calibration pattern instead of a camera. Useful for checking shadow detail and crushed blacks. |
 | `--video-generator pluge-strict` | Stricter broadcast-style PLUGE pattern instead of a camera. Uses a sparse reference-black field with the classic below-black / reference-black / above-black trio. |
 | `--video-generator black` | Full-frame opaque black instead of a camera. The **black generator** a switcher carries as a selectable input on its rows — upstream of fade to black, so overlays and keys composite over it, where FTB is a downstream master stage that obscures everything. |
+| `--video-generator time-stamp` | The local date and time of day (`2026-11-11 14:05:09`) instead of a camera, drawn in the bottom right corner of an otherwise empty picture. In the app the same generator is a layer over a camera; the CLI streams one video input and does no compositing, so here it is the whole picture. |
+| `--video-generator timer` | Elapsed time, counting up from the start of the run (`MM:SS`, `H:MM:SS` from an hour up), instead of a camera. |
+| `--video-generator countdown` | A five minute countdown from the start of the run, holding at `00:00`, instead of a camera. The duration, a time of day to count to, and the look are the generator's parameters, which the app sets; the CLI has no option for an input's parameters yet. |
 | `--audio-generator tone` | 440 Hz tone generator instead of a microphone. |
 
 #### Compression

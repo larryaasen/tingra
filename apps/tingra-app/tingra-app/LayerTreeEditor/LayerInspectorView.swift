@@ -19,7 +19,11 @@ import TingraPlugInKit
 /// steppers in program pixels or percent (``LayerInspectorUnit``), with an
 /// aspect lock and Reset; a **Placement** row of nine anchors and three
 /// sizes (``LayerPlacement``); **Opacity** as a slider paired with a percent
-/// field; and the layer's effect chain (``LayerEffectChainView``).
+/// field; and the layer's effect chain (``LayerEffectChainView``). Beside the
+/// Input popup, an **Input Settings** button opens the settings of an input
+/// that declares parameters (``InputParametersView``) — a countdown's
+/// duration, a camera's controls — since a video input has no channel strip
+/// to hang them from.
 ///
 /// Every committed field, every button, and every popup choice is one
 /// layer-tree edit — so one undo step — and reports one `tap` where it
@@ -39,6 +43,9 @@ struct LayerInspectorView: View {
 
     /// Which unit the position and size fields use.
     @State private var unit: LayerInspectorUnit = .pixels
+
+    /// Whether the Input Settings popover is open.
+    @State private var showsInputSettings = false
 
     /// A number field's width, enough for four digits and a sign.
     private static let fieldWidth: CGFloat = 52
@@ -104,7 +111,10 @@ struct LayerInspectorView: View {
         Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 8, verticalSpacing: 8) {
             GridRow {
                 rowLabel(Text("Input", comment: "Layer inspector row: the input the layer is bound to"))
-                inputPicker
+                HStack(spacing: 6) {
+                    inputPicker
+                    inputSettingsButton
+                }
             }
             GridRow {
                 rowLabel(Text("Position", comment: "Layer inspector row: the layer's position"))
@@ -259,6 +269,41 @@ struct LayerInspectorView: View {
         }
         .labelsHidden()
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// The Input Settings button — present only when the layer's input
+    /// declares parameters (PLUGINS.md, Decision 15): a time stamp's format,
+    /// a timer's state, a countdown's duration, a camera's controls. It opens
+    /// the same popover a channel strip's button does, so an input with a
+    /// picture and no strip has somewhere to be set up. The settings are the
+    /// input's, not the layer's: every layer bound to the input shows them.
+    @ViewBuilder private var inputSettingsButton: some View {
+        let input = currentLayer?.input ?? layer.input
+        if model.declaredInputParameters[input]?.isEmpty == false {
+            Button {
+                model.eventBus.tap(
+                    "layerInputSettings.button",
+                    domain: .composition,
+                    params: ["index": .int(index), "input": .string(input.rawValue)]
+                )
+                showsInputSettings = true
+            } label: {
+                Image(systemName: "gearshape")
+            }
+            .help(
+                Text(
+                    "Input Settings", comment: "Heading of an input's settings popover, over the parameters it declares"
+                )
+            )
+            .accessibilityLabel(
+                Text(
+                    "Input Settings", comment: "Heading of an input's settings popover, over the parameters it declares"
+                )
+            )
+            .popover(isPresented: $showsInputSettings) {
+                InputParametersView(model: model, inputID: input)
+            }
+        }
     }
 
     /// The popup's binding: choosing an input rebinds the layer, reporting

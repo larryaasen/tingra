@@ -104,7 +104,7 @@ struct GeneratorPlugInTests {
         try await plugIn.activate(in: context)
 
         let registered = await registrar.registered
-        try #require(registered.count == 6)
+        try #require(registered.count == 9)
         #expect(registered[0].id == BarsGenerator.inputID)
         #expect(registered[0].kind == .generator)
         #expect(registered[1].id == AlignmentGenerator.inputID)
@@ -117,6 +117,12 @@ struct GeneratorPlugInTests {
         #expect(registered[4].kind == .generator)
         #expect(registered[5].id == ToneGenerator.inputID)
         #expect(registered[5].kind == .generator)
+        #expect(registered[6].id == TimeStampGenerator.inputID)
+        #expect(registered[6].kind == .generator)
+        #expect(registered[7].id == TimerGenerator.inputID)
+        #expect(registered[7].kind == .generator)
+        #expect(registered[8].id == CountdownGenerator.inputID)
+        #expect(registered[8].kind == .generator)
     }
 
     @Test("every generator declares the media it produces, which its kind cannot")
@@ -135,9 +141,9 @@ struct GeneratorPlugInTests {
         try await plugIn.activate(in: context)
 
         let registered = await registrar.registered
-        try #require(registered.count == 6)
+        try #require(registered.count == 9)
         // Every generator shares one kind, so the kind cannot separate the
-        // five video generators from the tone — the media declaration is the
+        // eight video generators from the tone — the media declaration is the
         // only thing that can, and is what admits bars to a layer and tone
         // to a channel strip.
         #expect(registered[0].media == .video)
@@ -146,6 +152,9 @@ struct GeneratorPlugInTests {
         #expect(registered[3].media == .video)
         #expect(registered[4].media == .video)
         #expect(registered[5].media == .audio)
+        #expect(registered[6].media == .video)
+        #expect(registered[7].media == .video)
+        #expect(registered[8].media == .video)
         #expect(registered.allSatisfy { !$0.media.isEmpty })
     }
 
@@ -170,14 +179,17 @@ struct GeneratorPlugInTests {
         for await event in events {
             received.append(event)
         }
-        #expect(received.count == 6)
+        #expect(received.count == 9)
         #expect(received.allSatisfy { $0.group == .trace && $0.domain == .capture && $0.name == "input.registered" })
         #expect(received.first?.params?["id"] == .string("bars"))
         #expect(received.dropFirst().first?.params?["id"] == .string("alignment"))
         #expect(received.dropFirst(2).first?.params?["id"] == .string("pluge"))
         #expect(received.dropFirst(3).first?.params?["id"] == .string("pluge-strict"))
         #expect(received.dropFirst(4).first?.params?["id"] == .string("black"))
-        #expect(received.last?.params?["id"] == .string("tone"))
+        #expect(received.dropFirst(5).first?.params?["id"] == .string("tone"))
+        #expect(received.dropFirst(6).first?.params?["id"] == .string("time-stamp"))
+        #expect(received.dropFirst(7).first?.params?["id"] == .string("timer"))
+        #expect(received.last?.params?["id"] == .string("countdown"))
     }
 
     @Test("a rejection partway through leaves nothing registered")

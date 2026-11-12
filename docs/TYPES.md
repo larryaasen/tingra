@@ -219,6 +219,9 @@ internal surface a reader needs to navigate the target instead.
 - `PlugeStrictGenerator` — a stricter broadcast-style PLUGE pattern.
 - `BlackGenerator` — full-frame opaque black as a selectable input.
 - `ToneGenerator` — a test tone with frequency and level parameters.
+- `TimeStampGenerator` — the date and time of day on a transparent frame.
+- `TimerGenerator` — elapsed time counting up, on a transparent frame.
+- `CountdownGenerator` — a countdown to a duration's end or a time of day.
 
 ## `packages/TingraComposition`
 
