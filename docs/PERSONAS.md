@@ -25,7 +25,8 @@ sizes are estimates read from the architecture, not measured:
 **One step comes before all of this.** `Tingra.app` has not shipped. Today a
 user can install `tingra-cli` and Tingra Cameras with Homebrew, and the CLI
 streams one camera and one microphone, with no shots and no compositing. Every
-persona except 1, 5, and 6 needs the app, so for them every ✅ below means
+persona except 1 and 6 needs the app, and so do plug-in developers building for
+the app tier (5); for them every ✅ below means
 "built in the app, waiting on its release" (TODO.md, "Release Tingra.app").
 The sizes leave the release out, since every one of them shares it.
 
@@ -36,11 +37,11 @@ The sizes leave the release out, since every one of them shares it.
 
 | # | Persona | Fit today | To succeed | Size |
 |---|---|---|---|---|
-| 1 | Automation and agent operator | Strong, and where Tingra stands apart | Nothing; works today | — |
+| 1 | Automation and agent operator | Strong without the app, and where Tingra stands apart | Nothing, without the app; driving the app needs an agent connection to it | — / XL |
 | 2 | Solo talker | Strong | Ship the app | — |
 | 3 | Recorder | Strong in the app | Ship the app; a CLI `record` command | S |
 | 4 | Screen streamer | Strong, until the Mac's own sound is needed | Ship the app; system and app audio for some | — / M |
-| 5 | Plug-in developer | Strong design | Publish the SDK | — |
+| 5 | Plug-in developer | Strong design | Publish the SDK; app-tier plug-ins also need the app | — |
 | 6 | Set-and-forget camera | Good for someone at home in a terminal | Reconnect without a limit, start at login | S, M |
 | 7 | Audio show | Weak | Audio files, a limiter, ducking | S, S, M |
 | 8 | Fitness or yoga instructor | Weak | Flip, audio files, a timer, ducking | S, S, S, M |
@@ -62,7 +63,8 @@ The sizes leave the release out, since every one of them shares it.
 Five personas need no new feature: the **automation operator** (1) succeeds
 today, the **solo talker** (2), **recorder** (3), and **screen streamer** (4)
 succeed the day the app ships, and the **plug-in developer** (5) succeeds
-the day the SDK is published. The first four share a shape: one or two video
+the day the SDK is published for host-tier plug-ins, and the day the app
+ships for app-tier ones. The first four share a shape: one or two video
 inputs, a voice from a microphone, no sound from the Mac itself, and no web
 graphics.
 
@@ -80,9 +82,10 @@ input. Building those in that order would move most of the list at once.
 
 No one sits at the switcher. A script runs a stream around the clock, a lab
 streams a camera, a developer tests a streaming server, or an AI agent runs the
-show on spoken orders: "go live to my Twitch", "take the wide shot".
+show on spoken orders: "go live to my Twitch". Today the agent reaches the
+daemon, which streams one camera; it cannot reach the app's shots.
 
-**To succeed:** nothing; it works today. **Size:** none. The extras (an agent seeing the program, event-driven steps) are wanted, not blocking.
+**To succeed:** nothing, for streams run without the app; it works today. Driving the app (taking shots, starting the program's stream) needs an agent connection to the app, which does not exist and needs a design decision. **Size:** none, then XL. The other extras (an agent seeing the program, event-driven steps) are wanted, not blocking.
 
 | Need | Status | Notes |
 |---|---|---|
@@ -92,7 +95,7 @@ show on spoken orders: "go live to my Twitch", "take the wide shot".
 | Run as a background service | ✅ | `serve`, started by launchd on demand |
 | Let an AI agent drive it | ✅ | MCP server: stream, record, destinations, devices |
 | Find a destination by name | ✅ | `destinations_list`, operator-wide store |
-| Drive the app's shots from an agent | ✅ | `preview_set`, `shot_take`, and the `program_*` tools |
+| Drive the app's shots from an agent | ❌ | The app's `shot_take`, `preview_set`, and `program_*` tools answer only app-tier plug-ins over XPC (PLUGINS.md, Decision 14); an agent through `tingra-cli mcp` reaches the daemon, which has no shots |
 | Shots and compositing without the app | ❌ | The CLI has no compositor; display, window, and shots are app-only |
 | Let the agent see the program | ❌ | Planned: a `program.snapshot` tool |
 | Run steps when an event fires | ❌ | Macros not built |
@@ -165,7 +168,7 @@ it; a small face cam is optional.
 Builds what Tingra does not: an NDI input, a new streaming protocol, an effect,
 a rundown pane, a chat panel. Needs a stable API and a way to reach users.
 
-**To succeed:** publish the SDK; a step for Larry, with no code to write. **Size:** none.
+**To succeed:** publish the SDK, a step for Larry with no code to write; that serves host-tier plug-ins (inputs, effects, outputs, tools). App-tier plug-ins (panes, windows, status items, the app's meters and video) also need the app to ship. **Size:** none.
 
 | Need | Status | Notes |
 |---|---|---|
@@ -176,7 +179,7 @@ a rundown pane, a chat panel. Needs a stable API and a way to reach users.
 | Read the app's meters and video | ✅ | `tingra/meters`, `tingra/frame` |
 | Store secrets and data | ✅ | Plug-in secrets in the Keychain, project and app storage |
 | Settings drawn for you | ✅ | Declared `Parameter`s become a native settings pane |
-| Safe when a plug-in crashes | ✅ | Load-crash guard, safe mode, out-of-process app tier |
+| Safe when a plug-in crashes | 🟡 | App-tier plug-ins run out of process, so a crash spares the app. Host-tier bundles run in process, so a crash takes Tingra and a live stream down; the load-crash guard and safe mode only help the next launch |
 | A worked example | ✅ | The Notes plug-in, the fixture plug-in |
 | A place to list and share plug-ins | ❌ | Planned: the plug-in gallery, proposed |
 
@@ -238,7 +241,7 @@ inside a video call. Moves the whole time, so cannot reach the keyboard.
 | An interval or session timer on screen | ❌ | Not on record |
 | Teach inside a video call | ❌ | No virtual camera output |
 | Stream to a private server | ✅ | A custom RTMP(S) or SRT destination |
-| Switch shots without touching the Mac | 🟡 | No global hotkeys, pedal, or control surface; an agent over MCP could switch on spoken orders |
+| Switch shots without touching the Mac | ❌ | No global hotkeys, pedal, or control surface; an app-tier plug-in could call the shot tools, but no agent can reach the app yet |
 | Record the class for members who missed it | ✅ | Local recording |
 
 ## 9. Musician
@@ -312,7 +315,7 @@ a guest who calls in. Cares most about sound, and edits the recording after.
 | Turn down the mics nobody is speaking into (automixer) | ❌ | Not on record |
 | Listen to one mic alone (solo) | ❌ | Planned: solo as pre-fade listen |
 | Line up sound with slow cameras (sync offset) | ❌ | Planned: designed in CLOCK.md, not built |
-| Sound that follows the shot | ✅ | Audio follows video |
+| Sound that follows the shot | 🟡 | Audio follows video works for a video file's sound; it keys on the strip's own input, so turned on for a mic it silences it. Tying a mic to its host's camera is a planned slice |
 | Cut to whoever is talking, on its own | ❌ | Not on record |
 | A remote guest calling in | ❌ | No call-in path; WHIP/WHEP waits on `RTCHaishinKit` |
 | A track per mic in the recording | ❌ | The recording holds the stereo program mix only |
@@ -412,7 +415,7 @@ overhead camera and players who may join from afar.
 | A logo or frame above every shot | 🟡 | A layer in each shot; no overlay that sits above all shots |
 | Alerts, chat, goal bars (web widgets) | ❌ | No web page input |
 | Switch shots while the game has focus | ❌ | ⌘1–⌘9 work only while Tingra is in front; no global hotkeys |
-| A button deck or other control surface | 🟡 | Nothing direct; MCP tools (`shot_take`, `preview_set`) could drive one |
+| A button deck or other control surface | 🟡 | Nothing direct; an app-tier plug-in could drive one through the app's `shot_take` and `preview_set` tools |
 | Video transitions (stingers) | ❌ | Cut, dissolve, wipe, and shader transitions only |
 | Several services at once | ✅ | Multiple destinations, each with its own reconnect |
 | Landscape and portrait at the same time | ❌ | Portrait sizes exist, but one program format per show |
@@ -506,7 +509,7 @@ small companies.
 | Cues from the producer to the talent | ❌ | Not on record; an app-tier plug-in could add one |
 | Both work on one project | ❌ | One project, open on one Mac |
 | Control from a phone or tablet | ❌ | Not on record; Tingra is Mac-only |
-| An AI agent as the producer | ✅ | On the same Mac, through MCP (persona 1) |
+| An AI agent as the producer | ❌ | An agent reaches the daemon, not the app's shots (persona 1) |
 
 ## Out of scope: streaming on the move
 
@@ -557,6 +560,7 @@ Sized as above. Within a size, the gaps that block more personas come first.
 | Noise removal | L | 12 | No |
 | Remote guests and call-in | XL | 12, 16, 17, 18 | WHIP/WHEP waits on `RTCHaishinKit` |
 | SRT reconnect after a dropped link | XL | 1, 6, 19 | Yes, TODO.md; waits on HaishinKit |
+| An agent connection to the app | XL | 1, 8, 20 | No; agents reach only the daemon, and the app's tools answer only its extensions; needs a decision |
 | Remote control from another device | XL | 20 | No, and MCP.md forbids a TCP listener; needs a decision |
 
 Where Tingra already leads: a native Mac app with a GPU-resident path, several
