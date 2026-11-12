@@ -739,6 +739,23 @@ struct GateEffectTests {
         #expect(passed.last == 0.001)
     }
 
+    @Test("a fresh gate with a range of 0 dB passes every sample untouched, with no fade in, however slow its attack")
+    func zeroRangePassesFromTheFirstSample() {
+        var effect = gate(attack: 100)
+        effect.setParameters(["rangeDecibels": .double(0)])
+        // Under the threshold, so the gate never opens: only its floor acts.
+        let signal = [sine(frequency: 440, amplitude: 0.001, milliseconds: 200)]
+        #expect(run(&effect, signal, blockSizes: unevenBlocks) == signal)
+    }
+
+    @Test("a fresh gate starts at its closed floor rather than rising to it from silence")
+    func startsAtItsFloor() {
+        var effect = gate(attack: 100)
+        effect.setParameters(["rangeDecibels": .double(-20)])
+        let output = run(&effect, [constant(0.001, milliseconds: 50)])[0]
+        #expect(output.allSatisfy { abs($0 - 0.0001) < 1e-9 })
+    }
+
     @Test("one gain serves both channels, so a loud right opens the gate for a quiet left")
     func stereoIsLinked() {
         var effect = gate()
@@ -792,6 +809,27 @@ struct GateEffectTests {
         _ = run(&effect, [constant(0.1, milliseconds: 200) + constant(0.001, milliseconds: 200)])
         effect.setParameters(["holdMilliseconds": .double(0)])
         let output = run(&effect, [constant(0.001, milliseconds: 500)])[0]
+        #expect(output.last == 0)
+    }
+
+    @Test("a hold shortened to less than it has already run closes the gate at once")
+    func holdShortenedPastItsElapsedTimeCloses() {
+        var effect = gate(hold: 2000, release: 10)
+        // About 1.47 s of the 2 s hold has run by the end of this.
+        _ = run(&effect, [constant(0.1, milliseconds: 200) + constant(0.001, milliseconds: 1500)])
+        effect.setParameters(["holdMilliseconds": .double(1000)])
+        let output = run(&effect, [constant(0.001, milliseconds: 300)])[0]
+        #expect(output.last == 0)
+    }
+
+    @Test("a hold shortened to more than it has already run stays open for the difference")
+    func holdShortenedKeepsItsElapsedTime() {
+        var effect = gate(hold: 2000, release: 10)
+        // About 0.47 s of the hold has run; a 1 s hold leaves about 0.53 s.
+        _ = run(&effect, [constant(0.1, milliseconds: 200) + constant(0.001, milliseconds: 500)])
+        effect.setParameters(["holdMilliseconds": .double(1000)])
+        let output = run(&effect, [constant(0.001, milliseconds: 900)])[0]
+        #expect(output[frames(milliseconds: 400)] == 0.001)
         #expect(output.last == 0)
     }
 

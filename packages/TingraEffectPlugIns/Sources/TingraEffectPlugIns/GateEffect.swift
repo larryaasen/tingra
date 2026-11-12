@@ -194,6 +194,12 @@ public struct GateEffect: AudioEffect {
     /// The hold time in samples.
     private var holdSamples = 0
 
+    /// The sample rate ``holdSamples`` and ``holdRemaining`` count at, kept
+    /// apart from ``computedForSampleRate`` (which a parameter change
+    /// clears) so a hold already running can be carried into a new hold
+    /// length or a new rate by how long it has run.
+    private var holdSampleRate: Double = 0
+
     /// The detector's peak envelope — carried from one block to the next.
     private var detector: Float = 0
 
@@ -205,8 +211,14 @@ public struct GateEffect: AudioEffect {
     private var holdRemaining = 0
 
     /// The gain the gate is applying right now — carried from one block
-    /// to the next. A gate starts closed.
+    /// to the next. A gate starts closed, at its floor (``hasStarted``).
     private var gain: Double = 0
+
+    /// Whether the gate has processed a block. The first block starts the
+    /// gain at the closed gate's floor as configured by then, so a gate
+    /// with a range above the bottom does not fade in from silence — at a
+    /// range of 0 dB it passes every sample untouched from the first.
+    private var hasStarted = false
 
     /// Creates the gate at its default settings, closed.
     public init() {}
@@ -247,10 +259,19 @@ public struct GateEffect: AudioEffect {
             releaseCoefficient = LinkedDynamics.smoothingCoefficient(milliseconds: release, sampleRate: sampleRate)
             detectorCoefficient = Float(
                 LinkedDynamics.smoothingCoefficient(milliseconds: Self.detectorRelease, sampleRate: sampleRate))
+            // A new hold length applies to a hold already running by how
+            // long it has run: what is left is the new length less the time
+            // already held, so a hold shortened to under that closes at once.
+            let heldSamples = Double(max(0, holdSamples - holdRemaining))
+            let heldSeconds = holdSampleRate > 0 ? heldSamples / holdSampleRate : 0
             holdSamples = sampleRate > 0 ? Int((hold / 1000 * sampleRate).rounded()) : 0
-            // A shorter hold applies to a hold already running.
-            holdRemaining = min(holdRemaining, holdSamples)
+            holdRemaining = max(0, holdSamples - Int((heldSeconds * max(0, sampleRate)).rounded()))
+            holdSampleRate = sampleRate
             computedForSampleRate = sampleRate
+        }
+        if !hasStarted {
+            gain = floorGain
+            hasStarted = true
         }
         var state = self
         LinkedDynamics.apply(to: &channels) { level in
