@@ -36,6 +36,9 @@ struct LibraryItem: Identifiable, Equatable {
         /// A movie.
         case movie
 
+        /// An audio file.
+        case audio
+
         /// A text or Markdown document.
         case text
 
@@ -47,6 +50,7 @@ struct LibraryItem: Identifiable, Equatable {
             switch self {
             case .image: "photo"
             case .movie: "film"
+            case .audio: "music.note"
             case .text: "doc.text"
             case .other: "doc"
             }
@@ -71,7 +75,7 @@ struct LibraryItem: Identifiable, Equatable {
     /// The file's size in bytes, if the file system said.
     let byteCount: Int64?
 
-    /// A movie's length in seconds, if known.
+    /// A movie's or an audio file's length in seconds, if known.
     let duration: TimeInterval?
 
     /// Whether the file is present and its input registered — a missing
@@ -158,15 +162,17 @@ struct LibraryItem: Identifiable, Equatable {
             includesTime: mediaID == nil)
     }
 
-    /// The kind a content type implies: movies before images (a movie type
-    /// never conforms to `image`, but the order states the priority), then
-    /// text, then anything else — including no type at all.
+    /// The kind a content type implies: movies, then audio files, before
+    /// images (none of those types conforms to another's family, but the
+    /// order states the priority), then text, then anything else —
+    /// including no type at all.
     ///
     /// - Parameter contentType: The file's type, or nil when unknown.
     /// - Returns: The kind.
     nonisolated static func kind(of contentType: UTType?) -> Kind {
         guard let contentType else { return .other }
         if contentType.conforms(to: .movie) { return .movie }
+        if contentType.conforms(to: .audio) { return .audio }
         if contentType.conforms(to: .image) { return .image }
         if contentType.conforms(to: .plainText) { return .text }
         return .other

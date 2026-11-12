@@ -39,8 +39,8 @@ extension MediaRegistryError: CustomStringConvertible {
         case .unsupportedFile(let url):
             return """
                 No media plug-in opens '\(url.lastPathComponent)': its content type matches none of \
-                the registered providers. Add a file of a supported type (an image, a movie, or a \
-                text or Markdown document), or install a plug-in that opens this one.
+                the registered providers. Add a file of a supported type (an image, a movie, an \
+                audio file, or a text or Markdown document), or install a plug-in that opens this one.
                 """
         case .notAFileURL(let url):
             return """

@@ -10,8 +10,8 @@
 import TingraEventBus
 import TingraPlugInKit
 
-/// The first-party media plug-in: registers the still image, movie, and
-/// text providers through the host's media seam (ARCHITECTURE.md, "Media
+/// The first-party media plug-in: registers the still image, movie, audio
+/// file, and text providers through the host's media seam (ARCHITECTURE.md, "Media
 /// inputs and the Library's Media tab"). Every further content type is one
 /// more ``MediaInputProvider``, first- or third-party.
 public struct MediaPlugIn: PlugIn {
@@ -30,7 +30,7 @@ public struct MediaPlugIn: PlugIn {
     /// Creates the plug-in.
     public init() {}
 
-    /// Registers the three providers, reporting each as a `trace` event.
+    /// Registers the four providers, reporting each as a `trace` event.
     ///
     /// Throws if the registry rejects one (a duplicate identifier, or a
     /// host with no media registry); the host's loader reports that as an
@@ -41,6 +41,7 @@ public struct MediaPlugIn: PlugIn {
         let providers: [any MediaInputProvider] = [
             ImageMediaProvider(clock: context.clock, eventBus: context.eventBus),
             MovieMediaProvider(clock: context.clock, eventBus: context.eventBus),
+            AudioMediaProvider(clock: context.clock, eventBus: context.eventBus),
             TextMediaProvider(clock: context.clock, eventBus: context.eventBus),
         ]
         var registered: [MediaProviderID] = []

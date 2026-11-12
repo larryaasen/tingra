@@ -14,7 +14,7 @@ A project is the saved file for an entire show. A project contains presets. A pr
 
 **Generator** — an input that synthesizes its content rather than capturing it: test patterns, color bars, solids, counters, placeholder frames.
 
-**Media** — an input whose content comes from a file the operator added to the project rather than from a device or a generator: a still image, a video file, a text or Markdown document. Each media type is its own plug-in, so a new kind of content is one more plug-in, not a change to the engine (planned at roadmap step 10).
+**Media** — an input whose content comes from a file the operator added to the project rather than from a device or a generator: a still image, a video file, an audio file, a text or Markdown document. Each media type is its own plug-in, so a new kind of content is one more plug-in, not a change to the engine (planned at roadmap step 10).
 
 **Layer** — one positioned element inside a shot: an input, a title, or an overlay, with its own transform (position, scale, crop) and effects. Layers stack in a defined order.
 

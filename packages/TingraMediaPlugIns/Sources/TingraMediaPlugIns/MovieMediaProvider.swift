@@ -11,7 +11,6 @@ import AVFoundation
 import CoreMedia
 import CoreVideo
 import Foundation
-import Synchronization
 import TingraEventBus
 import TingraPlugInKit
 import UniformTypeIdentifiers
@@ -90,36 +89,9 @@ public final class MovieInput: Input, Sendable {
     /// Picture, and sound when the file has any (see the type note).
     public let media: InputMedia = [.video, .audio]
 
-    /// The movie file.
-    private let url: URL
-
-    /// The clock that paces playback and stamps frames.
-    private let clock: any EngineClock
-
-    /// The event bus, for reporting a read problem.
-    private let eventBus: EventBus?
-
-    /// The live consumers and the playback task, behind one lock.
-    private struct State {
-        /// The frame stream's continuation, if a consumer holds it.
-        var video: AsyncStream<CapturedFrame>.Continuation?
-
-        /// The audio stream's continuation, if a consumer holds it.
-        var audio: AsyncStream<CapturedAudio>.Continuation?
-
-        /// The playback task, while started.
-        var playback: Task<Void, Never>?
-    }
-
-    /// The state behind its lock, in a reference the playback task can
-    /// capture — a `Mutex` itself cannot be copied out of the input.
-    private final class Consumers: Sendable {
-        /// The state behind its lock.
-        let state = Mutex(State())
-    }
-
-    /// The live consumers and the playback task.
-    private let consumers = Consumers()
+    /// The clock-paced, looping playback this input shares with
+    /// ``AudioFileInput`` (``MediaFilePlayback``).
+    private let playback: MediaFilePlayback
 
     /// Creates a movie input for the file.
     ///
@@ -130,10 +102,8 @@ public final class MovieInput: Input, Sendable {
     ///   - eventBus: The host's event bus, or nil for no diagnostics.
     public init(id: InputID, url: URL, clock: any EngineClock, eventBus: EventBus? = nil) {
         self.id = id
-        self.url = url
         self.name = url.lastPathComponent
-        self.clock = clock
-        self.eventBus = eventBus
+        self.playback = MediaFilePlayback(id: id, url: url, content: .movie, clock: clock, eventBus: eventBus)
     }
 
     /// Opens the file, checks it has a video track, and starts the clock-
@@ -145,167 +115,35 @@ public final class MovieInput: Input, Sendable {
     ///   will not read it. Reported as a `media.decode` error event before
     ///   it propagates.
     public func start() async throws {
-        guard consumers.state.withLock({ $0.playback == nil }) else { return }
-        let description: MovieDescription
-        do {
-            description = try await MovieDescription.load(url)
-        } catch {
-            eventBus?.error(
-                "media.decode",
-                domain: MediaPlugIn.domain,
-                params: [
-                    "id": .string(id.rawValue),
-                    "file": .string(url.lastPathComponent),
-                    "message": .string(error.description),
-                ]
-            )
-            throw error
-        }
-        // The task captures the consumers, not the input: a deallocated
-        // input's streams are already finished, and the task ends with its
-        // clock or its cancellation.
-        let consumers = self.consumers
-        // The reader's sample reads block (`DedicatedThreadExecutor`), so the
-        // task runs on a thread of its own rather than the cooperative pool;
-        // the thread exits when playback ends.
-        let executor = DedicatedThreadExecutor(name: "com.moonwink.tingra.media.movie")
-        let task = Task(executorPreference: executor) { [url, clock, eventBus, id] in
-            defer { executor.shutDown() }
-            await Self.play(url, description, clock: clock, eventBus: eventBus, inputID: id) { frame in
-                consumers.state.withLock { _ = $0.video?.yield(frame) }
-            } deliverAudio: { audio in
-                consumers.state.withLock { _ = $0.audio?.yield(audio) }
-            }
-        }
-        consumers.state.withLock { $0.playback = task }
+        try await playback.start()
     }
 
     /// The stream of frames, one per tick while the file plays. Finishes any
     /// previous consumer's stream first.
     public func frames() -> AsyncStream<CapturedFrame> {
-        let (stream, continuation) = AsyncStream<CapturedFrame>.makeStream()
-        consumers.state.withLock { state in
-            state.video?.finish()
-            state.video = continuation
-        }
-        return stream
+        playback.frames()
     }
 
     /// The stream of audio blocks, as the file's timeline reaches them.
     /// Finishes any previous consumer's stream first.
     public func audio() -> AsyncStream<CapturedAudio> {
-        let (stream, continuation) = AsyncStream<CapturedAudio>.makeStream()
-        consumers.state.withLock { state in
-            state.audio?.finish()
-            state.audio = continuation
-        }
-        return stream
+        playback.audio()
     }
 
     /// Stops playback and finishes both streams. Safe to call more than
     /// once.
     public func stop() async {
-        let task = consumers.state.withLock { state in
-            let task = state.playback
-            state.playback = nil
-            state.video?.finish()
-            state.video = nil
-            state.audio?.finish()
-            state.audio = nil
-            return task
-        }
-        task?.cancel()
-        await task?.value
-    }
-
-    /// The playback loop: one pass per clock tick, reading every sample
-    /// due by the tick's position in the file, delivering the latest video
-    /// frame stamped with the tick time and every audio block retimed onto
-    /// the master clock, and opening a fresh reader at the file's start
-    /// whenever the current one runs out. The wrap happens **within the
-    /// tick** that finds the reader exhausted with nothing to show, so a
-    /// loop costs no blank tick; a file whose fresh reader is exhausted at
-    /// once (no samples at all) ends playback rather than spinning.
-    ///
-    /// The reader lives entirely inside this task, per the frame ownership
-    /// rule; frames leave it only through the delivery closures. A reader
-    /// that cannot be opened mid-loop (the file deleted while playing) ends
-    /// playback with a `media.decode` error — the layer then holds its last
-    /// frame, the disconnected-device semantic.
-    private static func play(
-        _ url: URL,
-        _ description: MovieDescription,
-        clock: any EngineClock,
-        eventBus: EventBus?,
-        inputID: InputID,
-        deliverFrame: @Sendable (CapturedFrame) -> Void,
-        deliverAudio: @Sendable (CapturedAudio) -> Void
-    ) async {
-        let tickRate = min(description.frameRate, maximumTickRate)
-        let interval = CMTime(value: 1, timescale: CMTimeScale(tickRate.rounded()))
-        var reader: MovieReader?
-        var startTime: CMTime?
-        var loopOffset = CMTime.zero
-        ticking: for await tickTime in clock.tick(every: interval) {
-            guard !Task.isCancelled else { break }
-            let start = startTime ?? tickTime
-            startTime = start
-            var opened = 0
-            while true {
-                if reader == nil {
-                    do {
-                        reader = try await MovieReader(url: url, description: description)
-                        opened += 1
-                    } catch {
-                        eventBus?.error(
-                            "media.decode",
-                            domain: MediaPlugIn.domain,
-                            params: [
-                                "id": .string(inputID.rawValue),
-                                "file": .string(url.lastPathComponent),
-                                "message": .string(error.description),
-                            ]
-                        )
-                        break ticking
-                    }
-                }
-                guard let current = reader else { break ticking }
-                // One autorelease pool per pull: the reader's sample buffers
-                // come out of AVFoundation, and a loop that has fallen
-                // behind always finds its next tick already waiting, so it
-                // never suspends and nothing else drains the thread's pool —
-                // every decoded frame's `IOSurface` would stay alive (the
-                // compositor's tick loop leaked exactly this way).
-                let deliveredFrame = autoreleasepool { () -> Bool in
-                    let position = CMTimeSubtract(CMTimeSubtract(tickTime, start), loopOffset)
-                    let base = CMTimeAdd(start, loopOffset)
-                    for block in current.audio(upTo: position) {
-                        if let retimed = CapturedAudio(sampleBuffer: block).rebased(by: CMTimeSubtract(.zero, base)) {
-                            deliverAudio(retimed)
-                        }
-                    }
-                    guard let pixelBuffer = current.latestVideoFrame(upTo: position) else { return false }
-                    MediaPixelBuffer.tagBT709IfUntagged(pixelBuffer)
-                    deliverFrame(CapturedFrame(pixelBuffer: pixelBuffer, presentationTime: tickTime))
-                    return true
-                }
-                if deliveredFrame { break }
-                // Nothing due and nothing left: loop, unless the reader just
-                // opened — a file with no samples would otherwise spin.
-                guard current.isAtEnd, opened < 2 else { break }
-                loopOffset = CMTimeAdd(loopOffset, current.duration)
-                reader = nil
-            }
-        }
+        await playback.stop()
     }
 }
 
-/// What ``MovieInput`` learns about a file at start and hands its playback
-/// task: the tracks and the timing.
+/// What a file input (``MovieInput``, ``AudioFileInput``) learns about a
+/// file at start and hands its playback task: the tracks and the timing.
 struct MovieDescription: Sendable {
     /// The file's video track, by identifier — a track object is not
-    /// `Sendable`, so each reader resolves its own.
-    let videoTrackID: CMPersistentTrackID
+    /// `Sendable`, so each reader resolves its own. Nil for a file played
+    /// for its sound alone.
+    let videoTrackID: CMPersistentTrackID?
 
     /// The file's first audio track, by identifier, if any.
     let audioTrackID: CMPersistentTrackID?
@@ -313,13 +151,26 @@ struct MovieDescription: Sendable {
     /// The file's duration.
     let duration: CMTime
 
-    /// The video track's nominal frame rate, or the fallback.
+    /// The video track's nominal frame rate, or the fallback; for a file
+    /// played for its sound alone, the cadence its blocks are delivered at
+    /// (``AudioFileInput/deliveryRate``).
     let frameRate: Double
 
     /// Loads the file's tracks and duration.
     ///
-    /// - Throws: A ``MediaInputError`` naming the problem.
-    static func load(_ url: URL) async throws(MediaInputError) -> MovieDescription {
+    /// - Parameters:
+    ///   - url: The file.
+    ///   - content: What the file is played for, which decides the track it
+    ///     must hold: a movie its picture, an audio file its sound.
+    /// - Throws: A ``MediaInputError`` naming the problem:
+    ///   ``MediaInputError/fileUnreadable(_:)`` for a file that cannot be
+    ///   opened, ``MediaInputError/readerRefused(_:reason:)`` when
+    ///   AVFoundation will not read it, ``MediaInputError/noVideoTrack(_:)``
+    ///   for a movie without picture, and
+    ///   ``MediaInputError/noAudioTrack(_:)`` or
+    ///   ``MediaInputError/audioEmpty(_:)`` for an audio file with no sound
+    ///   track or no samples in it.
+    static func load(_ url: URL, content: MediaFileContent) async throws(MediaInputError) -> MovieDescription {
         guard FileManager.default.isReadableFile(atPath: url.path(percentEncoded: false)) else {
             throw .fileUnreadable(url)
         }
@@ -334,6 +185,18 @@ struct MovieDescription: Sendable {
         } catch {
             throw .readerRefused(url, reason: error.localizedDescription)
         }
+        if content == .sound {
+            // A picture track in an audio file (cover art some containers
+            // carry as video) is not played: the input declares sound only.
+            guard let audioTrack = audioTracks.first else { throw .noAudioTrack(url) }
+            guard duration.isNumeric, duration > .zero else { throw .audioEmpty(url) }
+            return MovieDescription(
+                videoTrackID: nil,
+                audioTrackID: audioTrack.trackID,
+                duration: duration,
+                frameRate: AudioFileInput.deliveryRate
+            )
+        }
         guard let videoTrack = videoTracks.first else { throw .noVideoTrack(url) }
         let nominal = (try? await videoTrack.load(.nominalFrameRate)) ?? 0
         return MovieDescription(
@@ -345,10 +208,11 @@ struct MovieDescription: Sendable {
     }
 }
 
-/// One pass through a movie file: an `AVAssetReader` with a video output
-/// in the working pixel format and, when the file has sound, an audio
-/// output in the mixer's native float32 deinterleaved form, each read one
-/// sample ahead so a tick can ask "everything due by now".
+/// One pass through a movie or audio file: an `AVAssetReader` with, when
+/// the file is played for its picture, a video output in the working pixel
+/// format and, when the file has sound, an audio output in the mixer's
+/// native float32 deinterleaved form, each read one sample ahead so a tick
+/// can ask "everything due by now".
 ///
 /// Not `Sendable` by design: it lives inside the playback task, the same
 /// rule as the generators' renderers.
@@ -356,8 +220,8 @@ final class MovieReader {
     /// The reader.
     private let reader: AVAssetReader
 
-    /// The video output.
-    private let video: AVAssetReaderTrackOutput
+    /// The video output, when the file is played for its picture.
+    private let video: AVAssetReaderTrackOutput?
 
     /// The audio output, when the file has an audio track.
     private let audio: AVAssetReaderTrackOutput?
@@ -368,15 +232,35 @@ final class MovieReader {
     /// The next audio sample not yet due, read ahead.
     private var pendingAudio: CMSampleBuffer?
 
-    /// Whether the video output has delivered its last sample.
-    private var videoEnded = false
+    /// Whether the video output has delivered its last sample (true at once
+    /// for a file played for its sound alone).
+    private var videoEnded: Bool
+
+    /// Where the audio read so far ends on the file's timeline — the end of
+    /// the latest audio sample read — or invalid before the first.
+    private var audioEnd = CMTime.invalid
 
     /// Whether the audio output has delivered its last sample (true at once
     /// for a file without sound).
     private var audioEnded: Bool
 
-    /// The file's duration, added to the loop offset when this pass ends.
-    let duration: CMTime
+    /// The file's duration as its asset reports it.
+    private let assetDuration: CMTime
+
+    /// Whether this pass reads a picture.
+    var hasVideo: Bool { video != nil }
+
+    /// How long this pass ran, added to the loop offset when it ends. A
+    /// movie's is the file's duration. An audio file's is **where its last
+    /// decoded sample ended**: a compressed file's reported duration is an
+    /// estimate that can sit a few milliseconds either side of what the
+    /// decoder hands over, and looping on the measured end puts the next
+    /// pass's first block exactly where this pass's last one stopped —
+    /// timestamps that neither overlap nor gap.
+    var duration: CMTime {
+        guard !hasVideo, audioEnd.isNumeric, audioEnd > .zero else { return assetDuration }
+        return audioEnd
+    }
 
     /// Opens a reader at the file's start.
     ///
@@ -386,14 +270,18 @@ final class MovieReader {
     ///   at start is gone (the file replaced while playing).
     init(url: URL, description: MovieDescription) async throws(MediaInputError) {
         let asset = AVURLAsset(url: url)
-        let videoTrack: AVAssetTrack
+        let videoTrack: AVAssetTrack?
         let audioTrack: AVAssetTrack?
         do {
             reader = try AVAssetReader(asset: asset)
-            guard let track = try await asset.loadTrack(withTrackID: description.videoTrackID) else {
-                throw MediaInputError.noVideoTrack(url)
+            if let videoID = description.videoTrackID {
+                guard let track = try await asset.loadTrack(withTrackID: videoID) else {
+                    throw MediaInputError.noVideoTrack(url)
+                }
+                videoTrack = track
+            } else {
+                videoTrack = nil
             }
-            videoTrack = track
             if let audioID = description.audioTrackID {
                 audioTrack = try await asset.loadTrack(withTrackID: audioID)
             } else {
@@ -404,15 +292,22 @@ final class MovieReader {
         } catch {
             throw .readerRefused(url, reason: error.localizedDescription)
         }
-        video = AVAssetReaderTrackOutput(
-            track: videoTrack,
-            outputSettings: [
-                kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
-                kCVPixelBufferIOSurfacePropertiesKey as String: [String: Any](),
-            ]
-        )
-        video.alwaysCopiesSampleData = false
-        reader.add(video)
+        if let track = videoTrack {
+            let output = AVAssetReaderTrackOutput(
+                track: track,
+                outputSettings: [
+                    kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+                    kCVPixelBufferIOSurfacePropertiesKey as String: [String: Any](),
+                ]
+            )
+            output.alwaysCopiesSampleData = false
+            reader.add(output)
+            video = output
+            videoEnded = false
+        } else {
+            video = nil
+            videoEnded = true
+        }
         if let track = audioTrack {
             let output = AVAssetReaderTrackOutput(
                 track: track,
@@ -432,7 +327,7 @@ final class MovieReader {
             audio = nil
             audioEnded = true
         }
-        duration = description.duration
+        assetDuration = description.duration
         guard reader.startReading() else {
             throw .readerRefused(url, reason: reader.error?.localizedDescription ?? "the reader would not start")
         }
@@ -471,7 +366,7 @@ final class MovieReader {
     /// The pending video sample, reading one ahead when there is none.
     private func nextVideo() -> CMSampleBuffer? {
         if let pendingVideo { return pendingVideo }
-        guard !videoEnded, let sample = video.copyNextSampleBuffer() else {
+        guard !videoEnded, let video, let sample = video.copyNextSampleBuffer() else {
             videoEnded = true
             return nil
         }
@@ -487,6 +382,8 @@ final class MovieReader {
             return nil
         }
         pendingAudio = sample
+        audioEnd = CMTimeAdd(
+            CMSampleBufferGetPresentationTimeStamp(sample), CMSampleBufferGetDuration(sample))
         return sample
     }
 }

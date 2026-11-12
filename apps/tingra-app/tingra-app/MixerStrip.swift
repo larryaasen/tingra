@@ -75,14 +75,22 @@ struct MixerStrip: Identifiable, Equatable {
     var isFollowingProgram: Bool { followsProgram ?? false }
 
     /// The audio-follows-video default for an input of a given provenance:
-    /// **on for media**, off for everything else. A clip's sound comes and
-    /// goes with its picture; a microphone stays live across takes, and a
-    /// generator is a test signal the operator patched on purpose.
+    /// **on for media with a picture**, off for everything else. A clip's
+    /// sound comes and goes with its picture; a microphone stays live across
+    /// takes, and a generator is a test signal the operator patched on
+    /// purpose. An **audio file** is media with no picture: it can never be
+    /// in a shot, so a strip that followed video would never reach the
+    /// program mix — music plays under the show whatever shot is up
+    /// (ARCHITECTURE.md, "Audio files as media inputs").
     ///
-    /// - Parameter kind: The input's provenance.
+    /// - Parameters:
+    ///   - kind: The input's provenance.
+    ///   - hasPicture: Whether the input also produces video (true by
+    ///     default — the question only matters for media, and every media
+    ///     input but an audio file has one).
     /// - Returns: Whether a new strip for it follows video.
-    static func defaultFollowsProgram(for kind: InputKind) -> Bool {
-        kind == .media
+    static func defaultFollowsProgram(for kind: InputKind, hasPicture: Bool = true) -> Bool {
+        kind == .media && hasPicture
     }
 
     /// Whether the strip reaches the program mix as far as audio follows
@@ -159,18 +167,23 @@ struct MixerStrip: Identifiable, Equatable {
 
     /// The strip an operator's **Add Channel** makes for an input: muted at
     /// unity, centered, with no effect chain, and audio follows video set
-    /// explicitly by the input's kind (``defaultFollowsProgram(for:)``) —
-    /// on for a video file, off for a microphone or a generator. Muted because adding a channel
+    /// explicitly by the input's kind (``defaultFollowsProgram(for:hasPicture:)``) —
+    /// on for a video file, off for a microphone, a generator, or an audio
+    /// file. Muted because adding a channel
     /// is a patch, not opening the fader — an operator adding a microphone
     /// mid-show must never put it on air by doing so; the mute is the one
     /// step that does.
     ///
-    /// - Parameter input: The audio input being added.
+    /// - Parameters:
+    ///   - input: The audio input being added.
+    ///   - hasPicture: Whether the input also produces video (true by
+    ///     default; false for an audio file, whose strip must not follow a
+    ///     picture it does not have).
     /// - Returns: The new strip.
-    static func added(_ input: EngineModel.InputChoice) -> MixerStrip {
+    static func added(_ input: EngineModel.InputChoice, hasPicture: Bool = true) -> MixerStrip {
         MixerStrip(
             id: input.id, name: input.name, level: 1, pan: 0, isMuted: true,
-            followsProgram: defaultFollowsProgram(for: input.kind))
+            followsProgram: defaultFollowsProgram(for: input.kind, hasPicture: hasPicture))
     }
 
     /// The strip placing an input in a shot adds, when that input is a

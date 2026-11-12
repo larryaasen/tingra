@@ -180,6 +180,77 @@ struct MediaFixtures {
         return url
     }
 
+    /// The containers ``writeAudio(_:seconds:sampleRate:channels:name:)``
+    /// writes.
+    enum AudioFormat {
+        /// 16-bit integer linear PCM in a `.wav`: sample-exact, so a test
+        /// can count frames.
+        case wav
+
+        /// AAC in an `.m4a`: a compressed file, whose decoded length is
+        /// only close to what was written.
+        case m4a
+
+        /// The file name the fixture takes by default.
+        var defaultName: String {
+            switch self {
+            case .wav: "music.wav"
+            case .m4a: "music.m4a"
+            }
+        }
+    }
+
+    /// Writes an audio file holding a 440 Hz sine on every channel.
+    ///
+    /// - Parameters:
+    ///   - format: The container and codec.
+    ///   - seconds: How long the sound runs; zero writes a file with a
+    ///     header and no samples.
+    ///   - sampleRate: The file's sample rate.
+    ///   - channels: The file's channel count.
+    ///   - name: The file name, or nil for the format's default.
+    /// - Returns: The file's URL.
+    func writeAudio(
+        _ format: AudioFormat = .wav, seconds: Double = 1, sampleRate: Double = 44100, channels: UInt32 = 2,
+        name: String? = nil
+    ) throws -> URL {
+        let url = folder.appending(path: name ?? format.defaultName)
+        let settings: [String: Any] =
+            switch format {
+            case .wav:
+                [
+                    AVFormatIDKey: kAudioFormatLinearPCM,
+                    AVSampleRateKey: sampleRate,
+                    AVNumberOfChannelsKey: channels,
+                    AVLinearPCMBitDepthKey: 16,
+                    AVLinearPCMIsFloatKey: false,
+                    AVLinearPCMIsBigEndianKey: false,
+                ]
+            case .m4a:
+                [
+                    AVFormatIDKey: kAudioFormatMPEG4AAC,
+                    AVSampleRateKey: sampleRate,
+                    AVNumberOfChannelsKey: channels,
+                ]
+            }
+        let file = try AVAudioFile(forWriting: url, settings: settings)
+        // Closed before returning either way, so the reader under test
+        // opens a finished file.
+        defer { file.close() }
+        let frames = AVAudioFrameCount(seconds * sampleRate)
+        guard frames > 0 else { return url }
+        let buffer = try #require(AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: frames))
+        buffer.frameLength = frames
+        let data = try #require(buffer.floatChannelData)
+        for channel in 0..<Int(file.processingFormat.channelCount) {
+            for frame in 0..<Int(frames) {
+                data[channel][frame] = Float(sin(2 * Double.pi * 440 * Double(frame) / sampleRate) * 0.25)
+            }
+        }
+        try file.write(from: buffer)
+        return url
+    }
+
     /// The gray-level step between successive fixture frames.
     static let grayStep = 20
 

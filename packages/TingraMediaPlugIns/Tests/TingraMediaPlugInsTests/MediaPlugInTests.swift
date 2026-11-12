@@ -62,7 +62,7 @@ struct MediaPlugInTests {
             effects: NoEffects(), tools: NoTools(), media: media)
     }
 
-    @Test("Activation registers the image, movie, and text providers, in that order")
+    @Test("Activation registers the image, movie, audio, and text providers, in that order")
     func activationRegistersProviders() async throws {
         let registry = RecordingMediaRegistry()
         let plugIn = MediaPlugIn()
@@ -71,7 +71,8 @@ struct MediaPlugInTests {
         try await plugIn.activate(in: context(media: registry))
         #expect(
             await registry.registered == [
-                ImageMediaProvider.providerID, MovieMediaProvider.providerID, TextMediaProvider.providerID,
+                ImageMediaProvider.providerID, MovieMediaProvider.providerID, AudioMediaProvider.providerID,
+                TextMediaProvider.providerID,
             ])
     }
 
@@ -79,6 +80,15 @@ struct MediaPlugInTests {
     func activationRollsBack() async throws {
         let registry = RecordingMediaRegistry(refusing: MovieMediaProvider.providerID)
         await #expect(throws: MediaRegisteringError.self) {
+            try await MediaPlugIn().activate(in: context(media: registry))
+        }
+        #expect(await registry.registered.isEmpty)
+    }
+
+    @Test("A refused audio provider rolls back the image and movie providers registered before it")
+    func activationRollsBackFromTheAudioProvider() async throws {
+        let registry = RecordingMediaRegistry(refusing: AudioMediaProvider.providerID)
+        await #expect(throws: MediaRegisteringError.registryUnavailable(AudioMediaProvider.providerID)) {
             try await MediaPlugIn().activate(in: context(media: registry))
         }
         #expect(await registry.registered.isEmpty)
