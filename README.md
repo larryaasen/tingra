@@ -302,10 +302,10 @@ with a synthetic clock and scripted inputs (see [ARCHITECTURE.md](docs/ARCHITECT
 
 The first party effect plug-ins: the audio and video staples behind the
 shared effect seam (see [ARCHITECTURE.md](docs/ARCHITECTURE.md), "The effect
-seam", "Audio effect chains", "Per-layer video effects"). Pure DSP and Core
-Image over the seam's native currencies, so the package depends on the
-protocol package alone and is fully deterministic in tests — no hardware,
-no TCC.
+seam", "Audio effect chains", "Dynamics effects", "Per-layer video
+effects"). Pure DSP and Core Image over the seam's native currencies, so the
+package depends on the protocol package alone and is fully deterministic in
+tests — no hardware, no TCC.
 
 **Types:** [`TingraEffectPlugIns` in TYPES.md](docs/TYPES.md#packagestingraeffectplugins)
 

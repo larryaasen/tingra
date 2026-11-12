@@ -274,6 +274,12 @@ internal surface a reader needs to navigate the target instead.
 - `HighPassEffect` — a second-order Butterworth high-pass rumble filter.
 - `LowPassEffectProvider` — registers the low-pass effect.
 - `LowPassEffect` — a second-order Butterworth low-pass filter.
+- `GateEffectProvider` — registers the gate effect.
+- `GateEffect` — a noise gate with hysteresis and a hold time.
+- `CompressorEffectProvider` — registers the compressor effect.
+- `CompressorEffect` — a soft-knee compressor with makeup gain.
+- `LimiterEffectProvider` — registers the limiter effect.
+- `LimiterEffect` — a no-latency peak limiter holding a strip under a ceiling.
 - `ColorAdjustEffectProvider` — registers the color adjust effect.
 - `ColorAdjustEffect` — a layer's brightness, contrast, and saturation trim.
 - `BlurEffectProvider` — registers the blur effect.

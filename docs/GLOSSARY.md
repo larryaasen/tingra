@@ -34,7 +34,7 @@ A project is the saved file for an entire show. A project contains presets. A pr
 
 **Project** — the saved document for a whole show: every preset, destination configuration, and setting needed to reopen the show exactly as it was. Tingra saves a project as a `.tingraproject` file (JSON inside). The app keeps one project open at a time and autosaves it; the File menu creates, opens, and saves it as a new file, and a launch reopens the project that was open last (the default project on a fresh install).
 
-**Effect** — a processing step applied to media in the engine. A **video effect** applies to a layer, a shot, or the program: color adjustment, blur, a frame (rounded corners and a border), a crop, keying, stylization. An **audio effect** applies to a channel strip: gain, filtering, and (later) EQ and compression. **Filter** is the interchangeable term for a single video processing unit; an effect may chain several filters. Effects are plug-ins, so first- and third-party effects register through one seam.
+**Effect** — a processing step applied to media in the engine. A **video effect** applies to a layer, a shot, or the program: color adjustment, blur, a frame (rounded corners and a border), a crop, keying, stylization. An **audio effect** applies to a channel strip: gain, filtering, the dynamics effects (gate, compressor, limiter), and (later) EQ. **Filter** is the interchangeable term for a single video processing unit; an effect may chain several filters. Effects are plug-ins, so first- and third-party effects register through one seam.
 
 **Fader** — a channel strip's or the monitor's level control: a vertical slider read in decibels, with silence at its bottom stop and unity (0 dB) three quarters of the way up its travel, where a double-click returns it. A strip's fader reaches +6 dB; the monitor's tops out at unity, since it only scales what the operator hears. The stored value is the linear gain the fader stands for, never the decibel figure.
 
@@ -79,6 +79,12 @@ A project is the saved file for an entire show. A project contains presets. A pr
 **Mixer** — the audio surface of the engine: combines the audio inputs the operator has added to it, one channel strip each, into the program mix. A connected input is not on the mixer until it is added.
 
 **Channel strip** — one input's slot in the mixer: its level, mute, pan, meter, routing, and audio effect chain.
+
+**Gate** — an audio effect that turns a channel strip down while its signal is under a threshold, so a microphone's room noise is gone between sentences. It opens at the threshold, closes a little under it once the signal has stayed there for the hold time, and a closed gate turns the signal down by its range.
+
+**Compressor** — an audio effect that evens out a channel strip's level: what rises over the threshold is turned down by the ratio, and makeup gain raises the result. It is the audio staple, not **compression** (Delivery), which is encoding; the effect is always called a compressor, never "compression".
+
+**Limiter** — an audio effect that holds a channel strip's signal at or under a ceiling. It limits the strip it sits on: its chain runs before the fader, and it does not limit the program mix, which is the sum of every strip.
 
 **Audio follows video (AFV)** — a channel strip setting under which the strip feeds the program mix only while its input is in the program shot: staged on preview, or on no bus at all, it contributes nothing, and a take brings its sound up with its picture — at once on a cut, crossfaded over a transition's duration. Mute still wins. On by default for a video file's sound, off for microphones and generators, so a clip's sound comes and goes with its picture while a microphone stays live across takes. The strip's device keeps running and its meter keeps reading while it is off program; only its contribution to the mix is gated.
 

@@ -11,9 +11,10 @@
 import PackageDescription
 
 // The first-party effect plug-ins (ARCHITECTURE.md, "The effect seam"):
-// the audio staples — gain and the high-/low-pass filters — as thin
-// conformances against the shared effect seam; per-layer video effects
-// join in the seam's second iteration. Pure DSP over the seam's native
+// the audio staples — gain, the high-/low-pass filters, and the gate,
+// compressor, and limiter — as thin conformances against the shared
+// effect seam; per-layer video effects join in the seam's second
+// iteration. Pure DSP over the seam's native
 // currencies, fully deterministic in tests — no hardware, no TCC.
 // Registration goes through the EffectRegistering seam, so the package
 // depends on the protocol package alone, never the engine (see

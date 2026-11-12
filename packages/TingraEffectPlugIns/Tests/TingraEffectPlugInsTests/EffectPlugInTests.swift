@@ -94,8 +94,16 @@ struct EffectPlugInTests {
                 GainEffectProvider.effectID,
                 HighPassEffectProvider.effectID,
                 LowPassEffectProvider.effectID,
+                GateEffectProvider.effectID,
+                CompressorEffectProvider.effectID,
+                LimiterEffectProvider.effectID,
             ])
-        #expect(registered.map(\.id.rawValue) == ["gain", "highPass", "lowPass"])
+        #expect(
+            registered.map(\.id.rawValue) == ["gain", "highPass", "lowPass", "gate", "compressor", "limiter"])
+        #expect(
+            registered.map(\.name) == [
+                "Gain", "High-Pass Filter", "Low-Pass Filter", "Gate", "Compressor", "Limiter",
+            ])
 
         let video = registrar.videoProviders.withLock { $0 }
         #expect(
@@ -124,6 +132,39 @@ struct EffectPlugInTests {
         #expect(lowPass.map(\.key) == ["cutoffHertz"])
         #expect(lowPass.first?.defaultValue == 12000)
         #expect(lowPass.first?.scale == .logarithmic)
+
+        let gate = GateEffectProvider().parameters
+        #expect(
+            gate.map(\.key) == [
+                "thresholdDecibels", "rangeDecibels", "attackMilliseconds", "holdMilliseconds",
+                "releaseMilliseconds",
+            ])
+        #expect(gate.map(\.defaultValue) == [-45, -80, 2, 100, 200])
+        #expect(gate.map(\.unit) == ["dB", "dB", "ms", "ms", "ms"])
+        #expect(gate.map(\.scale) == [.linear, .linear, .logarithmic, .linear, .logarithmic])
+
+        let compressor = CompressorEffectProvider().parameters
+        #expect(
+            compressor.map(\.key) == [
+                "thresholdDecibels", "ratio", "attackMilliseconds", "releaseMilliseconds", "kneeDecibels",
+                "makeupDecibels",
+            ])
+        #expect(compressor.map(\.defaultValue) == [-18, 3, 10, 150, 6, 0])
+        // The ratio is unitless, so a host shows its fraction digit.
+        #expect(compressor.map(\.unit) == ["dB", nil, "ms", "ms", "dB", "dB"])
+        #expect(compressor.map(\.range) == [-60...0, 1...20, 1...200, 10...2000, 0...24, 0...24])
+
+        let limiter = LimiterEffectProvider().parameters
+        #expect(limiter.map(\.key) == ["ceilingDecibels", "releaseMilliseconds"])
+        #expect(limiter.map(\.defaultValue) == [-1, 100])
+        #expect(limiter.map(\.unit) == ["dB", "ms"])
+        #expect(limiter.map(\.range) == [-24...0, 10...1000])
+
+        // Every declared default sits inside its declared range.
+        for parameter in gate + compressor + limiter {
+            #expect(parameter.range.contains(parameter.defaultValue))
+            #expect(parameter.kind == .number)
+        }
 
         let colorAdjust = ColorAdjustEffectProvider().parameters
         #expect(colorAdjust.map(\.key) == ["brightness", "contrast", "saturation"])
