@@ -10,6 +10,7 @@
 import CoreAudio
 import CoreMedia
 import Foundation
+import Synchronization
 import Testing
 import TingraEventBus
 import TingraPlugInKit
@@ -226,6 +227,76 @@ struct AudioFileInputTests {
         }
     }
 
+    @Test("A file shorter than one tick keeps looping: every pass that held sound wraps, however many a tick spans")
+    func fileShorterThanATickKeepsLooping() async throws {
+        let fixtures = try MediaFixtures()
+        defer { fixtures.remove() }
+        // Five milliseconds of sound against ticks a tenth of a second
+        // apart: each tick spans twenty passes of the file.
+        let url = try fixtures.writeAudio(.wav, seconds: 0.005, sampleRate: 44100)
+        let blocks = try await play(url, past: 0.25, tickCount: 10)
+        // Fifty whole passes in a quarter second, each the file's 220 frames.
+        #expect(blocks.count > 50)
+        #expect(blocks.allSatisfy { $0.frames == 220 })
+        for (earlier, later) in zip(blocks, blocks.dropFirst()) {
+            #expect(abs(later.time.seconds - earlier.end.seconds) < 0.0001)
+        }
+    }
+
+    @Test("Ticks the clock skipped across several passes are caught up, and playback goes on looping")
+    func skippedTicksSpanningSeveralLoopsAreCaughtUp() async throws {
+        let fixtures = try MediaFixtures()
+        defer { fixtures.remove() }
+        let url = try fixtures.writeAudio(.wav, seconds: 1, sampleRate: 44100)
+        // One tick at the start, then nothing for 3.5 seconds — three and a
+        // half passes of the file, so the catching-up tick opens the file
+        // more than twice — then ticks a tenth apart again.
+        let tickTimes = [Self.startTime] + (35..<50).map { CMTime(value: CMTimeValue(100 + $0), timescale: 10) }
+        let input = AudioFileInput(id: InputID(rawValue: "a1"), url: url, clock: SyntheticClock(tickTimes: tickTimes))
+        let audio = input.audio()
+        try await input.start()
+        let target = CMTimeAdd(Self.startTime, CMTime(seconds: 4.2, preferredTimescale: 44100))
+        var blocks: [Block] = []
+        for await captured in audio {
+            let block = try Block(captured)
+            blocks.append(block)
+            if block.time >= target { break }
+        }
+        await input.stop()
+        // The first four passes are whole, and the timeline has no hole.
+        for pass in 0..<4 {
+            let from = CMTimeAdd(Self.startTime, CMTime(value: CMTimeValue(pass), timescale: 1))
+            let to = CMTimeAdd(from, CMTime(value: 1, timescale: 1))
+            #expect(blocks.filter { $0.time >= from && $0.time < to }.reduce(0) { $0 + $1.frames } == 44100)
+        }
+        for (earlier, later) in zip(blocks, blocks.dropFirst()) {
+            #expect(abs(later.time.seconds - earlier.end.seconds) < 0.0001)
+        }
+    }
+
+    @Test("A file started before anyone listens waits: its first sample goes out on the tick that finds a consumer")
+    func playbackWaitsForItsConsumer() async throws {
+        let fixtures = try MediaFixtures()
+        defer { fixtures.remove() }
+        let url = try fixtures.writeAudio(.wav, seconds: 1, sampleRate: 44100)
+        // The app's order: the input is started, and the mixer subscribes
+        // only later. Here the subscription lands after two ticks have been
+        // fully handled — the clock is asked for the third only then.
+        let clock = SubscribingClock(tickTimes: Self.ticks(10), beforeTick: 2)
+        let input = AudioFileInput(id: InputID(rawValue: "a1"), url: url, clock: clock)
+        let (handoff, handoffContinuation) = AsyncStream<AsyncStream<CapturedAudio>>.makeStream()
+        clock.action.withLock { $0 = { handoffContinuation.yield(input.audio()) } }
+        try await input.start()
+        var handoffs = handoff.makeAsyncIterator()
+        let audio = try #require(await handoffs.next())
+        var iterator = audio.makeAsyncIterator()
+        let first = try Block(try #require(await iterator.next()))
+        // Two tenths of a second went by unheard; the file's timeline starts
+        // on the third tick, so nothing of its opening was thrown away.
+        #expect(first.time == CMTime(value: 102, timescale: 10))
+        await input.stop()
+    }
+
     @Test("An audio file input produces no frames: its frame stream is already finished")
     func producesNoFrames() async throws {
         let fixtures = try MediaFixtures()
@@ -370,5 +441,46 @@ struct AudioFileInputTests {
         #expect(MediaInputError.noAudioTrack(url) != .audioEmpty(url))
         #expect(MediaInputError.audioEmpty(url) == .audioEmpty(url))
         #expect(MediaInputError.audioEmpty(url) != .audioEmpty(other))
+    }
+}
+
+/// A scripted clock that runs an action just before handing over one chosen
+/// tick. The tick stream is pulled, so the action runs only once every
+/// earlier tick has been fully handled by the playback under test — which
+/// is what lets a test subscribe at a known point on the timeline.
+private final class SubscribingClock: EngineClock, Sendable {
+    /// The times the tick stream yields, in order; it stays open after them.
+    let tickTimes: [CMTime]
+
+    /// The index of the tick the action runs before.
+    let beforeTick: Int
+
+    /// The action, set once the input that needs this clock exists.
+    let action = Mutex<(@Sendable () -> Void)?>(nil)
+
+    /// The index of the next tick to hand over.
+    private let next = Mutex(0)
+
+    /// Creates the clock.
+    init(tickTimes: [CMTime], beforeTick: Int) {
+        self.tickTimes = tickTimes
+        self.beforeTick = beforeTick
+    }
+
+    /// The first scripted time.
+    var now: CMTime { tickTimes.first ?? .zero }
+
+    /// Yields the scripted times as they are asked for, running the action
+    /// before the chosen one, then finishes.
+    func tick(every duration: CMTime) -> AsyncStream<CMTime> {
+        AsyncStream(unfolding: { [self] in
+            let index = next.withLock { value in
+                defer { value += 1 }
+                return value
+            }
+            guard index < tickTimes.count else { return nil }
+            if index == beforeTick { action.withLock { $0 }?() }
+            return tickTimes[index]
+        })
     }
 }

@@ -127,7 +127,9 @@ final class MediaFilePlayback: Sendable {
         let executor = DedicatedThreadExecutor(name: content.threadName)
         let task = Task(executorPreference: executor) { [url, clock, eventBus, id] in
             defer { executor.shutDown() }
-            await Self.play(url, description, clock: clock, eventBus: eventBus, inputID: id) { frame in
+            await Self.play(url, description, clock: clock, eventBus: eventBus, inputID: id) {
+                consumers.state.withLock { $0.audio != nil }
+            } deliverFrame: { frame in
                 consumers.state.withLock { _ = $0.video?.yield(frame) }
             } deliverAudio: { audio in
                 consumers.state.withLock { _ = $0.audio?.yield(audio) }
@@ -207,7 +209,23 @@ final class MediaFilePlayback: Sendable {
     /// A file played for its sound has no frame to deliver, so its tick is
     /// done once the audio due has gone out, and it wraps on the tick that
     /// delivers its last block: the next pass's first block then falls due
-    /// exactly where the last one ended (``MovieReader/duration``).
+    /// exactly where the last one ended (``MovieReader/duration``). It wraps
+    /// as many times as one tick spans — a file shorter than the tick
+    /// interval, or ticks the clock skipped — because each pass that read
+    /// sound moves the loop offset forward by a positive length; only a pass
+    /// that read **no** sound at all (the file replaced by an empty one
+    /// while playing) ends playback.
+    ///
+    /// A file played for its sound also **waits for its listener**: its
+    /// timeline starts on the first tick that finds an audio consumer
+    /// attached, not on the first tick after ``start()``. The app starts its
+    /// inputs concurrently and subscribes the mixer only once all of them
+    /// are running, so a slow neighbor (a camera opening) would otherwise
+    /// let the file run on unheard and come in partway through. A movie does
+    /// not wait: its picture is on the clock from the moment it is staged.
+    ///
+    /// - Parameter hasAudioConsumer: Whether a consumer holds the audio
+    ///   stream right now.
     ///
     /// The reader lives entirely inside this task, per the frame ownership
     /// rule; frames leave it only through the delivery closures. A reader
@@ -220,6 +238,7 @@ final class MediaFilePlayback: Sendable {
         clock: any EngineClock,
         eventBus: EventBus?,
         inputID: InputID,
+        hasAudioConsumer: @Sendable () -> Bool,
         deliverFrame: @Sendable (CapturedFrame) -> Void,
         deliverAudio: @Sendable (CapturedAudio) -> Void
     ) async {
@@ -230,6 +249,8 @@ final class MediaFilePlayback: Sendable {
         var loopOffset = CMTime.zero
         ticking: for await tickTime in clock.tick(every: interval) {
             guard !Task.isCancelled else { break }
+            // Sound alone starts when someone is listening (see above).
+            if startTime == nil, description.videoTrackID == nil, !hasAudioConsumer() { continue }
             let start = startTime ?? tickTime
             startTime = start
             var opened = 0
@@ -270,11 +291,15 @@ final class MediaFilePlayback: Sendable {
                 // Nothing due and nothing left: loop, unless the reader just
                 // opened — a file with no samples would otherwise spin.
                 guard current.isAtEnd else { break }
-                guard opened < 2 else {
-                    // An audio file whose fresh pass holds no samples (the
-                    // file replaced by an empty one while playing) has
-                    // nothing left to offer at all: say so once and end.
-                    guard !current.hasVideo else { break }
+                if current.hasVideo {
+                    guard opened < 2 else { break }
+                } else if !current.hasReadAudio {
+                    // An audio file whose pass held no samples (the file
+                    // replaced by an empty one while playing) has nothing
+                    // left to offer at all: say so once and end. A pass that
+                    // did read sound always wraps, however many passes one
+                    // tick spans — its length is positive, so the wraps end
+                    // once the loop offset catches up with the tick.
                     reportDecodeError(.audioEmpty(url), url: url, inputID: inputID, on: eventBus)
                     break ticking
                 }

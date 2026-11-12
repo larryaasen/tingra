@@ -258,8 +258,15 @@ final class MovieReader {
     /// pass's first block exactly where this pass's last one stopped —
     /// timestamps that neither overlap nor gap.
     var duration: CMTime {
-        guard !hasVideo, audioEnd.isNumeric, audioEnd > .zero else { return assetDuration }
+        guard !hasVideo, hasReadAudio else { return assetDuration }
         return audioEnd
+    }
+
+    /// Whether this pass has read any sound: at least one audio sample, with
+    /// a length. False for a pass over a file that holds none, which is how
+    /// the playback loop tells an empty file from one that merely ended.
+    var hasReadAudio: Bool {
+        audioEnd.isNumeric && audioEnd > .zero
     }
 
     /// Opens a reader at the file's start.
