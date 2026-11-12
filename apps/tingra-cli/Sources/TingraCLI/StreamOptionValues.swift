@@ -118,6 +118,15 @@ enum VideoGeneratorKind: String, Sendable, ExpressibleByArgument, CaseIterable {
 
     /// Full-frame opaque black.
     case black
+
+    /// The local date and time of day.
+    case timeStamp = "time-stamp"
+
+    /// Elapsed time, counting up from the start of the run.
+    case timer
+
+    /// A five minute countdown from the start of the run.
+    case countdown
 }
 
 /// The audio generators `--audio-generator` accepts (CLI.md, "Input

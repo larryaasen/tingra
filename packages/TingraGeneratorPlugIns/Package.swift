@@ -11,7 +11,8 @@
 import PackageDescription
 
 // The first party generator plug-ins: SMPTE color bars, an alignment
-// pattern, and PLUGE (video), plus the 440 Hz test tone (audio).
+// pattern, and PLUGE (video), plus the 440 Hz test tone (audio), and the
+// time stamp, timer, and countdown that layer over a camera.
 // Generators are the permanent CI test surface — they synthesize frames
 // from the injected clock, so no camera, microphone, or TCC authorization
 // is ever needed. Registration goes through the InputRegistering seam, so

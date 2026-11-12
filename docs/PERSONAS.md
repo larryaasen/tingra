@@ -44,14 +44,14 @@ The sizes leave the release out, since every one of them shares it.
 | 5 | Plug-in developer | Strong design | Publish the SDK; app-tier plug-ins also need the app | — |
 | 6 | Set-and-forget camera | Good for someone at home in a terminal | Reconnect without a limit, start at login | S, M |
 | 7 | Audio show | Weak | Audio files, ducking; a limiter on the whole mix | S, M, M |
-| 8 | Fitness or yoga instructor | Weak | Flip, audio files, a timer, ducking | S, S, S, M |
+| 8 | Fitness or yoga instructor | Weak | Flip, audio files, ducking | S, S, M |
 | 9 | Musician | Fair | An audio bit rate setting, channel choice, sync offset | S, M, M |
 | 10 | Avatar streamer | Unknown | Check window transparency, or a chroma key | S or M |
 | 11 | Reaction or watch-along streamer | Weak | System and app audio, ducking, clips that pause | M, M, M |
 | 12 | Video podcaster | Fair | EQ and noise removal, automixer, a track per mic, sync offset | M to L |
 | 13 | Teacher or presenter | Good, with two big holes | System and app audio, virtual camera, captions | M, L, L |
-| 14 | Live seller | Weak to fair | Live titles, a countdown, a web page input | L, S, L |
-| 15 | Worship or community volunteer team | Fair | Lyric titles, macros, a countdown, a scheduled start | L, L, S, M |
+| 14 | Live seller | Weak to fair | Live titles, a web page input | L, L |
+| 15 | Worship or community volunteer team | Fair | Lyric titles, macros, a scheduled start | L, L, M |
 | 16 | Game streamer | Weak | Mac sound, chroma key, hotkeys, overlays, a web page input | M to L, many |
 | 17 | Public meetings | Fair to weak | Automixer, captions, chapter marks | M, L, M |
 | 18 | Company webinar or all-hands producer | Fair | Remote speakers, captions, branding | XL, L, M |
@@ -69,8 +69,9 @@ inputs, a voice from a microphone, no sound from the Mac itself, and no web
 graphics.
 
 The next five (6 to 10) are each a few small pieces away, and most of those
-pieces are plug-ins on seams that already exist: a flip effect,
-audio files as a media provider, a timer generator. The larger pieces among
+pieces are plug-ins on seams that already exist: a flip effect and audio
+files as a media provider (the dynamics effects and the time generators
+were the first built). The larger pieces among
 them, each M, are ducking, sync offset, and starting at login. That makes them
 the cheapest personas to win next.
 
@@ -201,7 +202,7 @@ all.
 | Set it up without a terminal | ❌ | The app streams, but has no unattended mode or start at launch |
 | Recover when the camera is unplugged and plugged back in | 🟡 | Device events are reported; recovery of a running CLI stream is not on record |
 | Check health from afar | 🟡 | `--json` stats and `--log-file`; nothing pushes a notice when it stops |
-| A date and time stamp on the picture | ❌ | Only the bars generator carries a timecode |
+| A date and time stamp on the picture | 🟡 | In the app, the time stamp generator is a layer over the camera; `tingra-cli stream` does no compositing, so there `--video-generator time-stamp` replaces the camera |
 | Low power, cool Mac | ✅ | Hardware compression, GPU-resident frames |
 
 ## 7. Audio show
@@ -230,7 +231,7 @@ Leads a class from a studio or a living room: one wide camera, a wireless
 mic, music, and students who follow along live, often on a private server or
 inside a video call. Moves the whole time, so cannot reach the keyboard.
 
-**To succeed:** a flip effect, audio files, a timer, and ducking. Classes held inside a video call also need virtual camera output (L). **Size:** S, S, S, M.
+**To succeed:** a flip effect, audio files, and ducking. Classes held inside a video call also need virtual camera output (L). **Size:** S, S, M.
 
 | Need | Status | Notes |
 |---|---|---|
@@ -238,7 +239,7 @@ inside a video call. Moves the whole time, so cannot reach the keyboard.
 | Flip the picture left to right, so "raise your right arm" matches | ❌ | No flip effect; Crop, Frame, Blur, and Color Adjust only |
 | Music under the voice | 🟡 | A video file with sound plays, looping; no audio files or playlist |
 | Music that dips when the instructor speaks (ducking) | ❌ | Not on record |
-| An interval or session timer on screen | ❌ | Not on record |
+| An interval or session timer on screen | ✅ | The timer and countdown generators as layers over the camera; an interval is one length that repeats, with no separate work and rest lengths, and starting or resetting is a click in Input Settings |
 | Teach inside a video call | ❌ | No virtual camera output |
 | Stream to a private server | ✅ | A custom RTMP(S) or SRT destination |
 | Switch shots without touching the Mac | ❌ | No global hotkeys, pedal, or control surface; an app-tier plug-in could call the shot tools, but no agent can reach the app yet |
@@ -352,14 +353,14 @@ Sells live: shows each product to the camera, reads out the price, counts down
 a timed deal, and answers questions as orders come in. Often a phone as the
 face camera and a second camera looking down at the table.
 
-**To succeed:** titles that change on air, a countdown, and orders on screen through a web page input. **Size:** L, S, L.
+**To succeed:** titles that change on air, and orders on screen through a web page input. **Size:** L, L.
 
 | Need | Status | Notes |
 |---|---|---|
 | Two cameras: the seller and the product table | ✅ | Any two cameras, an iPhone included, as shots |
 | Product photos | ✅ | Image files as layers |
 | Price and deal titles, changed on air | 🟡 | Text files as layers; no title templates and no quick way to change a price live |
-| A countdown for a timed deal | ❌ | Not on record |
+| A countdown for a timed deal | ✅ | The countdown generator as a layer: a duration, started, paused, and reset in Input Settings |
 | Orders and questions on screen | ❌ | No web page input |
 | Portrait for phone viewers and landscape for others, at once | ❌ | One program format per show |
 | Jump to the product shot quickly | 🟡 | ⌘1–⌘9, while Tingra is in front |
@@ -372,7 +373,7 @@ capture cards; a computer showing lyrics or slides; a house mixing desk
 feeding sound in. The same show every week, run by whichever volunteer turned
 up. (Council and board meetings, with their legal duties, are persona 17.)
 
-**To succeed:** lyric and scripture titles, macros, a countdown, and a scheduled start. **Size:** L, L, S, M.
+**To succeed:** lyric and scripture titles, macros, and a scheduled start. **Size:** L, L, M.
 
 | Need | Status | Notes |
 |---|---|---|
@@ -384,7 +385,7 @@ up. (Council and board meetings, with their legal duties, are persona 17.)
 | Lyrics and scripture on screen | 🟡 | Text and Markdown files; no lyric or slide feed, no title templates |
 | A feed from the slides computer over the network | ❌ | Planned: NDI as an external plug-in |
 | Walk-in music before the start | 🟡 | A video file with sound; no audio files or playlist |
-| A countdown before the start | ❌ | Not on record |
+| A countdown before the start | ✅ | The countdown generator as a layer, counting to a time of day or through a duration |
 | Start at a set time | ❌ | Not on record |
 | One button for "record, go live, show welcome" | ❌ | GLOSSARY.md defines macros; not built |
 | Simple for a new volunteer each week | 🟡 | Shortcuts follow common switcher keys; macros and a simple mode would help most |
@@ -461,7 +462,7 @@ the software.
 | The company's look on every shot | 🟡 | Layers in each shot; no overlay above all shots, no title templates |
 | Captions | ❌ | Not on record |
 | Stream to a private server | ✅ | A custom RTMP(S) or SRT destination |
-| A countdown before the start | ❌ | Not on record |
+| A countdown before the start | ✅ | The countdown generator as a layer, counting to a time of day or through a duration |
 | Audience questions on screen | ❌ | No web page input |
 | Installed and set up by IT on managed Macs | 🟡 | A signed, notarized `.pkg` for the CLI; managed settings for the app not on record |
 | Stream keys kept out of logs and files | ✅ | Keychain storage, redaction at every boundary |
@@ -525,7 +526,6 @@ Sized as above. Within a size, the gaps that block more personas come first.
 | Gap | Size | Blocks | Tracked? |
 |---|---|---|---|
 | Publish the plug-in SDK | — | 5 | Yes, TODO.md; no code, a step for Larry |
-| A timer, countdown, and time stamp generator | S | 6, 8, 14, 15, 18 | No |
 | Audio files as inputs | S | 7, 8, 15 | No |
 | HEVC and audio bit rate settings in the app | S | 3, 7, 9 | No |
 | Reconnect without a limit | S | 6 | No |
@@ -538,6 +538,7 @@ Sized as above. Within a size, the gaps that block more personas come first.
 | Playlists, and clips that play once or pause | M | 7, 8, 11, 15 | Play-once is a planned slice |
 | Ducking: music or a clip dips under a voice | M | 7, 8, 11 | No |
 | Starting on its own: at login, or at a set time | M | 6, 15, 17 | No |
+| A time stamp over the camera in a CLI stream | M | 6 | No; the generator is built (ARCHITECTURE.md, "The time generators"), the CLI does no compositing |
 | Chroma key and background removal | M | 2, 10, 16 | Keying defined in GLOSSARY.md only |
 | Overlays above every shot | M | 16, 18 | Defined in GLOSSARY.md only |
 | Choosing channels on a multichannel audio interface | M | 9, 17 | Not on record |

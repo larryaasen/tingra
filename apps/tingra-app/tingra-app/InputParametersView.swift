@@ -12,7 +12,8 @@ import TingraEventBus
 import TingraPlugInKit
 
 /// One input's declared settings, edited in a popover off its channel
-/// strip's Input Settings button (PLUGINS.md, Decision 15): a control per
+/// strip's Input Settings button — or, for an input with a picture, off the
+/// one beside the layer inspector's Input popup (PLUGINS.md, Decision 15): a control per
 /// `Parameter` the input declares — a slider paired with the shared
 /// ``EffectParameterField`` for a number, the shared ``EffectColorWell``
 /// for a color, the shared ``EffectParameterToggle`` for a toggle — drawn
@@ -163,9 +164,8 @@ struct InputParametersView: View {
         }
     }
 
-    /// One color parameter's well — no first-party input declares one, but
-    /// the descriptor's kind is handled exhaustively so a third-party input
-    /// that does gets its control. The well coalesces a color panel's
+    /// One color parameter's well — the time generators' text color, or a
+    /// third-party input's. The well coalesces a color panel's
     /// continuous changes into one gesture and one `tap`.
     private func parameterColorWell(_ parameter: Parameter) -> some View {
         let value = parameter.color(in: payload) ?? .white
