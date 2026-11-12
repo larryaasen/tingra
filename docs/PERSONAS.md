@@ -43,12 +43,12 @@ The sizes leave the release out, since every one of them shares it.
 | 4 | Screen streamer | Strong, until the Mac's own sound is needed | Ship the app; system and app audio for some | — / M |
 | 5 | Plug-in developer | Strong design | Publish the SDK; app-tier plug-ins also need the app | — |
 | 6 | Set-and-forget camera | Good for someone at home in a terminal | Reconnect without a limit, start at login | S, M |
-| 7 | Audio show | Weak | Audio files, a limiter, ducking | S, S, M |
+| 7 | Audio show | Weak | Audio files, ducking; a limiter on the whole mix | S, M, M |
 | 8 | Fitness or yoga instructor | Weak | Flip, audio files, a timer, ducking | S, S, S, M |
-| 9 | Musician | Fair | A limiter, an audio bit rate setting, channel choice, sync offset | S, S, M, M |
+| 9 | Musician | Fair | An audio bit rate setting, channel choice, sync offset | S, M, M |
 | 10 | Avatar streamer | Unknown | Check window transparency, or a chroma key | S or M |
 | 11 | Reaction or watch-along streamer | Weak | System and app audio, ducking, clips that pause | M, M, M |
-| 12 | Video podcaster | Fair | Voice processing, automixer, a track per mic, sync offset | S to L |
+| 12 | Video podcaster | Fair | EQ and noise removal, automixer, a track per mic, sync offset | M to L |
 | 13 | Teacher or presenter | Good, with two big holes | System and app audio, virtual camera, captions | M, L, L |
 | 14 | Live seller | Weak to fair | Live titles, a countdown, a web page input | L, S, L |
 | 15 | Worship or community volunteer team | Fair | Lyric titles, macros, a countdown, a scheduled start | L, L, S, M |
@@ -69,7 +69,7 @@ inputs, a voice from a microphone, no sound from the Mac itself, and no web
 graphics.
 
 The next five (6 to 10) are each a few small pieces away, and most of those
-pieces are plug-ins on seams that already exist: a limiter, a flip effect,
+pieces are plug-ins on seams that already exist: a flip effect,
 audio files as a media provider, a timer generator. The larger pieces among
 them, each M, are ducking, sync offset, and starting at login. That makes them
 the cheapest personas to win next.
@@ -210,7 +210,7 @@ A radio-style show, a DJ set, a sermon or reading streamed as sound, a talk
 show with no cameras. Mics and music carry it; the picture is a still image,
 a logo, or black.
 
-**To succeed:** audio files as inputs, a limiter, and ducking. **Size:** S, S, M.
+**To succeed:** audio files as inputs, ducking, and a limiter on the whole mix (each strip has one). **Size:** S, M, M.
 
 | Need | Status | Notes |
 |---|---|---|
@@ -220,7 +220,7 @@ a logo, or black.
 | Play music files (MP3, AAC, WAV) | ❌ | Video files with sound play; audio-only files are not an input |
 | A playlist, or play a clip on a button press | ❌ | A staged video loops from the moment it is staged; once-only play is a planned slice |
 | Music from a music app on the Mac | ❌ | No system or app audio input |
-| A limiter so the stream never clips | ❌ | Gain, high-pass, and low-pass only |
+| A limiter so the stream never clips | 🟡 | A limiter effect on each strip, before its fader. Nothing limits the program mix, so several loud strips can still add up past full scale; that needs an effect chain on the master, which is not built |
 | Talk over the music (ducking) | ❌ | Not on record |
 | A higher audio bit rate | 🟡 | `--audio-bitrate` in the CLI; no app setting on record |
 
@@ -250,14 +250,14 @@ Plays guitar, keys, or a drum kit, and sings. Sound comes in through an audio
 interface; one camera shows the player, another the hands. Sound quality
 matters more than anything else.
 
-**To succeed:** a limiter, an audio bit rate setting in the app, channel choice on the interface, and sync offset. **Size:** S, S, M, M.
+**To succeed:** an audio bit rate setting in the app, channel choice on the interface, and sync offset. **Size:** S, M, M.
 
 | Need | Status | Notes |
 |---|---|---|
 | An audio interface as an input | ✅ | It appears as an input with its own strip |
 | Choose which interface channels feed a strip | ❌ | Not on record |
 | Headphone mix of the program | ✅ | The monitor path; most players will monitor from the interface |
-| A limiter so a loud chord never clips | ❌ | Gain, high-pass, and low-pass only |
+| A limiter so a loud chord never clips | ✅ | The limiter effect on the interface's strip holds it under a ceiling. It works before the fader, so keep the fader at or under 0 dB; not yet judged by ear |
 | Picture and sound in step | ❌ | Planned: sync offset, not built |
 | Two cameras: the player and the hands | ✅ | Shots, multiview |
 | A higher audio bit rate | 🟡 | `--audio-bitrate` in the CLI; no app setting on record |
@@ -305,13 +305,13 @@ it, face in a corner. The clip's sound is half the show.
 Two to four hosts around a table, each with a mic and often a camera, sometimes
 a guest who calls in. Cares most about sound, and edits the recording after.
 
-**To succeed:** voice processing, an automixer, a track per mic in the recording, and sync offset. Shows with remote guests wait on a call-in path (XL). **Size:** S to L.
+**To succeed:** EQ and noise removal (the gate, compressor, and limiter are built), an automixer, a track per mic in the recording, and sync offset. Shows with remote guests wait on a call-in path (XL). **Size:** M to L.
 
 | Need | Status | Notes |
 |---|---|---|
 | A strip per mic: fader, mute, pan, meter | ✅ | The console mixer, in dB |
 | Headphone mix for the operator | ✅ | The monitor path to a chosen output device |
-| Clean up voices: compressor, limiter, gate, EQ, noise removal | 🟡 | Only gain, high-pass, and low-pass today |
+| Clean up voices: compressor, limiter, gate, EQ, noise removal | 🟡 | Gate, compressor, and limiter effects on each strip, beside gain, high-pass, and low-pass; not yet judged by ear. No EQ and no noise removal |
 | Turn down the mics nobody is speaking into (automixer) | ❌ | Not on record |
 | Listen to one mic alone (solo) | ❌ | Planned: solo as pre-fade listen |
 | Line up sound with slow cameras (sync offset) | ❌ | Planned: designed in CLOCK.md, not built |
@@ -526,7 +526,6 @@ Sized as above. Within a size, the gaps that block more personas come first.
 |---|---|---|---|
 | Publish the plug-in SDK | — | 5 | Yes, TODO.md; no code, a step for Larry |
 | A timer, countdown, and time stamp generator | S | 6, 8, 14, 15, 18 | No |
-| Limiter, compressor, and gate as audio effects | S | 7, 9, 12 | No |
 | Audio files as inputs | S | 7, 8, 15 | No |
 | HEVC and audio bit rate settings in the app | S | 3, 7, 9 | No |
 | Reconnect without a limit | S | 6 | No |
@@ -547,6 +546,7 @@ Sized as above. Within a size, the gaps that block more personas come first.
 | Chapter marks in a recording | M | 13, 17 | No |
 | Camera controls in the main app | M | 2, 15 | Yes, TODO.md |
 | EQ as an audio effect | M | 12 | No |
+| An effect chain on the master, so a limiter can hold the whole mix | M | 7 | No; DONE.md names it as what re-opens the master section |
 | Settings IT can manage on many Macs | M | 18 | No |
 | Title templates, changed on air (lower thirds, lyrics, prices, scores) | L | 3, 12, 14, 15, 17, 18, 19 | Titles defined in GLOSSARY.md only |
 | Web page input (alerts, chat, orders, scoreboards) | L | 4, 11, 14, 16, 18, 19 | No |
