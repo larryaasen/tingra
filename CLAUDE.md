@@ -54,9 +54,10 @@ packages/                       # Engine libraries
   TingraRecordingPlugIns/       # First-party local recording plug-in: the AVAssetWriter-backed
                                 #   RecordingService (.mov/.mp4), through the same output seam as
                                 #   streaming; imports only AVFoundation, never HaishinKit
-  TingraMediaPlugIns/           # First-party media plug-in: still images (ImageIO), video files
-                                #   (AVFoundation), and text/Markdown (Core Text) as inputs, each a
-                                #   MediaInputProvider behind the media seam; no third-party code
+  TingraMediaPlugIns/           # First-party media plug-in: still images (ImageIO), video and
+                                #   audio files (AVFoundation), and text/Markdown (Core Text) as
+                                #   inputs, each a MediaInputProvider behind the media seam; no
+                                #   third-party code
   TingraMCP/                    # The MCP/Control service (see MCP.md): the hand-rolled MCP JSON-RPC
                                 #   layer, the engine daemon, the stdio<->socket proxy, and the
                                 #   first-party control tools (no third-party dependency)

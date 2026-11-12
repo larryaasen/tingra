@@ -17,12 +17,16 @@ import UniformTypeIdentifiers
 
 @Suite("LibraryItem")
 struct LibraryItemTests {
-    @Test("A content type maps to a kind: movies, images, text, and everything else")
+    @Test("A content type maps to a kind: movies, audio files, images, text, and everything else")
     func kindFromContentType() {
         #expect(LibraryItem.kind(of: .png) == .image)
         #expect(LibraryItem.kind(of: .jpeg) == .image)
         #expect(LibraryItem.kind(of: .quickTimeMovie) == .movie)
         #expect(LibraryItem.kind(of: .mpeg4Movie) == .movie)
+        #expect(LibraryItem.kind(of: .mp3) == .audio)
+        #expect(LibraryItem.kind(of: .wav) == .audio)
+        #expect(LibraryItem.kind(of: .mpeg4Audio) == .audio)
+        #expect(LibraryItem.kind(of: UTType(filenameExtension: "m4a")) == .audio)
         #expect(LibraryItem.kind(of: .plainText) == .text)
         #expect(LibraryItem.kind(of: UTType(filenameExtension: "md")) == .text)
         #expect(LibraryItem.kind(of: .pdf) == .other)
@@ -31,10 +35,11 @@ struct LibraryItemTests {
 
     @Test("Each kind has its own symbol")
     func kindSymbols() {
-        let kinds: [LibraryItem.Kind] = [.image, .movie, .text, .other]
+        let kinds: [LibraryItem.Kind] = [.image, .movie, .audio, .text, .other]
         #expect(Set(kinds.map(\.symbol)).count == kinds.count)
         #expect(LibraryItem.Kind.image.symbol == "photo")
         #expect(LibraryItem.Kind.movie.symbol == "film")
+        #expect(LibraryItem.Kind.audio.symbol == "music.note")
         #expect(LibraryItem.Kind.text.symbol == "doc.text")
     }
 

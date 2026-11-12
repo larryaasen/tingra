@@ -302,12 +302,14 @@ internal surface a reader needs to navigate the target instead.
 
 ## `packages/TingraMediaPlugIns`
 
-- `MediaPlugIn` — contributes the image, movie, and text media providers.
+- `MediaPlugIn` — contributes the image, movie, audio, and text providers.
 - `MediaInputError` — the errors a media input throws from `start()`.
 - `ImageMediaProvider` — the provider for every image type ImageIO reads.
 - `ImageInput` — a still image as an input, decoded once and held.
 - `MovieMediaProvider` — the provider for movie types AVFoundation reads.
 - `MovieInput` — a looping video file as an input, paced by the clock.
+- `AudioMediaProvider` — the provider for audio types AVFoundation reads.
+- `AudioFileInput` — a looping audio file as an input: sound, no picture.
 - `TextMediaProvider` — the provider for plain text and Markdown.
 - `TextInput` — a text or Markdown document rendered once as an input.
 

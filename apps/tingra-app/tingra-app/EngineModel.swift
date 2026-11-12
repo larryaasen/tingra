@@ -716,8 +716,8 @@ final class EngineModel {
     /// tab"). An item whose file is missing stays listed and dormant.
     private(set) var media: [ProjectMedia] = []
 
-    /// Movie durations by item, loaded as each movie registers, so the
-    /// Library shows a movie's length where it shows a still's size.
+    /// Movie and audio file durations by item, loaded as each registers, so
+    /// the Library shows a file's length where it shows a still's size.
     private(set) var mediaDurations: [MediaID: TimeInterval] = [:]
 
     /// Each media item's picture size in pixels, read from the file as it
@@ -735,6 +735,17 @@ final class EngineModel {
     /// The media registry the media plug-in registers its providers into and
     /// the model resolves each added file through.
     @ObservationIgnored private let mediaRegistry = MediaRegistry()
+
+    /// Whether a media item's input is registered — what the Library draws
+    /// a row as present on. Asked of both media-role lists, because an
+    /// audio file is an input no layer can bind to: ``isInputAvailable(_:)``
+    /// answers for layers and would call every audio file missing.
+    ///
+    /// - Parameter id: The media item's input.
+    /// - Returns: Whether that input is discovered, as picture or as sound.
+    func isMediaAvailable(_ id: InputID) -> Bool {
+        videoInputs.contains { $0.id == id } || audioInputs.contains { $0.id == id }
+    }
 
     /// The media item whose input has the given identifier, if any — the
     /// item's id *is* the input's.
@@ -814,6 +825,10 @@ final class EngineModel {
         await readDeviceLists()
         await refreshMixerStrips()
         await reconfigure()
+        // An audio file is in no shot, so the pass above never sees it: the
+        // audio pass is what stops one playing on an unmuted strip, now
+        // that the registry no longer holds it. The strip stays, dormant.
+        await reconfigureAudio()
         scheduleAutosave()
     }
 
@@ -826,7 +841,7 @@ final class EngineModel {
     }
 
     /// Makes and registers the input for one media item, and loads a
-    /// movie's duration for the Library.
+    /// movie's or an audio file's duration for the Library.
     ///
     /// - Parameter item: The item to register.
     /// - Returns: Whether the input registered. A missing file is reported
@@ -859,7 +874,7 @@ final class EngineModel {
             return false
         }
         let type = MediaRegistry.contentType(of: url)
-        if type?.conforms(to: .movie) == true,
+        if type?.conforms(to: .movie) == true || type?.conforms(to: .audio) == true,
             let duration = try? await AVURLAsset(url: url).load(.duration), duration.isNumeric
         {
             mediaDurations[item.id] = duration.seconds
@@ -2763,7 +2778,10 @@ final class EngineModel {
     @discardableResult
     func addStrip(for id: InputID) -> Bool {
         guard !isOnMixer(id), let input = audioInputs.first(where: { $0.id == id }) else { return false }
-        mixerStrips.append(MixerStrip.added(input))
+        // An audio file produces no video, so it is in no shot and its strip
+        // must not follow one (``MixerStrip/defaultFollowsProgram(for:hasPicture:)``).
+        let hasPicture = videoInputs.contains { $0.id == id }
+        mixerStrips.append(MixerStrip.added(input, hasPicture: hasPicture))
         scheduleAutosave()
         return true
     }

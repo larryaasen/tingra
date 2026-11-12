@@ -43,8 +43,8 @@ The sizes leave the release out, since every one of them shares it.
 | 4 | Screen streamer | Strong, until the Mac's own sound is needed | Ship the app; system and app audio for some | — / M |
 | 5 | Plug-in developer | Strong design | Publish the SDK; app-tier plug-ins also need the app | — |
 | 6 | Set-and-forget camera | Good for someone at home in a terminal | Reconnect without a limit, start at login | S, M |
-| 7 | Audio show | Weak | Audio files, a limiter, ducking | S, S, M |
-| 8 | Fitness or yoga instructor | Weak | Flip, audio files, ducking | S, S, M |
+| 7 | Audio show | Weak | A limiter, ducking | S, M |
+| 8 | Fitness or yoga instructor | Weak | Flip, ducking | S, M |
 | 9 | Musician | Fair | A limiter, an audio bit rate setting, channel choice, sync offset | S, S, M, M |
 | 10 | Avatar streamer | Unknown | Check window transparency, or a chroma key | S or M |
 | 11 | Reaction or watch-along streamer | Weak | System and app audio, ducking, clips that pause | M, M, M |
@@ -69,8 +69,9 @@ inputs, a voice from a microphone, no sound from the Mac itself, and no web
 graphics.
 
 The next five (6 to 10) are each a few small pieces away, and most of those
-pieces are plug-ins on seams that already exist: a limiter, a flip effect,
-audio files as a media provider, a timer generator. The larger pieces among
+pieces are plug-ins on seams that already exist: a limiter and a flip effect
+(audio files as a media provider and the time generators were the first
+built). The larger pieces among
 them, each M, are ducking, sync offset, and starting at login. That makes them
 the cheapest personas to win next.
 
@@ -210,15 +211,15 @@ A radio-style show, a DJ set, a sermon or reading streamed as sound, a talk
 show with no cameras. Mics and music carry it; the picture is a still image,
 a logo, or black.
 
-**To succeed:** audio files as inputs, a limiter, and ducking. **Size:** S, S, M.
+**To succeed:** a limiter and ducking. **Size:** S, M.
 
 | Need | Status | Notes |
 |---|---|---|
 | Stream sound with a still picture | ✅ | An image file as a layer, or the black generator |
 | Sound only | 🟡 | `tingra-cli stream --no-video`; some services refuse a stream with no video |
 | Several mics on faders | ✅ | The console mixer |
-| Play music files (MP3, AAC, WAV) | ❌ | Video files with sound play; audio-only files are not an input |
-| A playlist, or play a clip on a button press | ❌ | A staged video loops from the moment it is staged; once-only play is a planned slice |
+| Play music files (MP3, AAC, WAV) | ✅ | An audio file is a media input with its own channel strip; it loops while its strip is unmuted |
+| A playlist, or play a clip on a button press | ❌ | A file loops from the moment it starts — a video when staged, an audio file when unmuted; once-only play is a planned slice |
 | Music from a music app on the Mac | ❌ | No system or app audio input |
 | A limiter so the stream never clips | ❌ | Gain, high-pass, and low-pass only |
 | Talk over the music (ducking) | ❌ | Not on record |
@@ -230,13 +231,13 @@ Leads a class from a studio or a living room: one wide camera, a wireless
 mic, music, and students who follow along live, often on a private server or
 inside a video call. Moves the whole time, so cannot reach the keyboard.
 
-**To succeed:** a flip effect, audio files, and ducking. Classes held inside a video call also need virtual camera output (L). **Size:** S, S, M.
+**To succeed:** a flip effect and ducking. Classes held inside a video call also need virtual camera output (L). **Size:** S, M.
 
 | Need | Status | Notes |
 |---|---|---|
 | A wide camera and a wireless mic | ✅ | Any camera and any audio input |
 | Flip the picture left to right, so "raise your right arm" matches | ❌ | No flip effect; Crop, Frame, Blur, and Color Adjust only |
-| Music under the voice | 🟡 | A video file with sound plays, looping; no audio files or playlist |
+| Music under the voice | 🟡 | An audio file plays on its own channel strip, looping; no playlist, and no play-once or pause |
 | Music that dips when the instructor speaks (ducking) | ❌ | Not on record |
 | An interval or session timer on screen | ✅ | The timer and countdown generators as layers over the camera; an interval is one length that repeats, with no separate work and rest lengths, and starting or resetting is a click in Input Settings |
 | Teach inside a video call | ❌ | No virtual camera output |
@@ -383,7 +384,7 @@ up. (Council and board meetings, with their legal duties, are persona 17.)
 | Sound from the house desk | ✅ | An audio interface appears as an input |
 | Lyrics and scripture on screen | 🟡 | Text and Markdown files; no lyric or slide feed, no title templates |
 | A feed from the slides computer over the network | ❌ | Planned: NDI as an external plug-in |
-| Walk-in music before the start | 🟡 | A video file with sound; no audio files or playlist |
+| Walk-in music before the start | 🟡 | An audio file on its own channel strip, looping until muted; no playlist |
 | A countdown before the start | ✅ | The countdown generator as a layer, counting to a time of day or through a duration |
 | Start at a set time | ❌ | Not on record |
 | One button for "record, go live, show welcome" | ❌ | GLOSSARY.md defines macros; not built |
@@ -526,7 +527,6 @@ Sized as above. Within a size, the gaps that block more personas come first.
 |---|---|---|---|
 | Publish the plug-in SDK | — | 5 | Yes, TODO.md; no code, a step for Larry |
 | Limiter, compressor, and gate as audio effects | S | 7, 9, 12 | No |
-| Audio files as inputs | S | 7, 8, 15 | No |
 | HEVC and audio bit rate settings in the app | S | 3, 7, 9 | No |
 | Reconnect without a limit | S | 6 | No |
 | A `record` command in the CLI | S | 3 | No |
