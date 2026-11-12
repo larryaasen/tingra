@@ -287,8 +287,10 @@ and timing", unless one of its sections fits better.
   camera input's parameters, and the Tingra Cameras controls panel).
   Finished parts are in DONE.md, under "From “UVC camera controls”".
   - [ ] A camera's controls in the main app: its Input Settings popover
-    hangs off a mixer strip, and a camera has none; the camera layer's
-    inspector is the likely home.
+    hung off a mixer strip, and a camera has none. *Built 2026-11-11* as an
+    Input Settings button in the layer inspector's Input row, added for the
+    time generators (ARCHITECTURE.md, "The time generators"); open until it
+    is checked against a camera in the running app.
   - [ ] Auto exposure priority, now that the kit has a choice kind.
 
 - [ ] **Application audio** *(probed 2026-11-09; A1–A9 approved
