@@ -94,7 +94,7 @@ struct LibraryView: View {
 
     /// The rows for the project's media, in project order.
     private var mediaItems: [LibraryItem] {
-        LibraryItem.items(from: model.media, durations: model.mediaDurations, isAvailable: model.isInputAvailable)
+        LibraryItem.items(from: model.media, durations: model.mediaDurations, isAvailable: model.isMediaAvailable)
     }
 
     /// The content types the importer and the drop target accept: whatever
@@ -240,7 +240,7 @@ struct LibraryView: View {
         .buttonStyle(.borderless)
         .help(
             Text(
-                "Add images, movies, or text files to the project",
+                "Add images, movies, audio files, or text files to the project",
                 comment: "Tooltip on the Library's Add Media button")
         )
         .accessibilityLabel(Text("Add Media…", comment: "Library button adding files to the project as media"))
@@ -282,14 +282,17 @@ struct LibraryView: View {
             }
         } description: {
             Text(
-                "Add images, movies, or text files, or drop them here.",
+                "Add images, movies, audio files, or text files, or drop them here.",
                 comment: "Library empty state description"
             )
         }
     }
 
-    /// A media row's context menu: Quick Look, Reveal in Finder, and Remove
-    /// from Project — which drops the reference and never deletes the file.
+    /// A media row's context menu: Quick Look, Reveal in Finder, Add to
+    /// Mixer for a file with sound that has no channel strip yet — the one
+    /// way an audio file, which no shot can hold, is put to use from here —
+    /// and Remove from Project, which drops the reference and never deletes
+    /// the file.
     @ViewBuilder private func mediaMenu(for item: LibraryItem) -> some View {
         Button {
             model.eventBus.tap("libraryQuickLook.menuItem", domain: .composition, params: ["id": .string(item.eventID)])
@@ -303,6 +306,19 @@ struct LibraryView: View {
             NSWorkspace.shared.activateFileViewerSelecting([item.url])
         } label: {
             Text("Reveal in Finder", comment: "Menu item that reveals the file in Finder")
+        }
+        if let inputID = item.inputID, model.audioInputsOffMixer.contains(where: { $0.id == inputID }) {
+            Button {
+                model.eventBus.tap(
+                    "libraryAddToMixer.menuItem", domain: .audio,
+                    params: ["id": .string(item.eventID), "name": .string(item.name)])
+                model.addStrip(for: inputID)
+            } label: {
+                Text(
+                    "Add to Mixer",
+                    comment: "Library media row context menu: adds the file's channel strip, muted"
+                )
+            }
         }
         Divider()
         Button(role: .destructive) {
@@ -720,8 +736,8 @@ final class LibraryFacts {
         return duration.seconds
     }
 
-    /// Reads an item's facts, once: its thumbnail and, for a movie that
-    /// carries no length of its own, its length. A missing file and the take
+    /// Reads an item's facts, once: its thumbnail and, for a movie or an
+    /// audio file that carries no length of its own, its length. A missing file and the take
     /// being written are not asked at all — the take is not yet playable, and
     /// asking would remember a refusal — so each is asked when its row
     /// changes to one that can answer. A file Quick Look cannot thumbnail
@@ -747,7 +763,7 @@ final class LibraryFacts {
                 params: ["id": .string(item.eventID), "reason": .string(String(describing: error))]
             )
         }
-        guard item.kind == .movie, item.duration == nil else { return }
+        guard item.kind == .movie || item.kind == .audio, item.duration == nil else { return }
         if let seconds = await durationOf(item.url) {
             durations[item.id] = seconds
         } else {

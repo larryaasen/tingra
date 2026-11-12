@@ -497,6 +497,30 @@ struct MixerStripTests {
         #expect(MixerStrip.defaultFollowsProgram(for: .generator) == false)
     }
 
+    @Test("audio follows video defaults off for media with no picture, and a picture changes nothing for other kinds")
+    @MainActor
+    func followsProgramDefaultsOffWithoutAPicture() {
+        #expect(MixerStrip.defaultFollowsProgram(for: .media, hasPicture: true))
+        #expect(MixerStrip.defaultFollowsProgram(for: .media, hasPicture: false) == false)
+        #expect(MixerStrip.defaultFollowsProgram(for: .microphone, hasPicture: true) == false)
+        #expect(MixerStrip.defaultFollowsProgram(for: .generator, hasPicture: false) == false)
+    }
+
+    @Test("an added audio file's strip is muted and does not follow video, so it reaches the mix in any shot")
+    @MainActor
+    func addedAudioFileStripDoesNotFollowVideo() {
+        let strip = MixerStrip.added(Self.choice("Walk-in.mp3", kind: .media), hasPicture: false)
+
+        #expect(strip.isMuted)
+        #expect(strip.level == 1)
+        #expect(strip.followsProgram == false)
+        #expect(strip.isPresent(onProgram: []))
+        // The same file with a picture would follow it, and be absent here.
+        let movie = MixerStrip.added(Self.choice("Walk-in.mov", kind: .media), hasPicture: true)
+        #expect(movie.followsProgram == true)
+        #expect(movie.isPresent(onProgram: []) == false)
+    }
+
     @Test("an added strip writes audio follows video explicitly by its input's kind")
     @MainActor
     func addedStripWritesFollowsProgramByKind() {

@@ -28,8 +28,15 @@ public enum MediaInputError: Error, Equatable {
     /// The movie has no video track, so there is nothing to show.
     case noVideoTrack(URL)
 
-    /// AVFoundation refused to read the movie; the payload is its reason.
+    /// AVFoundation refused to read the movie or audio file; the payload is
+    /// its reason.
     case readerRefused(URL, reason: String)
+
+    /// The audio file holds no sound track, so there is nothing to play.
+    case noAudioTrack(URL)
+
+    /// The audio file's sound has no length: a header with no samples.
+    case audioEmpty(URL)
 
     /// Core Video would not vend a pixel buffer; the payload is its status.
     case pixelBufferUnavailable(CVReturn)
@@ -59,12 +66,24 @@ extension MediaInputError: CustomStringConvertible {
         case .noVideoTrack(let url):
             return """
                 The movie '\(url.lastPathComponent)' has no video track, so there is nothing to show. Add a \
-                movie with picture; audio-only files are not media inputs yet.
+                movie with picture; to play a movie file's sound alone, export it as an audio file (M4A or \
+                WAV) and add that.
                 """
         case .readerRefused(let url, let reason):
             return """
-                The movie '\(url.lastPathComponent)' could not be read: \(reason). The file may be damaged \
-                or use a codec this Mac cannot decode; re-export it as H.264 or HEVC in a .mov or .mp4.
+                The media file '\(url.lastPathComponent)' could not be read: \(reason). The file may be \
+                damaged or use a codec this Mac cannot decode; re-export a movie as H.264 or HEVC in a .mov \
+                or .mp4, or an audio file as AAC in an .m4a, MP3, or WAV.
+                """
+        case .noAudioTrack(let url):
+            return """
+                The audio file '\(url.lastPathComponent)' holds no sound, so there is nothing to play. The \
+                file may be damaged; export it again as AAC in an .m4a, MP3, or WAV and add that.
+                """
+        case .audioEmpty(let url):
+            return """
+                The audio file '\(url.lastPathComponent)' is empty: it holds no samples to play. Export it \
+                again and check the result plays before adding it.
                 """
         case .pixelBufferUnavailable(let status):
             return """

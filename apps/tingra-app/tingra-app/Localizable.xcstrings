@@ -889,6 +889,40 @@
         }
       }
     },
+    "Add images, movies, audio files, or text files to the project" : {
+      "comment" : "Tooltip on the Library's Add Media button",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bilder, Filme, Audiodateien oder Textdateien zum Projekt hinzufügen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Añadir imágenes, películas, archivos de audio o archivos de texto al proyecto"
+          }
+        }
+      }
+    },
+    "Add images, movies, audio files, or text files, or drop them here." : {
+      "comment" : "Library empty state description",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Füge Bilder, Filme, Audiodateien oder Textdateien hinzu oder lege sie hier ab."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Añade imágenes, películas, archivos de audio o archivos de texto, o suéltalos aquí."
+          }
+        }
+      }
+    },
     "Add images, movies, or text files to the project" : {
       "comment" : "Tooltip on the Library's Add Media button",
       "localizations" : {
@@ -1026,7 +1060,7 @@
       }
     },
     "Add to Mixer" : {
-      "comment" : "Sidebar audio input row context menu: adds the input's channel strip, muted",
+      "comment" : "Library media row context menu: adds the file's channel strip, muted\nSidebar audio input row context menu: adds the input's channel strip, muted",
       "localizations" : {
         "de" : {
           "stringUnit" : {

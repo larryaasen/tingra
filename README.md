@@ -332,7 +332,9 @@ streaming. AVFoundation is imported only inside this package (behind the
 
 The first party media plug-in: file-backed content as inputs — still images
 (ImageIO), video files (AVFoundation, the file's audio arriving as a channel
-strip), and text or Markdown documents (Core Text) — each a `MediaInputProvider`
+strip), audio files (AVFoundation again: MP3, AAC, WAV, and the rest of the
+family, a channel strip with no picture), and text or Markdown documents
+(Core Text) — each a `MediaInputProvider`
 registered through the media seam, so a file the operator adds to a project
 becomes an `Input` like any camera. Every further content type is one more
 provider, first- or third-party; the package imports no third-party code.
