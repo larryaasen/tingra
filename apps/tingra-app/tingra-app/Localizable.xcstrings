@@ -1,6 +1,91 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Audio Bit Rate" : {
+      "comment" : "Streaming and Recording settings: audio bit rate picker label",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Audio-Bitrate"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Velocidad de bits de audio"
+          }
+        }
+      }
+    },
+    "Compression" : {
+      "comment" : "Streaming and Recording settings: heading over the codec and bit rate rows",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Komprimierung"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Compresión"
+          }
+        }
+      }
+    },
+    "Every destination receives the same sound. A higher bit rate suits music; check what each service accepts." : {
+      "comment" : "Streaming settings: footer under the audio bit rate row",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jedes Ziel erhält denselben Ton. Eine höhere Bitrate eignet sich für Musik; prüfe, was der jeweilige Dienst akzeptiert."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Todos los destinos reciben el mismo sonido. Una velocidad de bits más alta conviene a la música; comprueba qué acepta cada servicio."
+          }
+        }
+      }
+    },
+    "HEVC makes a smaller file at the same picture quality. H.264 opens in more players and editors." : {
+      "comment" : "Recording settings: footer explaining the choice between the two video codecs",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "HEVC erzeugt bei gleicher Bildqualität eine kleinere Datei. H.264 lässt sich in mehr Playern und Schnittprogrammen öffnen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "HEVC crea un archivo más pequeño con la misma calidad de imagen. H.264 se abre en más reproductores y editores."
+          }
+        }
+      }
+    },
+    "Video Codec" : {
+      "comment" : "Recording settings: video codec picker label",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Videocodec"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Códec de vídeo"
+          }
+        }
+      }
+    },
     "“%@” is still being recorded. Stop the recording before moving it to the Trash." : {
       "comment" : "Reason a recording could not be moved to the Trash: it is the take being recorded; the placeholder is the file's name",
       "localizations" : {
@@ -925,6 +1010,7 @@
     },
     "Add images, movies, or text files to the project" : {
       "comment" : "Tooltip on the Library's Add Media button",
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -942,6 +1028,7 @@
     },
     "Add images, movies, or text files, or drop them here." : {
       "comment" : "Library empty state description",
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {

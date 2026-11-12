@@ -85,6 +85,30 @@ struct RecordingSettingsView: View {
             }
 
             Section {
+                Picker(selection: videoCodecSelection) {
+                    ForEach(StreamConfiguration.VideoCodec.allCases, id: \.self) { codec in
+                        Text(verbatim: Self.name(of: codec)).tag(codec)
+                    }
+                } label: {
+                    Text("Video Codec", comment: "Recording settings: video codec picker label")
+                }
+                .pickerStyle(.menu)
+                .disabled(model.isRecording)
+
+                AudioBitRatePicker(bitsPerSecond: audioBitRateSelection)
+                    .disabled(model.isRecording)
+            } header: {
+                Text(
+                    "Compression",
+                    comment: "Streaming and Recording settings: heading over the codec and bit rate rows")
+            } footer: {
+                Text(
+                    "HEVC makes a smaller file at the same picture quality. H.264 opens in more players and editors.",
+                    comment: "Recording settings: footer explaining the choice between the two video codecs"
+                )
+            }
+
+            Section {
                 LabeledContent {
                     statusLabel
                 } label: {
@@ -139,6 +163,49 @@ struct RecordingSettingsView: View {
                 model.setRecordingContainer(container)
             }
         )
+    }
+
+    /// The codec picker's binding, reporting its own tap.
+    private var videoCodecSelection: Binding<StreamConfiguration.VideoCodec> {
+        Binding(
+            get: { model.recordingVideoCodec },
+            set: { codec in
+                model.eventBus.tap(
+                    "recordingVideoCodec.picker",
+                    domain: .output,
+                    params: ["videoCodec": .string(codec.rawValue)]
+                )
+                model.setRecordingVideoCodec(codec)
+            }
+        )
+    }
+
+    /// The audio bit rate picker's binding, reporting its own tap.
+    private var audioBitRateSelection: Binding<Int> {
+        Binding(
+            get: { model.recordingAudioBitsPerSecond },
+            set: { rate in
+                model.eventBus.tap(
+                    "recordingAudioBitRate.picker",
+                    domain: .output,
+                    params: ["audioBitrate": .int(rate)]
+                )
+                model.setRecordingAudioBitsPerSecond(rate)
+            }
+        )
+    }
+
+    /// The name a codec is known by — a proper name, the same in every
+    /// language, so it is not localized.
+    ///
+    /// - Parameter codec: The codec.
+    /// - Returns: Its name.
+    static func name(of codec: StreamConfiguration.VideoCodec) -> String {
+        switch codec {
+        case .h264: "H.264"
+        case .hevc: "HEVC"
+        @unknown default: codec.rawValue.uppercased()
+        }
     }
 
     /// The live recording status, rendered from ``EngineModel/RecordingStatus``.

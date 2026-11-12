@@ -44,6 +44,20 @@ struct StreamingSettingsView: View {
             DestinationListView(model: model)
 
             Section {
+                AudioBitRatePicker(bitsPerSecond: audioBitRateSelection)
+                    .disabled(model.isStreaming)
+            } header: {
+                Text(
+                    "Compression",
+                    comment: "Streaming and Recording settings: heading over the codec and bit rate rows")
+            } footer: {
+                Text(
+                    "Every destination receives the same sound. A higher bit rate suits music; check what each service accepts.",
+                    comment: "Streaming settings: footer under the audio bit rate row"
+                )
+            }
+
+            Section {
                 LabeledContent {
                     streamStatusLabel
                 } label: {
@@ -60,6 +74,21 @@ struct StreamingSettingsView: View {
             StreamHistorySection(model: model)
         }
         .formStyle(.grouped)
+    }
+
+    /// The audio bit rate picker's binding, reporting its own tap.
+    private var audioBitRateSelection: Binding<Int> {
+        Binding(
+            get: { model.streamAudioBitsPerSecond },
+            set: { rate in
+                model.eventBus.tap(
+                    "streamAudioBitRate.picker",
+                    domain: .output,
+                    params: ["audioBitrate": .int(rate)]
+                )
+                model.setStreamAudioBitsPerSecond(rate)
+            }
+        )
     }
 
     /// The live stream status, rendered from ``EngineModel/StreamStatus`` — the

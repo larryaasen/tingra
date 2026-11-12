@@ -474,13 +474,16 @@ surface is:
 - `MixerSlider` — the mixer's `NSSlider`: a fader on end, or a pan lying flat.
 - `FaderSlider` — the `NSSlider` subclass catching a fader's double-click.
 - `MeterBallistics` — draw-time ballistics: instant attack, 20 dB/s decay.
+- `CompressionChoices` — the offered audio bit rates and HEVC's video rate.
 - `SessionPreferences` — where the operator's position persists per project.
 - `SessionPosition` — validates the recorded position against the project.
 - `MonitorPreferences` — where the monitor device, level, and mute persist.
 - `RecordingSettingsView` — the Recording settings pane.
 - `RecordButton` — the Record / Stop Recording toolbar control, ⌘R.
 - `StreamButton` — the Start / Stop Streaming toolbar control, ⌘G.
-- `RecordingPreferences` — where the recordings folder and container persist.
+- `RecordingPreferences` — where the folder, container, and codec persist.
+- `StreamingPreferences` — where the stream's audio bit rate persists.
+- `AudioBitRatePicker` — the audio bit rate menu both settings panes share.
 - `RecordingFilename` — the pure date-stamped, never-overwriting naming rule.
 - **Snapshots** (`Snapshots/`) — a still of a monitor's frame, saved as PNG:
   - `SnapshotSubject` — which monitor: program, preview, input, or layer.

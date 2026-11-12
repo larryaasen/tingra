@@ -429,6 +429,18 @@ final class EngineModel {
     /// The container format recordings are muxed into.
     private(set) var recordingContainer: RecordingFile.Container
 
+    /// The video codec recordings are compressed with, from machine-local
+    /// preferences (ARCHITECTURE.md, "Compression settings in the app").
+    private(set) var recordingVideoCodec: StreamConfiguration.VideoCodec
+
+    /// The audio bit rate recordings are compressed at, in bits per second —
+    /// one of ``CompressionChoices/audioBitRates``.
+    private(set) var recordingAudioBitsPerSecond: Int
+
+    /// The audio bit rate the stream is compressed at, in bits per second —
+    /// one of ``CompressionChoices/audioBitRates``.
+    private(set) var streamAudioBitsPerSecond: Int
+
     /// How much recording the chosen folder's volume still holds at the
     /// program's settings, or nil when it cannot be measured — shown beside
     /// the folder so the operator sees the room they have before pressing
@@ -473,14 +485,39 @@ final class EngineModel {
     /// The compression settings a recording is written with — the program's
     /// own geometry and rate, the same settings the free-space estimate is
     /// computed from, so the room the panel shows and the room the pre-flight
-    /// check enforces cannot disagree.
+    /// check enforces cannot disagree. The codec and the audio bit rate are
+    /// the operator's choices; the video bit rate follows the format and the
+    /// codec by one rule (``CompressionChoices``), so HEVC writes a smaller
+    /// file rather than the same-size one.
     var recordingConfiguration: StreamConfiguration {
+        StreamConfiguration(
+            width: format.width,
+            height: format.height,
+            frameRate: format.frameRate,
+            videoCodec: recordingVideoCodec,
+            videoBitsPerSecond: CompressionChoices.videoBitsPerSecond(
+                width: format.width, height: format.height, frameRate: format.frameRate,
+                codec: recordingVideoCodec),
+            audioBitsPerSecond: recordingAudioBitsPerSecond,
+            includesVideo: true,
+            includesAudio: true
+        )
+    }
+
+    /// The compression settings every leg of the stream is sent with — the
+    /// program's own geometry and rate, H.264 (the codec every destination
+    /// accepts), and the operator's audio bit rate. The video bit rate
+    /// follows the format by one rule — a 4K choice must not be compressed
+    /// at 1080p's 4500k (ARCHITECTURE.md, "The program format as a project
+    /// setting").
+    var streamConfiguration: StreamConfiguration {
         StreamConfiguration(
             width: format.width,
             height: format.height,
             frameRate: format.frameRate,
             videoBitsPerSecond: StreamConfiguration.recommendedVideoBitsPerSecond(
                 width: format.width, height: format.height, frameRate: format.frameRate),
+            audioBitsPerSecond: streamAudioBitsPerSecond,
             includesVideo: true,
             includesAudio: true
         )
@@ -1481,6 +1518,9 @@ final class EngineModel {
     /// Where the operator's recording folder and container live.
     @ObservationIgnored private let recordingPreferences: RecordingPreferences
 
+    /// Where the stream's compression choices persist.
+    @ObservationIgnored private let streamingPreferences: StreamingPreferences
+
     /// Where the operator's snapshots folder lives.
     @ObservationIgnored private let snapshotPreferences: SnapshotPreferences
 
@@ -1870,6 +1910,9 @@ final class EngineModel {
     ///   - recordingPreferences: Where the recordings folder and container
     ///     persist (the standard defaults by default; a throwaway suite in
     ///     tests, for the same reason).
+    ///   - streamingPreferences: Where the stream's compression choices
+    ///     persist (the standard defaults by default; a throwaway suite in
+    ///     tests).
     ///   - keepAwakePreferences: Where the Keep Mac Awake choice persists
     ///     (the standard defaults by default; a throwaway suite in tests).
     ///   - keepAwake: What the Mac is held awake through while a session
@@ -1890,6 +1933,7 @@ final class EngineModel {
         authorization: any AuthorizationChecking = SystemAuthorization(),
         snapshotPreferences: SnapshotPreferences = SnapshotPreferences(),
         recordingPreferences: RecordingPreferences = RecordingPreferences(),
+        streamingPreferences: StreamingPreferences = StreamingPreferences(),
         keepAwakePreferences: KeepAwakePreferences = KeepAwakePreferences(),
         keepAwake: any KeepAwake = ProcessActivityKeepAwake(),
         liveStreamRecord: LiveStreamRecord = LiveStreamRecord(),
@@ -1911,6 +1955,10 @@ final class EngineModel {
         self.isMonitorMuted = monitorPreferences.isMuted
         self.recordingFolder = recordingPreferences.folder
         self.recordingContainer = recordingPreferences.container
+        self.recordingVideoCodec = recordingPreferences.videoCodec
+        self.recordingAudioBitsPerSecond = recordingPreferences.audioBitsPerSecond
+        self.streamingPreferences = streamingPreferences
+        self.streamAudioBitsPerSecond = streamingPreferences.audioBitsPerSecond
         self.snapshotFolder = snapshotPreferences.folder
         self.keepAwakePreferences = keepAwakePreferences
         self.keepsMacAwake = keepAwakePreferences.isEnabled
@@ -4647,18 +4695,7 @@ final class EngineModel {
         // streams silence, the way an empty shot streams the background
         // canvas (ARCHITECTURE.md, "The audio mixer"). Every leg encodes with
         // these settings; per-destination compression is a later iteration.
-        // The bitrate follows the format by one rule — a 4K choice must not
-        // encode at 1080p's 4500k (ARCHITECTURE.md, "The program format as a
-        // project setting").
-        let configuration = StreamConfiguration(
-            width: format.width,
-            height: format.height,
-            frameRate: format.frameRate,
-            videoBitsPerSecond: StreamConfiguration.recommendedVideoBitsPerSecond(
-                width: format.width, height: format.height, frameRate: format.frameRate),
-            includesVideo: true,
-            includesAudio: true
-        )
+        let configuration = streamConfiguration
 
         var legs: [StreamSession.DestinationLeg] = []
         for destination in streamable {
@@ -4962,6 +4999,45 @@ final class EngineModel {
         recordingContainer = container
         recordingPreferences.container = container
         refreshRecordingCapacity()
+    }
+
+    /// Changes the video codec recordings are compressed with, persisting
+    /// the choice. Ignored while recording: a file is one codec from its
+    /// first frame to its last. The room left is re-read, since the codec
+    /// changes the video bit rate the estimate is computed from.
+    ///
+    /// - Parameter codec: The video codec.
+    func setRecordingVideoCodec(_ codec: StreamConfiguration.VideoCodec) {
+        guard !isRecording else { return }
+        recordingVideoCodec = codec
+        recordingPreferences.videoCodec = codec
+        refreshRecordingCapacity()
+    }
+
+    /// Changes the audio bit rate recordings are compressed at, persisting
+    /// the choice. Ignored while recording. A rate off the menu becomes the
+    /// nearest one on it.
+    ///
+    /// - Parameter bitsPerSecond: The audio bit rate in bits per second.
+    func setRecordingAudioBitsPerSecond(_ bitsPerSecond: Int) {
+        guard !isRecording else { return }
+        let rate = CompressionChoices.audioBitsPerSecond(nearest: bitsPerSecond)
+        recordingAudioBitsPerSecond = rate
+        recordingPreferences.audioBitsPerSecond = rate
+        refreshRecordingCapacity()
+    }
+
+    /// Changes the audio bit rate the stream is compressed at, persisting
+    /// the choice. Ignored while a stream session exists: the compressor is
+    /// configured once, at Start. A rate off the menu becomes the nearest
+    /// one on it.
+    ///
+    /// - Parameter bitsPerSecond: The audio bit rate in bits per second.
+    func setStreamAudioBitsPerSecond(_ bitsPerSecond: Int) {
+        guard !isStreaming else { return }
+        let rate = CompressionChoices.audioBitsPerSecond(nearest: bitsPerSecond)
+        streamAudioBitsPerSecond = rate
+        streamingPreferences.audioBitsPerSecond = rate
     }
 
     /// Re-reads how much recording the chosen folder's volume holds.

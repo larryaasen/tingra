@@ -34,6 +34,35 @@ struct AVAssetWriterBackendTests {
         #expect(tag == kAudioChannelLayoutTag_Stereo)
     }
 
+    @Test("Video is written with the configured codec and bit rate")
+    func videoSettingsFollowTheCodec() throws {
+        let h264 = AVAssetWriterBackend.videoSettings(StreamConfiguration(videoCodec: .h264))
+        #expect(h264[AVVideoCodecKey] as? AVVideoCodecType == .h264)
+
+        let configuration = StreamConfiguration(videoCodec: .hevc, videoBitsPerSecond: 2_700_000)
+        let hevc = AVAssetWriterBackend.videoSettings(configuration)
+        #expect(hevc[AVVideoCodecKey] as? AVVideoCodecType == .hevc)
+        let compression = try #require(hevc[AVVideoCompressionPropertiesKey] as? [String: Any])
+        #expect(compression[AVVideoAverageBitRateKey] as? Int == 2_700_000)
+    }
+
+    @Test(
+        "The writer accepts both codecs, and audio from 96 to 320 kbps, in both containers",
+        arguments: [AVFileType.mov, AVFileType.mp4])
+    func writerAcceptsTheOfferedSettings(fileType: AVFileType) throws {
+        let url = FileManager.default.temporaryDirectory.appending(path: "tingra-settings-\(UUID().uuidString)")
+        let writer = try AVAssetWriter(outputURL: url, fileType: fileType)
+
+        for codec in StreamConfiguration.VideoCodec.allCases {
+            let settings = AVAssetWriterBackend.videoSettings(StreamConfiguration(videoCodec: codec))
+            #expect(writer.canApply(outputSettings: settings, forMediaType: .video), "\(codec) in \(fileType)")
+        }
+        for rate in [96_000, 128_000, 160_000, 192_000, 256_000, 320_000] {
+            let settings = AVAssetWriterBackend.audioSettings(StreamConfiguration(audioBitsPerSecond: rate))
+            #expect(writer.canApply(outputSettings: settings, forMediaType: .audio), "\(rate) in \(fileType)")
+        }
+    }
+
     @Test("The writer lays down a movie fragment every ten seconds")
     func movieFragmentIntervalIsTenSeconds() {
         let interval = AVAssetWriterBackend.movieFragmentInterval

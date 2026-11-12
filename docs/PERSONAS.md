@@ -10,8 +10,11 @@ with no record in them counts as missing.
 **The order is how easy each persona is to make successful.** The persona
 Tingra already serves comes first, then those the app's release alone would
 serve, then the rest by the size of the work still between them and success.
-Each persona's section opens with a **To succeed** line naming that work. The
-sizes are estimates read from the architecture, not measured:
+Each persona's section opens with a **To succeed** line naming that work. One
+persona is placed by decision rather than by size: the plug-in developer (12)
+needs no new feature, only the SDK's first publish, and that step is set
+after the eleven personas above it. The sizes are estimates read from the
+architecture, not measured:
 
 - **S** — a plug-in or a setting on a seam that already exists, such as one
   more effect or media provider.
@@ -25,8 +28,8 @@ sizes are estimates read from the architecture, not measured:
 **One step comes before all of this.** `Tingra.app` has not shipped. Today a
 user can install `tingra-cli` and Tingra Cameras with Homebrew, and the CLI
 streams one camera and one microphone, with no shots and no compositing. Every
-persona except 1 and 6 needs the app, and so do plug-in developers building for
-the app tier (5); for them every ✅ below means
+persona except 1 and 5 needs the app, and so do plug-in developers building for
+the app tier (12); for them every ✅ below means
 "built in the app, waiting on its release" (TODO.md, "Release Tingra.app").
 The sizes leave the release out, since every one of them shares it.
 
@@ -41,17 +44,14 @@ The sizes leave the release out, since every one of them shares it.
 | 2 | Solo talker | Strong | Ship the app | — |
 | 3 | Recorder | Strong in the app | Ship the app; a CLI `record` command | S |
 | 4 | Screen streamer | Strong, until the Mac's own sound is needed | Ship the app; system and app audio for some | — / M |
-| 5 | Plug-in developer | Strong design | Publish the SDK; app-tier plug-ins also need the app | — |
-| 6 | Set-and-forget camera | Good for someone at home in a terminal | Reconnect without a limit, start at login | S, M |
-| 7 | Audio show | Weak | Audio files, ducking; a limiter on the whole mix | S, M, M |
-| 8 | Fitness or yoga instructor | Weak | Flip, audio files, ducking | S, S, M |
-| 9 | Musician | Fair | An audio bit rate setting, channel choice, sync offset | S, M, M |
-| 7 | Audio show | Weak | A limiter, ducking | S, M |
-| 8 | Fitness or yoga instructor | Weak | Flip, ducking | S, M |
-| 9 | Musician | Fair | A limiter, an audio bit rate setting, channel choice, sync offset | S, S, M, M |
-| 10 | Avatar streamer | Unknown | Check window transparency, or a chroma key | S or M |
-| 11 | Reaction or watch-along streamer | Weak | System and app audio, ducking, clips that pause | M, M, M |
-| 12 | Video podcaster | Fair | EQ and noise removal, automixer, a track per mic, sync offset | M to L |
+| 5 | Set-and-forget camera | Good for someone at home in a terminal | Reconnect without a limit, start at login | S, M |
+| 6 | Audio show | Weak | Ducking; a limiter on the whole mix | M, M |
+| 7 | Fitness or yoga instructor | Weak | Flip, ducking | S, M |
+| 8 | Musician | Fair | Channel choice, sync offset | M, M |
+| 9 | Avatar streamer | Unknown | Check window transparency, or a chroma key | S or M |
+| 10 | Reaction or watch-along streamer | Weak | System and app audio, ducking, clips that pause | M, M, M |
+| 11 | Video podcaster | Fair | EQ and noise removal, automixer, a track per mic, sync offset | S to L |
+| 12 | Plug-in developer | Strong design | Publish the SDK; app-tier plug-ins also need the app | — |
 | 13 | Teacher or presenter | Good, with two big holes | System and app audio, virtual camera, captions | M, L, L |
 | 14 | Live seller | Weak to fair | Live titles, a web page input | L, L |
 | 15 | Worship or community volunteer team | Fair | Lyric titles, macros, a scheduled start | L, L, M |
@@ -63,25 +63,25 @@ The sizes leave the release out, since every one of them shares it.
 
 ## What the order shows
 
-Five personas need no new feature: the **automation operator** (1) succeeds
-today, the **solo talker** (2), **recorder** (3), and **screen streamer** (4)
-succeed the day the app ships, and the **plug-in developer** (5) succeeds
-the day the SDK is published for host-tier plug-ins, and the day the app
-ships for app-tier ones. The first four share a shape: one or two video
-inputs, a voice from a microphone, no sound from the Mac itself, and no web
-graphics.
+Five personas need no new feature. Four of them lead the list: the
+**automation operator** (1) succeeds today, and the **solo talker** (2),
+**recorder** (3), and **screen streamer** (4) succeed the day the app ships.
+Those four share a shape: one or two video inputs, a voice from a microphone,
+no sound from the Mac itself, and no web graphics. The fifth is the
+**plug-in developer** (12), who succeeds the day the SDK is published for
+host-tier plug-ins, and the day the app ships for app-tier ones; publishing
+is placed later by decision, so that persona sits lower than its size.
 
-The next five (6 to 10) are each a few small pieces away, and most of those
-pieces are plug-ins on seams that already exist: a flip effect and audio
-files as a media provider (the dynamics effects and the time generators
-were the first built). The larger pieces among
-pieces are plug-ins on seams that already exist: a limiter and a flip effect
-(audio files as a media provider and the time generators were the first
-built). The larger pieces among
-them, each M, are ducking, sync offset, and starting at login. That makes them
-the cheapest personas to win next.
+The next five (5 to 9) are each a few small pieces away, and most of those
+pieces are plug-ins or settings on seams that already exist: a flip effect
+and reconnecting without a limit (the dynamics effects, audio files as a
+media provider, the time generators, and the app's codec and audio bit rate
+settings were the first built). The larger pieces among them, each M, are
+ducking, sync offset, channel choice, an effect chain on the master, and
+starting at login. That makes them the cheapest personas to win next.
 
-From 11 down, every persona needs at least one M or L feature, and the same
+From 10 down, every persona but the plug-in developer needs at least one M
+or L feature, and the same
 few recur: system and app audio, titles and overlays, captions, and a web page
 input. Building those in that order would move most of the list at once.
 
@@ -106,7 +106,7 @@ daemon, which streams one camera; it cannot reach the app's shots.
 | Shots and compositing without the app | ❌ | The CLI has no compositor; display, window, and shots are app-only |
 | Let the agent see the program | ❌ | Planned: a `program.snapshot` tool |
 | Run steps when an event fires | ❌ | Macros not built |
-| Test without hardware | ✅ | Bars, tone, black, PLUGE generators |
+| Test without hardware | ✅ | Bars, tone, black, PLUGE, and the time stamp, timer, and countdown generators |
 
 ## 2. Solo talker
 
@@ -146,7 +146,7 @@ find the file.
 | Warn before the disk fills | ✅ | A free-space check before recording starts |
 | Keep the file if Tingra quits | 🟡 | The file is written in fragments, so a take survives a force quit; a few dropped frames are still under study (TODO.md) |
 | Pause and resume a take | ❌ | Not on record |
-| Smaller files (HEVC) | 🟡 | `--video-codec hevc` in the CLI; the app records H.264 only |
+| Smaller files (HEVC) | ✅ | A Video Codec setting in the Recording pane; HEVC records at 60 % of H.264's video bit rate. `--video-codec hevc` in the CLI |
 | Trim the ends | ❌ | Not on record |
 | Name titles, a logo | 🟡 | Text and image files as layers |
 
@@ -170,27 +170,7 @@ it; a small face cam is optional.
 | A "be right back" shot | ✅ | Shots, with an image or text layer |
 | Switch shots while another app has focus | ❌ | No global hotkeys |
 
-## 5. Plug-in developer
-
-Builds what Tingra does not: an NDI input, a new streaming protocol, an effect,
-a rundown pane, a chat panel. Needs a stable API and a way to reach users.
-
-**To succeed:** publish the SDK, a step for Larry with no code to write; that serves host-tier plug-ins (inputs, effects, outputs, tools). App-tier plug-ins (panes, windows, status items, the app's meters and video) also need the app to ship. **Size:** none.
-
-| Need | Status | Notes |
-|---|---|---|
-| A stable, versioned API | 🟡 | SemVer and Library Evolution; 0.x until NDI, then 1.0 |
-| A binary SDK to build against | 🟡 | Built; the first public publish waits on Larry (TODO.md) |
-| Add inputs, effects, outputs, and MCP tools | ✅ | Host-tier `*.tingraplugin` bundles |
-| Add panes, windows, commands, and status items | ✅ | App-tier ExtensionKit plug-ins |
-| Read the app's meters and video | ✅ | `tingra/meters`, `tingra/frame` |
-| Store secrets and data | ✅ | Plug-in secrets in the Keychain, project and app storage |
-| Settings drawn for you | ✅ | Declared `Parameter`s become a native settings pane |
-| Safe when a plug-in crashes | 🟡 | App-tier plug-ins run out of process, so a crash spares the app. Host-tier bundles run in process, so a crash takes Tingra and a live stream down; the load-crash guard and safe mode only help the next launch |
-| A worked example | ✅ | The Notes plug-in, the fixture plug-in |
-| A place to list and share plug-ins | ❌ | Planned: the plug-in gallery, proposed |
-
-## 6. Set-and-forget camera
+## 5. Set-and-forget camera
 
 A bird feeder, a fish tank, a building site, a parking lot, a barn at
 lambing time. One camera, sometimes a microphone, streaming day and night
@@ -211,14 +191,13 @@ all.
 | A date and time stamp on the picture | 🟡 | In the app, the time stamp generator is a layer over the camera; `tingra-cli stream` does no compositing, so there `--video-generator time-stamp` replaces the camera |
 | Low power, cool Mac | ✅ | Hardware compression, GPU-resident frames |
 
-## 7. Audio show
+## 6. Audio show
 
 A radio-style show, a DJ set, a sermon or reading streamed as sound, a talk
 show with no cameras. Mics and music carry it; the picture is a still image,
 a logo, or black.
 
-**To succeed:** audio files as inputs, ducking, and a limiter on the whole mix (each strip has one). **Size:** S, M, M.
-**To succeed:** a limiter and ducking. **Size:** S, M.
+**To succeed:** ducking, and a limiter on the whole mix (each strip has one). **Size:** M, M.
 
 | Need | Status | Notes |
 |---|---|---|
@@ -230,9 +209,9 @@ a logo, or black.
 | Music from a music app on the Mac | ❌ | No system or app audio input |
 | A limiter so the stream never clips | 🟡 | A limiter effect on each strip, before its fader. Nothing limits the program mix, so several loud strips can still add up past full scale; that needs an effect chain on the master, which is not built |
 | Talk over the music (ducking) | ❌ | Not on record |
-| A higher audio bit rate | 🟡 | `--audio-bitrate` in the CLI; no app setting on record |
+| A higher audio bit rate | ✅ | An Audio Bit Rate setting, up to 320 kbps, for the stream and for the recording; `--audio-bitrate` in the CLI |
 
-## 8. Fitness or yoga instructor
+## 7. Fitness or yoga instructor
 
 Leads a class from a studio or a living room: one wide camera, a wireless
 mic, music, and students who follow along live, often on a private server or
@@ -252,13 +231,13 @@ inside a video call. Moves the whole time, so cannot reach the keyboard.
 | Switch shots without touching the Mac | ❌ | No global hotkeys, pedal, or control surface; an app-tier plug-in could call the shot tools, but no agent can reach the app yet |
 | Record the class for members who missed it | ✅ | Local recording |
 
-## 9. Musician
+## 8. Musician
 
 Plays guitar, keys, or a drum kit, and sings. Sound comes in through an audio
 interface; one camera shows the player, another the hands. Sound quality
 matters more than anything else.
 
-**To succeed:** an audio bit rate setting in the app, channel choice on the interface, and sync offset. **Size:** S, M, M.
+**To succeed:** channel choice on the interface, and sync offset. **Size:** M, M.
 
 | Need | Status | Notes |
 |---|---|---|
@@ -268,11 +247,11 @@ matters more than anything else.
 | A limiter so a loud chord never clips | ✅ | The limiter effect on the interface's strip holds it under a ceiling. It works before the fader, so keep the fader at or under 0 dB; not yet judged by ear |
 | Picture and sound in step | ❌ | Planned: sync offset, not built |
 | Two cameras: the player and the hands | ✅ | Shots, multiview |
-| A higher audio bit rate | 🟡 | `--audio-bitrate` in the CLI; no app setting on record |
+| A higher audio bit rate | ✅ | An Audio Bit Rate setting, up to 320 kbps, for the stream and for the recording; `--audio-bitrate` in the CLI |
 | A separate track per instrument in the recording | ❌ | The recording holds the stereo program mix only |
 | Several services at once | ✅ | Multiple destinations |
 
-## 10. Avatar streamer
+## 9. Avatar streamer
 
 Streams as an animated character. A face-tracking app reads their face from
 the camera and draws the character; the streamer puts the character over a
@@ -290,7 +269,7 @@ needs.
 | Game and app sound | ❌ | No system or app audio input |
 | Alerts, chat, and global hotkeys | ❌ | As for the game streamer |
 
-## 11. Reaction or watch-along streamer
+## 10. Reaction or watch-along streamer
 
 Watches a trailer, a match, a video, or a web page with viewers and talks over
 it, face in a corner. The clip's sound is half the show.
@@ -308,12 +287,12 @@ it, face in a corner. The clip's sound is half the show.
 | A web page as an input, not a captured window | ❌ | No web page input |
 | Viewers' chat on screen | ❌ | No web page input |
 
-## 12. Video podcaster
+## 11. Video podcaster
 
 Two to four hosts around a table, each with a mic and often a camera, sometimes
 a guest who calls in. Cares most about sound, and edits the recording after.
 
-**To succeed:** EQ and noise removal (the gate, compressor, and limiter are built), an automixer, a track per mic in the recording, and sync offset. Shows with remote guests wait on a call-in path (XL). **Size:** M to L.
+**To succeed:** EQ and noise removal (the gate, compressor, and limiter are built), an automixer, a track per mic in the recording, and sync offset. Shows with remote guests wait on a call-in path (XL). **Size:** S to L.
 
 | Need | Status | Notes |
 |---|---|---|
@@ -330,6 +309,26 @@ a guest who calls in. Cares most about sound, and edits the recording after.
 | A file per camera (ISO recording) | ❌ | Not on record |
 | Name titles (lower thirds) | 🟡 | A text file as a layer; no title templates |
 | Stream to several services at once | ✅ | One program, many destinations |
+
+## 12. Plug-in developer
+
+Builds what Tingra does not: an NDI input, a new streaming protocol, an effect,
+a rundown pane, a chat panel. Needs a stable API and a way to reach users.
+
+**To succeed:** publish the SDK, a step for Larry with no code to write; that serves host-tier plug-ins (inputs, effects, outputs, tools). App-tier plug-ins (panes, windows, status items, the app's meters and video) also need the app to ship. **Size:** none.
+
+| Need | Status | Notes |
+|---|---|---|
+| A stable, versioned API | 🟡 | SemVer and Library Evolution; 0.x until NDI, then 1.0 |
+| A binary SDK to build against | 🟡 | Built; the first public publish waits on Larry (TODO.md) |
+| Add inputs, effects, outputs, and MCP tools | ✅ | Host-tier `*.tingraplugin` bundles |
+| Add panes, windows, commands, and status items | ✅ | App-tier ExtensionKit plug-ins |
+| Read the app's meters and video | ✅ | `tingra/meters`, `tingra/frame` |
+| Store secrets and data | ✅ | Plug-in secrets in the Keychain, project and app storage |
+| Settings drawn for you | ✅ | Declared `Parameter`s become a native settings pane |
+| Safe when a plug-in crashes | 🟡 | App-tier plug-ins run out of process, so a crash spares the app. Host-tier bundles run in process, so a crash takes Tingra and a live stream down; the load-crash guard and safe mode only help the next launch |
+| A worked example | ✅ | The Notes plug-in, the fixture plug-in |
+| A place to list and share plug-ins | ❌ | Planned: the plug-in gallery, proposed |
 
 ## 13. Teacher or presenter
 
@@ -532,48 +531,45 @@ Sized as above. Within a size, the gaps that block more personas come first.
 
 | Gap | Size | Blocks | Tracked? |
 |---|---|---|---|
-| Publish the plug-in SDK | — | 5 | Yes, TODO.md; no code, a step for Larry |
-| Audio files as inputs | S | 7, 8, 15 | No |
-| Limiter, compressor, and gate as audio effects | S | 7, 9, 12 | No |
-| HEVC and audio bit rate settings in the app | S | 3, 7, 9 | No |
-| Reconnect without a limit | S | 6 | No |
+| Publish the plug-in SDK | — | 12 | Yes, TODO.md; no code, a step for Larry |
+| Reconnect without a limit | S | 5 | No |
 | A `record` command in the CLI | S | 3 | No |
-| Flip the picture left to right | S | 8 | No |
-| Check whether window capture keeps transparency | S | 10 | Not on record |
-| System and app audio capture | M | 4, 7, 10, 11, 13, 16 | No |
-| Global hotkeys | M | 4, 8, 14, 16 | No |
-| Sync offset | M | 9, 12, 15, 19 | Yes, CLOCK.md |
-| Playlists, and clips that play once or pause | M | 7, 8, 11, 15 | Play-once is a planned slice |
-| Ducking: music or a clip dips under a voice | M | 7, 8, 11 | No |
-| Starting on its own: at login, or at a set time | M | 6, 15, 17 | No |
-| A time stamp over the camera in a CLI stream | M | 6 | No; the generator is built (ARCHITECTURE.md, "The time generators"), the CLI does no compositing |
-| Chroma key and background removal | M | 2, 10, 16 | Keying defined in GLOSSARY.md only |
+| Flip the picture left to right | S | 7 | No |
+| EQ as an audio effect | S | 11 | No |
+| Check whether window capture keeps transparency | S | 9 | Not on record |
+| System and app audio capture | M | 4, 6, 9, 10, 13, 16 | No |
+| Global hotkeys | M | 4, 7, 14, 16 | No |
+| Sync offset | M | 8, 11, 15, 19 | Yes, CLOCK.md |
+| Playlists, and clips that play once or pause | M | 6, 7, 10, 15 | Play-once is a planned slice |
+| Ducking: music or a clip dips under a voice | M | 6, 7, 10 | No |
+| Starting on its own: at login, or at a set time | M | 5, 15, 17 | No |
+| Chroma key and background removal | M | 2, 9, 16 | Keying defined in GLOSSARY.md only |
 | Overlays above every shot | M | 16, 18 | Defined in GLOSSARY.md only |
-| Choosing channels on a multichannel audio interface | M | 9, 17 | Not on record |
+| Choosing channels on a multichannel audio interface | M | 8, 17 | Not on record |
 | Pausing and splitting a recording | M | 3, 17 | No |
-| Automixer for many open mics | M | 12, 17 | No |
+| Automixer for many open mics | M | 11, 17 | No |
 | Chapter marks in a recording | M | 13, 17 | No |
 | Camera controls in the main app | M | 2, 15 | Yes, TODO.md |
-| EQ as an audio effect | M | 12 | No |
-| An effect chain on the master, so a limiter can hold the whole mix | M | 7 | No; DONE.md names it as what re-opens the master section |
+| A time stamp over the camera in a CLI stream | M | 5 | No; the generator is built (ARCHITECTURE.md, "The time generators"), the CLI does no compositing |
+| An effect chain on the master, so a limiter can hold the whole mix | M | 6 | No; DONE.md names it as what re-opens the master section |
 | Settings IT can manage on many Macs | M | 18 | No |
-| Title templates, changed on air (lower thirds, lyrics, prices, scores) | L | 3, 12, 14, 15, 17, 18, 19 | Titles defined in GLOSSARY.md only |
-| Web page input (alerts, chat, orders, scoreboards) | L | 4, 11, 14, 16, 18, 19 | No |
+| Title templates, changed on air (lower thirds, lyrics, prices, scores) | L | 3, 11, 14, 15, 17, 18, 19 | Titles defined in GLOSSARY.md only |
+| Web page input (alerts, chat, orders, scoreboards) | L | 4, 10, 14, 16, 18, 19 | No |
 | Macros and control surfaces | L | 1, 15, 16, 17, 19 | Macros defined in GLOSSARY.md only |
 | Captions | L | 13, 15, 17, 18 | No |
-| ISO and per-track recording, one track per language included | L | 9, 12, 19 | No |
+| ISO and per-track recording, one track per language included | L | 8, 11, 19 | No |
 | NDI | L | 15, 18, 19 | Yes, TODO.md |
-| Virtual camera output | L | 8, 13 | No |
+| Virtual camera output | L | 7, 13 | No |
 | Landscape and portrait at the same time | L | 14, 16 | No |
 | Replay | L | 16, 19 | No |
-| Noise removal | L | 12 | No |
-| Remote guests and call-in | XL | 12, 16, 17, 18 | WHIP/WHEP waits on `RTCHaishinKit` |
-| SRT reconnect after a dropped link | XL | 1, 6, 19 | Yes, TODO.md; waits on HaishinKit |
-| An agent connection to the app | XL | 1, 8, 20 | No; agents reach only the daemon, and the app's tools answer only its extensions; needs a decision |
+| Noise removal | L | 11 | No |
+| Remote guests and call-in | XL | 11, 16, 17, 18 | WHIP/WHEP waits on `RTCHaishinKit` |
+| SRT reconnect after a dropped link | XL | 1, 5, 19 | Yes, TODO.md; waits on HaishinKit |
+| An agent connection to the app | XL | 1, 7, 20 | No; agents reach only the daemon, and the app's tools answer only its extensions; needs a decision |
 | Remote control from another device | XL | 20 | No, and MCP.md forbids a TCP listener; needs a decision |
 
 Where Tingra already leads: a native Mac app with a GPU-resident path, several
 services at once with per-destination reconnect, recovery after a crash, and,
 above all, control by scripts and AI agents through the CLI and MCP, where
-Tingra stands apart. The plug-in design gives persona 5 a path to fill the
+Tingra stands apart. The plug-in design gives persona 12 a path to fill the
 gaps above without waiting on the core.

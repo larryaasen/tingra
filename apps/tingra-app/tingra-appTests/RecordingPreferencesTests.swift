@@ -80,4 +80,51 @@ struct RecordingPreferencesTests {
         defaults.set("", forKey: "recording.folderPath")
         #expect(preferences.folder == RecordingPreferences.defaultFolder)
     }
+
+    @Test("a fresh install records H.264 with 160 kbps sound")
+    func freshInstallCompression() throws {
+        let (preferences, defaults, name) = try makePreferences()
+        defer { defaults.removePersistentDomain(forName: name) }
+
+        #expect(preferences.videoCodec == .h264)
+        #expect(preferences.audioBitsPerSecond == 160_000)
+    }
+
+    @Test("a chosen video codec persists")
+    func videoCodecPersists() throws {
+        let (preferences, defaults, name) = try makePreferences()
+        defer { defaults.removePersistentDomain(forName: name) }
+
+        preferences.videoCodec = .hevc
+        #expect(RecordingPreferences(defaults: defaults).videoCodec == .hevc)
+    }
+
+    @Test("an unrecognized stored video codec reads as the default")
+    func unknownVideoCodecFallsBack() throws {
+        let (preferences, defaults, name) = try makePreferences()
+        defer { defaults.removePersistentDomain(forName: name) }
+
+        defaults.set("av1", forKey: "recording.videoCodec")
+        #expect(preferences.videoCodec == RecordingPreferences.defaultVideoCodec)
+    }
+
+    @Test("a chosen audio bit rate persists")
+    func audioBitRatePersists() throws {
+        let (preferences, defaults, name) = try makePreferences()
+        defer { defaults.removePersistentDomain(forName: name) }
+
+        preferences.audioBitsPerSecond = 256_000
+        #expect(RecordingPreferences(defaults: defaults).audioBitsPerSecond == 256_000)
+    }
+
+    @Test("a stored audio bit rate off the menu reads as the nearest one on it")
+    func audioBitRateOffTheMenuSnaps() throws {
+        let (preferences, defaults, name) = try makePreferences()
+        defer { defaults.removePersistentDomain(forName: name) }
+
+        defaults.set(250_000, forKey: "recording.audioBitsPerSecond")
+        #expect(preferences.audioBitsPerSecond == 256_000)
+        defaults.set(0, forKey: "recording.audioBitsPerSecond")
+        #expect(preferences.audioBitsPerSecond == 96_000)
+    }
 }

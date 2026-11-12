@@ -8,6 +8,7 @@
 //
 
 import Foundation
+import TingraHost
 import TingraPlugInKit
 
 /// Where the operator's recordings go: **machine-local preferences**, not the
@@ -33,6 +34,12 @@ struct RecordingPreferences {
     /// The container-format key.
     private static let containerKey = "recording.container"
 
+    /// The video codec key.
+    private static let videoCodecKey = "recording.videoCodec"
+
+    /// The audio bit rate key.
+    private static let audioBitRateKey = "recording.audioBitsPerSecond"
+
     /// Where a fresh install records to: `~/Movies/Tingra Recordings`.
     ///
     /// Under `~/Movies` deliberately, over Desktop or Documents: those are
@@ -49,6 +56,10 @@ struct RecordingPreferences {
     /// The container a fresh install records into — QuickTime `.mov`, the
     /// native macOS choice.
     static let defaultContainer: RecordingFile.Container = .mov
+
+    /// The video codec a fresh install records with — H.264, which every
+    /// player and editor opens.
+    static let defaultVideoCodec: StreamConfiguration.VideoCodec = .h264
 
     /// Creates a store over a defaults database.
     ///
@@ -86,5 +97,34 @@ struct RecordingPreferences {
             return container
         }
         nonmutating set { defaults.set(newValue.rawValue, forKey: Self.containerKey) }
+    }
+
+    /// The video codec recordings are compressed with. An unrecognized
+    /// stored value reads as the default.
+    var videoCodec: StreamConfiguration.VideoCodec {
+        get {
+            guard
+                let raw = defaults.string(forKey: Self.videoCodecKey),
+                let codec = StreamConfiguration.VideoCodec(rawValue: raw)
+            else {
+                return Self.defaultVideoCodec
+            }
+            return codec
+        }
+        nonmutating set { defaults.set(newValue.rawValue, forKey: Self.videoCodecKey) }
+    }
+
+    /// The audio bit rate recordings are compressed at, in bits per second:
+    /// always one of the offered rates (``CompressionChoices``). Nothing
+    /// stored reads as the default; a stored rate off the menu reads as the
+    /// nearest one on it.
+    var audioBitsPerSecond: Int {
+        get {
+            guard defaults.object(forKey: Self.audioBitRateKey) != nil else {
+                return CompressionChoices.defaultAudioBitsPerSecond
+            }
+            return CompressionChoices.audioBitsPerSecond(nearest: defaults.integer(forKey: Self.audioBitRateKey))
+        }
+        nonmutating set { defaults.set(newValue, forKey: Self.audioBitRateKey) }
     }
 }
