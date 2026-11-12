@@ -327,8 +327,7 @@ struct SettingsView: View {
             if let plugInHost, let pane = plugInHost.panes.settingsPanes.first(where: { $0.id == id }),
                 let plugIn = plugInHost.plugIns.first(where: { $0.id == pane.plugIn })
             {
-                PlugInPaneHost(identity: plugIn.identity, pane: id, sceneID: pane.descriptor.sceneID, host: plugInHost)
-                    .id(plugInHost.paneGenerations[id, default: 0])
+                PlugInSceneView(identity: plugIn.identity, pane: id, sceneID: pane.descriptor.sceneID, host: plugInHost)
                     .navigationTitle(Text(verbatim: pane.descriptor.title))
             }
         }

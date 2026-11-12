@@ -51,6 +51,10 @@ struct LayerTreeEditorView: View {
     /// edited.
     @Bindable var model: EngineModel
 
+    /// The index of the layer row whose Input Settings popover is open, or
+    /// nil for none — set by the row's context menu.
+    @State private var inputSettingsRow: Int?
+
     /// The lamp's diameter in the header — a dot beside the shot's name,
     /// sized to the caption text it sits with.
     private static let lampDiameter: CGFloat = 8
@@ -199,7 +203,11 @@ struct LayerTreeEditorView: View {
                     ForEach(Array(shot.layers.indices.reversed()), id: \.self) { index in
                         layerRow(shot.layers[index], at: index)
                             .tag(index)
+                            .popover(isPresented: inputSettingsBinding(forRowAt: index), arrowEdge: .trailing) {
+                                InputParametersView(model: model, inputID: shot.layers[index].input)
+                            }
                             .contextMenu {
+                                inputSettingsMenuItem(for: shot.layers[index], at: index)
                                 LayerPasteboardMenuItems(model: model, index: index)
                                 Divider()
                                 LayerMenuItems(model: model, surface: .contextMenu, index: index)
@@ -231,6 +239,48 @@ struct LayerTreeEditorView: View {
             Task { await model.addLayer(boundTo: input) }
             return true
         }
+    }
+
+    /// The row context menu's **Input Settings…** item — present only when
+    /// the layer's input declares parameters, the rule the inspector's gear
+    /// button follows (``LayerInspectorView``): a countdown's duration and
+    /// state, a time stamp's format, a camera's controls. It opens the same
+    /// popover, on the row, so a timer can be started from the list without
+    /// selecting the layer and finding the gear.
+    ///
+    /// - Parameters:
+    ///   - layer: The row's layer.
+    ///   - index: The layer's bottom-to-top index.
+    /// - Returns: The item and its divider, or nothing.
+    @ViewBuilder private func inputSettingsMenuItem(for layer: Layer, at index: Int) -> some View {
+        if model.declaredInputParameters[layer.input]?.isEmpty == false {
+            Button {
+                model.eventBus.tap(
+                    "layerInputSettings.menu",
+                    domain: .composition,
+                    params: ["index": .int(index), "input": .string(layer.input.rawValue)]
+                )
+                inputSettingsRow = index
+            } label: {
+                Text(
+                    "Input Settings…",
+                    comment: "Layer row context menu item that opens the settings of the layer's input")
+            }
+            Divider()
+        }
+    }
+
+    /// Whether the Input Settings popover is open on one row.
+    ///
+    /// - Parameter index: The row's layer index.
+    /// - Returns: The binding the row's popover presents by.
+    private func inputSettingsBinding(forRowAt index: Int) -> Binding<Bool> {
+        Binding(
+            get: { inputSettingsRow == index },
+            set: { isPresented in
+                if !isPresented, inputSettingsRow == index { inputSettingsRow = nil }
+            }
+        )
     }
 
     /// The empty shot's list: what a layer is made from and how, in the

@@ -598,6 +598,8 @@ surface is:
   - `PanePreferences` — which plug-in panes are open, per Mac.
   - `PlugInShortcut` — turns a `ShortcutDescriptor` into a `KeyboardShortcut`.
   - `PlugInPaneHost` — one pane's hosted extension scene.
+  - `PlugInSceneView` — a hosted scene, or the could-not-start notice.
+  - `PaneRecovery` — how many times, and how soon, a failed pane is retried.
   - `PlugInPaneSection` — one plug-in pane's chrome in the trailing sidebar.
   - `PlugInCommands` — the Plug-ins menu, one submenu per plug-in.
   - `PlugInCommandItem` — one menu item; emits its `tap`, then performs.

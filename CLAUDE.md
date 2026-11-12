@@ -401,6 +401,88 @@ Before completing a swap, verify:
 - Never reference "the Tingra plan" — the pre-repo planning document that guided this repo's creation is not part of the repo. Cite the in-repo docs (ARCHITECTURE.md, etc.) instead.
 - Use clear, descriptive variable and function names that reduce need for comments.
 
+## Changelog
+
+`/CHANGELOG.md` tracks user-visible and internal work. Update it as part of the change itself, not as a follow-up pass.
+
+### Structure
+Every section holds **two lists separated by a blank line**: user-facing changes on top, other
+changes worth tracking below. If one list is empty, omit it; adding a user-facing entry to a
+section that has only internal ones means inserting a new list above, with a blank line between.
+Add to the `# Next` section at the top, creating it if the previous release closed it out. The
+sections beneath it are released history. Don't edit them. Within each list, add new entries at
+the end, so each list runs oldest to newest. When parallel branches collide at the end of a list,
+keep both entries and leave them in merge order.
+
+### Products, prefixes, and releases
+Tingra ships four separately versioned products, so every entry starts with a lowercase prefix and
+a colon naming where the change lands: `app:` (Tingra.app), `cli:` (`tingra-cli`), `cameras:`
+(Tingra Cameras), `sdk:` (`TingraPlugInSDK`: the plug-in kit and event bus). Use `engine:` for a
+change in `packages/` that no single product surfaces, and `repo:` for repo-wide tooling,
+documentation, and CI. A change several products surface gets one entry under the product the
+user sees it in first.
+
+A release heading is `# <version>+<build> <M/D/YYYY>`, for example `# 1.11.0+280 10/21/2026`
+(drop `+<build>` for a product with no build number). Releasing a product moves that product's
+entries from `# Next` into a new section under that heading, directly beneath `# Next`; other
+products' entries stay in `# Next`. That is the only time `# Next` entries move. The release scripts
+(`scripts/release-*.sh`) don't do this yet, so whoever cuts the release does it, and the top list
+becomes that release's notes.
+
+`CHANGELOG.md` is the release record; [DONE.md](docs/DONE.md) remains the roadmap record. A change
+that finishes a TODO.md item updates DONE.md and, when it meets the rules below, this file too.
+
+### Top list: release notes for users
+Write each entry as a release note the user will read. Address the user, say what they can now do
+or what stopped going wrong, and keep file names, type names, and implementation detail out of it.
+
+Voice rules:
+- Key point first.
+- Never use an em dash. Use a comma, colon, or period instead.
+- Use hyphens sparingly. Glossary terms keep theirs: `plug-in` is always hyphenated.
+- No line whose only job is to tell the reader which part matters ("Importantly, ...", "Note that ...").
+- Use the product's own vocabulary for its domain objects, not generic terms (`project`, `input`, `shot`,
+  `program`, `destination`, per [GLOSSARY.md](docs/GLOSSARY.md); never "item", "source", or "scene").
+- Don't copy the voice of older released entries. Some predate these rules.
+
+### Entry format
+- Start with the product prefix, then a capital letter, in the past tense: `- cli: Added ...`,
+  `- app: Fixed ...`. Top-list entries address the user instead ("You can now ...") after the prefix.
+- One sentence, ending in a period.
+- The prefix counts toward the character limit below.
+
+### Bottom list: internal work worth a record
+Refactors, test coverage, developer tooling, logging and diagnostics, build and dependency
+changes, documentation. Plain descriptive phrasing is fine here, since this half is for the team,
+not for users.
+
+### Hard limit: 110 characters per entry
+Count from the leading `- ` through the final character. The entry must sit on one line, which is
+roughly one sentence. Say what changed, and add the why only if it still fits and isn't obvious.
+- Root-cause narrative, investigation timelines, API semantics, and design rationale belong in
+  code comments, doc comments, or the commit message, not here.
+- If it doesn't fit, cut to what changed and move the explanation into the code.
+- Never split one change across two bullets to buy more room.
+- Never drop the limit because a change feels important enough to deserve an exception.
+
+### Which list does an entry go in?
+Decide by whether a user could notice the change, not by how large it was. A one-line fix to a
+visible bug is a top-list entry. A 500-line refactor nobody can see is a bottom-list one.
+
+### When an entry is required
+Any change a user could notice, or that alters one of these, gets an entry in the same change:
+- a package's public API (`TingraPlugInKit` and `TingraEventBus` are SemVer contracts),
+- a dependency,
+- the project document format,
+- the `--json` output or MCP tool payload keys (the stable scripting contract).
+
+Formatting-only, whitespace-only, and comment-only changes get none.
+
+### Check before calling it done
+Run `git diff -- CHANGELOG.md` and confirm it shows this change's entry (`git status` alone only
+shows the file as modified, which an earlier edit could explain). A CHANGELOG without an entry on a
+change that needs one means the task isn't finished.
+
 # Other Rules
 
 The following rules apply to all AI agents interpreting or modifying this project:

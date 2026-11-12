@@ -35,8 +35,7 @@ struct PlugInWindowView: View {
         if let window, let registered = host.panes.window(window),
             let plugIn = host.plugIns.first(where: { $0.id == registered.plugIn })
         {
-            PlugInPaneHost(identity: plugIn.identity, pane: window, sceneID: registered.descriptor.sceneID, host: host)
-                .id(host.paneGenerations[window, default: 0])
+            PlugInSceneView(identity: plugIn.identity, pane: window, sceneID: registered.descriptor.sceneID, host: host)
                 .navigationTitle(Text(verbatim: registered.descriptor.title))
         } else {
             ContentUnavailableView {

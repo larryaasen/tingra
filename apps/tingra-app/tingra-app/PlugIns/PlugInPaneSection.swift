@@ -56,8 +56,7 @@ struct PlugInPaneSection: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
             if isExpanded || hasBeenExpanded, let plugIn = host.plugIns.first(where: { $0.id == pane.plugIn }) {
-                PlugInPaneHost(identity: plugIn.identity, pane: pane.id, sceneID: pane.descriptor.sceneID, host: host)
-                    .id(host.paneGenerations[pane.id, default: 0])
+                PlugInSceneView(identity: plugIn.identity, pane: pane.id, sceneID: pane.descriptor.sceneID, host: host)
                     .frame(height: isExpanded ? Self.expandedHeight : 0)
                     .clipped()
                     .opacity(isExpanded ? 1 : 0)

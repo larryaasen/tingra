@@ -92,6 +92,15 @@ final class AppPlugInHost {
     /// (PLUGINS.md, "Spike findings", row 2).
     private(set) var paneGenerations: [PaneID: Int] = [:]
 
+    /// The panes that stopped trying to start, each with the system's last
+    /// reason — what ``PlugInSceneView`` draws in place of the scene until
+    /// the operator asks again (``retryPane(_:)``).
+    private(set) var paneFailures: [PaneID: String] = [:]
+
+    /// Each pane's run of scene errors, deciding whether the next one is
+    /// met with another try (``PaneRecovery``).
+    private var paneRecoveries: [PaneID: PaneRecovery] = [:]
+
     /// The folder embedded extensions live in (`Contents/Extensions`).
     private let extensionsDirectory: URL
 
@@ -444,6 +453,7 @@ final class AppPlugInHost {
     ///   - pane: The pane.
     ///   - controller: The activated host view controller.
     func paneActivated(_ pane: PaneID, controller: EXHostViewController) {
+        paneRecoveries[pane]?.sceneActivated()
         guard let plugIn = panes.plugIn(hosting: pane), let link = links[plugIn] else { return }
         do {
             let connection = try controller.makeXPCConnection()
@@ -459,8 +469,14 @@ final class AppPlugInHost {
     }
 
     /// The pane's host view controller reported its scene going away. With
-    /// an error — the extension process died — the pane is re-hosted after
-    /// a beat, so a crash loop cannot spin the sidebar.
+    /// an error — the extension process died, or the system would not launch
+    /// it — the error is reported and the pane is re-hosted after a wait
+    /// that grows with each error in a row, until ``PaneRecovery`` gives up
+    /// and the pane says it could not start.
+    ///
+    /// The error is reported here and not left to the session's
+    /// `plugin.deactivated`: a scene the system refuses to launch never
+    /// opened a session, so that event never fires for it.
     ///
     /// - Parameters:
     ///   - pane: The pane.
@@ -468,11 +484,41 @@ final class AppPlugInHost {
     func paneDeactivated(_ pane: PaneID, error: (any Error)?) {
         guard let plugIn = panes.plugIn(hosting: pane), let link = links[plugIn] else { return }
         link.closeSession(kind: "pane:\(pane.rawValue)", reason: error.map { String(describing: $0) })
-        guard error != nil else { return }
-        Task {
-            try? await Task.sleep(for: .seconds(1))
-            paneGenerations[pane, default: 0] += 1
+        guard let error else { return }
+        let reason = String(describing: error)
+        var recovery = paneRecoveries[pane] ?? PaneRecovery()
+        let step = recovery.sceneFailed()
+        paneRecoveries[pane] = recovery
+        services?.eventBus.error(
+            "plugin.paneScene", domain: .plugIn,
+            params: [
+                "tier": .string("app"), "id": .string(plugIn.rawValue), "pane": .string(pane.rawValue),
+                "attempt": .int(recovery.failures), "willRetry": .bool(step != .giveUp),
+                "error": .string(reason),
+            ])
+        switch step {
+        case .retry(let delay):
+            Task {
+                try? await Task.sleep(for: delay)
+                paneGenerations[pane, default: 0] += 1
+            }
+        case .giveUp:
+            paneFailures[pane] = reason
         }
+    }
+
+    /// Hosts a pane that had stopped trying again, on the operator's ask —
+    /// the Try Again button in ``PlugInSceneView``, whose tap is reported
+    /// here because the host holds the bus and the three places a scene is
+    /// shown do not all hold a model. The run of errors is forgotten, so the
+    /// pane gets its full set of tries.
+    ///
+    /// - Parameter pane: The pane.
+    func retryPane(_ pane: PaneID) {
+        services?.eventBus.tap("plugInPaneRetry.button", domain: .plugIn, params: ["pane": .string(pane.rawValue)])
+        paneRecoveries[pane] = nil
+        paneFailures[pane] = nil
+        paneGenerations[pane, default: 0] += 1
     }
 
     // MARK: - Commands

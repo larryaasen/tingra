@@ -117,6 +117,18 @@ The spike ran the same day as the approval, as a throwaway `tingra-spike` extens
 
 Two findings outside the table: the `AppExtensionIdentity.matching` sequence is deprecated in macOS 26 in favour of `AppExtensionPoint.Monitor`, but is the only API under the macOS 15 floor and emits no warning there; and Tingra.app's own idle CPU (about 60–90 % with the monitors drawing at 60 Hz unconditionally, a known item in TODO.md, since fixed; DONE.md) dwarfs anything the extension costs.
 
+### A pane that cannot start (2026-11-11)
+
+Row 2's one-second re-host had no limit, and it assumed the scene had been up. Neither held on 2026-11-11. A second, unsigned build of the app on the same Mac had registered its own copy of the Notes extension; the system chose that copy, which carries no `com.apple.security.app-sandbox` entitlement, and refused to launch it (`com.apple.extensionKit.errorDomain` code 16). The app re-hosted the pane and the settings pane once a second each for as long as it ran, behind "Loading plug-in…", and put nothing on the bus: `plugin.deactivated` fires when the last *session* closes, and a scene that never launched never opened one. The refusal was visible only in the system log.
+
+Three changes, all in the app:
+
+- **Every scene that ends with an error is reported**, as a `plugin.paneScene` error naming the plug-in, the pane, the attempt, whether another try follows, and the system's reason.
+- **Re-hosting is bounded** (`PaneRecovery`): four retries, waiting 1, 2, 4, and 8 seconds, and the fifth error in a row stops. A scene that comes up ends the run, so an extension that crashes once a day always gets its retries.
+- **A pane that stopped says so** (`PlugInSceneView`, the one view behind a sidebar pane, a settings pane, and a plug-in window): "Plug-in Could Not Start", that the log has the reason, and Try Again, which starts a fresh run.
+
+Not changed: which copy of an extension the system launches is the system's choice. A build that registers a second copy must unregister it (`pluginkit -r` on the `.appex`, `lsregister -u` on the app).
+
 ## Phase 1 — the app tier and its first plug-in
 
 This is the "first step": a plug-in the host never sees adds a sidebar pane, a menu item, and log lines, and saves what it makes — from its own process.

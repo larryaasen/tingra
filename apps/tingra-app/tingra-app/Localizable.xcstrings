@@ -69,6 +69,74 @@
         }
       }
     },
+    "Input Settings…" : {
+      "comment" : "Layer row context menu item that opens the settings of the layer's input",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eingangseinstellungen…"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ajustes de entrada…"
+          }
+        }
+      }
+    },
+    "macOS did not start this plug-in. The log has the reason." : {
+      "comment" : "Explanation shown in a plug-in's pane after its extension could not be started",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS hat dieses Plug-in nicht gestartet. Der Grund steht im Protokoll."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS no inició este complemento. El motivo está en el registro."
+          }
+        }
+      }
+    },
+    "Plug-in Could Not Start" : {
+      "comment" : "Title shown in a plug-in's pane after its extension could not be started",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Plug-in konnte nicht gestartet werden"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo iniciar el complemento"
+          }
+        }
+      }
+    },
+    "Try Again" : {
+      "comment" : "Button that starts a plug-in's pane again after it could not start",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erneut versuchen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reintentar"
+          }
+        }
+      }
+    },
     "Video Codec" : {
       "comment" : "Recording settings: video codec picker label",
       "localizations" : {
