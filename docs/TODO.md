@@ -291,6 +291,34 @@ and timing", unless one of its sections fits better.
     inspector is the likely home.
   - [ ] Auto exposure priority, now that the kit has a choice kind.
 
+- [ ] **Application audio** *(probed 2026-11-09; A1–A9 approved
+  2026-11-09, A10–A11 2026-11-10)*: one running application's sound as an audio input, through
+  a Core Audio process tap muted while captured, so it reaches the mix and not
+  the speakers. Record and probe results in ARCHITECTURE.md, "Application
+  audio".
+  - [ ] Build it: the standalone `TingraApplicationAudio` package (process
+    listing, tap and aggregate, IOProc copies, process-list listener), then
+    `InputKind.application`, `ApplicationAudioInput` and
+    `ApplicationAudioProvider` in `TingraCapturePlugIns`,
+    `Project.applications`, `AuthorizationPermission.systemAudioRecording`
+    with the new "Asked when first used" status and its Permissions row, the
+    usage string, the picker and sidebar rows, README.md, TYPES.md,
+    GLOSSARY.md, and CLAUDE.md's package list and dependency graph.
+  - [ ] Check the row's System Settings anchor and `tccutil` service name on
+    the real app before it ships.
+  - [ ] Settle the record's open questions while building: what a denied tap
+    delivers, whether the grant survives a rebuild of the team-signed app,
+    and any hardened-runtime entitlement.
+
+- [ ] **Muting a movie's strip probably stops its picture** (found reading
+  the code 2026-11-09, not reproduced). `EngineModel` starts and stops one
+  input object from two owners that do not know about each other — the video
+  pass (`activeInputs`) and the audio pass (`activeAudioInputs`). Muting a
+  movie's strip makes `applyAudioConfiguration()` call `stop()` on an input a
+  layer is still showing, and the video pass never restarts it, since it
+  still holds the input as active. Reproduce it with a test first; the likely
+  fix is one rule — an input runs while a layer or an unmuted strip needs it.
+
 ## Clock and timing
 
 Found by the 2026-10-03 review of CLOCK.md against the code. CLOCK.md states
