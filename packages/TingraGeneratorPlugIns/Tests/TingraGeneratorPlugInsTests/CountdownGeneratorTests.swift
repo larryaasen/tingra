@@ -125,7 +125,7 @@ struct CountdownGeneratorTests {
         #expect(settings.durationSeconds == 300)
         #expect(!settings.repeats)
         #expect(settings.stopwatch.state == .running)
-        #expect(settings.targetDate == nil)
+        #expect(settings.targetSetAt == nil)
         #expect(settings.style.position == .center)
         #expect(settings.style.sizeFraction == 0.25)
     }
@@ -257,7 +257,7 @@ struct CountdownGeneratorTests {
         await generator.setParameters(Self.timeOfDay(hour: 19, minute: 0))
 
         #expect(generator.currentSettings.target == .timeOfDay)
-        #expect(generator.currentSettings.targetDate == Self.midnight.addingTimeInterval(19 * 3600))
+        #expect(generator.currentTargetDate == Self.midnight.addingTimeInterval(19 * 3600))
         #expect(generator.text(at: seconds(5000)) == "30:00")
         #expect(generator.text(at: seconds(5060)) == "29:00")
     }
@@ -268,7 +268,7 @@ struct CountdownGeneratorTests {
 
         await generator.setParameters(Self.timeOfDay(hour: 18, minute: 0))
 
-        #expect(generator.currentSettings.targetDate == Self.midnight.addingTimeInterval((24 + 18) * 3600))
+        #expect(generator.currentTargetDate == Self.midnight.addingTimeInterval((24 + 18) * 3600))
         #expect(generator.text(at: seconds(0)) == "23:30:00")
     }
 
@@ -299,15 +299,88 @@ struct CountdownGeneratorTests {
         await generator.setParameters(Self.timeOfDay(hour: 19, minute: 0))
 
         await generator.setParameters(Self.timeOfDay(hour: 19, minute: 15))
-        #expect(generator.currentSettings.targetDate == Self.midnight.addingTimeInterval(19 * 3600 + 15 * 60))
+        #expect(generator.currentTargetDate == Self.midnight.addingTimeInterval(19 * 3600 + 15 * 60))
         #expect(generator.text(at: seconds(0)) == "45:00")
 
         await generator.setParameters(Self.duration(minutes: 1))
-        #expect(generator.currentSettings.targetDate == nil)
+        #expect(generator.currentTargetDate == nil)
         #expect(generator.currentSettings.target == .duration)
 
         await generator.setParameters(Self.timeOfDay(hour: 19, minute: 15))
-        #expect(generator.currentSettings.targetDate == Self.midnight.addingTimeInterval(19 * 3600 + 15 * 60))
+        #expect(generator.currentTargetDate == Self.midnight.addingTimeInterval(19 * 3600 + 15 * 60))
+    }
+
+    @Test("a time of day left open overnight counts to the next day's once its hold at zero is over")
+    func timeOfDayCountsAgainTheNextDay() async {
+        let wall = SettableWallClock(Self.evening)
+        let clock = SettableClock(now: seconds(0))
+        let generator = Self.makeGenerator(clock: clock, wallClock: { wall.now })
+        await generator.setParameters(Self.timeOfDay(hour: 19, minute: 0))
+
+        // The last moment of the hold: still zero, on today's 19:00.
+        let hold = CountdownGenerator.zeroHold
+        wall.set(Self.midnight.addingTimeInterval(19 * 3600 + hold))
+        #expect(generator.text(at: seconds(0)) == "00:00")
+        #expect(generator.currentTargetDate == Self.midnight.addingTimeInterval(19 * 3600))
+
+        // 09:00 the next morning, the project opened again with the same
+        // payload: ten hours to tomorrow's 19:00, not a stale zero.
+        wall.set(Self.midnight.addingTimeInterval((24 + 9) * 3600))
+        await generator.setParameters(Self.timeOfDay(hour: 19, minute: 0))
+        #expect(generator.text(at: seconds(0)) == "10:00:00")
+        #expect(generator.currentTargetDate == Self.midnight.addingTimeInterval((24 + 19) * 3600))
+
+        // And it holds at zero again once that one passes.
+        wall.set(Self.midnight.addingTimeInterval((24 + 19) * 3600 + 60))
+        #expect(generator.text(at: seconds(0)) == "00:00")
+    }
+
+    @Test("a time of day reads exactly zero at its moment, not a day")
+    func timeOfDayIsZeroAtItsMoment() async {
+        let wall = SettableWallClock(Self.evening)
+        let generator = Self.makeGenerator(clock: SettableClock(now: seconds(0)), wallClock: { wall.now })
+        await generator.setParameters(Self.timeOfDay(hour: 19, minute: 0))
+
+        wall.set(Self.midnight.addingTimeInterval(19 * 3600 - 1))
+        #expect(generator.text(at: seconds(0)) == "00:01")
+        wall.set(Self.midnight.addingTimeInterval(19 * 3600))
+        #expect(generator.text(at: seconds(0)) == "00:00")
+    }
+
+    @Test("a time of day follows a change of time zone made while it counts")
+    func timeOfDayFollowsTheZone() throws {
+        let newYork = try #require(TimeZone(identifier: "America/New_York"))
+        let losAngeles = try #require(TimeZone(identifier: "America/Los_Angeles"))
+        // 19:00 applied at 2026-11-11 18:30 UTC, which is 13:30 in New York.
+        var settings = Self.makeGenerator(clock: SettableClock(now: seconds(0))).currentSettings
+        settings.target = .timeOfDay
+        settings.targetHour = 19
+        settings.targetMinute = 0
+        settings.targetSetAt = Self.evening
+
+        // 19:00 EST is 00:00 UTC the next day; 19:00 PST is three hours on.
+        let inNewYork = try #require(settings.targetDate(at: Self.evening, in: newYork))
+        let inLosAngeles = try #require(settings.targetDate(at: Self.evening, in: losAngeles))
+        #expect(inNewYork == Self.midnight.addingTimeInterval(24 * 3600))
+        #expect(inLosAngeles.timeIntervalSince(inNewYork) == 3 * 3600)
+        #expect(
+            settings.remainingSeconds(at: seconds(0), clockNow: seconds(0), wallNow: Self.evening, timeZone: newYork)
+                == Int(5.5 * 3600))
+        #expect(
+            settings.remainingSeconds(
+                at: seconds(0), clockNow: seconds(0), wallNow: Self.evening, timeZone: losAngeles)
+                == Int(8.5 * 3600))
+    }
+
+    @Test("the latest occurrence includes the moment itself and reads the zone")
+    func latestOccurrenceIncludesTheMoment() throws {
+        let sevenPM = Self.midnight.addingTimeInterval(19 * 3600)
+        #expect(
+            CountdownGenerator.latestOccurrence(ofHour: 19, minute: 0, atOrBefore: sevenPM, in: Self.utc) == sevenPM)
+        #expect(
+            CountdownGenerator.latestOccurrence(
+                ofHour: 19, minute: 0, atOrBefore: sevenPM.addingTimeInterval(-1), in: Self.utc)
+                == sevenPM.addingTimeInterval(-24 * 3600))
     }
 
     @Test("the next occurrence is read in the given zone, across a daylight saving change")

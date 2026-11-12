@@ -32,10 +32,15 @@ import TingraPlugInKit
 /// - **Time of Day** — an hour and a minute on the **wall clock**, for "the
 ///   show starts at 19:00": nothing to start, and right however early the
 ///   operator opens the project. The target is the next time the clock
-///   reads that hour and minute, worked out when the hour, the minute, or
-///   the target kind is applied — not on every frame, or the count would
-///   reach zero and jump to a day. The wall clock is injected, as the bars
-///   generator's is, and each frame shows the time remaining at the
+///   reads that hour and minute. What is kept is **when the time of day was
+///   applied**, not the date it then stood for, and each frame works the
+///   target out from that and the zone's calendar as it is now
+///   (``Settings/targetDate(at:in:)``): the count holds at zero once the
+///   moment passes rather than jumping to a day, counts to the next day's
+///   occurrence once that hold (``zeroHold``) is over — so a show left
+///   open overnight, or opened again the next day, counts down again — and
+///   follows the Mac to a new time zone. The wall clock is injected, as the
+///   bars generator's is, and each frame shows the time remaining at the
 ///   wall-clock moment its tick stands for.
 ///
 /// Either way the count holds at `00:00` once it gets there, and shows the
@@ -68,6 +73,12 @@ public final class CountdownGenerator: Input, Sendable {
             }
         }
     }
+
+    /// How long a time-of-day countdown stays at zero after its moment
+    /// passes before it counts to the next day's occurrence: long enough
+    /// to outlast the show the countdown led into, short enough that the
+    /// same project counts down again the next morning.
+    static let zeroHold: TimeInterval = 6 * 3600
 
     /// The heading the duration's parameters are grouped under.
     static let durationSection = Target.duration.name
@@ -158,10 +169,12 @@ public final class CountdownGenerator: Input, Sendable {
         /// The minute of the time of day, `0`…`59`.
         var targetMinute: Int
 
-        /// The wall-clock moment a time-of-day countdown ends at, resolved
-        /// when the hour, the minute, or the target kind was applied; nil
-        /// while counting a duration.
-        var targetDate: Date?
+        /// The wall-clock moment the time of day was applied — when the
+        /// hour, the minute, or the target kind last changed; nil while
+        /// counting a duration. The target is worked out from it per frame
+        /// (``targetDate(at:in:)``), so re-applying the same payload, which
+        /// leaves it alone, never moves the target.
+        var targetSetAt: Date?
 
         /// Where and how the text is drawn.
         var style: TimeTextStyle
@@ -173,8 +186,9 @@ public final class CountdownGenerator: Input, Sendable {
         ///   - tickTime: The tick's master clock time.
         ///   - clockNow: The master clock now.
         ///   - wallNow: The wall clock now, read beside `clockNow`.
+        ///   - timeZone: The time zone a time of day is read in.
         /// - Returns: The seconds the frame for the tick shows.
-        func remainingSeconds(at tickTime: CMTime, clockNow: CMTime, wallNow: Date) -> Int {
+        func remainingSeconds(at tickTime: CMTime, clockNow: CMTime, wallNow: Date, timeZone: TimeZone) -> Int {
             let remainingMilliseconds: Int
             switch target {
             case .duration:
@@ -185,12 +199,41 @@ public final class CountdownGenerator: Input, Sendable {
                 }
                 remainingMilliseconds = durationMilliseconds - elapsed
             case .timeOfDay:
-                guard let targetDate else { return 0 }
                 let moment = BarsTimecode.timeOfDay(at: tickTime, clockNow: clockNow, wallNow: wallNow)
+                guard let targetDate = targetDate(at: moment, in: timeZone) else { return 0 }
                 remainingMilliseconds = ClockText.milliseconds(inSeconds: targetDate.timeIntervalSince(moment))
             }
             guard remainingMilliseconds > 0 else { return 0 }
             return (remainingMilliseconds + 999) / 1000
+        }
+
+        /// The wall-clock moment a time-of-day countdown counts to, as of a
+        /// moment, read on the zone's calendar as it is at that moment — so
+        /// a change of time zone or daylight saving moves the target with
+        /// the clock on the wall.
+        ///
+        /// The latest occurrence of the hour and minute at or before
+        /// `moment` is the target while the countdown is holding at zero on
+        /// it: it came after the time of day was applied (the countdown
+        /// counted to it), and no more than ``CountdownGenerator/zeroHold``
+        /// ago. Otherwise the target is the next occurrence after `moment`:
+        /// the first, when the time of day was applied after today's had
+        /// passed, and the next day's once a hold is over.
+        ///
+        /// - Parameters:
+        ///   - moment: The wall-clock moment a frame stands for.
+        ///   - timeZone: The time zone whose clock to read.
+        /// - Returns: The target, or nil while counting a duration or if
+        ///   the calendar finds none.
+        func targetDate(at moment: Date, in timeZone: TimeZone) -> Date? {
+            guard let targetSetAt else { return nil }
+            let latest = CountdownGenerator.latestOccurrence(
+                ofHour: targetHour, minute: targetMinute, atOrBefore: moment, in: timeZone)
+            if let latest, latest > targetSetAt, moment.timeIntervalSince(latest) <= CountdownGenerator.zeroHold {
+                return latest
+            }
+            return CountdownGenerator.nextOccurrence(
+                ofHour: targetHour, minute: targetMinute, after: moment, in: timeZone)
         }
     }
 
@@ -265,10 +308,10 @@ public final class CountdownGenerator: Input, Sendable {
             stopwatch: Stopwatch(state: RunState.value(in: [:]), at: clock.now),
             targetHour: 0,
             targetMinute: 0,
-            targetDate: nil,
+            targetSetAt: nil,
             style: Self.styleParameters.style(in: [:])
         )
-        Self.apply([:], to: &initial, clockNow: clock.now, wallNow: wallClock(), timeZone: timeZone)
+        Self.apply([:], to: &initial, clockNow: clock.now, wallNow: wallClock())
         self.settings = SharedSetting(initial)
     }
 
@@ -276,40 +319,41 @@ public final class CountdownGenerator: Input, Sendable {
     /// applied, or the declared defaults.
     var currentSettings: Settings { settings.current }
 
+    /// The wall-clock moment a time-of-day countdown counts to right now,
+    /// or nil while counting a duration.
+    var currentTargetDate: Date? { settings.current.targetDate(at: wallClock(), in: timeZone) }
+
     /// Applies the target, its values, and the appearance from a host's
     /// payload; an omitted key takes its declared default and a number is
     /// clamped to its range. A change of state takes effect at the master
-    /// clock's current time, and a time of day is resolved against the wall
-    /// clock's; values the countdown already holds change nothing, so
+    /// clock's current time, and a time of day is noted as applied at the
+    /// wall clock's; values the countdown already holds change nothing, so
     /// re-applying a payload never restarts the count or moves its target.
     ///
     /// - Parameter parameters: The parameter payload.
     public func setParameters(_ parameters: [String: JSONValue]) async {
         let clockNow = clock.now
         let wallNow = wallClock()
-        let timeZone = self.timeZone
         settings.update { settings in
-            Self.apply(parameters, to: &settings, clockNow: clockNow, wallNow: wallNow, timeZone: timeZone)
+            Self.apply(parameters, to: &settings, clockNow: clockNow, wallNow: wallNow)
         }
     }
 
-    /// Reads a payload into the settings, moving the stopwatch and
-    /// resolving a time of day only where the payload changes them.
+    /// Reads a payload into the settings, moving the stopwatch and noting
+    /// when a time of day was applied only where the payload changes them.
     ///
     /// - Parameters:
     ///   - payload: The host's parameter payload.
     ///   - settings: The settings to change.
     ///   - clockNow: The master clock now, when a change of state takes
     ///     effect.
-    ///   - wallNow: The wall clock now, which a time of day is the next
-    ///     occurrence after.
-    ///   - timeZone: The time zone a time of day is read in.
+    ///   - wallNow: The wall clock now, which a newly applied time of day
+    ///     is the next occurrence after.
     private static func apply(
         _ payload: [String: JSONValue],
         to settings: inout Settings,
         clockNow: CMTime,
-        wallNow: Date,
-        timeZone: TimeZone
+        wallNow: Date
     ) {
         let targetValue = targetParameter.choice(in: payload)?.value ?? targetParameter.defaultValue
         let target = Target(rawValue: Int(targetValue)) ?? .duration
@@ -326,12 +370,12 @@ public final class CountdownGenerator: Input, Sendable {
 
         switch target {
         case .duration:
-            settings.targetDate = nil
+            settings.targetSetAt = nil
         case .timeOfDay:
             let isSameTarget =
                 settings.target == .timeOfDay && settings.targetHour == hour && settings.targetMinute == minute
-            if !isSameTarget || settings.targetDate == nil {
-                settings.targetDate = nextOccurrence(ofHour: hour, minute: minute, after: wallNow, in: timeZone)
+            if !isSameTarget || settings.targetSetAt == nil {
+                settings.targetSetAt = wallNow
             }
         }
         settings.target = target
@@ -373,13 +417,38 @@ public final class CountdownGenerator: Input, Sendable {
         )
     }
 
+    /// The latest moment at or before `date` at which the zone's clock read
+    /// the hour and minute, on the second — earlier today, or yesterday
+    /// when that time is still to come.
+    ///
+    /// - Parameters:
+    ///   - hour: The hour, `0`…`23`.
+    ///   - minute: The minute, `0`…`59`.
+    ///   - date: The moment to look back from.
+    ///   - timeZone: The time zone whose clock to read.
+    /// - Returns: The moment, or nil if the calendar finds none.
+    static func latestOccurrence(ofHour hour: Int, minute: Int, atOrBefore date: Date, in timeZone: TimeZone) -> Date? {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        // The calendar's search is strictly before its start, and an
+        // occurrence falls on a whole second, so starting half a
+        // millisecond late makes the search include `date` itself.
+        return calendar.nextDate(
+            after: date.addingTimeInterval(0.0005),
+            matching: DateComponents(hour: hour, minute: minute, second: 0),
+            matchingPolicy: .nextTime,
+            direction: .backward
+        )
+    }
+
     /// The line a frame for a tick shows: the time remaining as of the
     /// tick.
     ///
     /// - Parameter tickTime: The tick's master clock time.
     /// - Returns: The text.
     func text(at tickTime: CMTime) -> String {
-        let remaining = settings.current.remainingSeconds(at: tickTime, clockNow: clock.now, wallNow: wallClock())
+        let remaining = settings.current.remainingSeconds(
+            at: tickTime, clockNow: clock.now, wallNow: wallClock(), timeZone: timeZone)
         return ClockText.string(forSeconds: remaining)
     }
 
