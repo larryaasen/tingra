@@ -255,6 +255,13 @@ struct StreamValidationTests {
         #expect(stream.videoGenerator == .plugeStrict)
     }
 
+    @Test("the time generators parse as their stable identifiers")
+    func timeGeneratorsParse() throws {
+        #expect(try parse(["--video-generator", "time-stamp"]).videoGenerator == .timeStamp)
+        #expect(try parse(["--video-generator", "timer"]).videoGenerator == .timer)
+        #expect(try parse(["--video-generator", "countdown"]).videoGenerator == .countdown)
+    }
+
     @Test("odd program dimensions throw — 4:2:0 delivery requires even")
     func oddResolutionThrows() {
         #expect(throws: (any Error).self) {

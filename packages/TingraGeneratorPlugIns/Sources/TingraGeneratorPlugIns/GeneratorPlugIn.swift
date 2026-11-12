@@ -12,7 +12,9 @@ import TingraPlugInKit
 
 /// The first party generator plug-in: contributes the SMPTE color bars,
 /// alignment, PLUGE calibration, and black video generators, plus the 440 Hz
-/// tone audio generator as inputs.
+/// tone audio generator as inputs — and the three time generators (time
+/// stamp, timer, countdown), which draw their text on a transparent frame so
+/// they layer over a camera.
 ///
 /// Generators synthesize their content from the injected clock, so they run
 /// anywhere — no camera, no microphone, no TCC authorization. They are the
@@ -51,6 +53,9 @@ public struct GeneratorPlugIn: PlugIn {
             PlugeStrictGenerator(clock: context.clock, eventBus: context.eventBus),
             BlackGenerator(clock: context.clock, eventBus: context.eventBus),
             ToneGenerator(clock: context.clock, eventBus: context.eventBus),
+            TimeStampGenerator(clock: context.clock, eventBus: context.eventBus),
+            TimerGenerator(clock: context.clock, eventBus: context.eventBus),
+            CountdownGenerator(clock: context.clock, eventBus: context.eventBus),
         ]
         var registered: [InputID] = []
         do {
