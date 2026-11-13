@@ -5,16 +5,16 @@ ARCHITECTURE.md, "Roadmap sequencing"; the progress section here tracks where
 the work actually stands. Decision items (below) should each end as a sentence
 or two in the doc that owns them — none need a rewrite.
 
-Finished items move to [DONE.md](DONE.md) with their full records, so this
-file lists only open work. An open check left inside a finished item stays
-here, under "Left open from “…”", pointing at its record there.
+This file lists only open work. A finished item is **deleted in the same
+change that finishes it**: when the build lands with nothing left to check, or
+when Larry reports the last hand check done. CHANGELOG.md and the commit are
+its record, and its decisions live in the doc that owns them. An item whose
+build has landed but whose checks are still open stays, holding only those
+checks. No `[x]` item ever stays in this file.
 
-An item moves **in the same change that finishes it**: when the build lands
-with nothing left to check, or when Larry reports the last hand check done.
-No `[x]` item ever stays in this file — the "Left open from “…” (done;
-record in DONE.md)" entry left behind holds only the checks still open.
-Recent finished items go to DONE.md as top-level entries just before "Clock
-and timing", unless one of its sections fits better.
+Items finished before 2026-11-12 kept their full records in
+[DONE.md](DONE.md), frozen that day. The "Left open from “…”" entries below
+are the checks still open from those, pointing at their records there.
 
 ## Roadmap progress
 
@@ -298,12 +298,10 @@ and timing", unless one of its sections fits better.
   running application's sound as an audio input, through a Core Audio process
   tap muted while captured, so it reaches the mix and not the speakers.
   Record and probe results in ARCHITECTURE.md, "Application audio".
-  - [ ] Larry: check it in the running app. Add an application from the
-    Audio Inputs heading's menu, unmute its strip, and confirm the sound
-    leaves the speakers, reaches the meter, and returns when the strip is
-    muted; then quit and relaunch the application mid-capture.
-  - [ ] Check the row's System Settings anchor and `tccutil` service name on
-    the real app before it ships.
+  - [ ] Check the Permissions row's Reset on the real app before it ships:
+    `tccutil reset AudioCapture` should make macOS ask again the next time
+    an application strip is unmuted. (The row's System Settings link was
+    checked 2026-11-12; record in DONE.md.)
   - [ ] Settle the record's open questions while building: what a denied tap
     delivers, whether the grant survives a rebuild of the team-signed app,
     and any hardened-runtime entitlement.
@@ -316,6 +314,22 @@ and timing", unless one of its sections fits better.
   layer is still showing, and the video pass never restarts it, since it
   still holds the input as active. Reproduce it with a test first; the likely
   fix is one rule — an input runs while a layer or an unmuted strip needs it.
+
+- [ ] **Dynamics effects: what is left open** (built 2026-11-11; record in
+  ARCHITECTURE.md, "Dynamics effects: gate, compressor, limiter").
+  - [ ] Tune the gate, compressor, and limiter defaults by listening, on a
+    voice and on an instrument.
+
+- [ ] **Compression settings in the app: what is left open** (built
+  2026-11-11; record in ARCHITECTURE.md, "Compression settings in the app").
+  - [ ] Larry: review the choices in the record.
+  - [ ] Check by hand: record an HEVC take in the running app and play it
+    back, and listen to a stream at 320k.
+
+- [ ] **Audio files as media inputs: what is left open** (built 2026-11-11;
+  record in ARCHITECTURE.md, "Audio files as media inputs").
+  - [ ] Larry: review the app policy in the record.
+  - [ ] Check by hand: a music file plays in the running app.
 
 ## Clock and timing
 

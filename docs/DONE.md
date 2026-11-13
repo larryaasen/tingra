@@ -1,5 +1,10 @@
 # Done
 
+**Frozen 2026-11-12. Nothing is added here any more.** A finished item is now
+deleted from TODO.md in the change that finishes it; CHANGELOG.md and the
+commit are its record, and its decisions live in the doc that owns them. This
+file stays because other docs and code comments cite the records in it.
+
 The finished items from TODO.md, moved here on 2026-09-30 so TODO.md lists
 only open work. Each keeps its full record as written, under the same section
 it had in TODO.md; an item finished inside a still-open step sits under
@@ -1767,8 +1772,16 @@ there.
   the `unknown` status and its Permissions row, the usage string, the Add
   Application sheet and the Audio Inputs rows, README.md, TYPES.md,
   GLOSSARY.md, and CLAUDE.md. Unit-tested with fakes; the real process list
-  was read on the development Mac, but no tap ran in the app. Record:
-  ARCHITECTURE.md, "Application audio", "Built".
+  was read on the development Mac. Record: ARCHITECTURE.md, "Application
+  audio", "Built".
+- [x] **Larry: checked in the running app** *(Larry, 2026-11-12)*. Added the
+  music production app from the Audio Inputs heading's menu and unmuted its
+  strip: its sound left the speakers and reached the mix, and came back when
+  the strip was muted.
+- [x] **Larry: the Permissions row's System Settings link** *(Larry,
+  2026-11-12)*. Open System Settings… on the System Audio Recording row
+  opens the Screen & System Audio Recording pane, so the shared
+  `Privacy_ScreenCapture` anchor is right.
 
 ### From “UVC camera controls”
 
