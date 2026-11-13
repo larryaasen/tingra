@@ -14,9 +14,9 @@ import Testing
 
 @Suite("Authorization seam")
 struct AuthorizationTests {
-    @Test("the permission list is the three TCC grants capture depends on, in a stable order")
+    @Test("the permission list is the four TCC grants capture depends on, in a stable order")
     func permissionList() {
-        #expect(AuthorizationPermission.allCases == [.camera, .microphone, .screenRecording])
+        #expect(AuthorizationPermission.allCases == [.camera, .microphone, .screenRecording, .systemAudioRecording])
     }
 
     @Test("raw values are the scripting contract and never change")
@@ -24,10 +24,20 @@ struct AuthorizationTests {
         #expect(AuthorizationPermission.camera.rawValue == "camera")
         #expect(AuthorizationPermission.microphone.rawValue == "microphone")
         #expect(AuthorizationPermission.screenRecording.rawValue == "screenRecording")
+        #expect(AuthorizationPermission.systemAudioRecording.rawValue == "systemAudioRecording")
         #expect(AuthorizationStatus.notDetermined.rawValue == "notDetermined")
         #expect(AuthorizationStatus.granted.rawValue == "granted")
         #expect(AuthorizationStatus.denied.rawValue == "denied")
         #expect(AuthorizationStatus.restricted.rawValue == "restricted")
+        #expect(AuthorizationStatus.unknown.rawValue == "unknown")
+    }
+
+    @Test("each permission resets under its TCC service name")
+    func tccServiceNames() {
+        #expect(AuthorizationPermission.camera.tccServiceName == "Camera")
+        #expect(AuthorizationPermission.microphone.tccServiceName == "Microphone")
+        #expect(AuthorizationPermission.screenRecording.tccServiceName == "ScreenCapture")
+        #expect(AuthorizationPermission.systemAudioRecording.tccServiceName == "AudioCapture")
     }
 
     @Test("a permission and a status round-trip through JSON unchanged")
@@ -59,6 +69,8 @@ struct AuthorizationTests {
         #expect(AuthorizationStatus.granted == .granted)
         #expect(AuthorizationStatus.granted != .denied)
         #expect(AuthorizationStatus.notDetermined != .restricted)
+        #expect(AuthorizationStatus.unknown == .unknown)
+        #expect(AuthorizationStatus.unknown != .granted)
     }
 
     @Test("the production checker answers every permission without prompting")
@@ -70,7 +82,7 @@ struct AuthorizationTests {
         let checker = SystemAuthorization()
         for permission in AuthorizationPermission.allCases {
             let status = checker.status(of: permission)
-            #expect([.notDetermined, .granted, .denied, .restricted].contains(status))
+            #expect([.notDetermined, .granted, .denied, .restricted, .unknown].contains(status))
         }
     }
 
@@ -78,5 +90,12 @@ struct AuthorizationTests {
     func screenRecordingIsBinary() {
         let status = SystemAuthorization().status(of: .screenRecording)
         #expect(status == .granted || status == .denied)
+    }
+
+    @Test("System Audio Recording reads as unknown, and a request cannot change that")
+    func systemAudioRecordingIsUnknown() async {
+        let checker = SystemAuthorization()
+        #expect(checker.status(of: .systemAudioRecording) == .unknown)
+        #expect(await checker.request(.systemAudioRecording) == .unknown)
     }
 }

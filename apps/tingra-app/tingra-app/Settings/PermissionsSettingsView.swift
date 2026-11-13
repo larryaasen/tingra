@@ -13,8 +13,8 @@ import TingraEventBus
 import TingraHost
 
 /// The Permissions settings pane: where each system permission the app's
-/// inputs depend on stands — Camera, Microphone, Screen Recording — with the
-/// one action each state allows.
+/// inputs depend on stands — Camera, Microphone, Screen Recording, System
+/// Audio Recording — with the one action each state allows.
 ///
 /// A row per permission in the General pane's grouped-form shape: the
 /// permission and what Tingra uses it for on the leading edge, its status,
@@ -23,7 +23,11 @@ import TingraHost
 /// button, which shows the system prompt; a refused one gets a button to the
 /// System Settings switch, the only place it can be changed; a granted or
 /// policy-restricted one gets none, because nothing the app can do would
-/// change it. **Reset** (2026-09-07) is the one move an app can make on its
+/// change it. A permission macOS offers no read for (System Audio Recording)
+/// shows **Asked When First Used** until a capture proves it granted, and
+/// gets the System Settings button, since that is where it can be checked
+/// (ARCHITECTURE.md, "Application audio", A10). **Reset** (2026-09-07) is the
+/// one move an app can make on its
 /// own: it asks the system to forget a decision — granted or denied — so the
 /// status reads Not Requested again and macOS asks the next time an input
 /// needs it. Disabled while there is no decision to forget.
@@ -86,7 +90,8 @@ struct PermissionRow: View {
 
     /// The Reset button: forgets the system's decision for this permission.
     /// Disabled while there is none to forget — never asked, restricted by
-    /// policy, or not yet read.
+    /// policy, or not yet read. Enabled for a permission the system cannot
+    /// read, since there may be a decision to forget.
     private var resetButton: some View {
         Button {
             model.eventBus.tap(
@@ -95,7 +100,7 @@ struct PermissionRow: View {
         } label: {
             Text("Reset", comment: "Permissions settings: button that forgets the system's decision for a permission")
         }
-        .disabled(status != .granted && status != .denied)
+        .disabled(status != .granted && status != .denied && status != .unknown)
         .help(
             Text(
                 "Forget this permission, so macOS asks again the next time an input needs it",
@@ -121,7 +126,7 @@ struct PermissionRow: View {
             } label: {
                 Text("Request…", comment: "Permissions settings: button that shows the system permission prompt")
             }
-        case .denied:
+        case .denied, .unknown:
             Button {
                 model.eventBus.tap(
                     "permissionOpenSettings.button", domain: .platform,
@@ -153,6 +158,10 @@ struct PermissionRow: View {
         case .screenRecording:
             LocalizedStringResource(
                 "Screen Recording", comment: "Permissions settings: the Screen Recording permission's name")
+        case .systemAudioRecording:
+            LocalizedStringResource(
+                "System Audio Recording",
+                comment: "Permissions settings: the System Audio Recording permission's name")
         }
     }
 
@@ -174,6 +183,10 @@ struct PermissionRow: View {
             LocalizedStringResource(
                 "Displays as inputs.", comment: "Permissions settings: what the Screen Recording permission is used for"
             )
+        case .systemAudioRecording:
+            LocalizedStringResource(
+                "Applications as audio inputs.",
+                comment: "Permissions settings: what the System Audio Recording permission is used for")
         }
     }
 }
@@ -212,6 +225,10 @@ struct StatusLabel: View {
         case .restricted:
             LocalizedStringResource(
                 "Restricted", comment: "Permissions settings: status of a permission a policy forbids")
+        case .unknown:
+            LocalizedStringResource(
+                "Asked When First Used",
+                comment: "Permissions settings: status of a permission macOS offers no way to check in advance")
         case nil:
             LocalizedStringResource("Checking…", comment: "Permissions settings: status before the first read")
         }
@@ -227,6 +244,7 @@ struct StatusLabel: View {
         case .denied: "xmark.circle.fill"
         case .notDetermined: "questionmark.circle.fill"
         case .restricted: "lock.circle.fill"
+        case .unknown: "questionmark.circle"
         case nil: "circle.dotted"
         }
     }
@@ -241,7 +259,7 @@ struct StatusLabel: View {
         case .granted: .green
         case .denied: .red
         case .notDetermined: .orange
-        case .restricted, nil: .secondary
+        case .restricted, .unknown, nil: .secondary
         }
     }
 }

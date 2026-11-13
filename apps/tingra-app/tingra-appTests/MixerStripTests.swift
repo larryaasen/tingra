@@ -105,6 +105,19 @@ struct MixerStripTests {
         #expect(strips.map(\.id.rawValue) == ["MacBook Pro Microphone"])
     }
 
+    @Test("seeding never unmutes an application, even when it sorts first")
+    @MainActor
+    func seedingSkipsApplications() {
+        // Unmuting an application's strip takes its sound off the
+        // operator's speakers, which launching the app must never do.
+        let strips = MixerStrip.seed(from: [
+            Self.choice("Ableton", kind: .application),
+            Self.choice("MacBook Pro Microphone"),
+        ])
+        #expect(strips.map(\.id.rawValue) == ["MacBook Pro Microphone"])
+        #expect(MixerStrip.seed(from: [Self.choice("Ableton", kind: .application)]).isEmpty)
+    }
+
     @Test("seeding with only generators and media yields an empty mixer")
     @MainActor
     func seedingWithOnlyGeneratorsIsEmpty() {
@@ -495,6 +508,7 @@ struct MixerStripTests {
         #expect(MixerStrip.defaultFollowsProgram(for: .media))
         #expect(MixerStrip.defaultFollowsProgram(for: .microphone) == false)
         #expect(MixerStrip.defaultFollowsProgram(for: .generator) == false)
+        #expect(MixerStrip.defaultFollowsProgram(for: .application) == false)
     }
 
     @Test("audio follows video defaults off for media with no picture, and a picture changes nothing for other kinds")

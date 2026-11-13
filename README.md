@@ -1,5 +1,7 @@
 # Tingra — Native Live Streaming for macOS
 
+[![codecov](https://codecov.io/gh/larryaasen/tingra/graph/badge.svg)](https://codecov.io/gh/larryaasen/tingra)
+
 Tingra: An open-source live streaming and production app
 built exclusively for macOS. It is designed to be Mac-first and Swift-native end
 to end — a real SwiftUI/AppKit app built directly on Apple's media stack, not
@@ -251,7 +253,10 @@ connection/disconnection events on the bus. AVFoundation,
 Core Audio, and ScreenCaptureKit are imported only inside this package, behind
 the `Input` seam. A USB webcam's picture controls — brightness, white balance,
 exposure, focus, zoom — reach it through `TingraUVC` and surface as the camera
-input's parameters (see [UVC.md](docs/UVC.md)).
+input's parameters (see [UVC.md](docs/UVC.md)). One running application's sound
+reaches it through `TingraApplicationAudio` and becomes an audio-only
+application input, kept off the Mac's speakers while it is captured
+(ARCHITECTURE.md, "Application audio").
 
 **Types:** [`TingraCapturePlugIns` in TYPES.md](docs/TYPES.md#packagestingracaptureplugins)
 
@@ -266,6 +271,19 @@ import it, and every byte to the camera crosses one `UVCTransport` seam, so it i
 unit tested without a camera (see [UVC.md](docs/UVC.md)).
 
 **Types:** [`TingraUVC` in TYPES.md](docs/TYPES.md#packagestingrauvc)
+
+### `packages/TingraApplicationAudio`
+
+A general-purpose library for capturing one running application's sound on the
+Mac through Core Audio process taps (macOS 14.2 and later), with no virtual audio
+driver: it lists the applications that have an audio process, taps the processes
+that belong to one of them — optionally muting the application on its own
+speakers for as long as the tap is held — and hands back copies of its audio
+stamped with host time. Standalone on purpose, like `TingraUVC`: it depends on no
+other Tingra package, so any Mac app can import it, and `TingraCapturePlugIns`
+imports it only behind the `Input` seam (ARCHITECTURE.md, "Application audio").
+
+**Types:** [`TingraApplicationAudio` in TYPES.md](docs/TYPES.md#packagestingraapplicationaudio)
 
 ### `packages/TingraGeneratorPlugIns`
 

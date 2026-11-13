@@ -12,6 +12,8 @@ A project is the saved file for an entire show. A project contains presets. A pr
 
 **Input** — anything that produces video or audio frames for the pipeline: a display, a window, an application, a camera, a microphone, a media file, a network feed, or a generator. Inputs are discovered, connect and disconnect at any time, and normalize to a common GPU resident frame type.
 
+**Application** — an input that captures one running application's sound, audio only: a music production app, a browser playing a video, a soundboard. Chosen rather than discovered: the operator adds the application to the project, and its channel strip arrives muted. While it is captured the application is kept off the Mac's speakers, so its sound reaches the program and not the room, unless its input setting says otherwise. An application that is not running is a dormant input, like a disconnected microphone.
+
 **Generator** — an input that synthesizes its content rather than capturing it: test patterns, color bars, solids, counters, placeholder frames.
 
 **Media** — an input whose content comes from a file the operator added to the project rather than from a device or a generator: a still image, a video file, an audio file, a text or Markdown document. Each media type is its own plug-in, so a new kind of content is one more plug-in, not a change to the engine (planned at roadmap step 10).

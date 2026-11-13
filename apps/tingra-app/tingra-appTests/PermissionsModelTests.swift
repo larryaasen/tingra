@@ -227,14 +227,66 @@ struct PermissionsModelTests {
         #expect(AuthorizationPermission.camera.tccServiceName == "Camera")
         #expect(AuthorizationPermission.microphone.tccServiceName == "Microphone")
         #expect(AuthorizationPermission.screenRecording.tccServiceName == "ScreenCapture")
+        #expect(AuthorizationPermission.systemAudioRecording.tccServiceName == "AudioCapture")
     }
 
-    @Test("every permission points at its own Privacy & Security pane")
+    @Test("a status the system cannot read shows as granted once a capture proves it, and only then")
+    func resolvedStatus() {
+        #expect(PermissionsModel.resolved(.unknown, proven: false) == .unknown)
+        #expect(PermissionsModel.resolved(.unknown, proven: true) == .granted)
+        // A status the system can read is never overridden.
+        #expect(PermissionsModel.resolved(.denied, proven: true) == .denied)
+        #expect(PermissionsModel.resolved(.notDetermined, proven: true) == .notDetermined)
+    }
+
+    @Test("an application's first audio turns System Audio Recording granted, reported once")
+    func provenGrant() async {
+        let authorization = ScriptedAuthorization([.systemAudioRecording: .unknown])
+        let events = await recordedEvents { bus in
+            let model = PermissionsModel(authorization: authorization, eventBus: bus)
+            model.refresh()
+            #expect(model.status(of: .systemAudioRecording) == .unknown)
+            model.noteGranted(.systemAudioRecording)
+            #expect(model.status(of: .systemAudioRecording) == .granted)
+            model.noteGranted(.systemAudioRecording)
+            // A later refresh keeps what the capture proved.
+            model.refresh()
+            #expect(model.status(of: .systemAudioRecording) == .granted)
+        }
+        let changes = events.filter { $0.name == "authorization.changed" }
+        #expect(changes.count == 1)
+        #expect(changes.first?.params?["permission"] == .string("systemAudioRecording"))
+        #expect(changes.first?.params?["from"] == .string("unknown"))
+        #expect(changes.first?.params?["to"] == .string("granted"))
+    }
+
+    @Test("resetting a proven permission forgets the proof")
+    func resetForgetsProof() async {
+        let authorization = ScriptedAuthorization([.systemAudioRecording: .unknown])
+        let model = PermissionsModel(authorization: authorization, eventBus: EventBus())
+        model.refresh()
+        model.noteGranted(.systemAudioRecording)
+        await model.reset(.systemAudioRecording)
+        // The scripted system forgets by reading undecided; the real one
+        // keeps reading unknown, and either way the proof is gone.
+        authorization.set(.systemAudioRecording, to: .unknown)
+        model.refresh()
+        #expect(model.status(of: .systemAudioRecording) == .unknown)
+    }
+
+    @Test("every permission points at its own Privacy & Security pane, System Audio Recording at Screen Recording's")
     func systemSettingsURLs() throws {
         let urls = try AuthorizationPermission.allCases.map { try #require($0.systemSettingsURL) }
         #expect(urls.allSatisfy { $0.scheme == "x-apple.systempreferences" })
-        #expect(Set(urls.map(\.absoluteString)).count == urls.count)
+        // macOS files System Audio Recording in the Screen & System Audio
+        // Recording pane, so those two share a URL; every other is distinct.
+        let distinct = try AuthorizationPermission.allCases.filter { $0 != .systemAudioRecording }
+            .map { try #require($0.systemSettingsURL).absoluteString }
+        #expect(Set(distinct).count == distinct.count)
         #expect(
             try #require(AuthorizationPermission.screenRecording.systemSettingsURL).query == "Privacy_ScreenCapture")
+        #expect(
+            AuthorizationPermission.systemAudioRecording.systemSettingsURL
+                == AuthorizationPermission.screenRecording.systemSettingsURL)
     }
 }

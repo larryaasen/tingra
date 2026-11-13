@@ -192,6 +192,11 @@ struct ContentView: View {
         .sheet(isPresented: $model.isWindowPickerPresented) {
             WindowPickerSheet(model: model)
         }
+        // The Add Application sheet, opened from the sidebar's Audio Inputs
+        // heading, presented here for the same reason.
+        .sheet(isPresented: $model.isApplicationPickerPresented) {
+            ApplicationPickerSheet(model: model)
+        }
         // The window's undo manager is what the Edit menu's Undo drives,
         // and the model is what registers layer edits against it.
         .onAppear {

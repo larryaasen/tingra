@@ -81,6 +81,9 @@ extension CaptureInputError: CustomStringConvertible {
             case .display: permission = "Screen Recording"
             // A window is captured through ScreenCaptureKit, like a display.
             case .window: permission = "Screen Recording"
+            // An application's sound is captured through a Core Audio
+            // process tap, which macOS files under its own permission.
+            case .application: permission = "System Audio Recording"
             // A generator has no device and is never denied; named for
             // exhaustiveness only.
             case .generator: permission = "Capture"

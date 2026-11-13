@@ -924,7 +924,7 @@
       }
     },
     "Add" : {
-      "comment" : "Add Window sheet: adds the selected window as an input",
+      "comment" : "Add Application sheet: adds the selected application as an audio input\nAdd Window sheet: adds the selected window as an input",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -987,6 +987,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Añadir una entrada de audio al mezclador"
+          }
+        }
+      }
+    },
+    "Add Application" : {
+      "comment" : "Title of the sheet for adding an application as an audio input",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "App hinzufügen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Añadir aplicación"
+          }
+        }
+      }
+    },
+    "Add Application…" : {
+      "comment" : "Menu item opening the sheet that adds an application as an audio input",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "App hinzufügen…"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Añadir aplicación…"
           }
         }
       }
@@ -1350,6 +1384,40 @@
         }
       }
     },
+    "Applications as audio inputs." : {
+      "comment" : "Permissions settings: what the System Audio Recording permission is used for",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apps als Audioeingänge."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aplicaciones como entradas de audio."
+          }
+        }
+      }
+    },
+    "Applications Unavailable" : {
+      "comment" : "Add Application sheet: title when the application list could not be read",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apps nicht verfügbar"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aplicaciones no disponibles"
+          }
+        }
+      }
+    },
     "Applied in order, top to bottom" : {
       "comment" : "Caption under an effect chain's heading: the effects run in the listed order",
       "localizations" : {
@@ -1380,6 +1448,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Aplicar"
+          }
+        }
+      }
+    },
+    "Asked When First Used" : {
+      "comment" : "Permissions settings: status of a permission macOS offers no way to check in advance",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bei erster Verwendung abgefragt"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se pide al usarse por primera vez"
           }
         }
       }
@@ -1771,6 +1856,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Elige una ventana para capturarla por separado. Se captura aunque otras ventanas la cubran."
+          }
+        }
+      }
+    },
+    "Choose an application to hear in the mix. When you unmute its channel strip, its sound moves from your speakers into the program. macOS asks for permission the first time." : {
+      "comment" : "Caption of the Add Application sheet",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wähle eine App, die im Mix zu hören sein soll. Sobald du ihren Kanalzug einschaltest, wandert ihr Ton von deinen Lautsprechern ins Programm. macOS fragt beim ersten Mal nach der Erlaubnis."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Elige una aplicación para oírla en la mezcla. Al activar su canal, su sonido pasa de tus altavoces al programa. macOS pide permiso la primera vez."
           }
         }
       }
@@ -3883,6 +3985,23 @@
         }
       }
     },
+    "Looking for applications…" : {
+      "comment" : "Add Application sheet: shown while the application list is read",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apps werden gesucht…"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Buscando aplicaciones…"
+          }
+        }
+      }
+    },
     "Looking for windows…" : {
       "comment" : "Add Window sheet: shown while the window list is read",
       "localizations" : {
@@ -4508,6 +4627,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Nueva toma"
+          }
+        }
+      }
+    },
+    "No Applications With Sound" : {
+      "comment" : "Add Application sheet: title when no running application has audio",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Apps mit Ton"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No hay aplicaciones con sonido"
           }
         }
       }
@@ -5431,6 +5567,23 @@
         }
       }
     },
+    "Open the application you want to hear and start it playing, then return to Tingra." : {
+      "comment" : "Add Application sheet: what to do when no running application has audio",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Öffne die App, die du hören möchtest, starte die Wiedergabe und kehre dann zu Tingra zurück."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abre la aplicación que quieres oír, empieza a reproducir y vuelve a Tingra."
+          }
+        }
+      }
+    },
     "Open the window you want to capture, then return to Tingra." : {
       "comment" : "Add Window sheet: what to do when no window is on screen",
       "localizations" : {
@@ -6226,6 +6379,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Eliminar y salir"
+          }
+        }
+      }
+    },
+    "Remove Application" : {
+      "comment" : "Sidebar application row context menu: removes the application input from the project",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "App entfernen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eliminar aplicación"
           }
         }
       }
@@ -7977,6 +8147,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Sistema"
+          }
+        }
+      }
+    },
+    "System Audio Recording" : {
+      "comment" : "Permissions settings: the System Audio Recording permission's name",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Systemaudioaufnahme"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grabación de audio del sistema"
           }
         }
       }

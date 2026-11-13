@@ -29,6 +29,13 @@ public enum AuthorizationPermission: String, CaseIterable, Sendable, Codable {
 
     /// Screen Recording: displays as inputs, through ScreenCaptureKit.
     case screenRecording
+
+    /// System Audio Recording: applications as audio inputs, through Core
+    /// Audio process taps (ARCHITECTURE.md, "Application audio", A7 and
+    /// A10). macOS offers no way to read this permission without capturing,
+    /// so ``SystemAuthorization`` reports it
+    /// ``AuthorizationStatus/unknown``; the first capture is what prompts.
+    case systemAudioRecording
 }
 
 /// Where one permission stands.
@@ -39,7 +46,9 @@ public enum AuthorizationPermission: String, CaseIterable, Sendable, Codable {
 /// operator refused from one that was never asked — the first capture
 /// attempt is what prompts (see `DisplayInput`) — so a Screen Recording
 /// ``denied`` means "not currently granted", and the fix is the same either
-/// way: System Settings.
+/// way: System Settings. System Audio Recording reports only ``unknown``:
+/// macOS has no read for it at all (ARCHITECTURE.md, "Application audio",
+/// A10), so what a capture later proves is the front end's to record.
 public enum AuthorizationStatus: String, Sendable, Codable, Equatable {
     /// The operator has not been asked yet; a request will prompt.
     case notDetermined
@@ -53,6 +62,10 @@ public enum AuthorizationStatus: String, Sendable, Codable, Equatable {
     /// A policy — parental controls, a device profile — forbids the access,
     /// and no prompt can change it.
     case restricted
+
+    /// The system offers no way to read the permission; it is asked when
+    /// first used. System Audio Recording's only status.
+    case unknown
 }
 
 /// The authorization seam: what the front ends ask about permissions, so
@@ -138,6 +151,7 @@ extension AuthorizationPermission {
         case .camera: "Camera"
         case .microphone: "Microphone"
         case .screenRecording: "ScreenCapture"
+        case .systemAudioRecording: "AudioCapture"
         }
     }
 }
@@ -151,6 +165,8 @@ public struct SystemAuthorization: AuthorizationChecking {
         case .camera: Self.status(of: AVCaptureDevice.authorizationStatus(for: .video))
         case .microphone: Self.status(of: AVCaptureDevice.authorizationStatus(for: .audio))
         case .screenRecording: CGPreflightScreenCaptureAccess() ? .granted : .denied
+        // No preflight exists; a process tap's first use is the only ask.
+        case .systemAudioRecording: .unknown
         }
     }
 
@@ -166,6 +182,10 @@ public struct SystemAuthorization: AuthorizationChecking {
             // reports as it is. Its return value is discarded for the same
             // reason as the two above: one status read serves every case.
             _ = CGRequestScreenCaptureAccess()
+        case .systemAudioRecording:
+            // Nothing can ask for this permission short of capturing, so a
+            // request changes nothing and reports the same unknown.
+            break
         }
         return status(of: permission)
     }
@@ -180,7 +200,7 @@ public struct SystemAuthorization: AuthorizationChecking {
     ///
     /// `tccutil reset <Service> <bundle id>` acts on the user's own TCC
     /// database and needs no privilege for the user-level services capture
-    /// uses (Camera, Microphone, ScreenCapture). There is no framework API
+    /// uses (Camera, Microphone, ScreenCapture, AudioCapture). There is no framework API
     /// for this — resetting is deliberately out of an app's reach except by
     /// asking the system — so the tool is spawned and its exit status read.
     /// A running input keeps the access it already opened; the decision is

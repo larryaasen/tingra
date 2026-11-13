@@ -1756,6 +1756,20 @@ there.
   lamp follows the toggle. The later slices are tracked in TODO.md. Record:
   ARCHITECTURE.md, "Audio follows video".
 
+### From “Application audio”
+
+- [x] **Built** *(2026-11-11)*. The standalone `TingraApplicationAudio`
+  package (process listing and the bundle-membership rule, the tap and its
+  tap-only aggregate, the IOProc's copies with host time, the process-list
+  listener), `InputKind.application`, `ApplicationAudioInput` and
+  `ApplicationAudioProvider` in `TingraCapturePlugIns`,
+  `Project.applications`, `AuthorizationPermission.systemAudioRecording` with
+  the `unknown` status and its Permissions row, the usage string, the Add
+  Application sheet and the Audio Inputs rows, README.md, TYPES.md,
+  GLOSSARY.md, and CLAUDE.md. Unit-tested with fakes; the real process list
+  was read on the development Mac, but no tap ran in the app. Record:
+  ARCHITECTURE.md, "Application audio", "Built".
+
 ### From “UVC camera controls”
 
 - [x] **Larry: the Tingra Cameras controls panel, checked by hand** *(Larry,

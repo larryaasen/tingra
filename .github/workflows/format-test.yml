@@ -3,6 +3,12 @@
 # for every package and app. Tests use generators and mocks only — no camera,
 # microphone, or TCC authorization is needed on runners.
 #
+# Each test job also measures code coverage and uploads it to Codecov as an
+# lcov report under a flag named for the package or app (settings in
+# .github/codecov.yml). Secret: CODECOV_TOKEN, the repository upload token from
+# codecov.io. A pull request from a fork gets no secrets and uploads without a
+# token, which Codecov accepts for a public repository.
+#
 # The toolchain is pinned to Xcode 27.2 (Swift 6.4.2), the toolchain floor. It
 # is on the `xcode-27` arm64 image (macOS 27), which also carries 27.0 and
 # 27.1 (its default), so DEVELOPER_DIR pins 27.2 explicitly rather than
@@ -89,6 +95,7 @@ jobs:
           - packages/TingraEventBus
           - packages/TingraPlugInKit
           - packages/TingraUVC
+          - packages/TingraApplicationAudio
           - packages/TingraHost
           - packages/TingraAudio
           - packages/TingraCapturePlugIns
@@ -104,9 +111,11 @@ jobs:
       - uses: actions/checkout@v7
       - name: Build (warning-clean, including tests)
         working-directory: ${{ matrix.package }}
+        # Built with coverage instrumentation so the test step below can
+        # measure it without rebuilding.
         run: |
           set -o pipefail
-          swift build --build-tests 2>&1 | tee "$RUNNER_TEMP/build.log"
+          swift build --build-tests --enable-code-coverage 2>&1 | tee "$RUNNER_TEMP/build.log"
           # Warning-clean per CLAUDE.md "Strict Compilation"; dependency
           # checkouts under .build/ are excluded from the check.
           if grep "warning:" "$RUNNER_TEMP/build.log" | grep -v "/.build/"; then
@@ -122,7 +131,38 @@ jobs:
         # a pipe it is held until the process exits, so a hung run's log
         # showed nothing. `script` keeps the test run's exit status; stdin
         # from /dev/null because it needs a terminal-capable one.
-        run: script -q /dev/null swift test --skip-build < /dev/null
+        run: script -q /dev/null swift test --skip-build --enable-code-coverage < /dev/null
+      - name: Export coverage
+        id: coverage
+        working-directory: ${{ matrix.package }}
+        # lcov limited to this package's own Sources/, so code a test run
+        # reaches in another package (the kits, a dependency) counts only in
+        # that package's own report. The package's code is linked statically
+        # into its test bundle, which is the object llvm-cov reads.
+        run: |
+          set -euo pipefail
+          bin=$(swift build --show-bin-path)
+          objects=()
+          for bundle in "$bin"/*.xctest; do
+            objects+=(-object "$bundle/Contents/MacOS/$(basename "$bundle" .xctest)")
+          done
+          xcrun llvm-cov export -format=lcov \
+            -instr-profile "$bin/codecov/default.profdata" \
+            "${objects[@]}" -sources "$PWD/Sources" > "$RUNNER_TEMP/coverage.lcov"
+          echo "flag=$(basename "$PWD")" >> "$GITHUB_OUTPUT"
+      - name: Upload coverage to Codecov
+        # Skipped when a release calls this workflow as its gate: a release
+        # adds nothing the push to main did not already report. Codecov
+        # trouble never fails the job; the coverage is informational.
+        if: github.event_name == 'push' || github.event_name == 'pull_request'
+        uses: codecov/codecov-action@v7
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ${{ runner.temp }}/coverage.lcov
+          disable_search: true
+          flags: ${{ steps.coverage.outputs.flag }}
+          name: ${{ steps.coverage.outputs.flag }}
+          fail_ci_if_error: false
       - name: Show where a stuck test run is waiting
         # A hung run prints nothing (its output is lost when it is killed),
         # and its test process outlives the step, so sample every thread of
@@ -161,6 +201,7 @@ jobs:
             -scheme tingra-app \
             -destination 'platform=macOS,arch=arm64' \
             -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+            -enableCodeCoverage YES \
             CODE_SIGNING_ALLOWED=NO 2>&1 | tee "$RUNNER_TEMP/app-build.log"
           # Warning-clean per CLAUDE.md "Strict Compilation". Three exclusions,
           # none of them our code: package checkouts under SourcePackages (the
@@ -175,6 +216,35 @@ jobs:
             echo "::error::xcodebuild produced warnings (listed above)"
             exit 1
           fi
+      - name: Export coverage
+        working-directory: apps/tingra-app
+        # lcov limited to the app target's own sources, as the matrix job
+        # does per package. A Debug build puts the app's code in
+        # Tingra.debug.dylib beside the launcher, so every binary in
+        # Contents/MacOS is read, plus the hosted test bundle; the profile
+        # data folder is named for the machine, hence the find.
+        run: |
+          set -euo pipefail
+          products="$RUNNER_TEMP/DerivedData/Build/Products/Debug"
+          profdata=$(find "$RUNNER_TEMP/DerivedData/Build/ProfileData" -name Coverage.profdata | head -n 1)
+          objects=()
+          for binary in "$products/Tingra.app/Contents/MacOS/"* \
+            "$products/Tingra.app/Contents/PlugIns/tingra-appTests.xctest/Contents/MacOS/"*; do
+            objects+=(-object "$binary")
+          done
+          xcrun llvm-cov export -format=lcov -instr-profile "$profdata" \
+            "${objects[@]}" -sources "$PWD/tingra-app" > "$RUNNER_TEMP/coverage.lcov"
+      - name: Upload coverage to Codecov
+        # As in the matrix job: push and pull request only, never fatal.
+        if: github.event_name == 'push' || github.event_name == 'pull_request'
+        uses: codecov/codecov-action@v7
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ${{ runner.temp }}/coverage.lcov
+          disable_search: true
+          flags: tingra-app
+          name: tingra-app
+          fail_ci_if_error: false
 
   cameras:
     name: Build (apps/tingra-cameras)

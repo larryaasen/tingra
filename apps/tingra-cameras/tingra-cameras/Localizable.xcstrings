@@ -86,6 +86,23 @@
         }
       }
     },
+    "Asked When First Used" : {
+      "comment" : "Permissions settings: status of a permission macOS offers no way to check in advance",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bei erster Verwendung abgefragt"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se pide al usarse por primera vez"
+          }
+        }
+      }
+    },
     "Auto" : {
       "comment" : "Checkbox at the end of a camera control's slider that lets the camera set that control itself, e.g. its white balance or focus.",
       "localizations" : {
@@ -1256,6 +1273,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Sistema"
+          }
+        }
+      }
+    },
+    "System Audio Recording" : {
+      "comment" : "Permissions settings: the System Audio Recording permission's name",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Systemaudioaufnahme"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grabación de audio del sistema"
           }
         }
       }

@@ -11,10 +11,11 @@
 /// devices` sections, the `devices --json` keys) and selector resolution
 /// (`--camera` only matches cameras).
 ///
-/// GLOSSARY.md's remaining input kinds (application, network feed) join as
-/// their plug-ins land — a pre-1.0 addition permitted by the stability
-/// contract (see ARCHITECTURE.md, "Plug-in API stability and versioning"),
-/// as `display` did at roadmap step 6 and `window` did on 2026-10-08.
+/// GLOSSARY.md's remaining input kind (network feed) joins as its plug-in
+/// lands — a pre-1.0 addition permitted by the stability contract (see
+/// ARCHITECTURE.md, "Plug-in API stability and versioning"), as `display`
+/// did at roadmap step 6, `window` on 2026-10-08, and `application` on
+/// 2026-11-11.
 public enum InputKind: String, Sendable, Codable, CaseIterable {
     /// A camera device (built-in, external, or Continuity Camera).
     case camera
@@ -23,7 +24,7 @@ public enum InputKind: String, Sendable, Codable, CaseIterable {
     case microphone
 
     /// A connected display, captured whole (a window is its own kind,
-    /// ``window``; application inputs arrive later). Not yet in the CLI's
+    /// ``window``, and an application's sound is ``application``). Not yet in the CLI's
     /// `devices` listing — display inputs are an app-era surface (CLI.md,
     /// "Non-goals (v1)").
     case display
@@ -36,6 +37,15 @@ public enum InputKind: String, Sendable, Codable, CaseIterable {
     /// activation (ARCHITECTURE.md, "Window capture"). An app-era surface
     /// like ``display``, so not in the CLI's `devices` listing.
     case window
+
+    /// One running application's sound, captured alone — audio only, and
+    /// kept off the Mac's speakers while it is captured unless the operator
+    /// says otherwise. *Chosen*, not discovered, like ``window``: an input
+    /// is made for the application the operator picks and registered by the
+    /// host on the project's behalf, never at plug-in activation
+    /// (ARCHITECTURE.md, "Application audio"). An app-era surface, so not
+    /// in the CLI's `devices` listing.
+    case application
 
     /// A generator: an input that synthesizes its content rather than
     /// capturing it (see GLOSSARY.md). Generators are selected by their

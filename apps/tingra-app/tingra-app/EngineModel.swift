@@ -733,6 +733,7 @@ final class EngineModel {
         case .window: "macwindow"
         case .generator: "rectangle.checkered"
         case .microphone: "mic"
+        case .application: "app"
         // A media input's symbol says what kind of file it is, resolved
         // from the item's content type (ARCHITECTURE.md, "Media inputs and
         // the Library's Media tab").
@@ -1083,6 +1084,138 @@ final class EngineModel {
                 params: [
                     "id": .string(record.id.rawValue),
                     "name": .string(target.name),
+                    "error": .string(String(describing: error)),
+                ]
+            )
+            return false
+        }
+    }
+
+    // MARK: Applications
+
+    /// The applications the project holds as audio inputs, in the order
+    /// added — the document's list, from which each launch makes the
+    /// application inputs (ARCHITECTURE.md, "Application audio"). A record
+    /// whose application is not running stays listed, its input waiting for
+    /// the application.
+    private(set) var applications: [ProjectApplication] = []
+
+    /// Whether the Add Application sheet is up (``ApplicationPickerSheet``).
+    /// Session state held here, like ``isWindowPickerPresented``, so the
+    /// sidebar opens it and ``ContentView`` presents it.
+    var isApplicationPickerPresented = false
+
+    /// Where the application list and the application inputs come from.
+    private var applicationProvider: ApplicationAudioProvider {
+        ApplicationAudioProvider(eventBus: eventBus)
+    }
+
+    /// The applications that can be added now — those running with an audio
+    /// process, by name — for the Add Application sheet. Listing asks for no
+    /// permission; the first capture does.
+    ///
+    /// - Returns: The applications.
+    /// - Throws: An `ApplicationListingError` when Core Audio will not list
+    ///   its processes.
+    func availableApplications() async throws -> [CaptureApplication] {
+        try await applicationProvider.availableApplications()
+    }
+
+    /// Whether the project already holds an input for an application, so the
+    /// picker can say so instead of adding a second capture of it.
+    ///
+    /// - Parameter application: An application the picker lists.
+    /// - Returns: Whether a record with its bundle identifier exists.
+    func isApplicationAdded(_ application: CaptureApplication) -> Bool {
+        ApplicationChoice.isAdded(application, to: applications)
+    }
+
+    /// Adds an application to the project as an audio input and puts its
+    /// channel strip on the mixer, muted with audio follows video off
+    /// (``MixerStrip/added(_:hasPicture:)``) — an application input exists
+    /// only to be heard, so adding it is adding its strip. Nothing is
+    /// captured, and the application keeps playing to its speakers, until
+    /// the operator unmutes the strip. An application the project already
+    /// holds is left alone. The document autosaves when one was added.
+    ///
+    /// - Parameter application: The application to add, as the picker listed
+    ///   it.
+    func addApplication(_ application: CaptureApplication) async {
+        guard !isApplicationAdded(application) else { return }
+        let record = ApplicationChoice.record(for: application)
+        guard await registerApplication(record) else { return }
+        applications.append(record)
+        eventBus.event(
+            "application.added",
+            domain: .capture,
+            params: [
+                "id": .string(record.id.rawValue),
+                "name": .string(record.name),
+                "application": .string(record.bundleIdentifier),
+            ]
+        )
+        await readDeviceLists()
+        addStrip(for: record.id)
+        scheduleAutosave()
+    }
+
+    /// Removes an application from the project, its strip from the mixer,
+    /// and its input from the registry; the audio pass stops it if it was
+    /// capturing, which makes the application heard on its speakers again.
+    /// The strip goes too because nothing could bring it back: adding the
+    /// application again makes a new input.
+    ///
+    /// - Parameter id: The application input to remove.
+    func removeApplication(_ id: InputID) async {
+        guard let index = applications.firstIndex(where: { $0.id == id }) else { return }
+        let record = applications.remove(at: index)
+        await removeStrip(id)
+        await registry.unregister(id)
+        eventBus.event(
+            "application.removed",
+            domain: .capture,
+            params: ["id": .string(id.rawValue), "name": .string(record.name)]
+        )
+        await readDeviceLists()
+        await reconfigureAudio()
+        scheduleAutosave()
+    }
+
+    /// Whether an input is one of the project's applications — what puts
+    /// **Remove Application** on its sidebar row.
+    ///
+    /// - Parameter id: The input.
+    /// - Returns: Whether the project holds it as an application.
+    func isApplication(_ id: InputID) -> Bool {
+        applications.contains { $0.id == id }
+    }
+
+    /// Registers the inputs for the loaded project's application list, at
+    /// boot and when a project is opened.
+    private func registerProjectApplications() async {
+        for record in applications {
+            _ = await registerApplication(record)
+        }
+    }
+
+    /// Makes and registers the input for one application record. Nothing is
+    /// tapped until the strip is unmuted and the input starts.
+    ///
+    /// - Parameter record: The record to register.
+    /// - Returns: Whether the input registered; a registry refusal is
+    ///   reported as an `application.add` error.
+    private func registerApplication(_ record: ProjectApplication) async -> Bool {
+        do {
+            try await registry.register(
+                applicationProvider.makeInput(for: ApplicationChoice.application(of: record), id: record.id))
+            return true
+        } catch {
+            eventBus.error(
+                "application.add",
+                domain: .capture,
+                params: [
+                    "id": .string(record.id.rawValue),
+                    "name": .string(record.name),
                     "error": .string(String(describing: error)),
                 ]
             )
@@ -2014,6 +2147,7 @@ final class EngineModel {
                 self?.handleStreamStatusEvent(event)
                 await self?.handleDeviceEvent(event)
                 await self?.handleInputRuntimeError(event)
+                self?.handleApplicationAudioArrived(event)
             }
         }
         // The permissions picture goes on the bus before any input asks for
@@ -2091,6 +2225,11 @@ final class EngineModel {
         // The project's windows register the same way, for the same reason.
         if !windows.isEmpty {
             await registerProjectWindows()
+            await readDeviceLists()
+        }
+        // And its applications.
+        if !applications.isEmpty {
+            await registerProjectApplications()
             await readDeviceLists()
         }
         await loadDestinations()
@@ -3218,6 +3357,20 @@ final class EngineModel {
         if granted.contains(.microphone) {
             await reconfigureAudio()
         }
+    }
+
+    /// Records System Audio Recording as granted when an application input
+    /// reports its first audio — the `input.format` event with `kind:
+    /// application`. macOS has no read for that permission, so the audio
+    /// arriving is the only proof there is (ARCHITECTURE.md, "Application
+    /// audio", A10).
+    ///
+    /// - Parameter event: An event drained from the bus.
+    private func handleApplicationAudioArrived(_ event: EventBusEvent) {
+        guard event.name == "input.format",
+            event.params?["kind"].flatMap(Self.stringValue) == InputKind.application.rawValue
+        else { return }
+        permissions.noteGranted(.systemAudioRecording)
     }
 
     /// Releases an input whose capture session died after a successful
@@ -5889,6 +6042,8 @@ final class EngineModel {
         // (``registerProjectWindows()``).
         windows = project.windows ?? []
         windowSizes = [:]
+        // The application list too (``registerProjectApplications()``).
+        applications = project.applications ?? []
         // Plug-in data is the document's, opaque to the app.
         plugInData = project.plugInData ?? [:]
         // The inputs' settings are the document's too; they reach the
@@ -6087,6 +6242,9 @@ final class EngineModel {
         for record in windows {
             await registry.unregister(record.id)
         }
+        for record in applications {
+            await registry.unregister(record.id)
+        }
         store = target
         projectURL = target.fileURL
         let recorded = adoptDocument(project)
@@ -6095,6 +6253,9 @@ final class EngineModel {
         }
         if !windows.isEmpty {
             await registerProjectWindows()
+        }
+        if !applications.isEmpty {
+            await registerProjectApplications()
         }
         await readDeviceLists()
         await loadDestinations()
@@ -6344,6 +6505,7 @@ final class EngineModel {
             programFormat: format == ProgramFormat() ? nil : format,
             media: media.isEmpty ? nil : media,
             windows: windows.isEmpty ? nil : windows,
+            applications: applications.isEmpty ? nil : applications,
             plugInData: plugInData.isEmpty ? nil : plugInData,
             inputParameters: inputParameters.isEmpty
                 ? nil : Dictionary(uniqueKeysWithValues: inputParameters.map { ($0.key.rawValue, $0.value) })

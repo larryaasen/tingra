@@ -179,6 +179,8 @@ extension AuthorizationPermission {
             case .camera: "Privacy_Camera"
             case .microphone: "Privacy_Microphone"
             case .screenRecording: "Privacy_ScreenCapture"
+            // macOS files System Audio Recording beside Screen Recording.
+            case .systemAudioRecording: "Privacy_ScreenCapture"
             }
         return URL(string: "x-apple.systempreferences:com.apple.preference.security?\(anchor)")
     }

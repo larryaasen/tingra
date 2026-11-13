@@ -398,6 +398,19 @@ struct SidebarRowTests {
         #expect(rows.map(\.id) == ["mic"])
     }
 
+    @Test("an application's audio row is listed by its own kind, with its mixer mark")
+    func applicationRows() {
+        let choices = Self.audioChoices + [Self.choice("app", "Music Maker", .application)]
+        let strip = MixerStrip(id: InputID(rawValue: "app"), name: "Music Maker", level: 1, pan: 0, isMuted: true)
+        let rows = SidebarRow.audioRows(from: choices, ofKind: .application, strips: [strip], onProgram: [])
+        #expect(rows.map(\.id) == ["app"])
+        #expect(rows.first?.isOnMixer == true)
+        // Muted, so it feeds nothing and lights no lamp.
+        #expect(rows.first?.tally == nil)
+        #expect(
+            SidebarRow.audioRows(from: choices, ofKind: .microphone, strips: [], onProgram: []).map(\.id) == ["mic"])
+    }
+
     @Test("the audio generator section lists the tone and not the microphones")
     @MainActor
     func audioGeneratorSectionListsOnlyGenerators() {

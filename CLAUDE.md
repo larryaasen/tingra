@@ -35,10 +35,15 @@ packages/                       # Engine libraries
   TingraCapturePlugIns/         # First-party capture plug-ins: camera/microphone (AVFoundation)
                                 #   and display (ScreenCaptureKit) discovery and capture, capture
                                 #   of one chosen window, device connect/disconnect events;
-                                #   a USB webcam's controls as the camera input's parameters
+                                #   a USB webcam's controls as the camera input's parameters;
+                                #   one chosen application's sound as an audio input
   TingraUVC/                    # Standalone USB Video Class control library (see UVC.md):
                                 #   lists UVC cameras and reads/sets their standard controls
                                 #   through IOUSBHost; depends on no other Tingra package
+  TingraApplicationAudio/       # Standalone application audio library: lists the running
+                                #   applications with audio and captures one through a Core
+                                #   Audio process tap, muting it on its own speakers; depends
+                                #   on no other Tingra package
   TingraComposition/            # Composition engine library (roadmap step 6): the tick-paced
                                 #   Metal/Core Image compositor, layer tree (shots/layers), program
                                 #   format; a host-side library, not a plug-in, not in TingraHost
@@ -91,7 +96,7 @@ The package names are **finalized** (reviewed 2026-07-03; also recorded in "Repo
 - `packages/` holds local SPM library packages (the engine); `apps/` holds the runnable products (`tingra-cli`, `ingest-simulator`, and the phase-3 `tingra-app`) that consume them.
 - Companion docs, each authoritative for its area: [README.md](README.md) (project overview), [ARCHITECTURE.md](docs/ARCHITECTURE.md) (technical plan and engine design), [GLOSSARY.md](docs/GLOSSARY.md) (canonical vocabulary), [CLI.md](docs/CLI.md) (`tingra-cli` spec), [SIMULATOR.md](docs/SIMULATOR.md) (local RTMP/SRT test server), [CLOCK.md](docs/CLOCK.md) (master clock, program tick, and A/V sync model), [EVENTS.md](docs/EVENTS.md) (event bus, sinks, and logging/redaction policy), [MCP.md](docs/MCP.md) (engine daemon, socket transport, and the agent-facing MCP server), [DESTINATIONS.md](docs/DESTINATIONS.md) (the named destination model: the operator-global destination store and its agent-facing resolution), [UVC.md](docs/UVC.md) (USB Video Class camera controls: the `TingraUVC` library and the camera input's parameters), [TYPES.md](docs/TYPES.md) (every public type, package by package).
 - **Vocabulary is not optional.** Use [GLOSSARY.md](docs/GLOSSARY.md) terms exactly — in code, comments, commit messages, and UI text: `input`, `generator`, `shot`, `preset`, `project`, `program`, `preview`, `compression`, `output`, `destination`, `plug-in` (always hyphenated), `host`, `registry`. Never use terminology (`source`, `scene`, `encoder`, `ingest`, `egress`) except at an explicit external protocol boundary (e.g., an RTSP "source" stays a source in that protocol's own terms).
-- **Name no other product, company, or brand** — not in code, comments, docs, test fixtures, commit messages, or UI text. That covers competitors, other apps used as comparisons, and the author's other projects. Describe prior art generically ("the switchers surveyed put take on Return"), keeping the finding and dropping the name. **Allowed:** real dependencies and tools the repo uses (Apple's platforms and frameworks, HaishinKit, Logboard, MediaMTX, swift-argument-parser, ffmpeg, GitHub, Homebrew); integrations Tingra actually ships (destination templates such as Twitch, the NDI plug-in, MCP clients in setup docs); Apple's own apps cited as platform conventions; and hardware whose specific behavior the code handles.
+- **Name no other product, company, or brand** — not in code, comments, docs, test fixtures, commit messages, or UI text. That covers competitors, other apps used as comparisons, and the author's other projects. Describe prior art generically ("the switchers surveyed put take on Return"), keeping the finding and dropping the name. **Allowed:** real dependencies and tools the repo uses (Apple's platforms and frameworks, HaishinKit, Logboard, MediaMTX, swift-argument-parser, ffmpeg, GitHub, Homebrew, Codecov); integrations Tingra actually ships (destination templates such as Twitch, the NDI plug-in, MCP clients in setup docs); Apple's own apps cited as platform conventions; and hardware whose specific behavior the code handles.
 - `AGENTS.md` is a pointer to this file and should not be edited separately.
 
 ## General Guidelines
@@ -170,7 +175,7 @@ This repository is public, so **no app secret and nothing personal to one develo
 ## Toolchain & CI
 - **Toolchain floor: Xcode 27.2 and Swift 6.4.2** (pinned 2026-11-07; Xcode 27.0 and Swift 6.4 from 2026-10-03, Xcode 26.6 and Swift 6.3.3 before that). Develop and build with these minimums; every `Package.swift` still declares `swift-tools-version: 6.3.3`, the oldest manifest format it needs (see Swift Language & Idioms). This is the *development* toolchain floor — the *deployment* target (macOS 15.0+, Apple Silicon only) is separate; see Platform Support.
 - **CI runs on GitHub Actions (macOS runners).** Every workflow runs on the `xcode-27` arm64 image (macOS 27) with `DEVELOPER_DIR` pinned to Xcode 27.2 — the image also carries 27.0 and 27.1 (its default), so the pin is explicit rather than the image's default. The pin names the image's `Xcode_27.2.app` symlink, which pointed at the 27.2 release candidate (27B48) on 2026-11-07 and follows the release as GitHub updates the image. There are five, each named for what it does:
-  - **`format-test.yml`** — the every-push/every-PR workflow, skipped when a change touches only files no job reads (docs, Markdown, packaging, release scripts, the ingest simulator, other workflows; its `paths-ignore` lists): **formatting verification** (`scripts/check-format.sh`), **unit tests** (`swift test` per package, Swift Testing; generators and mocks mean no camera, microphone, or TCC authorization is needed on runners), and **warning-clean builds** of every package and app (see Other Rules, Strict Compilation). Also `workflow_call`-able, which is how the release workflow gates on it.
+  - **`format-test.yml`** — the every-push/every-PR workflow, skipped when a change touches only files no job reads (docs, Markdown, packaging, release scripts, the ingest simulator, other workflows; its `paths-ignore` lists): **formatting verification** (`scripts/check-format.sh`), **unit tests** (`swift test` per package, Swift Testing; generators and mocks mean no camera, microphone, or TCC authorization is needed on runners), **code coverage** from those test runs (lcov per package and app, limited to its own sources, uploaded to Codecov under a flag named for it with the `CODECOV_TOKEN` secret; informational only, never a merge gate, settings in `.github/codecov.yml`), and **warning-clean builds** of every package and app (see Other Rules, Strict Compilation). Also `workflow_call`-able, which is how the release workflow gates on it.
   - **`integration.yml`** — **integration tests** against the local ingest simulator ([SIMULATOR.md](docs/SIMULATOR.md)); a separate workflow, run on streaming/output changes rather than blocking every PR.
   - **`release-cli.yml`** — the **whole `tingra-cli` release**, on manual dispatch: gate on `format-test.yml`, bump the version, build, sign, notarize, tag, publish the GitHub release, and push the rendered formula to the Homebrew tap. Apple Silicon (arm64) only. Release artifacts are Developer ID signed (hardened runtime; identifiers under `com.moonwink.tingra.*`) and notarized via `notarytool`; each release ships a zip for the Homebrew tap (bare binaries can't be stapled — Gatekeeper checks the ticket online) plus a stapled `.pkg` for offline installs. It is a thin wrapper over `scripts/release-cli.sh --yes`, the same script used locally, so the two paths cannot drift. See [CLI.md](docs/CLI.md) "Distribution" for the full recipe (embedded `__info_plist`, entitlements, CI verification) and the workflow's own header for the secrets it needs. Signing certificates, the notarization API key, and the release token live in GitHub Actions secrets, never in the repo.
   - **`release-sdk.yml`** — the **`TingraPlugInSDK` release**, on manual dispatch: gate on `format-test.yml`, archive the two kits as arm64 XCFrameworks with Library Evolution and their `.swiftinterface`, build a probe plug-in against the interfaces alone, sign each with the Developer ID Application identity (a library is not notarized), tag `plugin-kit-<x.y.z>` and `event-bus-<x.y.z>` here, and publish the manifest and zips to the public `larryaasen/tingra-plug-in-sdk` (see [PLUGINS.md](docs/PLUGINS.md), Decision 37). The version is `PlugInKitVersion.current`, never bumped by the workflow. A thin wrapper over `scripts/release-sdk.sh --yes`; without `TINGRA_SIGN_ID` the script builds an unsigned development SDK into `dist/sdk` and publishes nothing. Built at the toolchain floor, because a `.swiftinterface` written by a newer compiler may not build under an older Xcode; the script reads the floor from this workflow's `DEVELOPER_DIR`.
@@ -224,12 +229,19 @@ packages/  TingraPlugInKit        →  TingraEventBus; importable standalone by 
 packages/  TingraHost             →  TingraPlugInKit + TingraEventBus
 packages/  TingraUVC              no engine-internal dependencies (a standalone UVC control
                                      library over IOUSBHost; see UVC.md)
-packages/  TingraCapturePlugIns   →  TingraPlugInKit + TingraEventBus + TingraUVC (registers
+packages/  TingraApplicationAudio no engine-internal dependencies (a standalone process-tap
+                                     library over Core Audio; ARCHITECTURE.md, "Application
+                                     audio")
+packages/  TingraCapturePlugIns   →  TingraPlugInKit + TingraEventBus + TingraUVC
+                                     + TingraApplicationAudio (registers
                                      through the `InputRegistering` seam, so no TingraHost
                                      dependency; AppKit for NSWorkspace display sleep/wake and
                                      application launch/activation notifications only — the one
                                      engine package importing AppKit, never UI; TingraUVC for a
-                                     camera's controls, imported only behind CameraControls)
+                                     camera's controls, imported only behind CameraControls;
+                                     TingraApplicationAudio for an application's sound,
+                                     imported only behind ApplicationAudioInput and its
+                                     provider)
 packages/  TingraGeneratorPlugIns →  TingraPlugInKit + TingraEventBus (same seam-only design)
 packages/  TingraEffectPlugIns    →  TingraPlugInKit + TingraEventBus (same seam-only design;
                                      registers through the `EffectRegistering` seam; pure DSP

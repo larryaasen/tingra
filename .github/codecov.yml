@@ -1,0 +1,26 @@
+# Codecov settings for the coverage format-test.yml uploads: one lcov report
+# per package or app, each under a flag named for it (TingraHost, tingra-cli,
+# tingra-app, ...), limited to that target's own sources.
+#
+# Coverage is informational: PRs must pass formatting, build, and unit tests
+# before merge (CLAUDE.md, "Toolchain & CI"), and coverage is not one of the
+# gates, so neither status ever fails a PR.
+
+coverage:
+  status:
+    project:
+      default:
+        informational: true
+    patch:
+      default:
+        informational: true
+
+# A flag missing from a commit, because that package's job did not finish,
+# keeps its last report instead of reading as zero.
+flag_management:
+  default_rules:
+    carryforward: true
+
+comment:
+  layout: "condensed_header, condensed_files, condensed_footer"
+  require_changes: true

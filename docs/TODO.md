@@ -294,18 +294,14 @@ and timing", unless one of its sections fits better.
   - [ ] Auto exposure priority, now that the kit has a choice kind.
 
 - [ ] **Application audio** *(probed 2026-11-09; A1–A9 approved
-  2026-11-09, A10–A11 2026-11-10)*: one running application's sound as an audio input, through
-  a Core Audio process tap muted while captured, so it reaches the mix and not
-  the speakers. Record and probe results in ARCHITECTURE.md, "Application
-  audio".
-  - [ ] Build it: the standalone `TingraApplicationAudio` package (process
-    listing, tap and aggregate, IOProc copies, process-list listener), then
-    `InputKind.application`, `ApplicationAudioInput` and
-    `ApplicationAudioProvider` in `TingraCapturePlugIns`,
-    `Project.applications`, `AuthorizationPermission.systemAudioRecording`
-    with the new "Asked when first used" status and its Permissions row, the
-    usage string, the picker and sidebar rows, README.md, TYPES.md,
-    GLOSSARY.md, and CLAUDE.md's package list and dependency graph.
+  2026-11-09, A10–A11 2026-11-10; built 2026-11-11, record in DONE.md)*: one
+  running application's sound as an audio input, through a Core Audio process
+  tap muted while captured, so it reaches the mix and not the speakers.
+  Record and probe results in ARCHITECTURE.md, "Application audio".
+  - [ ] Larry: check it in the running app. Add an application from the
+    Audio Inputs heading's menu, unmute its strip, and confirm the sound
+    leaves the speakers, reaches the meter, and returns when the strip is
+    muted; then quit and relaunch the application mid-capture.
   - [ ] Check the row's System Settings anchor and `tccutil` service name on
     the real app before it ships.
   - [ ] Settle the record's open questions while building: what a denied tap

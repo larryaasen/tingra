@@ -212,18 +212,7 @@ struct LeadingSidebar: View {
 
             mediaSection
 
-            audioSection(
-                .audioInputs,
-                header: Text("Audio Inputs", comment: "Sidebar section heading over the audio input device list"),
-                rows: SidebarRow.audioRows(
-                    from: model.audioInputs, ofKind: .microphone, strips: model.mixerStrips,
-                    onProgram: model.programInputIDs),
-                symbol: "mic",
-                emptyLabel: Text(
-                    "No audio inputs connected",
-                    comment: "Device rail placeholder when no audio input device is discovered"
-                )
-            )
+            audioInputSection
 
             audioSection(
                 .audioGenerators,
@@ -599,6 +588,48 @@ struct LeadingSidebar: View {
             )
             Task { await model.stagePreview(showing: InputID(rawValue: row.id)) }
         }
+    }
+
+    /// The Audio Inputs section: the microphones, then the applications the
+    /// project holds as audio inputs (ARCHITECTURE.md, "Application audio",
+    /// A8).
+    ///
+    /// **Adding an application is the header's context menu**, the Windows
+    /// heading's shape: an application is chosen rather than discovered, so a
+    /// right-click on the heading offers **Add Application…**, which opens
+    /// the picker (``ApplicationPickerSheet``). An application's row adds
+    /// **Remove Application** to the audio rows' menu, and it stays listed
+    /// while the application is not running — the input is waiting for it,
+    /// not gone.
+    private var audioInputSection: some View {
+        audioSection(
+            .audioInputs,
+            header: Text("Audio Inputs", comment: "Sidebar section heading over the audio input device list")
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(.rect)
+                .contextMenu {
+                    Button {
+                        model.eventBus.tap("sidebarApplicationAdd.menuItem", domain: .capture)
+                        model.isApplicationPickerPresented = true
+                    } label: {
+                        Text(
+                            "Add Application…",
+                            comment: "Menu item opening the sheet that adds an application as an audio input")
+                    }
+                },
+            rows: SidebarRow.audioRows(
+                from: model.audioInputs, ofKind: .microphone, strips: model.mixerStrips,
+                onProgram: model.programInputIDs)
+                + SidebarRow.audioRows(
+                    from: model.audioInputs, ofKind: .application, strips: model.mixerStrips,
+                    onProgram: model.programInputIDs),
+            symbol: "mic",
+            emptyLabel: Text(
+                "No audio inputs connected",
+                comment: "Device rail placeholder when no audio input device is discovered"
+            ),
+            symbolForRow: { row in model.isApplication(InputID(rawValue: row.id)) ? "app" : "mic" }
+        )
     }
 
     /// The destination section: one row per destination the program streams
@@ -1001,13 +1032,16 @@ struct LeadingSidebar: View {
     ///   - rows: The section's rows (``SidebarRow/audioRows(from:ofKind:strips:onProgram:)``).
     ///   - symbol: The SF Symbol each row is labeled with.
     ///   - emptyLabel: What to show when `rows` is empty.
+    ///   - symbolForRow: A row's own symbol, when the section's rows differ
+    ///     (the Audio Inputs section's applications), or nil for `symbol`.
     /// - Returns: The section.
     private func audioSection(
         _ id: SidebarSection,
-        header: Text,
+        header: some View,
         rows: [SidebarRow],
         symbol: String,
-        emptyLabel: Text
+        emptyLabel: Text,
+        symbolForRow: ((SidebarRow) -> String)? = nil
     ) -> some View {
         Section(isExpanded: expansion(of: id)) {
             if rows.isEmpty {
@@ -1016,7 +1050,7 @@ struct LeadingSidebar: View {
                     .foregroundStyle(.secondary)
             } else {
                 ForEach(rows) { row in
-                    audioRow(row, symbol: symbol)
+                    audioRow(row, symbol: symbolForRow?(row) ?? symbol)
                 }
             }
         } header: {
@@ -1067,6 +1101,25 @@ struct LeadingSidebar: View {
                         Text(
                             "Add to Mixer",
                             comment: "Sidebar audio input row context menu: adds the input's channel strip, muted"
+                        )
+                    }
+                }
+                // An application is in the list because the operator added
+                // it, so its row is where they take it out again.
+                if model.isApplication(input) {
+                    Divider()
+                    Button(role: .destructive) {
+                        model.eventBus.tap(
+                            "sidebarApplicationRemove.menuItem",
+                            domain: .capture,
+                            params: ["id": .string(row.id), "name": .string(row.name)]
+                        )
+                        Task { await model.removeApplication(input) }
+                    } label: {
+                        Text(
+                            "Remove Application",
+                            comment:
+                                "Sidebar application row context menu: removes the application input from the project"
                         )
                     }
                 }

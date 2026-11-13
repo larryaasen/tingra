@@ -105,6 +105,13 @@ public struct Project: Sendable, Equatable, Codable {
     /// rule, no version bump.
     public let windows: [ProjectWindow]?
 
+    /// The applications the operator added to this project as audio inputs,
+    /// in the order added, or `nil` when none has been. Each record's id is
+    /// also the ``InputID`` of the input that captures it (ARCHITECTURE.md,
+    /// "Application audio"). An **optional key within v1** — the
+    /// pre-release rule, no version bump.
+    public let applications: [ProjectApplication]?
+
     /// Project-scoped storage for app-tier plug-ins, or `nil` when no plug-in
     /// has written any (PLUGINS.md, "Storage", Decision 7). Each key is a
     /// plug-in id — the raw value of the plug-in kit's `PlugInID`, kept as a
@@ -143,6 +150,8 @@ public struct Project: Sendable, Equatable, Codable {
     ///     meaning 1920x1080 at 30).
     ///   - media: The files added as media (default: none).
     ///   - windows: The windows added as inputs (default: none).
+    ///   - applications: The applications added as audio inputs (default:
+    ///     none).
     ///   - plugInData: The app-tier plug-ins' project-scoped storage, keyed
     ///     by plug-in id (default: none).
     ///   - inputParameters: The inputs' parameter values, keyed by input id
@@ -155,6 +164,7 @@ public struct Project: Sendable, Equatable, Codable {
         programFormat: ProgramFormat? = nil,
         media: [ProjectMedia]? = nil,
         windows: [ProjectWindow]? = nil,
+        applications: [ProjectApplication]? = nil,
         plugInData: [String: JSONValue]? = nil,
         inputParameters: [String: [String: JSONValue]]? = nil
     ) {
@@ -165,6 +175,7 @@ public struct Project: Sendable, Equatable, Codable {
         self.programFormat = programFormat
         self.media = media
         self.windows = windows
+        self.applications = applications
         self.plugInData = plugInData
         self.inputParameters = inputParameters
     }
@@ -178,6 +189,7 @@ public struct Project: Sendable, Equatable, Codable {
         case programFormat
         case media
         case windows
+        case applications
         case plugInData
         case inputParameters
         /// Read-only: the single destination key written before a project
@@ -189,7 +201,8 @@ public struct Project: Sendable, Equatable, Codable {
     /// Decodes a project. `version` is required (a document must declare its
     /// format so future versions can migrate it) and must not exceed
     /// ``currentVersion``; `id`, `presets`, `destinations`, `programFormat`,
-    /// `media`, `windows`, `plugInData`, `inputParameters`, and the older
+    /// `media`, `windows`, `applications`, `plugInData`, `inputParameters`,
+    /// and the older
     /// single `destination` are optional (a minimal document decodes forgivingly
     /// with them absent).
     ///
@@ -242,15 +255,17 @@ public struct Project: Sendable, Equatable, Codable {
         programFormat = try container.decodeIfPresent(ProgramFormat.self, forKey: .programFormat)
         media = try container.decodeIfPresent([ProjectMedia].self, forKey: .media)
         windows = try container.decodeIfPresent([ProjectWindow].self, forKey: .windows)
+        applications = try container.decodeIfPresent([ProjectApplication].self, forKey: .applications)
         plugInData = try container.decodeIfPresent([String: JSONValue].self, forKey: .plugInData)
         inputParameters = try container.decodeIfPresent([String: [String: JSONValue]].self, forKey: .inputParameters)
     }
 
     /// Encodes a project, writing `version` and `presets` always and `id`,
-    /// `destinations`, `programFormat`, `media`, `windows`, `plugInData`,
-    /// and `inputParameters` only when set, so a project with no id, no
-    /// destination, the default format, no media, no windows, no plug-in
-    /// data, or no input settings round-trips to a document without those
+    /// `destinations`, `programFormat`, `media`, `windows`, `applications`,
+    /// `plugInData`, and `inputParameters` only when set, so a project with
+    /// no id, no destination, the default format, no media, no windows, no
+    /// applications, no plug-in data, or no input settings round-trips to a
+    /// document without those
     /// keys (and reads them back as nil). The superseded single
     /// `destination` key is never written.
     public func encode(to encoder: any Encoder) throws {
@@ -262,6 +277,7 @@ public struct Project: Sendable, Equatable, Codable {
         try container.encodeIfPresent(programFormat, forKey: .programFormat)
         try container.encodeIfPresent(media, forKey: .media)
         try container.encodeIfPresent(windows, forKey: .windows)
+        try container.encodeIfPresent(applications, forKey: .applications)
         try container.encodeIfPresent(plugInData, forKey: .plugInData)
         try container.encodeIfPresent(inputParameters, forKey: .inputParameters)
     }

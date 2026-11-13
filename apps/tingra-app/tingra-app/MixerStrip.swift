@@ -136,11 +136,13 @@ struct MixerStrip: Identifiable, Equatable {
     /// it, so a fresh project opens on the microphone macOS is already
     /// using, and otherwise the first captured input in listing order.
     ///
-    /// A **generator or a media file is never seeded**, even when it sorts
-    /// first by name (the 440 Hz tone does), and even when it is passed as
-    /// the default. Unmuting also starts the input, so seeding a generator
-    /// would put a test tone on the program mix — and on any stream — the
-    /// first time an operator opened a fresh project. When the only audio
+    /// A **generator, a media file, or an application is never seeded**,
+    /// even when it sorts first by name (the 440 Hz tone does), and even when
+    /// it is passed as the default. Unmuting also starts the input, so
+    /// seeding a generator would put a test tone on the program mix — and on
+    /// any stream — the first time an operator opened a fresh project, and
+    /// seeding an application would take its sound off the operator's
+    /// speakers unasked. When the only audio
     /// inputs are generators or media, the seed is empty: an empty mixer the
     /// operator can add to is right where an unrequested tone is not.
     ///
@@ -156,7 +158,7 @@ struct MixerStrip: Identifiable, Equatable {
         // A device, never a generator or a media file: the seed is what is
         // live out of the box, and neither a test tone nor a movie's sound
         // is what an operator asked for by launching the app.
-        let devices = inputs.filter { $0.kind != .generator && $0.kind != .media }
+        let devices = inputs.filter { $0.kind != .generator && $0.kind != .media && $0.kind != .application }
         guard let live = devices.first(where: { $0.id == defaultMicrophone }) ?? devices.first else { return [] }
         return [
             MixerStrip(

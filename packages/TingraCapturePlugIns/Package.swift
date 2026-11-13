@@ -16,7 +16,8 @@ import PackageDescription
 // InputRegistering seam, so the package depends on the protocol package
 // alone, never the engine (see ARCHITECTURE.md). A camera's adjustable
 // controls reach it through TingraUVC, the standalone UVC control library
-// (docs/UVC.md).
+// (docs/UVC.md), and an application's sound through TingraApplicationAudio,
+// the standalone process-tap library (ARCHITECTURE.md, "Application audio").
 let package = Package(
     name: "TingraCapturePlugIns",
     platforms: [.macOS(.v15)],
@@ -27,6 +28,7 @@ let package = Package(
         .package(path: "../TingraEventBus"),
         .package(path: "../TingraPlugInKit"),
         .package(path: "../TingraUVC"),
+        .package(path: "../TingraApplicationAudio"),
     ],
     targets: [
         .target(
@@ -35,6 +37,7 @@ let package = Package(
                 .product(name: "TingraEventBus", package: "TingraEventBus"),
                 .product(name: "TingraPlugInKit", package: "TingraPlugInKit"),
                 .product(name: "TingraUVC", package: "TingraUVC"),
+                .product(name: "TingraApplicationAudio", package: "TingraApplicationAudio"),
             ]
         ),
         .testTarget(name: "TingraCapturePlugInsTests", dependencies: ["TingraCapturePlugIns"]),

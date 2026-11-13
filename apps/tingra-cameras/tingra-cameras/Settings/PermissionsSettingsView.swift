@@ -110,7 +110,7 @@ struct PermissionRow: View {
             } label: {
                 Text("Request…", comment: "Permissions settings: button that shows the system permission prompt")
             }
-        case .denied:
+        case .denied, .unknown:
             Button {
                 model.recordTap("permissionOpenSettings.button", params: ["permission": .string(permission.rawValue)])
                 if let url = permission.systemSettingsURL {
@@ -145,11 +145,15 @@ struct PermissionRow: View {
         case .screenRecording:
             LocalizedStringResource(
                 "Screen Recording", comment: "Permissions settings: the Screen Recording permission's name")
+        case .systemAudioRecording:
+            LocalizedStringResource(
+                "System Audio Recording",
+                comment: "Permissions settings: the System Audio Recording permission's name")
         }
     }
 
     /// What Tingra Cameras uses a permission for, in the row's second line.
-    /// Only the camera is ever listed; the other two are named so the switch
+    /// Only the camera is ever listed; the others are named so the switch
     /// stays exhaustive over the host's permissions.
     ///
     /// - Parameter permission: The permission to describe.
@@ -165,6 +169,10 @@ struct PermissionRow: View {
                 "Not used by Tingra Cameras.",
                 comment: "Permissions settings: purpose of a permission the app never asks for")
         case .screenRecording:
+            LocalizedStringResource(
+                "Not used by Tingra Cameras.",
+                comment: "Permissions settings: purpose of a permission the app never asks for")
+        case .systemAudioRecording:
             LocalizedStringResource(
                 "Not used by Tingra Cameras.",
                 comment: "Permissions settings: purpose of a permission the app never asks for")
@@ -206,6 +214,10 @@ struct StatusLabel: View {
         case .restricted:
             LocalizedStringResource(
                 "Restricted", comment: "Permissions settings: status of a permission a policy forbids")
+        case .unknown:
+            LocalizedStringResource(
+                "Asked When First Used",
+                comment: "Permissions settings: status of a permission macOS offers no way to check in advance")
         case nil:
             LocalizedStringResource("Checking…", comment: "Permissions settings: status before the first read")
         }
@@ -221,6 +233,7 @@ struct StatusLabel: View {
         case .denied: "xmark.circle.fill"
         case .notDetermined: "questionmark.circle.fill"
         case .restricted: "lock.circle.fill"
+        case .unknown: "questionmark.circle"
         case nil: "circle.dotted"
         }
     }
@@ -234,7 +247,7 @@ struct StatusLabel: View {
         case .granted: .green
         case .denied: .red
         case .notDetermined: .orange
-        case .restricted, nil: .secondary
+        case .restricted, .unknown, nil: .secondary
         }
     }
 }

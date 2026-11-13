@@ -44,6 +44,13 @@ final class PermissionsModel {
     /// The host's event bus, for the `authorization.*` events.
     @ObservationIgnored private let eventBus: EventBus
 
+    /// The permissions a capture has proven granted this run, though the
+    /// system reads them as ``AuthorizationStatus/unknown`` — System Audio
+    /// Recording, which macOS offers no read for (ARCHITECTURE.md,
+    /// "Application audio", A10). Session state: the next launch reads
+    /// unknown again until a capture proves it again.
+    @ObservationIgnored private var provenGranted: Set<AuthorizationPermission> = []
+
     /// The task re-reading the permissions on each app activation, while
     /// ``observeActivation(onGranted:)`` runs.
     @ObservationIgnored private var activationTask: Task<Void, Never>?
@@ -82,7 +89,8 @@ final class PermissionsModel {
         let previous = statuses
         var current: [AuthorizationPermission: AuthorizationStatus] = [:]
         for permission in AuthorizationPermission.allCases {
-            current[permission] = authorization.status(of: permission)
+            current[permission] = Self.resolved(
+                authorization.status(of: permission), proven: provenGranted.contains(permission))
         }
         statuses = current
 
@@ -113,6 +121,31 @@ final class PermissionsModel {
         return newlyGranted
     }
 
+    /// What the pane shows for a permission: the system's answer, except
+    /// that an ``AuthorizationStatus/unknown`` a capture has since proven
+    /// reads as granted. A permission the system *can* read is never
+    /// overridden — its own answer is the truth.
+    ///
+    /// - Parameters:
+    ///   - status: The system's answer.
+    ///   - proven: Whether a capture proved the permission granted this run.
+    /// - Returns: The status to show.
+    static func resolved(_ status: AuthorizationStatus, proven: Bool) -> AuthorizationStatus {
+        status == .unknown && proven ? .granted : status
+    }
+
+    /// Records that a capture proved a permission granted — an application
+    /// input's first audio, for System Audio Recording — and refreshes, so
+    /// the change is reported like any other. Proving it twice changes
+    /// nothing.
+    ///
+    /// - Parameter permission: The permission proven granted.
+    func noteGranted(_ permission: AuthorizationPermission) {
+        guard !provenGranted.contains(permission) else { return }
+        provenGranted.insert(permission)
+        refresh()
+    }
+
     /// Asks the system for a permission — prompting the operator when it is
     /// still undecided — then refreshes.
     ///
@@ -137,6 +170,9 @@ final class PermissionsModel {
     ///
     /// - Parameter permission: The permission to reset.
     func reset(_ permission: AuthorizationPermission) async {
+        // A reset forgets the decision, so what a capture proved about it
+        // no longer holds either.
+        provenGranted.remove(permission)
         do {
             try await authorization.reset(permission)
             eventBus.event(
@@ -191,6 +227,9 @@ extension AuthorizationPermission {
             case .camera: "Privacy_Camera"
             case .microphone: "Privacy_Microphone"
             case .screenRecording: "Privacy_ScreenCapture"
+            // macOS files System Audio Recording beside Screen Recording,
+            // in its Screen & System Audio Recording pane.
+            case .systemAudioRecording: "Privacy_ScreenCapture"
             }
         return URL(string: "x-apple.systempreferences:com.apple.preference.security?\(anchor)")
     }

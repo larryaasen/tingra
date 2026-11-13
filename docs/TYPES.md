@@ -193,6 +193,11 @@ internal surface a reader needs to navigate the target instead.
 - `CaptureWindow` — one window that can be captured now, as a picker lists it.
 - `WindowInput` — one window behind the `Input` seam.
 - `WindowCapture` — one running window capture, injected for tests.
+- `ApplicationAudioProvider` — lists applications with audio; makes an input.
+- `CaptureApplication` — one running application with audio, as a picker lists.
+- `ApplicationListingError` — why the running applications could not be listed.
+- `ApplicationAudioInput` — one application's sound behind the `Input` seam.
+- `ApplicationCapture` — one running application tap, injected for tests.
 
 ## `packages/TingraUVC`
 
@@ -209,6 +214,16 @@ internal surface a reader needs to navigate the target instead.
 - `UVCRequest` — one class-specific control request to an entity.
 - `UVCRequestCode` — a control request's code: `SET_CUR`, `GET_CUR`, ...
 - `UVCError` — every UVC failure, each explaining its cause and fix.
+
+## `packages/TingraApplicationAudio`
+
+- `AudioProcess` — one process in Core Audio's process list.
+- `AudioApplication` — a running application with audio, and its processes.
+- `AudioApplication.BundleDescription` — a bundle's identifier and name.
+- `ProcessTap` — a running process tap, read through a tap-only aggregate.
+- `ApplicationAudioBuffer` — one callback's audio, copied, with its host time.
+- `AudioProcessChanges` — changes to Core Audio's process list, as a stream.
+- `ApplicationAudioError` — every failure, naming the Core Audio status.
 
 ## `packages/TingraGeneratorPlugIns`
 
@@ -229,6 +244,7 @@ internal surface a reader needs to navigate the target instead.
 - `MediaID` — a media item's stable identifier, and its input's `InputID`.
 - `ProjectMedia` — one file added to a project as media: id, path, name.
 - `ProjectWindow` — one window added to a project: a description to find.
+- `ProjectApplication` — one application added to a project as audio input.
 - `ProjectID` — the stable identifier of a project document.
 - `Project` — the saved, versioned `Codable` document for a whole show.
 - `DestinationReference` — a project's use of one saved destination.
@@ -642,6 +658,9 @@ surface is:
 - `DraggedInput` — the `Transferable` payload of a dragged sidebar input.
 - `WindowPickerSheet` — the Add Window sheet: open windows by application.
 - `WindowChoice` — the pure rules turning a picked window into an input.
+- `ApplicationPickerSheet` — the Add Application sheet: apps with audio.
+- `ApplicationChoice` — the pure rules turning a picked app into an input.
+- `ApplicationIcon` — an application's Finder icon, by bundle identifier.
 - `MultiviewView` — the multiview window: program, preview, and inputs.
 - `InputFrameSource` — one input's latest frame, for a multiview tile.
 - `MultiviewTile` — the pure tile derivation and its tally rule.
