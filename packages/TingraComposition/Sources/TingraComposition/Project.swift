@@ -138,6 +138,13 @@ public struct Project: Sendable, Equatable, Codable {
     /// pre-release rule, no version bump.
     public let inputParameters: [String: [String: JSONValue]]?
 
+    /// Which monitor overlays the program and preview monitors show, and
+    /// their parameter values, or `nil` when the operator has never
+    /// changed them, which the app reads as its defaults (PLUGINS.md,
+    /// Decision 55). An **optional key within v1**, the pre-release rule,
+    /// no version bump.
+    public let monitorOverlays: MonitorOverlaySettings?
+
     /// Creates a project.
     ///
     /// - Parameters:
@@ -156,6 +163,8 @@ public struct Project: Sendable, Equatable, Codable {
     ///     by plug-in id (default: none).
     ///   - inputParameters: The inputs' parameter values, keyed by input id
     ///     (default: none).
+    ///   - monitorOverlays: The monitors' overlays and their values
+    ///     (default: none, the app's defaults).
     public init(
         version: Int = Project.currentVersion,
         id: ProjectID? = nil,
@@ -166,7 +175,8 @@ public struct Project: Sendable, Equatable, Codable {
         windows: [ProjectWindow]? = nil,
         applications: [ProjectApplication]? = nil,
         plugInData: [String: JSONValue]? = nil,
-        inputParameters: [String: [String: JSONValue]]? = nil
+        inputParameters: [String: [String: JSONValue]]? = nil,
+        monitorOverlays: MonitorOverlaySettings? = nil
     ) {
         self.version = version
         self.id = id
@@ -178,6 +188,7 @@ public struct Project: Sendable, Equatable, Codable {
         self.applications = applications
         self.plugInData = plugInData
         self.inputParameters = inputParameters
+        self.monitorOverlays = monitorOverlays
     }
 
     /// The coding keys — stable camelCase names for the project document.
@@ -192,6 +203,7 @@ public struct Project: Sendable, Equatable, Codable {
         case applications
         case plugInData
         case inputParameters
+        case monitorOverlays
         /// Read-only: the single destination key written before a project
         /// could hold several. Decoded and folded into ``destinations``,
         /// never written again (see ``init(from:)``).
@@ -202,7 +214,7 @@ public struct Project: Sendable, Equatable, Codable {
     /// format so future versions can migrate it) and must not exceed
     /// ``currentVersion``; `id`, `presets`, `destinations`, `programFormat`,
     /// `media`, `windows`, `applications`, `plugInData`, `inputParameters`,
-    /// and the older
+    /// `monitorOverlays`, and the older
     /// single `destination` are optional (a minimal document decodes forgivingly
     /// with them absent).
     ///
@@ -258,13 +270,15 @@ public struct Project: Sendable, Equatable, Codable {
         applications = try container.decodeIfPresent([ProjectApplication].self, forKey: .applications)
         plugInData = try container.decodeIfPresent([String: JSONValue].self, forKey: .plugInData)
         inputParameters = try container.decodeIfPresent([String: [String: JSONValue]].self, forKey: .inputParameters)
+        monitorOverlays = try container.decodeIfPresent(MonitorOverlaySettings.self, forKey: .monitorOverlays)
     }
 
     /// Encodes a project, writing `version` and `presets` always and `id`,
     /// `destinations`, `programFormat`, `media`, `windows`, `applications`,
-    /// `plugInData`, and `inputParameters` only when set, so a project with
-    /// no id, no destination, the default format, no media, no windows, no
-    /// applications, no plug-in data, or no input settings round-trips to a
+    /// `plugInData`, `inputParameters`, and `monitorOverlays` only when set,
+    /// so a project with no id, no destination, the default format, no
+    /// media, no windows, no applications, no plug-in data, no input
+    /// settings, or the default monitor overlays round-trips to a
     /// document without those
     /// keys (and reads them back as nil). The superseded single
     /// `destination` key is never written.
@@ -280,5 +294,6 @@ public struct Project: Sendable, Equatable, Codable {
         try container.encodeIfPresent(applications, forKey: .applications)
         try container.encodeIfPresent(plugInData, forKey: .plugInData)
         try container.encodeIfPresent(inputParameters, forKey: .inputParameters)
+        try container.encodeIfPresent(monitorOverlays, forKey: .monitorOverlays)
     }
 }

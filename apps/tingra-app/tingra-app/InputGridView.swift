@@ -72,7 +72,9 @@ struct InputGridView: View {
                             badgeTint: tile.tally.badgeTint,
                             aspectRatio: model.programAspectRatio,
                             borderTint: tile.tally.borderTint,
-                            maximumFramesPerSecond: MonitorView.thumbnailFramesPerSecond
+                            maximumFramesPerSecond: MonitorView.thumbnailFramesPerSecond,
+                            monitorOverlays: model.monitorOverlayLineup(
+                                for: .input, tally: tile.tally.monitorOverlayTally, input: tile.id)
                         )
                         .snapshotMenu(
                             model: model,

@@ -38,6 +38,8 @@ packages/
   TingraOutputPlugIns/          # HaishinKit-backed StreamingService (RTMP/RTMPS/SRT)
   TingraRecordingPlugIns/       # AVAssetWriter-backed RecordingService (.mov/.mp4)
   TingraMediaPlugIns/           # Images, video and audio files, and text/Markdown as inputs
+  TingraMonitorPlugIns/         # Monitor overlays: safe areas, crop guides, a tally border;
+                                #   drawn by the app's monitors, never on air
   TingraMCP/                    # MCP/Control service: hand-rolled MCP layer, daemon, proxy,
                                 #   first-party control tools (see MCP.md)
   TingraJSONRPC/                # JSON-RPC 2.0 wire types, MessageTransport, XPC transport
@@ -189,6 +191,8 @@ packages/  TingraAudio            →  TingraPlugInKit + TingraEventBus (testabl
 packages/  TingraOutputPlugIns    →  TingraPlugInKit + TingraEventBus + HaishinKit and Logboard
 packages/  TingraRecordingPlugIns →  TingraPlugInKit + TingraEventBus (AVFoundation only)
 packages/  TingraMediaPlugIns     →  TingraPlugInKit + TingraEventBus
+packages/  TingraMonitorPlugIns   →  TingraPlugInKit + TingraEventBus (Core Image only; linked by
+                                     the app alone)
 packages/  TingraJSONRPC          →  TingraPlugInKit (for JSONValue only)
 packages/  TingraMCP              →  TingraHost + TingraPlugInKit + TingraEventBus + TingraJSONRPC
                                      (re-exported)
@@ -201,7 +205,7 @@ apps/      tingra-app             →  TingraHost + TingraComposition + TingraAu
                                      + TingraCapturePlugIns + TingraGeneratorPlugIns
                                      + TingraOutputPlugIns + TingraRecordingPlugIns
                                      + TingraEffectPlugIns + TingraMediaPlugIns
-                                     + TingraPlugInKit + TingraEventBus
+                                     + TingraMonitorPlugIns + TingraPlugInKit + TingraEventBus
                                      + TingraJSONRPC + TingraMCP + TingraAppPlugInKit
                                      (local package references on the Xcode target; the app embeds
                                      the two kit frameworks. Same project: the tingra-notes
@@ -271,7 +275,7 @@ Third-party dependencies sit behind protocols (HaishinKit behind `StreamingServi
 - Update relevant documentation ([README.md](README.md), [TYPES.md](docs/TYPES.md), [ARCHITECTURE.md](docs/ARCHITECTURE.md), [GLOSSARY.md](docs/GLOSSARY.md), [CLI.md](docs/CLI.md), [SIMULATOR.md](docs/SIMULATOR.md)) when making architectural changes; keep [README.md](README.md) reflecting the current state and intended usage.
 - **[ARCHITECTURE.md](docs/ARCHITECTURE.md) records how the system works and why, never the status of the work.** Decisions, their rationale, and what a probe or a check found (stated as a fact) belong there, as do the dates decisions were made. Who checked what by hand and when, checks still to do, test counts, warning-clean or format-clean notes, commit state, and approval mechanics do not: those go in the commit, CHANGELOG.md, and TODO.md.
 - **[TYPES.md](docs/TYPES.md) lists every public type** in the monorepo, package by package, each on **one line of at most 80 characters, the list marker and the name included** — a short phrase saying what the type is, never wrapped onto a second line. Detail (history, dates, rationale, behavior) belongs in the type's `///` doc comment or ARCHITECTURE.md, not here; a type worth mentioning gets its own line rather than a clause in another's, and paired names (`A` / `B`) are split into one line each. Update that listing in the same change whenever a public type is added, renamed, or removed — it must never drift from the code. An app exposes no public API beyond its `@main` entry, so an app's entry lists the internal surface a reader needs to navigate the target instead.
-- **[README.md](README.md) lists every package and app** with a paragraph saying what it is and why it exists, ending in a `**Types:**` link into [TYPES.md](docs/TYPES.md). Add that pair in the same change whenever a package or app is added; the README says what each piece *is*, TYPES.md says what is *in* it, and the type listing itself does not belong in the README.
+- **[README.md](README.md) lists every package and app on one line each**: its name, linked to its section in [TYPES.md](docs/TYPES.md), and a short phrase saying what it is. Nothing more goes in the README, never a second line or a paragraph. The detail lives in TYPES.md: each package's or app's section opens with a paragraph saying what it is and why it exists, then lists its types. Add both in the same change whenever a package or app is added.
 - Update [GLOSSARY.md](docs/GLOSSARY.md) if you introduce new user-facing vocabulary.
 - **[TODO.md](docs/TODO.md) lists only open work:** a finished item is deleted in the same change that finishes it, with CHANGELOG.md and the commit as its record (TODO.md's header owns the rule). [DONE.md](docs/DONE.md) is frozen as of 2026-11-12: never add to it, but leave existing citations of its records in place.
 - Never reference "the Tingra plan" — the pre-repo planning document that guided this repo's creation is not part of the repo. Cite the in-repo docs (ARCHITECTURE.md, etc.) instead.

@@ -214,7 +214,8 @@ struct LayerInspectorView: View {
                     source: LayerMonitorSource(model: model),
                     label: Text("Layer", comment: "Title of the Layer menu, arranging the selected layer"),
                     badgeTint: .gray,
-                    aspectRatio: model.programAspectRatio
+                    aspectRatio: model.programAspectRatio,
+                    monitorOverlays: model.monitorOverlayLineup(for: .layer)
                 )
                 .snapshotMenu(model: model, subject: .layer, tapName: "layerMonitorSnapshot.menuItem")
                 .padding(.top, 4)

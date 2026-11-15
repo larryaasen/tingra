@@ -86,6 +86,9 @@ struct TingraApp: App {
     /// `PaneID` value (``PlugInWindowView``).
     static let plugInWindowID = "plugInWindow"
 
+    /// The identifier every Overlays submenu's Overlay Settings… opens.
+    static let overlaySettingsWindowID = "overlaySettings"
+
     /// The scenes: the main production window, the multiview monitoring
     /// window it can open, and the settings window (``SettingsView``).
     ///
@@ -243,6 +246,26 @@ struct TingraApp: App {
                 .closesWithCloseCommand()
         }
         .defaultSize(width: 1000, height: 640)
+        .commandsRemoved()
+
+        // Overlay Settings is a window, not a popover per monitor: a monitor
+        // overlay's values are the same on every monitor it is drawn on, so
+        // one surface edits them all, and it stays open beside the
+        // monitors while the operator watches a change land. Opened by
+        // Overlay Settings… in any Overlays submenu, which is where the
+        // `tap` is; the scene's own commands are dropped for the reason the
+        // log's are.
+        Window(
+            String(
+                localized: "Overlay Settings",
+                comment: "Title of the window editing the monitor overlays' settings"),
+            id: Self.overlaySettingsWindowID
+        ) {
+            MonitorOverlaySettingsView(model: model)
+                .frame(minWidth: 360, minHeight: 280)
+                .closesWithCloseCommand()
+        }
+        .defaultSize(width: 420, height: 560)
         .commandsRemoved()
 
         // A plug-in's windows: one scene for all of them, a window per

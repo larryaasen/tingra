@@ -331,6 +331,27 @@ are the checks still open from those, pointing at their records there.
   - [ ] Larry: review the app policy in the record.
   - [ ] Check by hand: a music file plays in the running app.
 
+- [ ] **Monitor overlays** *(Decisions 52–57 approved 2026-11-13; slice 1
+  built 2026-11-14, slices 2 and 3 2026-11-15)*: safe areas, guides, and checking views a monitor draws
+  for the operator alone, each one a plug-in through a new host-tier seam,
+  the common ones first party in a new `TingraMonitorPlugIns`. Design in
+  PLUGINS.md, "Monitor overlays: the design", and ARCHITECTURE.md, "Monitor
+  overlays".
+  - [ ] Slice 1, check by hand in the running app: the Overlays submenu on
+    both monitors in the main and multiview windows, and the Program menu's
+    two submenus; each guide drawn where it should be, crisp on a Retina
+    display; the tally border on by default; the 9:16 crop disabled on a
+    portrait program; and a toggle surviving a reopen of the project.
+  - [ ] Slice 2, check by hand in the running app: the Overlays submenu on
+    the input tiles and the layer monitor; Flip Horizontal on preview with a
+    layer selected, dragging a body, a handle, and the arrow keys; Blue Only
+    over bars; Zebra on a bright input; Show Alpha on a PNG with a cutout and
+    on a layer with rounded corners, and disabled on program and preview.
+  - [ ] Slice 3, check by hand in the running app: Overlay Settings… from
+    a context menu and the Program menu, a guide's color and line width and
+    a reset, surviving a reopen; VU Meters on program with tone running,
+    and on an input tile; `monitor_overlay_set` from an MCP client.
+
 ## Clock and timing
 
 Found by the 2026-10-03 review of CLOCK.md against the code. CLOCK.md states

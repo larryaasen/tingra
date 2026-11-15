@@ -276,10 +276,11 @@ struct ContentView: View {
                 // pane do; rounding is for tiles that are buttons.
                 MonitorTile(
                     source: model.previewRelay, label: previewLabel, badgeTint: .green,
-                    aspectRatio: model.programAspectRatio, cornerRadius: 0
+                    aspectRatio: model.programAspectRatio, cornerRadius: 0,
+                    monitorOverlays: model.monitorOverlayLineup(for: .preview)
                 ) {
                     if let edited = model.editedShot, model.previewShotID == edited.shot.id {
-                        LayerHandlesOverlay(model: model, edited: edited)
+                        LayerHandlesOverlay(model: model, edited: edited, isMirrored: model.isMonitorMirrored(.preview))
                     }
                 }
                 .snapshotMenu(model: model, subject: .preview, tapName: "previewMonitorSnapshot.menuItem")
@@ -289,10 +290,11 @@ struct ContentView: View {
                     badgeTint: .red,
                     aspectRatio: model.programAspectRatio,
                     statusBadge: model.isFadedToBlack ? fadedToBlackLabel : nil,
-                    cornerRadius: 0
+                    cornerRadius: 0,
+                    monitorOverlays: model.monitorOverlayLineup(for: .program)
                 ) {
                     if let edited = model.editedShot, model.previewShotID != edited.shot.id {
-                        LayerHandlesOverlay(model: model, edited: edited)
+                        LayerHandlesOverlay(model: model, edited: edited, isMirrored: model.isMonitorMirrored(.program))
                     }
                 }
                 .snapshotMenu(model: model, subject: .program, tapName: "programMonitorSnapshot.menuItem")

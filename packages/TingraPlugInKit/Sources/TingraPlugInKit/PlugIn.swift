@@ -70,7 +70,16 @@ public struct PlugInContext: Sendable {
     /// than vanishing. A pre-1.0 addition, like ``effects``.
     public let media: any MediaRegistering
 
-    /// Creates the context the host hands a plug-in at activation.
+    /// The monitor overlay registration seam: where the plug-in registers
+    /// the ``MonitorOverlayProvider``s it contributes during
+    /// ``PlugIn/activate(in:)`` (PLUGINS.md, Decision 53). A host with no
+    /// monitor passes a ``DiscardingMonitorOverlayRegistry``, the default,
+    /// so an overlay plug-in activates there too. An addition within the
+    /// kit's minor version.
+    public let monitorOverlays: any MonitorOverlayRegistering
+
+    /// Creates the context the host hands a plug-in at activation, for a
+    /// host with no monitor: ``monitorOverlays`` accepts and discards.
     ///
     /// - Parameters:
     ///   - eventBus: The host's event bus.
@@ -90,6 +99,36 @@ public struct PlugInContext: Sendable {
         tools: any ToolRegistering,
         media: any MediaRegistering = UnavailableMediaRegistry()
     ) {
+        self.init(
+            eventBus: eventBus, clock: clock, inputs: inputs, outputs: outputs, effects: effects, tools: tools,
+            media: media, monitorOverlays: DiscardingMonitorOverlayRegistry())
+    }
+
+    /// Creates the context the host hands a plug-in at activation, for a
+    /// host whose monitors draw monitor overlays. A separate initializer
+    /// rather than a new defaulted argument on the one above, so that
+    /// initializer's symbol, which built plug-ins and hosts call, stays as
+    /// it was.
+    ///
+    /// - Parameters:
+    ///   - eventBus: The host's event bus.
+    ///   - clock: The master clock.
+    ///   - inputs: The input registration seam.
+    ///   - outputs: The output registration seam.
+    ///   - effects: The effect registration seam.
+    ///   - tools: The tool registration seam.
+    ///   - media: The media registration seam.
+    ///   - monitorOverlays: The monitor overlay registration seam.
+    public init(
+        eventBus: EventBus,
+        clock: any EngineClock,
+        inputs: any InputRegistering,
+        outputs: any OutputRegistering,
+        effects: any EffectRegistering,
+        tools: any ToolRegistering,
+        media: any MediaRegistering,
+        monitorOverlays: any MonitorOverlayRegistering
+    ) {
         self.eventBus = eventBus
         self.clock = clock
         self.inputs = inputs
@@ -97,6 +136,7 @@ public struct PlugInContext: Sendable {
         self.effects = effects
         self.tools = tools
         self.media = media
+        self.monitorOverlays = monitorOverlays
     }
 }
 

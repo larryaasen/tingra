@@ -190,322 +190,37 @@ another while one is live returns a clear error naming the active session.
 ## Packages and apps
 
 The monorepo splits into `packages/` (the engine libraries) and `apps/` (the
-runnable products). Every package and app is listed here with what it is and why
-it exists; the public types inside each one are listed in
-[TYPES.md](docs/TYPES.md), and the design behind each piece is in
-[ARCHITECTURE.md](docs/ARCHITECTURE.md). Both listings are kept current as code
-lands.
+runnable products). Each one gets a single line here saying what it is, linked
+to its section in [TYPES.md](docs/TYPES.md), which says in detail what it is
+and why it exists and lists every type in it. The design behind each piece is
+in [ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-### `packages/TingraEventBus`
+**Packages**
 
-The zero-dependency event bus: the structured event spine every part of the
-engine and every plug-in reports through (see [EVENTS.md](docs/EVENTS.md)).
-A dynamic library built with Library Evolution, like `TingraPlugInKit`, since
-the kit re-exposes it to every plug-in.
+- [`TingraEventBus`](docs/TYPES.md#packagestingraeventbus) — the event bus every part of the engine reports through.
+- [`TingraPlugInKit`](docs/TYPES.md#packagestingrapluginkit) — the plug-in protocols, a stability contract shipped as the SDK.
+- [`TingraHost`](docs/TYPES.md#packagestingrahost) — the host: plug-in loading, registries, session state, secure storage.
+- [`TingraCapturePlugIns`](docs/TYPES.md#packagestingracaptureplugins) — camera, microphone, display, window, and application inputs.
+- [`TingraUVC`](docs/TYPES.md#packagestingrauvc) — a standalone library for a USB webcam's picture controls.
+- [`TingraApplicationAudio`](docs/TYPES.md#packagestingraapplicationaudio) — a standalone library capturing one application's sound.
+- [`TingraGeneratorPlugIns`](docs/TYPES.md#packagestingrageneratorplugins) — bars, tone, and other generators: the CI test surface.
+- [`TingraComposition`](docs/TYPES.md#packagestingracomposition) — the compositor, its layers, and the presets and shots.
+- [`TingraAudio`](docs/TYPES.md#packagestingraaudio) — the mixer: one channel strip per audio input, into the program mix.
+- [`TingraEffectPlugIns`](docs/TYPES.md#packagestingraeffectplugins) — the first-party audio and video effects.
+- [`TingraOutputPlugIns`](docs/TYPES.md#packagestingraoutputplugins) — streaming to RTMP, RTMPS, and SRT destinations.
+- [`TingraRecordingPlugIns`](docs/TYPES.md#packagestingrarecordingplugins) — recording the program to a local `.mov` or `.mp4`.
+- [`TingraMediaPlugIns`](docs/TYPES.md#packagestingramediaplugins) — images, video and audio files, and text documents as inputs.
+- [`TingraMonitorPlugIns`](docs/TYPES.md#packagestingramonitorplugins) — the first-party monitor overlays: guides and checking views.
+- [`TingraJSONRPC`](docs/TYPES.md#packagestingrajsonrpc) — the JSON-RPC 2.0 wire types and transports, XPC included.
+- [`TingraMCP`](docs/TYPES.md#packagestingramcp) — the MCP server, the engine daemon, its proxy, and the control tools.
+- [`TingraAppPlugInKit`](docs/TYPES.md#packagestingraapppluginkit) — what an app-tier plug-in links to extend the app.
 
-**Types:** [`TingraEventBus` in TYPES.md](docs/TYPES.md#packagestingraeventbus)
+**Apps**
 
-### `packages/TingraPlugInKit`
-
-The plug-in protocol package: the stability contract first- and third-party
-plug-ins build against, importable without the engine (see
-[ARCHITECTURE.md](docs/ARCHITECTURE.md), "Plug-in API stability and versioning").
-Every registration — input, effect, streaming or recording output — declares
-its adjustable settings as `Parameter`s through one `ParameterDescribing`
-protocol, so the app draws a native settings pane for a plug-in that shipped
-no UI ([PLUGINS.md](docs/PLUGINS.md), Decision 15). A dynamic library built
-with Library Evolution (Decision 22): a third party's host-tier plug-in, a
-`*.tingraplugin` bundle whose principal class is a `BundledPlugIn`, binds to
-the one copy the running engine loaded, and keeps loading in a newer Tingra.
-Third parties build against it, and the event bus beside it, as binaries:
-`scripts/release-sdk.sh` publishes the two as `TingraPlugInSDK`, a Swift
-package of arm64 XCFrameworks in the public `larryaasen/tingra-plug-in-sdk`
-repo, under one version, `PlugInKitVersion.current` (Decisions 28 and 37;
-[packaging/README.md](packaging/README.md), "The plug-in SDK").
-
-**Types:** [`TingraPlugInKit` in TYPES.md](docs/TYPES.md#packagestingrapluginkit)
-
-### `packages/TingraHost`
-
-The host/core package: plug-in loading, registries, frame transport,
-session/state, secure storage, the operator's destination store, and
-authorization — the minimal core that is not a plug-in (see
-[ARCHITECTURE.md](docs/ARCHITECTURE.md), "Engine model: host and plug-ins").
-Plug-in loading includes the external bundle loader: every front end loads
-the `*.tingraplugin` bundles in `~/Library/Application Support/Tingra/Plug-ins`
-and `/Library/Application Support/Tingra/Plug-ins` after its compiled-in
-plug-ins, checking each bundle's declared id, kit version, and signature
-before any of its code runs ([PLUGINS.md](docs/PLUGINS.md), "The bundle
-loader: the design"). The loader also keeps a bundle out when the operator
-turned it off in `plug-ins.json`, when it took a process down while loading
-(a marker names the bundle each process is loading, and the next launch
-turns that build off), and for the whole launch in safe mode, entered with
-Shift as the app opens, by the app's offer after a crash, or with
-`--safe-mode` (PLUGINS.md, Decisions 31–34).
-
-**Types:** [`TingraHost` in TYPES.md](docs/TYPES.md#packagestingrahost)
-
-### `packages/TingraCapturePlugIns`
-
-The first party capture plug-ins: camera, microphone, and display discovery and
-capture, capture of a single window the operator chooses, and the device
-connection/disconnection events on the bus. AVFoundation,
-Core Audio, and ScreenCaptureKit are imported only inside this package, behind
-the `Input` seam. A USB webcam's picture controls — brightness, white balance,
-exposure, focus, zoom — reach it through `TingraUVC` and surface as the camera
-input's parameters (see [UVC.md](docs/UVC.md)). One running application's sound
-reaches it through `TingraApplicationAudio` and becomes an audio-only
-application input, kept off the Mac's speakers while it is captured
-(ARCHITECTURE.md, "Application audio").
-
-**Types:** [`TingraCapturePlugIns` in TYPES.md](docs/TYPES.md#packagestingracaptureplugins)
-
-### `packages/TingraUVC`
-
-A general-purpose USB Video Class control library for the Mac, the Swift
-counterpart of the Dart [`uvc`](https://pub.dev/packages/uvc) package: it lists
-the connected UVC cameras and reads and sets their standard controls through
-Apple's `IOUSBHost` — no libusb, no driver, no vendor SDK, and no TCC prompt.
-Standalone on purpose: it depends on no other Tingra package, so any Mac app can
-import it, and every byte to the camera crosses one `UVCTransport` seam, so it is
-unit tested without a camera (see [UVC.md](docs/UVC.md)).
-
-**Types:** [`TingraUVC` in TYPES.md](docs/TYPES.md#packagestingrauvc)
-
-### `packages/TingraApplicationAudio`
-
-A general-purpose library for capturing one running application's sound on the
-Mac through Core Audio process taps (macOS 14.2 and later), with no virtual audio
-driver: it lists the applications that have an audio process, taps the processes
-that belong to one of them — optionally muting the application on its own
-speakers for as long as the tap is held — and hands back copies of its audio
-stamped with host time. Standalone on purpose, like `TingraUVC`: it depends on no
-other Tingra package, so any Mac app can import it, and `TingraCapturePlugIns`
-imports it only behind the `Input` seam (ARCHITECTURE.md, "Application audio").
-
-**Types:** [`TingraApplicationAudio` in TYPES.md](docs/TYPES.md#packagestingraapplicationaudio)
-
-### `packages/TingraGeneratorPlugIns`
-
-The first party generator plug-ins — inputs that synthesize their content from
-the injected clock, so they run anywhere with no camera, microphone, or TCC: the
-permanent CI test surface.
-
-**Types:** [`TingraGeneratorPlugIns` in TYPES.md](docs/TYPES.md#packagestingrageneratorplugins)
-
-### `packages/TingraComposition`
-
-The composition engine library (roadmap steps 6–7): the tick-paced Metal/Core
-Image compositor, the layer tree it renders, and the presets and shots it
-switches among. A host-side library — not a plug-in, and not folded into the
-minimal `TingraHost` — depending only on the protocol package and the event bus,
-so it stays testable with a synthetic clock and a mock renderer (see
-[ARCHITECTURE.md](docs/ARCHITECTURE.md), "Composition").
-
-**Types:** [`TingraComposition` in TYPES.md](docs/TYPES.md#packagestingracomposition)
-
-### `packages/TingraAudio`
-
-The audio engine library (roadmap step 7): the mixer, the audio surface of the
-engine, combining every audio input into the program mix — one channel strip per
-input. A host-side library beside `TingraComposition` on the same rule — not a
-plug-in (audio effects and taps plug into it later), not folded into `TingraHost`,
-depending only on the protocol package and the event bus, so it stays testable
-with a synthetic clock and scripted inputs (see [ARCHITECTURE.md](docs/ARCHITECTURE.md),
-"The audio mixer").
-
-**Types:** [`TingraAudio` in TYPES.md](docs/TYPES.md#packagestingraaudio)
-
-### `packages/TingraEffectPlugIns`
-
-The first party effect plug-ins: the audio and video staples behind the
-shared effect seam (see [ARCHITECTURE.md](docs/ARCHITECTURE.md), "The effect
-seam", "Audio effect chains", "Dynamics effects", "Per-layer video
-effects"). Pure DSP and Core Image over the seam's native currencies, so the
-package depends on the protocol package alone and is fully deterministic in
-tests — no hardware, no TCC.
-
-**Types:** [`TingraEffectPlugIns` in TYPES.md](docs/TYPES.md#packagestingraeffectplugins)
-
-### `packages/TingraOutputPlugIns`
-
-The first party streaming output plug-in: the HaishinKit-backed
-`StreamingService` for RTMP/RTMPS and SRT destinations. HaishinKit (and its
-Logboard logging façade, rerouted to OSLog) is imported only inside this
-package, behind the `StreamingService` seam.
-
-**Types:** [`TingraOutputPlugIns` in TYPES.md](docs/TYPES.md#packagestingraoutputplugins)
-
-### `packages/TingraRecordingPlugIns`
-
-The first party local recording plug-in: the `AVAssetWriter`-backed
-`RecordingService` writing the program to a local `.mov`/`.mp4`, independent of
-streaming. AVFoundation is imported only inside this package (behind the
-`RecordingService` seam), and it pulls in neither HaishinKit nor Logboard, so
-`TingraOutputPlugIns` stays the sole HaishinKit importer.
-
-**Types:** [`TingraRecordingPlugIns` in TYPES.md](docs/TYPES.md#packagestingrarecordingplugins)
-
-### `packages/TingraMediaPlugIns`
-
-The first party media plug-in: file-backed content as inputs — still images
-(ImageIO), video files (AVFoundation, the file's audio arriving as a channel
-strip), audio files (AVFoundation again: MP3, AAC, WAV, and the rest of the
-family, a channel strip with no picture), and text or Markdown documents
-(Core Text) — each a `MediaInputProvider`
-registered through the media seam, so a file the operator adds to a project
-becomes an `Input` like any camera. Every further content type is one more
-provider, first- or third-party; the package imports no third-party code.
-
-**Types:** [`TingraMediaPlugIns` in TYPES.md](docs/TYPES.md#packagestingramediaplugins)
-
-### `packages/TingraJSONRPC`
-
-The JSON-RPC 2.0 layer on its own (see [PLUGINS.md](docs/PLUGINS.md),
-Decision 14): the wire types (`JSONRPCID`, `JSONRPCError`, `JSONRPCResponse`,
-…), the shared message coder, the `MessageTransport` seam a session reads and
-writes through, the in-memory transports tests run against, and
-`XPCMessageTransport` — the transport an app-tier plug-in's ExtensionKit
-connection carries, which can hand an `IOSurface` across beside a message
-(`SurfaceMessageTransport`), the one value JSON cannot carry. Lifted out of `TingraMCP` on 2026-09-13 so an extension
-can speak the same protocol the daemon does without linking the daemon or the
-host; it depends on `TingraPlugInKit` for `JSONValue` alone and on nothing
-third-party. `TingraMCP` re-exports it, so nothing that imports `TingraMCP`
-changed.
-
-**Types:** [`TingraJSONRPC` in TYPES.md](docs/TYPES.md#packagestingrajsonrpc)
-
-### `packages/TingraMCP`
-
-The MCP/Control service (see [MCP.md](docs/MCP.md)): the hand-rolled MCP
-JSON-RPC layer — tools and, since 2026-09-14, resources with subscriptions —
-the engine daemon, the transparent stdio↔socket proxy, and the first-party
-control tools that mirror the CLI surface. Speaks MCP verbatim on the wire but
-takes no third-party dependency — the JSON-RPC framing is a few
-hundred lines behind this seam rather than the official swift-sdk's
-SwiftNIO/swift-log/eventsource stack.
-
-**Types:** [`TingraMCP` in TYPES.md](docs/TYPES.md#packagestingramcp)
-
-### `packages/TingraAppPlugInKit`
-
-The extension side of the app tier (see [PLUGINS.md](docs/PLUGINS.md), "The
-model: two tiers, one plug-in"): what an app-tier plug-in links to add a pane,
-a command, a settings pane, a window, or a status bar reading to Tingra.app
-from its own sandboxed ExtensionKit process — or to be woken by a bus event it
-names. It holds the `Codable`
-descriptors, the activation conditions, and the `PlugInManifest` the app
-reads from an extension's Info.plist before the extension runs, the
-`TingraAppExtension` protocol an extension's `@main` type adopts (the kit owns
-the scenes, the connections, and the MCP handshake), and `PlugInConnection`,
-the extension's MCP client for calling the app's tools, filing events on the
-app's bus, reading and writing its project- and app-scoped storage, and
-following the app's meters and its program and preview video — the last as
-the app's own `IOSurface`s, which `BusMonitorView` draws with no copy. It
-imports ExtensionKit and SwiftUI — the one package in the engine family that
-does, because it *is* the UI-side kit for extensions — and is linked only by
-extensions and the app, never by the engine or the CLI. Deliberately no default
-main-actor isolation: XPC delivers on the connection's own queue, so the
-UI-facing types say `@MainActor` themselves.
-
-**Types:** [`TingraAppPlugInKit` in TYPES.md](docs/TYPES.md#packagestingraapppluginkit)
-
-### `apps/tingra-cli`
-
-The headless front end over the engine (see [CLI.md](docs/CLI.md)): one
-invocation selects inputs, configures compression, and streams. An executable,
-so it exposes no public types; its surface is its subcommands — `devices` (input
-discovery: human table and stable `--json`; `--watch` streams live device
-connect/disconnect events), `stream` (live streaming with `--reconnect`,
-`--duration`, optional `--record` to a local `.mov`/`.mp4`, clean Ctrl-C/SIGTERM
-stop, the `stream.*`/`recording.*` status events, and `--dry-run` plan
-reporting), `probe` (validate a destination URL/key without going live), `serve`
-(the persistent engine daemon behind a Unix domain socket — manual foreground
-mode, or launchd socket-activated in the product path; `--install`/`--uninstall`
-register and remove the LaunchAgent), `mcp` (the transparent stdio↔socket proxy
-agents point at), and `version`. It ships as the binary with the two kit
-frameworks beside it in `Frameworks/` (`TingraEventBus.framework`,
-`TingraPlugInKit.framework`), which Homebrew installs into `libexec`. The
-release is built by `xcodebuild` so that plug-in bundles built in Xcode bind to
-those frameworks (see [CLI.md](docs/CLI.md), "Distribution").
-
-### `apps/ingest-simulator`
-
-The local RTMP/SRT ingest server used for integration testing (see
-[SIMULATOR.md](docs/SIMULATOR.md)): a pinned MediaMTX binary wrapped in
-`sim.sh` (`start | stop | status | verify`) with key-validating paths
-(`mediamtx.yml`, `keys.env`). Test-only — never linked into the product. The
-streaming integration scenarios run against it via `scripts/integration-test.sh`.
-
-### `apps/tingra-app`
-
-The assembled SwiftUI/AppKit app (phase 3), scaffolded at roadmap step 6: it
-takes shape around the proven engine — a camera input and a display input
-composited by `TingraComposition` and shown live in an on-screen `MTKView`, the
-audio inputs mixed by `TingraAudio` into the program mix, and both streamed to
-an RTMP(S) destination through the same `TingraOutputPlugIns` HaishinKit output
-the CLI uses. A native Xcode project (`tingra-app.xcodeproj`, scheme
-`tingra-app`, product `Tingra.app`, module `TingraApp`) rather than an SPM
-package, so the bundle, the Info.plist usage descriptions, and a stable
-code signature are build settings rather than scripts — which is what lets one
-TCC grant for Screen Recording, Camera, and Microphone survive a rebuild. It
-links fourteen of the `packages/` libraries as local package references — the
-eleven it linked before the app tier, plus `TingraJSONRPC`, `TingraMCP`, and
-`TingraAppPlugInKit` for it — recording the program to a local file through the
-same `TingraRecordingPlugIns` `RecordingService` the CLI's `--record` drives, in
-its own session so it starts and stops independently of the stream. An app, so
-it exposes no public API beyond its `@main` entry. User-facing strings are
-localized (`Localizable.xcstrings`, en/de/es).
-
-The same project also builds the first-party **Notes** plug-in (`tingra-notes`,
-product `TingraNotes.appex`) as an ExtensionKit extension embedded in
-`Tingra.app/Contents/Extensions`: the app is the host of the app tier (see
-[PLUGINS.md](docs/PLUGINS.md)) — it discovers extensions against its extension
-point, hosts their panes in the trailing sidebar and the Settings window, and
-speaks MCP to each over XPC — and Notes, linking `TingraAppPlugInKit` alone
-from its own sandboxed process, is the proof a third-party plug-in follows.
-The app embeds the two kit frameworks in `Contents/Frameworks`, which Notes
-loads from too. A third target, `tingra-fixture-plugin`, builds
-`FixturePlugIn.tingraplugin` for the tests alone — never embedded in the app —
-so the host tier's bundle loader is proven against a real bundle.
-
-To build a signed, runnable copy, copy `apps/tingra-app/Local.xcconfig.example`
-to `Local.xcconfig` (git-ignored) and set your own Apple Developer Team ID; the
-tracked project file carries no one's team, so an unsigned
-`CODE_SIGNING_ALLOWED=NO` build needs nothing at all.
-The app is not sandboxed and uses the hardened runtime instead, so
-`tingra-app/tingra-app.entitlements` grants camera and audio-input resource
-access plus `disable-library-validation` — the same combination
-`apps/tingra-cli` and `apps/tingra-cameras` need, and without which a camera's
-CMIOExtension never starts streaming. Notarizing the `.app` for release is
-deferred packaging, tracked alongside the CLI's distribution recipe.
-
-**Types:** [`tingra-app` in TYPES.md](docs/TYPES.md#appstingra-app)
-
-### `apps/tingra-cameras`
-
-A standalone "Tingra Cameras" macOS app: a camera picker — a compact window with
-a camera pop-up over a live-camera preview over the camera's controls, or,
-switched to from the Window menu, a standard window with a sidebar listing the
-available cameras, a large preview, and the controls in a sidebar on the right.
-Each window shows its own camera. A native Xcode project
-(`tingra-cameras.xcodeproj`, single app target) that drives the engine packages
-(`TingraHost`, `TingraCapturePlugIns`) through the `Input` seam, and styled with the
-standard SwiftUI Liquid Glass look rather than any bespoke theme (see its own
-[CLAUDE.md](apps/tingra-cameras/CLAUDE.md)). An app, so it exposes no public API
-beyond its `@main` entry. User-facing strings are localized
-(`Localizable.xcstrings`, en/de/es).
-
-It releases on its own version, separately from the engine. Install it with
-Homebrew, or download the disk image from a `cameras-v<x.y.z>` release and
-drag the app to Applications. It needs an Apple Silicon Mac running macOS 26
-(Tahoe) or later:
-
-```sh
-brew install --cask larryaasen/tingra/tingra-cameras
-```
-
-**Types:** [`tingra-cameras` in TYPES.md](docs/TYPES.md#appstingra-cameras)
+- [`tingra-cli`](docs/TYPES.md#appstingra-cli) — the headless front end: inputs, streaming, recording, and the daemon.
+- [`ingest-simulator`](docs/TYPES.md#appsingest-simulator) — a local RTMP and SRT server for the integration tests.
+- [`tingra-app`](docs/TYPES.md#appstingra-app) — Tingra.app, the SwiftUI and AppKit switcher.
+- [`tingra-cameras`](docs/TYPES.md#appstingra-cameras) — Tingra Cameras, a standalone camera picker with live preview.
 
 ## License
 

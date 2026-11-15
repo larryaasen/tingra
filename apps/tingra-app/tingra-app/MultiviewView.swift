@@ -59,7 +59,8 @@ struct MultiviewView: View {
                         "Preview", comment: "Name of the preview bus — labels its monitor and its switcher row"),
                     badgeTint: .green,
                     aspectRatio: model.programAspectRatio,
-                    cornerRadius: 0
+                    cornerRadius: 0,
+                    monitorOverlays: model.monitorOverlayLineup(for: .preview)
                 )
                 .snapshotMenu(model: model, subject: .preview, tapName: "previewMonitorSnapshot.menuItem")
                 MonitorTile(
@@ -68,7 +69,8 @@ struct MultiviewView: View {
                         "Program", comment: "Name of the program bus — labels its monitor and its switcher row"),
                     badgeTint: .red,
                     aspectRatio: model.programAspectRatio,
-                    cornerRadius: 0
+                    cornerRadius: 0,
+                    monitorOverlays: model.monitorOverlayLineup(for: .program)
                 )
                 .snapshotMenu(model: model, subject: .program, tapName: "programMonitorSnapshot.menuItem")
             }

@@ -7,6 +7,7 @@
 //  SPDX-License-Identifier: MIT
 //
 
+import CoreImage
 import TingraEventBus
 import TingraPlugInKit
 
@@ -30,10 +31,11 @@ final class FixturePlugIn: BundledPlugIn {
     /// Creates the plug-in; the loader calls this once.
     init() {}
 
-    /// Registers the one input the fixture contributes and reports that it
-    /// ran, on the host's own bus.
+    /// Registers the input and the monitor overlay the fixture contributes
+    /// and reports that it ran, on the host's own bus.
     func activate(in context: PlugInContext) async throws {
         try await context.inputs.register(FixtureInput())
+        try await context.monitorOverlays.register(FixtureOverlayProvider())
         context.eventBus.trace("fixture.activated", domain: .plugIn, params: ["id": .string(id.rawValue)])
     }
 }
@@ -65,4 +67,35 @@ struct FixtureInput: Input {
 
     /// Nothing to stop.
     func stop() async {}
+}
+
+/// The fixture's monitor overlay: a guide that draws nothing. Its only job
+/// is to cross the boundary into the host's `MonitorOverlayRegistry`, the
+/// proof that a third-party overlay loads and reaches the Overlays submenus
+/// (PLUGINS.md, Decision 53).
+struct FixtureOverlayProvider: MonitorOverlayProvider {
+    /// The id the app's test looks for in the registry.
+    let id = MonitorOverlayID(rawValue: "com.moonwink.tingra.fixture.overlay")
+
+    /// The display name.
+    let name = "Fixture Overlay"
+
+    /// A guide.
+    let stage = MonitorOverlayStage.guide
+
+    /// Makes the overlay.
+    func makeOverlay(parameters: [String: JSONValue]) -> any MonitorOverlay {
+        FixtureOverlay()
+    }
+}
+
+/// The fixture overlay: the picture, unchanged.
+struct FixtureOverlay: MonitorOverlay {
+    /// Nothing to read.
+    mutating func setParameters(_ parameters: [String: JSONValue]) {}
+
+    /// Returns the picture unchanged.
+    func render(over picture: CIImage, in context: MonitorOverlayContext) -> CIImage {
+        picture
+    }
 }

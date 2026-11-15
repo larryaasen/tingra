@@ -89,4 +89,9 @@ extension ErrorIdentifier {
     /// preset; the message lists the matches so the caller can use an id.
     /// MCP-only, like `shotNotFound`.
     public static let shotAmbiguous = ErrorIdentifier(rawValue: "shotAmbiguous")
+
+    /// No registered monitor overlay matches an `overlay` selector on the
+    /// `monitor_overlay_set` tool; the message lists the overlays by id
+    /// and name. MCP-only: no CLI command has a monitor.
+    public static let monitorOverlayNotFound = ErrorIdentifier(rawValue: "monitorOverlayNotFound")
 }

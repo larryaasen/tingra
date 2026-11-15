@@ -25,6 +25,7 @@ import TingraGeneratorPlugIns
 import TingraHost
 import TingraJSONRPC
 import TingraMediaPlugIns
+import TingraMonitorPlugIns
 import TingraOutputPlugIns
 import TingraPlugInKit
 import TingraRecordingPlugIns
@@ -1769,6 +1770,23 @@ final class EngineModel {
     /// (PLUGINS.md, Decision 7; ``plugInProjectData(for:)``).
     @ObservationIgnored private var plugInData: [String: JSONValue] = [:]
 
+    /// The host's monitor overlay registry: what the first-party and
+    /// third-party overlay plug-ins register into through the plug-in
+    /// context (PLUGINS.md, Decision 53). Read once, after activation, into
+    /// ``monitorOverlayCatalog``.
+    @ObservationIgnored private let monitorOverlayRegistry = MonitorOverlayRegistry()
+
+    /// Every registered monitor overlay, in the order the Overlays submenus
+    /// list them: the main-actor snapshot a menu and a draw read
+    /// (``fillMonitorOverlayCatalog(with:)``).
+    private(set) var monitorOverlayCatalog = MonitorOverlayCatalog.empty
+
+    /// The open project's monitor overlays, as the document holds them, or
+    /// `nil` when the operator has never changed them, which reads as
+    /// ``defaultMonitorOverlays`` and saves as an absent key (PLUGINS.md,
+    /// Decision 55).
+    private(set) var monitorOverlaySettings: MonitorOverlaySettings?
+
     /// The host's tool registry: what the MCP endpoint app-tier plug-ins
     /// call lists and dispatches against, and what host-tier plug-ins
     /// register tools into through the plug-in context (PLUGINS.md,
@@ -2165,13 +2183,14 @@ final class EngineModel {
             outputs: outputs,
             effects: effects,
             tools: toolRegistry,
-            media: mediaRegistry
+            media: mediaRegistry,
+            monitorOverlays: monitorOverlayRegistry
         )
         let activation = await PlugInLoader().activate(
             [
                 AVFoundationCapturePlugIn(), ScreenCaptureKitCapturePlugIn(), GeneratorPlugIn(),
-                HaishinKitOutputPlugIn(), EffectPlugIn(), RecordingPlugIn(), MediaPlugIn(),
-                ProgramToolsPlugIn(program: self, outputs: self),
+                HaishinKitOutputPlugIn(), EffectPlugIn(), RecordingPlugIn(), MediaPlugIn(), MonitorPlugIn(),
+                ProgramToolsPlugIn(program: self, outputs: self), MonitorOverlayToolsPlugIn(overlays: self),
             ],
             thenBundlesFrom: PlugInBundleLoader(frontEnd: "Tingra", safeMode: launch.trigger),
             in: context
@@ -2209,6 +2228,7 @@ final class EngineModel {
         // filled before the compositor starts below.
         videoEffectProviders.fill(with: videoProviders)
         destinationTemplates = await outputs.destinationTemplates
+        fillMonitorOverlayCatalog(with: await monitorOverlayRegistry.allProviders)
 
         await readDeviceLists()
         loadProject()
@@ -6046,6 +6066,8 @@ final class EngineModel {
         applications = project.applications ?? []
         // Plug-in data is the document's, opaque to the app.
         plugInData = project.plugInData ?? [:]
+        // So are the monitors' overlays; absent means the defaults.
+        monitorOverlaySettings = project.monitorOverlays
         // The inputs' settings are the document's too; they reach the
         // inputs with the next device-list rebuild.
         inputParameters = Dictionary(
@@ -6474,6 +6496,195 @@ final class EngineModel {
         scheduleAutosave()
     }
 
+    // MARK: Monitor overlays
+
+    /// The monitor overlays a project shows before the operator changes
+    /// them: the tally border on both bus monitors, and nothing else
+    /// (PLUGINS.md, Decision 55).
+    static let defaultMonitorOverlays = MonitorOverlaySettings(
+        program: [TallyBorderOverlayProvider.overlayID], preview: [TallyBorderOverlayProvider.overlayID])
+
+    /// The monitor overlays in effect: the project's, or the defaults when
+    /// it has none.
+    var effectiveMonitorOverlays: MonitorOverlaySettings {
+        monitorOverlaySettings ?? Self.defaultMonitorOverlays
+    }
+
+    /// Replaces the catalog of registered monitor overlays: what the engine
+    /// start calls once the plug-ins have activated, and what a test calls
+    /// with its own providers.
+    ///
+    /// - Parameter providers: The registered providers, in any order.
+    func fillMonitorOverlayCatalog(with providers: [any MonitorOverlayProvider]) {
+        monitorOverlayCatalog = MonitorOverlayCatalog(providers: providers)
+    }
+
+    /// Whether a monitor overlay is on for a monitor.
+    ///
+    /// - Parameters:
+    ///   - id: The overlay.
+    ///   - target: The monitor.
+    /// - Returns: Whether the project shows it there.
+    func isMonitorOverlayOn(_ id: MonitorOverlayID, on target: MonitorOverlayTarget) -> Bool {
+        effectiveMonitorOverlays[target.monitor].contains(id)
+    }
+
+    /// The overlays on a monitor, in the order they were turned on, those
+    /// whose plug-in is not loaded included.
+    ///
+    /// - Parameter target: The monitor.
+    /// - Returns: The overlay ids.
+    func monitorOverlayIDs(on target: MonitorOverlayTarget) -> [MonitorOverlayID] {
+        effectiveMonitorOverlays[target.monitor]
+    }
+
+    /// Whether a monitor overlay has anything to show on a monitor: the
+    /// Overlays submenus disable one that does not. The overlay is asked
+    /// about the kind of monitor, and, for program and preview, about the
+    /// program format; an input tile's or the layer monitor's canvas varies
+    /// by tile and by layer, so its draw makes that check.
+    ///
+    /// - Parameters:
+    ///   - provider: The overlay's provider.
+    ///   - target: The monitor.
+    /// - Returns: Whether it can draw there.
+    func isMonitorOverlayAvailable(_ provider: any MonitorOverlayProvider, on target: MonitorOverlayTarget) -> Bool {
+        guard provider.isAvailable(on: target.monitor) else { return false }
+        guard target.showsProgramCanvas else { return true }
+        return provider.isAvailable(onCanvas: CGSize(width: format.width, height: format.height))
+    }
+
+    /// Turns a monitor overlay on or off for a monitor. Saved with the
+    /// project like any project change, and reported as
+    /// `monitorOverlay.changed`, but never undoable: undoing a layer move
+    /// must not turn a guide off (PLUGINS.md, Decision 55). The menu item
+    /// that calls this reports its own `tap` first.
+    ///
+    /// - Parameters:
+    ///   - id: The overlay.
+    ///   - target: The monitor.
+    ///   - isOn: Whether the overlay should be shown.
+    func setMonitorOverlay(_ id: MonitorOverlayID, on target: MonitorOverlayTarget, isOn: Bool) {
+        guard isMonitorOverlayOn(id, on: target) != isOn else { return }
+        var settings = effectiveMonitorOverlays
+        settings[target.monitor] = Self.toggled(settings[target.monitor], id, isOn: isOn)
+        monitorOverlaySettings = settings
+        eventBus.event(
+            "monitorOverlay.changed", domain: .composition,
+            params: ["monitor": target.eventValue, "overlay": .string(id.rawValue), "isOn": .bool(isOn)])
+        scheduleAutosave()
+    }
+
+    /// The monitor overlays one monitor draws, made from the catalog with
+    /// the project's values: what `MonitorTile` hands its monitor. An
+    /// overlay whose plug-in is not loaded is left out but stays in the
+    /// project.
+    ///
+    /// - Parameters:
+    ///   - target: The monitor.
+    ///   - tally: The monitor's tally, or nil for the target's default
+    ///     (``MonitorOverlayTarget/defaultTally``); an input tile passes
+    ///     its input's.
+    ///   - input: The input an input tile shows, whose strip its meters
+    ///     read; nil for every other monitor.
+    /// - Returns: The monitor's overlays, in drawing order.
+    func monitorOverlayLineup(
+        for target: MonitorOverlayTarget, tally: MonitorOverlayContext.Tally? = nil, input: InputID? = nil
+    ) -> MonitorOverlayLineup {
+        let settings = effectiveMonitorOverlays
+        var lineup = MonitorOverlayLineup(
+            entries: monitorOverlayCatalog.overlays(for: settings[target.monitor], parameters: settings.parameters),
+            monitor: target.monitor, tally: tally ?? target.defaultTally)
+        if lineup.usesAudioLevels, let subject = meterSubject(for: target, input: input) {
+            lineup.meters = MonitorOverlayMeters(relay: meterRelay, subject: subject)
+        }
+        return lineup
+    }
+
+    /// Whose levels a monitor's meters read: the master on program, an
+    /// input tile's input, the selected layer's input on the layer monitor,
+    /// and nothing on preview, which has no sound of its own.
+    ///
+    /// - Parameters:
+    ///   - target: The monitor.
+    ///   - input: The input an input tile shows.
+    /// - Returns: The meter subject, or nil for none.
+    private func meterSubject(for target: MonitorOverlayTarget, input: InputID?) -> PeakSubject? {
+        switch target {
+        case .program: .master
+        case .preview: nil
+        case .input: input.map { .strip($0) }
+        case .layer: selectedLayer.map { .strip($0.layer.input) }
+        }
+    }
+
+    /// One monitor overlay's stored values: what Overlay Settings edits and
+    /// every monitor draws it with. Empty until a value is changed, when the
+    /// overlay draws at its declared defaults.
+    ///
+    /// - Parameter id: The overlay.
+    /// - Returns: The values, keyed by declared parameter key.
+    func monitorOverlayParameterValues(for id: MonitorOverlayID) -> [String: JSONValue] {
+        effectiveMonitorOverlays.parameters[id.rawValue] ?? [:]
+    }
+
+    /// Changes one of a monitor overlay's values, on every monitor it is
+    /// drawn on (PLUGINS.md, Decision 55). Saved with the project and not
+    /// undoable, like turning an overlay on; the control that calls this
+    /// reports its own `tap` when the change settles, so a slider's drag
+    /// does not report every step.
+    ///
+    /// - Parameters:
+    ///   - value: The new value.
+    ///   - key: The declared parameter key.
+    ///   - id: The overlay.
+    func setMonitorOverlayParameter(_ value: JSONValue, forKey key: String, ofOverlay id: MonitorOverlayID) {
+        var settings = effectiveMonitorOverlays
+        var values = settings.parameters[id.rawValue] ?? [:]
+        guard values[key] != value else { return }
+        values[key] = value
+        settings.parameters[id.rawValue] = values
+        monitorOverlaySettings = settings
+        scheduleAutosave()
+    }
+
+    /// Returns a monitor overlay to its declared defaults by forgetting its
+    /// stored values. Reports `monitorOverlay.reset`.
+    ///
+    /// - Parameter id: The overlay.
+    func resetMonitorOverlayParameters(ofOverlay id: MonitorOverlayID) {
+        guard effectiveMonitorOverlays.parameters[id.rawValue] != nil else { return }
+        var settings = effectiveMonitorOverlays
+        settings.parameters[id.rawValue] = nil
+        monitorOverlaySettings = settings
+        eventBus.event("monitorOverlay.reset", domain: .composition, params: ["overlay": .string(id.rawValue)])
+        scheduleAutosave()
+    }
+
+    /// Whether a monitor shows its picture mirrored: Flip Horizontal is on
+    /// there and its plug-in is loaded. The monitor's layer handles mirror
+    /// with the picture, so a drag still moves the layer the way the
+    /// pointer goes.
+    ///
+    /// - Parameter target: The monitor.
+    /// - Returns: Whether the picture there is mirrored.
+    func isMonitorMirrored(_ target: MonitorOverlayTarget) -> Bool {
+        let flip = FlipHorizontalOverlayProvider.overlayID
+        return isMonitorOverlayOn(flip, on: target) && monitorOverlayCatalog.provider(withID: flip) != nil
+    }
+
+    /// A monitor's overlay list with one overlay added at the end or
+    /// removed.
+    ///
+    /// - Parameters:
+    ///   - list: The list.
+    ///   - id: The overlay.
+    ///   - isOn: Whether it should be in the list.
+    /// - Returns: The new list.
+    private static func toggled(_ list: [MonitorOverlayID], _ id: MonitorOverlayID, isOn: Bool) -> [MonitorOverlayID] {
+        isOn ? (list.contains(id) ? list : list + [id]) : list.filter { $0 != id }
+    }
+
     private func saveProject() {
         guard hasSessionPreset, !isRemovingData else { return }
         autosaveTask?.cancel()
@@ -6508,7 +6719,8 @@ final class EngineModel {
             applications: applications.isEmpty ? nil : applications,
             plugInData: plugInData.isEmpty ? nil : plugInData,
             inputParameters: inputParameters.isEmpty
-                ? nil : Dictionary(uniqueKeysWithValues: inputParameters.map { ($0.key.rawValue, $0.value) })
+                ? nil : Dictionary(uniqueKeysWithValues: inputParameters.map { ($0.key.rawValue, $0.value) }),
+            monitorOverlays: monitorOverlaySettings
         )
         do {
             try target.save(project)
@@ -6738,6 +6950,8 @@ private struct PassthroughAudioEffect: AudioEffect {
 /// (`ProgramToolsPlugIn`); the conformance is declared here because the
 /// seam refines `Sendable`, which a class must adopt in its own file.
 extension EngineModel: ProgramControlling {}
+
+extension EngineModel: MonitorOverlayControlling {}
 
 /// The model is also the stream and the recording the program's output
 /// tools act on (`ProgramStreamStartTool` and its three siblings), declared

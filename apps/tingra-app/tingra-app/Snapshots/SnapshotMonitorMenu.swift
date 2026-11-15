@@ -22,6 +22,12 @@ import TingraEventBus
 /// air. The badge is the monitor's answer, bottom center (top trailing
 /// belongs to the faded-to-black badge), whether the request came from here
 /// or from the menu bar.
+///
+/// Every monitor's menu also carries **Overlays**, after Save Snapshot
+/// (``MonitorOverlayMenu``; PLUGINS.md, Decision 57): the same one context
+/// menu, since a second `contextMenu` on the same view would replace this
+/// one rather than add to it. A multiview tile's items change the list
+/// every input tile shares.
 struct SnapshotMonitorMenu: ViewModifier {
     /// The engine model the menu saves through and reports its `tap` to.
     let model: EngineModel
@@ -34,6 +40,11 @@ struct SnapshotMonitorMenu: ViewModifier {
 
     /// Extra tap params — a tile's input id and name.
     let tapParams: [String: EventValue]?
+
+    /// The monitor whose overlays the Overlays submenu changes.
+    private var target: MonitorOverlayTarget {
+        MonitorOverlayTarget(subject: subject)
+    }
 
     /// The monitor, with its badge and its menu.
     func body(content: Content) -> some View {
@@ -52,6 +63,13 @@ struct SnapshotMonitorMenu: ViewModifier {
                 } label: {
                     Text("Save Snapshot", comment: "Monitor context menu item saving its picture as an image file")
                 }
+                Divider()
+                MonitorOverlayMenu(
+                    model: model, target: target, tapName: "\(target.rawValue)MonitorOverlay.menuItem",
+                    title: Text(
+                        "Overlays",
+                        comment: "Monitor context menu: the submenu of monitor overlays drawn for the operator only"
+                    ))
             }
     }
 }

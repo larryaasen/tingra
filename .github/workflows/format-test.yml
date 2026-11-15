@@ -105,6 +105,7 @@ jobs:
           - packages/TingraOutputPlugIns
           - packages/TingraRecordingPlugIns
           - packages/TingraMediaPlugIns
+          - packages/TingraMonitorPlugIns
           - packages/TingraMCP
           - apps/tingra-cli
     steps:

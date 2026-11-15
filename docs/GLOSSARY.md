@@ -46,7 +46,7 @@ A project is the saved file for an entire show. A project contains presets. A pr
 
 **Title** — a text graphic rendered by the engine: lower thirds, headings, tickers, credits.
 
-**Overlay** — a graphic or input displayed on top of the program, independent of the current shot: a logo, a frame, an alert, a persistent title.
+**Overlay** — a graphic or input displayed on top of the program, independent of the current shot: a logo, a frame, an alert, a persistent title. Viewers see it; a **monitor overlay** (below) is the operator's alone.
 
 **Transition** — the move from one shot or preset to the next. Types: **cut** (instant), **dissolve** (crossfade), **wipe** (directional reveal), and **shader** (a custom Metal-shader reveal, chosen from the built-in menu: **iris**, **diagonal**, **blinds**). A shot may carry a **default transition** — the transition it is taken with unless the operator overrides it with an explicit choice; a shot with no default is taken with a cut.
 
@@ -64,7 +64,9 @@ A project is the saved file for an entire show. A project contains presets. A pr
 
 **Monitor** — an operator-facing view or output of a bus: the on-screen program and preview monitors, and the **audio monitor** — the program mix played to an output device the operator chooses, at a monitor level, so they hear what viewers hear. Nothing a monitor shows or plays reaches viewers, and no monitor control changes what does: the monitor level is the operator's own listening volume, never a stage of the program.
 
-**Snapshot** — a still image of whatever frame a monitor is showing — program, preview, a multiview tile, or a layer monitor — saved as an ordinary image file and listed in the Library's Snapshots tab. The command is **Save Snapshot** — never "take", which is the switcher's verb — from a monitor's context menu, the Program menu (⌥⌘S for program), or the Layer menu. Snapshots are PNGs in `~/Pictures/Tingra Snapshots` by default (chosen in the General settings pane), named for what was saved and when (`Tingra Program 2026-09-10 14.03.12.png`). Being a still, a snapshot goes onto a layer through the Library's Add to Media.
+**Monitor overlay** — something a monitor draws over or in place of its picture for the operator alone: a safe area, a crop guide for another aspect ratio, a center cross, a tally border, or a view for checking the picture such as blue only or zebra stripes over highlights. Turned on per monitor from the **Overlays** submenu of its context menu, or from the Program menu; each one is a plug-in. It never reaches the program, a destination, a recording, or a snapshot. Which are on is saved with the project. Always qualified as a *monitor* overlay outside that submenu, because a plain **overlay** is an on-air graphic (PLUGINS.md, Decisions 52–57).
+
+**Snapshot** — a still image of whatever frame a monitor is showing — program, preview, a multiview tile, or a layer monitor — saved as an ordinary image file and listed in the Library's Snapshots tab. It is the monitor's frame without its monitor overlays. The command is **Save Snapshot** — never "take", which is the switcher's verb — from a monitor's context menu, the Program menu (⌥⌘S for program), or the Layer menu. Snapshots are PNGs in `~/Pictures/Tingra Snapshots` by default (chosen in the General settings pane), named for what was saved and when (`Tingra Program 2026-09-10 14.03.12.png`). Being a still, a snapshot goes onto a layer through the Library's Add to Media.
 
 **Sidebar** — one of the main window's side containers, named for where it sits: the **leading sidebar** on the left (presets, shots, inputs, media, destinations) and the **trailing sidebar** on the right (the inspector over the Library). A sidebar is a generic container; the **panes** inside it are whatever the window puts there, and a pane may move from one sidebar to another — or to a bottom sidebar, should one arrive — without changing what it is (Larry, 2026-09-10).
 

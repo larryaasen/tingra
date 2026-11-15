@@ -1,159 +1,6 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
-    "Audio Bit Rate" : {
-      "comment" : "Streaming and Recording settings: audio bit rate picker label",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Audio-Bitrate"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Velocidad de bits de audio"
-          }
-        }
-      }
-    },
-    "Compression" : {
-      "comment" : "Streaming and Recording settings: heading over the codec and bit rate rows",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Komprimierung"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Compresión"
-          }
-        }
-      }
-    },
-    "Every destination receives the same sound. A higher bit rate suits music; check what each service accepts." : {
-      "comment" : "Streaming settings: footer under the audio bit rate row",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Jedes Ziel erhält denselben Ton. Eine höhere Bitrate eignet sich für Musik; prüfe, was der jeweilige Dienst akzeptiert."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Todos los destinos reciben el mismo sonido. Una velocidad de bits más alta conviene a la música; comprueba qué acepta cada servicio."
-          }
-        }
-      }
-    },
-    "HEVC makes a smaller file at the same picture quality. H.264 opens in more players and editors." : {
-      "comment" : "Recording settings: footer explaining the choice between the two video codecs",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "HEVC erzeugt bei gleicher Bildqualität eine kleinere Datei. H.264 lässt sich in mehr Playern und Schnittprogrammen öffnen."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "HEVC crea un archivo más pequeño con la misma calidad de imagen. H.264 se abre en más reproductores y editores."
-          }
-        }
-      }
-    },
-    "Input Settings…" : {
-      "comment" : "Layer row context menu item that opens the settings of the layer's input",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Eingangseinstellungen…"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ajustes de entrada…"
-          }
-        }
-      }
-    },
-    "macOS did not start this plug-in. The log has the reason." : {
-      "comment" : "Explanation shown in a plug-in's pane after its extension could not be started",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "macOS hat dieses Plug-in nicht gestartet. Der Grund steht im Protokoll."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "macOS no inició este complemento. El motivo está en el registro."
-          }
-        }
-      }
-    },
-    "Plug-in Could Not Start" : {
-      "comment" : "Title shown in a plug-in's pane after its extension could not be started",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Plug-in konnte nicht gestartet werden"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No se pudo iniciar el complemento"
-          }
-        }
-      }
-    },
-    "Try Again" : {
-      "comment" : "Button that starts a plug-in's pane again after it could not start",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Erneut versuchen"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Reintentar"
-          }
-        }
-      }
-    },
-    "Video Codec" : {
-      "comment" : "Recording settings: video codec picker label",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Videocodec"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Códec de vídeo"
-          }
-        }
-      }
-    },
     "“%@” is still being recorded. Stop the recording before moving it to the Trash." : {
       "comment" : "Reason a recording could not be moved to the Trash: it is the take being recorded; the placeholder is the file's name",
       "localizations" : {
@@ -1469,6 +1316,23 @@
         }
       }
     },
+    "Audio Bit Rate" : {
+      "comment" : "Streaming and Recording settings: audio bit rate picker label",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Audio-Bitrate"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Velocidad de bits de audio"
+          }
+        }
+      }
+    },
     "Audio Follows Video" : {
       "comment" : "Context menu toggle on a channel strip: the strip feeds the program only while its input is on program",
       "localizations" : {
@@ -2077,6 +1941,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Contraer"
+          }
+        }
+      }
+    },
+    "Compression" : {
+      "comment" : "Streaming and Recording settings: heading over the codec and bit rate rows",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Komprimierung"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Compresión"
           }
         }
       }
@@ -2948,6 +2829,23 @@
         }
       }
     },
+    "Every destination receives the same sound. A higher bit rate suits music; check what each service accepts." : {
+      "comment" : "Streaming settings: footer under the audio bit rate row",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jedes Ziel erhält denselben Ton. Eine höhere Bitrate eignet sich für Musik; prüfe, was der jeweilige Dienst akzeptiert."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Todos los destinos reciben el mismo sonido. Una velocidad de bits más alta conviene a la música; comprueba qué acepta cada servicio."
+          }
+        }
+      }
+    },
     "Every destination was lost and not recovered." : {
       "comment" : "Stream error shown when the last live destination was lost",
       "localizations" : {
@@ -3237,6 +3135,23 @@
         }
       }
     },
+    "HEVC makes a smaller file at the same picture quality. H.264 opens in more players and editors." : {
+      "comment" : "Recording settings: footer explaining the choice between the two video codecs",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "HEVC erzeugt bei gleicher Bildqualität eine kleinere Datei. H.264 lässt sich in mehr Playern und Schnittprogrammen öffnen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "HEVC crea un archivo más pequeño con la misma calidad de imagen. H.264 se abre en más reproductores y editores."
+          }
+        }
+      }
+    },
     "Hide Inspector" : {
       "comment" : "View menu item and toolbar tooltip that hides the inspector column",
       "localizations" : {
@@ -3420,6 +3335,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ajustes de entrada"
+          }
+        }
+      }
+    },
+    "Input Settings…" : {
+      "comment" : "Layer row context menu item that opens the settings of the layer's input",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eingangseinstellungen…"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ajustes de entrada…"
           }
         }
       }
@@ -4032,6 +3964,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Perdido"
+          }
+        }
+      }
+    },
+    "macOS did not start this plug-in. The log has the reason." : {
+      "comment" : "Explanation shown in a plug-in's pane after its extension could not be started",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS hat dieses Plug-in nicht gestartet. Der Grund steht im Protokoll."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS no inició este complemento. El motivo está en el registro."
           }
         }
       }
@@ -4972,6 +4921,40 @@
         }
       }
     },
+    "No Overlay Settings" : {
+      "comment" : "Overlay Settings window placeholder title when no monitor overlay has settings",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Überlagerungseinstellungen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sin ajustes de superposiciones"
+          }
+        }
+      }
+    },
+    "No Overlays" : {
+      "comment" : "Disabled item in a monitor's Overlays submenu when no monitor overlay is registered",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Überlagerungen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sin superposiciones"
+          }
+        }
+      }
+    },
     "No Picture to Save" : {
       "comment" : "Badge on a monitor asked for a snapshot while it shows no picture",
       "localizations" : {
@@ -5240,6 +5223,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ninguno"
+          }
+        }
+      }
+    },
+    "None of the monitor overlays has settings to change." : {
+      "comment" : "Overlay Settings window placeholder description",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine der Monitorüberlagerungen hat Einstellungen, die sich ändern lassen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ninguna de las superposiciones del monitor tiene ajustes que cambiar."
           }
         }
       }
@@ -5635,6 +5635,57 @@
         }
       }
     },
+    "Overlay Settings" : {
+      "comment" : "Title of the window editing the monitor overlays' settings",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Überlagerungseinstellungen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ajustes de superposiciones"
+          }
+        }
+      }
+    },
+    "Overlay Settings…" : {
+      "comment" : "Last item of a monitor's Overlays submenu: opens the window editing the overlays' settings",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Überlagerungseinstellungen …"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ajustes de superposiciones…"
+          }
+        }
+      }
+    },
+    "Overlays" : {
+      "comment" : "Monitor context menu: the submenu of monitor overlays drawn for the operator only",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Überlagerungen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Superposiciones"
+          }
+        }
+      }
+    },
     "Pan" : {
       "comment" : "Label of a channel strip's pan slider",
       "localizations" : {
@@ -5818,6 +5869,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Complemento"
+          }
+        }
+      }
+    },
+    "Plug-in Could Not Start" : {
+      "comment" : "Title shown in a plug-in's pane after its extension could not be started",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Plug-in konnte nicht gestartet werden"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo iniciar el complemento"
           }
         }
       }
@@ -6043,6 +6111,23 @@
         }
       }
     },
+    "Preview Overlays" : {
+      "comment" : "Program menu: the submenu of monitor overlays drawn on the preview monitor",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorschau-Überlagerungen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Superposiciones del previo"
+          }
+        }
+      }
+    },
     "Program" : {
       "comment" : "Name of the program bus — labels its monitor and its switcher row\nTitle of the Program menu: the program's size and frame rate",
       "localizations" : {
@@ -6056,6 +6141,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Programa"
+          }
+        }
+      }
+    },
+    "Program Overlays" : {
+      "comment" : "Program menu: the submenu of monitor overlays drawn on the program monitor",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Programm-Überlagerungen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Superposiciones del programa"
           }
         }
       }
@@ -6673,7 +6775,7 @@
       }
     },
     "Reset" : {
-      "comment" : "Permissions settings: button that forgets the system's decision for a permission\nPermissions settings: button that forgets the system's decision for a service",
+      "comment" : "Overlay Settings: returns one monitor overlay's settings to their defaults\nPermissions settings: button that forgets the system's decision for a permission\nPermissions settings: button that forgets the system's decision for a service",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -8848,6 +8950,23 @@
         }
       }
     },
+    "Try Again" : {
+      "comment" : "Button that starts a plug-in's pane again after it could not start",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erneut versuchen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reintentar"
+          }
+        }
+      }
+    },
     "Turn their panes and commands on and off in Manage…" : {
       "comment" : "Plug-ins settings: shown under Plug-ins in Other Apps when none are off",
       "localizations" : {
@@ -8997,6 +9116,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Vertical (1080×1920)"
+          }
+        }
+      }
+    },
+    "Video Codec" : {
+      "comment" : "Recording settings: video codec picker label",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Videocodec"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Códec de vídeo"
           }
         }
       }

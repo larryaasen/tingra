@@ -18,6 +18,7 @@
 		46DA99293005000000B79666 /* TingraPlugInKit in Frameworks */ = {isa = PBXBuildFile; productRef = 46DA99193005000000B79666 /* TingraPlugInKit */; };
 		46DA992A3005000000B79666 /* TingraRecordingPlugIns in Frameworks */ = {isa = PBXBuildFile; productRef = 46DA991A3005000000B79666 /* TingraRecordingPlugIns */; };
 		46DA992B3005000000B79666 /* TingraMediaPlugIns in Frameworks */ = {isa = PBXBuildFile; productRef = 46DA991B3005000000B79666 /* TingraMediaPlugIns */; };
+		46DA992C3005000000B79666 /* TingraMonitorPlugIns in Frameworks */ = {isa = PBXBuildFile; productRef = 46DA991C3005000000B79666 /* TingraMonitorPlugIns */; };
 		5B14E5010000000000000A0F /* com.moonwink.tingra.app.plug-in.appextensionpoint in Embed ExtensionKit Extensions */ = {isa = PBXBuildFile; fileRef = 5B14E5010000000000000A0E /* com.moonwink.tingra.app.plug-in.appextensionpoint */; };
 		5B14E5020000000000000B0A /* TingraNotes.appex in Embed ExtensionKit Extensions */ = {isa = PBXBuildFile; fileRef = 5B14E5020000000000000B01 /* TingraNotes.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		5B14E5020000000000000B40 /* TingraJSONRPC in Frameworks */ = {isa = PBXBuildFile; productRef = 5B14E5020000000000000B30 /* TingraJSONRPC */; };
@@ -145,6 +146,7 @@
 				46DA99293005000000B79666 /* TingraPlugInKit in Frameworks */,
 				46DA992A3005000000B79666 /* TingraRecordingPlugIns in Frameworks */,
 				46DA992B3005000000B79666 /* TingraMediaPlugIns in Frameworks */,
+				46DA992C3005000000B79666 /* TingraMonitorPlugIns in Frameworks */,
 				5B14E5020000000000000B40 /* TingraJSONRPC in Frameworks */,
 				5B14E5020000000000000B41 /* TingraMCP in Frameworks */,
 				5B14E5020000000000000B42 /* TingraAppPlugInKit in Frameworks */,
@@ -240,6 +242,7 @@
 				46DA99193005000000B79666 /* TingraPlugInKit */,
 				46DA991A3005000000B79666 /* TingraRecordingPlugIns */,
 				46DA991B3005000000B79666 /* TingraMediaPlugIns */,
+				46DA991C3005000000B79666 /* TingraMonitorPlugIns */,
 				5B14E5020000000000000B30 /* TingraJSONRPC */,
 				5B14E5020000000000000B31 /* TingraMCP */,
 				5B14E5020000000000000B32 /* TingraAppPlugInKit */,
@@ -370,6 +373,7 @@
 				46DA99093005000000B79666 /* XCLocalSwiftPackageReference "../../packages/TingraPlugInKit" */,
 				46DA990A3005000000B79666 /* XCLocalSwiftPackageReference "../../packages/TingraRecordingPlugIns" */,
 				46DA990B3005000000B79666 /* XCLocalSwiftPackageReference "../../packages/TingraMediaPlugIns" */,
+				46DA990C3005000000B79666 /* XCLocalSwiftPackageReference "../../packages/TingraMonitorPlugIns" */,
 				5B14E5020000000000000B20 /* XCLocalSwiftPackageReference "../../packages/TingraJSONRPC" */,
 				5B14E5020000000000000B21 /* XCLocalSwiftPackageReference "../../packages/TingraMCP" */,
 				5B14E5020000000000000B22 /* XCLocalSwiftPackageReference "../../packages/TingraAppPlugInKit" */,
@@ -919,6 +923,10 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = ../../packages/TingraMediaPlugIns;
 		};
+		46DA990C3005000000B79666 /* XCLocalSwiftPackageReference "../../packages/TingraMonitorPlugIns" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../../packages/TingraMonitorPlugIns;
+		};
 		5B14E5020000000000000B20 /* XCLocalSwiftPackageReference "../../packages/TingraJSONRPC" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = ../../packages/TingraJSONRPC;
@@ -977,6 +985,10 @@
 		46DA991B3005000000B79666 /* TingraMediaPlugIns */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = TingraMediaPlugIns;
+		};
+		46DA991C3005000000B79666 /* TingraMonitorPlugIns */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = TingraMonitorPlugIns;
 		};
 		5B14E5020000000000000B30 /* TingraJSONRPC */ = {
 			isa = XCSwiftPackageProductDependency;

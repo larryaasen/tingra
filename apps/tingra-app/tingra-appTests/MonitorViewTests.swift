@@ -13,6 +13,8 @@ import Foundation
 import Metal
 import MetalKit
 import Testing
+import TingraAudio
+import TingraMonitorPlugIns
 import TingraPlugInKit
 
 @testable import TingraApp
@@ -145,6 +147,55 @@ struct MonitorViewTests {
         coordinator.draw(in: view)
         coordinator.draw(in: view)
 
+        #expect(source.frameReads == 2)
+    }
+
+    @Test(
+        "turning a monitor overlay on draws again with the picture state unchanged, then skips again",
+        .enabled(if: MTLCreateSystemDefaultDevice() != nil)
+    )
+    func changedOverlaysAreDrawn() {
+        let source = ScriptedFrameSource()
+        let coordinator = MonitorView.Coordinator(source: source)
+        let view = MTKView()
+        coordinator.draw(in: view)
+
+        let cross = CenterCrossOverlayProvider()
+        coordinator.overlays = MonitorOverlayLineup(
+            entries: MonitorOverlayCatalog(providers: [cross]).overlays(for: [cross.id], parameters: [:]),
+            monitor: .program, tally: .program)
+        coordinator.draw(in: view)
+        coordinator.draw(in: view)
+
+        #expect(source.frameReads == 2)
+    }
+
+    @Test(
+        "a monitor with VU meters draws again when its levels change, and skips while they hold",
+        .enabled(if: MTLCreateSystemDefaultDevice() != nil)
+    )
+    func changedLevelsAreDrawn() {
+        let source = ScriptedFrameSource()
+        let coordinator = MonitorView.Coordinator(source: source)
+        let view = MTKView()
+        let relay = MeterRelay()
+        let meters = VUMetersOverlayProvider()
+        var lineup = MonitorOverlayLineup(
+            entries: MonitorOverlayCatalog(providers: [meters]).overlays(for: [meters.id], parameters: [:]),
+            monitor: .program, tally: .program)
+        lineup.meters = MonitorOverlayMeters(relay: relay, subject: .master)
+        coordinator.overlays = lineup
+        coordinator.draw(in: view)
+        coordinator.draw(in: view)
+        #expect(source.frameReads == 1)
+
+        relay.fold(
+            MeterBlock(
+                time: .zero, strips: [:],
+                master: StereoMeterReading(
+                    left: MeterReading(peak: 0.5, rms: 0.2), right: MeterReading(peak: 0.5, rms: 0.2))))
+        coordinator.draw(in: view)
+        coordinator.draw(in: view)
         #expect(source.frameReads == 2)
     }
 

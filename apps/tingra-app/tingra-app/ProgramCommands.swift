@@ -38,6 +38,11 @@ import TingraEventBus
 /// Take would read as a switch. Preview's item is enabled while a shot is
 /// staged; program always has a frame once the engine runs, and a request
 /// that finds none says so on the monitor.
+///
+/// Under them, **Program Overlays** and **Preview Overlays**: the menu-bar
+/// home of the bus monitors' Overlays submenus (``MonitorOverlayMenu``;
+/// PLUGINS.md, Decision 57), the same items, since the HIG wants every
+/// context-menu command in the menu bar too.
 struct ProgramCommands: Commands {
     /// The engine model the items change the format through, and report
     /// their `tap` to.
@@ -69,6 +74,20 @@ struct ProgramCommands: Commands {
                     comment: "Program menu item saving the preview monitor's frame as an image file")
             }
             .disabled(model.previewShotID == nil)
+
+            Divider()
+
+            MonitorOverlayMenu(
+                model: model, target: .program, tapName: "programMenuOverlay.menuItem",
+                title: Text(
+                    "Program Overlays",
+                    comment: "Program menu: the submenu of monitor overlays drawn on the program monitor"))
+
+            MonitorOverlayMenu(
+                model: model, target: .preview, tapName: "programMenuOverlay.menuItem",
+                title: Text(
+                    "Preview Overlays",
+                    comment: "Program menu: the submenu of monitor overlays drawn on the preview monitor"))
 
             Divider()
 

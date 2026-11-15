@@ -35,12 +35,26 @@ import TingraEventBus
 /// once (EVENTS.md, "The `tap` convention"). The geometry is
 /// ``LayerFrameGesture``'s, pure and unit-tested; this view only maps
 /// points to fractions and back.
+///
+/// On a monitor the Flip Horizontal monitor overlay mirrors, everything
+/// here mirrors with the picture through ``LayerHandleMirror``: the
+/// handles sit on the mirrored layer, and a drag, a click, or an arrow key
+/// moves the layer the way the operator sees it move.
 struct LayerHandlesOverlay: View {
     /// The engine model whose selection and followed shot this manipulates.
     @Bindable var model: EngineModel
 
     /// The shot being edited, with the tally that tints the handles.
     let edited: EditedShot
+
+    /// Whether the monitor shows its picture mirrored, so the handles
+    /// mirror with it (``EngineModel/isMonitorMirrored(_:)``).
+    var isMirrored = false
+
+    /// The mapping between the monitor and the program.
+    private var mirror: LayerHandleMirror {
+        LayerHandleMirror(isMirrored: isMirrored)
+    }
 
     /// The selected layer's frame when the drag in progress began, or nil
     /// between drags. Set on the first movement, which is also when the
@@ -126,13 +140,16 @@ struct LayerHandlesOverlay: View {
     /// rectangle, draggable to resize.
     private func handleView(_ handle: LayerHandle, on rect: CGRect, index: Int, in size: CGSize) -> some View {
         let unit = handle.unitPosition
+        // A handle keeps its identity: the layer's right edge is drawn on
+        // the left of a mirrored layer, and the drag, reversed, still
+        // moves that edge the way the pointer goes.
         return Rectangle()
             .fill(.white)
             .overlay(Rectangle().stroke(edited.tally.badgeTint, lineWidth: 1))
             .frame(width: Self.handleSize, height: Self.handleSize)
             .frame(width: Self.handleHitSize, height: Self.handleHitSize)
             .contentShape(.rect)
-            .position(x: rect.minX + unit.x * rect.width, y: rect.minY + unit.y * rect.height)
+            .position(x: rect.minX + mirror.x(unit.x) * rect.width, y: rect.minY + unit.y * rect.height)
             .gesture(resizeGesture(handle, index: index, in: size))
     }
 
@@ -144,7 +161,7 @@ struct LayerHandlesOverlay: View {
                 Rectangle()
                     .fill(.yellow)
                     .frame(width: 1, height: size.height)
-                    .position(x: x * size.width, y: size.height / 2)
+                    .position(x: mirror.x(x) * size.width, y: size.height / 2)
             }
             ForEach(snap.horizontalGuides, id: \.self) { y in
                 Rectangle()
@@ -243,7 +260,7 @@ struct LayerHandlesOverlay: View {
     ///   - size: The overlay's size.
     private func select(at location: CGPoint, in size: CGSize) {
         isFocused = true
-        let point = CGPoint(x: location.x / size.width, y: location.y / size.height)
+        let point = mirror.point(CGPoint(x: location.x / size.width, y: location.y / size.height))
         let hit = LayerFrameGesture.layerIndex(at: point, in: edited.shot.layers)
         guard hit != model.selectedLayerIndex else { return }
         model.eventBus.tap("layerSelect.monitor", domain: .composition, params: ["index": .int(hit ?? -1)])
@@ -265,7 +282,7 @@ struct LayerHandlesOverlay: View {
             case .rightArrow: .right
             default: nil
             }
-        guard let direction else { return .ignored }
+        guard let direction = direction.map(mirror.direction) else { return .ignored }
         let step = press.modifiers.contains(.shift) ? LayerFrameGesture.largeNudgeStep : LayerFrameGesture.nudgeStep
         model.eventBus.tap(
             "layerNudge.key",
@@ -284,9 +301,11 @@ struct LayerHandlesOverlay: View {
         Task { await model.removeLayer(at: selection.index) }
     }
 
-    /// A normalized frame in the overlay's points.
+    /// A normalized frame in the overlay's points, mirrored when the
+    /// monitor is.
     private func viewRect(of frame: CGRect, in size: CGSize) -> CGRect {
-        CGRect(
+        let frame = mirror.frame(frame)
+        return CGRect(
             x: frame.origin.x * size.width,
             y: frame.origin.y * size.height,
             width: frame.width * size.width,
@@ -294,9 +313,10 @@ struct LayerHandlesOverlay: View {
         )
     }
 
-    /// A drag translation in points as a fraction of the program.
+    /// A drag translation in points as a fraction of the program, reversed
+    /// horizontally when the monitor is mirrored.
     private func normalized(_ translation: CGSize, in size: CGSize) -> CGSize {
-        CGSize(width: translation.width / size.width, height: translation.height / size.height)
+        mirror.translation(CGSize(width: translation.width / size.width, height: translation.height / size.height))
     }
 
     /// The snap distance as a fraction of the program on each axis — six

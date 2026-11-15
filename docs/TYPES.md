@@ -6,15 +6,20 @@ an API reference: the authoritative documentation for a type is its `///` doc
 comment in the source, and the design behind each piece is in
 [ARCHITECTURE.md](ARCHITECTURE.md).
 
-[README.md](../README.md) says what each package and app *is*; this file says
-what is *in* it. The order matches the README's, and the two are updated
-together — a type added, renamed, or removed lands here in the same change as
-the code.
+[README.md](../README.md) gives each package and app one line; here each one's
+section opens with what it is and why it exists, then lists what is *in* it.
+The order matches the README's, and the two are updated together — a type
+added, renamed, or removed lands here in the same change as the code.
 
 Apps expose no public API beyond their entry point, so their entries list the
 internal surface a reader needs to navigate the target instead.
 
 ## `packages/TingraEventBus`
+
+The zero-dependency event bus: the structured event spine every part of the
+engine and every plug-in reports through (see [EVENTS.md](EVENTS.md)).
+A dynamic library built with Library Evolution, like `TingraPlugInKit`, since
+the kit re-exposes it to every plug-in.
 
 - `EventBus` — publishes structured events to the sinks subscribed to it.
 - `EventBusEvent` — one event: date, group, domain, name, params, call site.
@@ -24,6 +29,22 @@ internal surface a reader needs to navigate the target instead.
 - `EventSink` — the protocol every sink subscribing to the bus conforms to.
 
 ## `packages/TingraPlugInKit`
+
+The plug-in protocol package: the stability contract first- and third-party
+plug-ins build against, importable without the engine (see
+[ARCHITECTURE.md](ARCHITECTURE.md), "Plug-in API stability and versioning").
+Every registration — input, effect, streaming or recording output — declares
+its adjustable settings as `Parameter`s through one `ParameterDescribing`
+protocol, so the app draws a native settings pane for a plug-in that shipped
+no UI ([PLUGINS.md](PLUGINS.md), Decision 15). A dynamic library built
+with Library Evolution (Decision 22): a third party's host-tier plug-in, a
+`*.tingraplugin` bundle whose principal class is a `BundledPlugIn`, binds to
+the one copy the running engine loaded, and keeps loading in a newer Tingra.
+Third parties build against it, and the event bus beside it, as binaries:
+`scripts/release-sdk.sh` publishes the two as `TingraPlugInSDK`, a Swift
+package of arm64 XCFrameworks in the public `larryaasen/tingra-plug-in-sdk`
+repo, under one version, `PlugInKitVersion.current` (Decisions 28 and 37;
+[packaging/README.md](../packaging/README.md), "The plug-in SDK").
 
 - `Input` — the protocol for anything producing video or audio frames.
 - `InputID` — the stable identifier for an input.
@@ -84,9 +105,35 @@ internal surface a reader needs to navigate the target instead.
 - `MediaRegistering` — the registration seam where media plug-ins attach.
 - `MediaRegisteringError` — thrown when a host has no media registry.
 - `UnavailableMediaRegistry` — the default media seam; throws on register.
+- `MonitorOverlayID` — the stable identifier for a registered monitor overlay.
+- `MonitorOverlayStage` — whether an overlay changes the picture or draws over.
+- `MonitorOverlayContext` — the monitor, tally, and geometry of one draw.
+- `MonitorOverlayContext.Monitor` — which monitor draws.
+- `MonitorOverlayContext.Tally` — the monitor's tally: program, preview, unlit.
+- `MonitorOverlayContext.AudioLevel` — one channel's peak and RMS for meters.
+- `MonitorOverlay` — something a monitor draws for the operator, never on air.
+- `MonitorOverlayProvider` — registers a monitor overlay and makes instances.
+- `MonitorOverlayRegistering` — the seam where monitor overlay plug-ins attach.
+- `DiscardingMonitorOverlayRegistry` — the default overlay seam; keeps nothing.
 - `PlugInContext` — what a plug-in gets at activation: bus, clock, seams.
 
 ## `packages/TingraHost`
+
+The host/core package: plug-in loading, registries, frame transport,
+session/state, secure storage, the operator's destination store, and
+authorization — the minimal core that is not a plug-in (see
+[ARCHITECTURE.md](ARCHITECTURE.md), "Engine model: host and plug-ins").
+Plug-in loading includes the external bundle loader: every front end loads
+the `*.tingraplugin` bundles in `~/Library/Application Support/Tingra/Plug-ins`
+and `/Library/Application Support/Tingra/Plug-ins` after its compiled-in
+plug-ins, checking each bundle's declared id, kit version, and signature
+before any of its code runs ([PLUGINS.md](PLUGINS.md), "The bundle
+loader: the design"). The loader also keeps a bundle out when the operator
+turned it off in `plug-ins.json`, when it took a process down while loading
+(a marker names the bundle each process is loading, and the next launch
+turns that build off), and for the whole launch in safe mode, entered with
+Shift as the app opens, by the app's offer after a crash, or with
+`--safe-mode` (PLUGINS.md, Decisions 31–34).
 
 - `AppVersion` — an app bundle's version and build, as About prints it.
 - `LaunchArguments` — whether an app's command line asks for the version.
@@ -143,6 +190,8 @@ internal surface a reader needs to navigate the target instead.
 - `MediaRegistryError` — registry errors, such as a file no provider opens.
 - `EffectRegistry` — the actor holding audio and video effect providers.
 - `EffectRegistryError` — an effect id that is already registered.
+- `MonitorOverlayRegistry` — the actor holding monitor overlay providers.
+- `MonitorOverlayRegistryError` — a monitor overlay id already registered.
 - `ProgramPacer` — tick-paced latest-wins video pacing for a single input.
 - `StreamSession` — one live stream fanned out to N destination legs.
 - `StreamSession.VideoSource` — the session's video: an input or the program.
@@ -174,6 +223,17 @@ internal surface a reader needs to navigate the target instead.
 
 ## `packages/TingraCapturePlugIns`
 
+The first party capture plug-ins: camera, microphone, and display discovery and
+capture, capture of a single window the operator chooses, and the device
+connection/disconnection events on the bus. AVFoundation,
+Core Audio, and ScreenCaptureKit are imported only inside this package, behind
+the `Input` seam. A USB webcam's picture controls — brightness, white balance,
+exposure, focus, zoom — reach it through `TingraUVC` and surface as the camera
+input's parameters (see [UVC.md](UVC.md)). One running application's sound
+reaches it through `TingraApplicationAudio` and becomes an audio-only
+application input, kept off the Mac's speakers while it is captured
+(ARCHITECTURE.md, "Application audio").
+
 - `AVFoundationCapturePlugIn` — contributes cameras and microphones as inputs.
 - `ScreenCaptureKitCapturePlugIn` — contributes the Mac's displays as inputs.
 - `DisplayChange` — one display connecting or disconnecting.
@@ -201,6 +261,14 @@ internal surface a reader needs to navigate the target instead.
 
 ## `packages/TingraUVC`
 
+A general-purpose USB Video Class control library for the Mac, the Swift
+counterpart of the Dart [`uvc`](https://pub.dev/packages/uvc) package: it lists
+the connected UVC cameras and reads and sets their standard controls through
+Apple's `IOUSBHost` — no libusb, no driver, no vendor SDK, and no TCC prompt.
+Standalone on purpose: it depends on no other Tingra package, so any Mac app can
+import it, and every byte to the camera crosses one `UVCTransport` seam, so it is
+unit tested without a camera (see [UVC.md](UVC.md)).
+
 - `UVCDevice` — a connected UVC camera, as the I/O Registry lists it.
 - `UVCCamera` — a described camera: the controls its descriptors advertise.
 - `UVCControl` — one control: range, step, and default; reads and sets it.
@@ -217,6 +285,15 @@ internal surface a reader needs to navigate the target instead.
 
 ## `packages/TingraApplicationAudio`
 
+A general-purpose library for capturing one running application's sound on the
+Mac through Core Audio process taps (macOS 14.2 and later), with no virtual audio
+driver: it lists the applications that have an audio process, taps the processes
+that belong to one of them — optionally muting the application on its own
+speakers for as long as the tap is held — and hands back copies of its audio
+stamped with host time. Standalone on purpose, like `TingraUVC`: it depends on no
+other Tingra package, so any Mac app can import it, and `TingraCapturePlugIns`
+imports it only behind the `Input` seam (ARCHITECTURE.md, "Application audio").
+
 - `AudioProcess` — one process in Core Audio's process list.
 - `AudioApplication` — a running application with audio, and its processes.
 - `AudioApplication.BundleDescription` — a bundle's identifier and name.
@@ -226,6 +303,10 @@ internal surface a reader needs to navigate the target instead.
 - `ApplicationAudioError` — every failure, naming the Core Audio status.
 
 ## `packages/TingraGeneratorPlugIns`
+
+The first party generator plug-ins — inputs that synthesize their content from
+the injected clock, so they run anywhere with no camera, microphone, or TCC: the
+permanent CI test surface.
 
 - `GeneratorPlugIn` — contributes the built-in generators as inputs.
 - `BarsGenerator` — SMPTE color bars with a burned-in time-of-day timecode.
@@ -240,6 +321,13 @@ internal surface a reader needs to navigate the target instead.
 
 ## `packages/TingraComposition`
 
+The composition engine library (roadmap steps 6–7): the tick-paced Metal/Core
+Image compositor, the layer tree it renders, and the presets and shots it
+switches among. A host-side library — not a plug-in, and not folded into the
+minimal `TingraHost` — depending only on the protocol package and the event bus,
+so it stays testable with a synthetic clock and a mock renderer (see
+[ARCHITECTURE.md](ARCHITECTURE.md), "Composition").
+
 - `Compositor` — the tick-paced engine rendering the program and preview.
 - `MediaID` — a media item's stable identifier, and its input's `InputID`.
 - `ProjectMedia` — one file added to a project as media: id, path, name.
@@ -247,6 +335,7 @@ internal surface a reader needs to navigate the target instead.
 - `ProjectApplication` — one application added to a project as audio input.
 - `ProjectID` — the stable identifier of a project document.
 - `Project` — the saved, versioned `Codable` document for a whole show.
+- `MonitorOverlaySettings` — a project's monitor overlays and their values.
 - `DestinationReference` — a project's use of one saved destination.
 - `ProjectDestination` — superseded by `DestinationReference`; decode only.
 - `ProjectDestinationID` — a destination's stable identity within a project.
@@ -270,6 +359,14 @@ internal surface a reader needs to navigate the target instead.
 
 ## `packages/TingraAudio`
 
+The audio engine library (roadmap step 7): the mixer, the audio surface of the
+engine, combining every audio input into the program mix — one channel strip per
+input. A host-side library beside `TingraComposition` on the same rule — not a
+plug-in (audio effects and taps plug into it later), not folded into `TingraHost`,
+depending only on the protocol package and the event bus, so it stays testable
+with a synthetic clock and scripted inputs (see [ARCHITECTURE.md](ARCHITECTURE.md),
+"The audio mixer").
+
 - `AudioMixer` — the clock-paced mixer producing the stereo program mix.
 - `ChannelStrip` — one input's slot in the mixer: level, pan, and mute.
 - `MeterReading` — one strip's pre-fader peak and RMS over one mix block.
@@ -282,6 +379,13 @@ internal surface a reader needs to navigate the target instead.
 - `AVAudioEngineMonitor` — the first-party `AudioMonitor`, over AVAudioEngine.
 
 ## `packages/TingraEffectPlugIns`
+
+The first party effect plug-ins: the audio and video staples behind the
+shared effect seam (see [ARCHITECTURE.md](ARCHITECTURE.md), "The effect
+seam", "Audio effect chains", "Dynamics effects", "Per-layer video
+effects"). Pure DSP and Core Image over the seam's native currencies, so the
+package depends on the protocol package alone and is fully deterministic in
+tests — no hardware, no TCC.
 
 - `EffectPlugIn` — contributes the built-in audio and video effects.
 - `GainEffectProvider` — registers the gain effect.
@@ -307,6 +411,11 @@ internal surface a reader needs to navigate the target instead.
 
 ## `packages/TingraOutputPlugIns`
 
+The first party streaming output plug-in: the HaishinKit-backed
+`StreamingService` for RTMP/RTMPS and SRT destinations. HaishinKit (and its
+Logboard logging façade, rerouted to OSLog) is imported only inside this
+package, behind the `StreamingService` seam.
+
 - `HaishinKitOutputPlugIn` — contributes the RTMP/RTMPS and SRT providers.
 - `RTMPStreamingServiceProvider` — the provider for `rtmp://` and `rtmps://`.
 - `HaishinKitStreamingService` — the RTMP/RTMPS service, over HaishinKit.
@@ -316,6 +425,12 @@ internal surface a reader needs to navigate the target instead.
 
 ## `packages/TingraRecordingPlugIns`
 
+The first party local recording plug-in: the `AVAssetWriter`-backed
+`RecordingService` writing the program to a local `.mov`/`.mp4`, independent of
+streaming. AVFoundation is imported only inside this package (behind the
+`RecordingService` seam), and it pulls in neither HaishinKit nor Logboard, so
+`TingraOutputPlugIns` stays the sole HaishinKit importer.
+
 - `RecordingPlugIn` — contributes the `.mov`/`.mp4` recording provider.
 - `AVAssetWriterRecordingServiceProvider` — the `.mov`/`.mp4` provider.
 - `AVAssetWriterRecordingService` — the recording service, over a writer.
@@ -323,6 +438,15 @@ internal surface a reader needs to navigate the target instead.
 - `RecordingCapacityProbe` — how a service measures a volume, injected.
 
 ## `packages/TingraMediaPlugIns`
+
+The first party media plug-in: file-backed content as inputs — still images
+(ImageIO), video files (AVFoundation, the file's audio arriving as a channel
+strip), audio files (AVFoundation again: MP3, AAC, WAV, and the rest of the
+family, a channel strip with no picture), and text or Markdown documents
+(Core Text) — each a `MediaInputProvider`
+registered through the media seam, so a file the operator adds to a project
+becomes an `Input` like any camera. Every further content type is one more
+provider, first- or third-party; the package imports no third-party code.
 
 - `MediaPlugIn` — contributes the image, movie, audio, and text providers.
 - `MediaInputError` — the errors a media input throws from `start()`.
@@ -335,7 +459,44 @@ internal surface a reader needs to navigate the target instead.
 - `TextMediaProvider` — the provider for plain text and Markdown.
 - `TextInput` — a text or Markdown document rendered once as an input.
 
+## `packages/TingraMonitorPlugIns`
+
+The first party monitor overlay plug-in: what the monitors draw for the
+operator alone and never send to air. Picture overlays change the picture
+(a horizontal flip, blue only, zebra stripes over highlights, alpha over a
+checkerboard); guides draw over it (a tally border, the title-safe and
+action-safe areas, 4:3, 1:1, and 9:16 crop guides, a center cross, center
+lines, a rule-of-thirds grid, and VU meters). Each is a `MonitorOverlayProvider`
+registered through the monitor overlay seam, so a third-party overlay is one
+more plug-in. Core Image only, and linked by the
+app alone, since nothing else draws a monitor (PLUGINS.md, Decisions 52–57).
+
+- `MonitorPlugIn` — contributes the first-party monitor overlays.
+- `FlipHorizontalOverlayProvider` — the picture mirrored left to right.
+- `BlueOnlyOverlayProvider` — the picture's blue channel shown as grey.
+- `ZebraOverlayProvider` — diagonal stripes over highlights at a set level.
+- `ShowAlphaOverlayProvider` — the picture over a checkerboard.
+- `VUMetersOverlayProvider` — a meter per audio channel up the right edge.
+- `TallyBorderOverlayProvider` — the tally as a border round a bus monitor.
+- `SafeAreaOverlayProvider` — the title-safe and action-safe outlines.
+- `CropGuideOverlayProvider` — the 4:3, 1:1, and 9:16 crop guides.
+- `CenterCrossOverlayProvider` — a small cross at the picture's center.
+- `CenterLinesOverlayProvider` — center lines running edge to edge.
+- `RuleOfThirdsOverlayProvider` — lines dividing the picture into thirds.
+
 ## `packages/TingraJSONRPC`
+
+The JSON-RPC 2.0 layer on its own (see [PLUGINS.md](PLUGINS.md),
+Decision 14): the wire types (`JSONRPCID`, `JSONRPCError`, `JSONRPCResponse`,
+…), the shared message coder, the `MessageTransport` seam a session reads and
+writes through, the in-memory transports tests run against, and
+`XPCMessageTransport` — the transport an app-tier plug-in's ExtensionKit
+connection carries, which can hand an `IOSurface` across beside a message
+(`SurfaceMessageTransport`), the one value JSON cannot carry. Lifted out of `TingraMCP` on 2026-09-13 so an extension
+can speak the same protocol the daemon does without linking the daemon or the
+host; it depends on `TingraPlugInKit` for `JSONValue` alone and on nothing
+third-party. `TingraMCP` re-exports it, so nothing that imports `TingraMCP`
+changed.
 
 - `JSONRPCID` — a request/response identifier: a string or an integer.
 - `JSONRPCErrorCode` — the standard error codes plus `resourceNotFound`.
@@ -357,6 +518,14 @@ internal surface a reader needs to navigate the target instead.
 
 ## `packages/TingraMCP`
 
+The MCP/Control service (see [MCP.md](MCP.md)): the hand-rolled MCP
+JSON-RPC layer — tools and, since 2026-09-14, resources with subscriptions —
+the engine daemon, the transparent stdio↔socket proxy, and the first-party
+control tools that mirror the CLI surface. Speaks MCP verbatim on the wire but
+takes no third-party dependency — the JSON-RPC framing is a few
+hundred lines behind this seam rather than the official swift-sdk's
+SwiftNIO/swift-log/eventsource stack.
+
 Re-exports `TingraJSONRPC` (`@_exported import`), so `import TingraMCP` also
 sees the types listed under that package.
 
@@ -377,6 +546,25 @@ sees the types listed under that package.
 - `MCPProtocol` — the MCP method and notification names and version.
 
 ## `packages/TingraAppPlugInKit`
+
+The extension side of the app tier (see [PLUGINS.md](PLUGINS.md), "The
+model: two tiers, one plug-in"): what an app-tier plug-in links to add a pane,
+a command, a settings pane, a window, or a status bar reading to Tingra.app
+from its own sandboxed ExtensionKit process — or to be woken by a bus event it
+names. It holds the `Codable`
+descriptors, the activation conditions, and the `PlugInManifest` the app
+reads from an extension's Info.plist before the extension runs, the
+`TingraAppExtension` protocol an extension's `@main` type adopts (the kit owns
+the scenes, the connections, and the MCP handshake), and `PlugInConnection`,
+the extension's MCP client for calling the app's tools, filing events on the
+app's bus, reading and writing its project- and app-scoped storage, and
+following the app's meters and its program and preview video — the last as
+the app's own `IOSurface`s, which `BusMonitorView` draws with no copy. It
+imports ExtensionKit and SwiftUI — the one package in the engine family that
+does, because it *is* the UI-side kit for extensions — and is linked only by
+extensions and the app, never by the engine or the CLI. Deliberately no default
+main-actor isolation: XPC delivers on the connection's own queue, so the
+UI-facing types say `@MainActor` themselves.
 
 - `PaneID` — a pane's identifier: the plug-in id and a name.
 - `CommandID` — a command's identifier, unique within its plug-in.
@@ -427,6 +615,12 @@ An executable, so it exposes no public types; its surface is its subcommands —
 `devices`, `stream`, `probe`, `serve`, `mcp`, `plug-ins`, and `version` (see
 [CLI.md](CLI.md) for each one's options, output, and exit codes).
 
+It ships as the binary with the two kit
+frameworks beside it in `Frameworks/` (`TingraEventBus.framework`,
+`TingraPlugInKit.framework`), which Homebrew installs into `libexec`. The
+release is built by `xcodebuild` so that plug-in bundles built in Xcode bind to
+those frameworks (see [CLI.md](CLI.md), "Distribution").
+
 - `PlugInOptions` — the options every plug-in-loading command shares.
 - `PlugIns` — the `plug-ins` command: list, enable, and disable.
 - `PlugInSwitch` — turns one bundle on or off in `plug-ins.json`.
@@ -434,11 +628,55 @@ An executable, so it exposes no public types; its surface is its subcommands —
 
 ## `apps/ingest-simulator`
 
-No Swift target and no types: a pinned MediaMTX binary wrapped in `sim.sh`
-(`start | stop | status | verify`) with key-validating paths (see
-[SIMULATOR.md](SIMULATOR.md)).
+The local RTMP/SRT ingest server used for integration testing (see
+[SIMULATOR.md](SIMULATOR.md)): a pinned MediaMTX binary wrapped in
+`sim.sh` (`start | stop | status | verify`) with key-validating paths
+(`mediamtx.yml`, `keys.env`). Test-only — never linked into the product. The
+streaming integration scenarios run against it via `scripts/integration-test.sh`.
+
+No Swift target, so no types.
 
 ## `apps/tingra-app`
+
+The assembled SwiftUI/AppKit app (phase 3), scaffolded at roadmap step 6: it
+takes shape around the proven engine — a camera input and a display input
+composited by `TingraComposition` and shown live in an on-screen `MTKView`, the
+audio inputs mixed by `TingraAudio` into the program mix, and both streamed to
+an RTMP(S) destination through the same `TingraOutputPlugIns` HaishinKit output
+the CLI uses. A native Xcode project (`tingra-app.xcodeproj`, scheme
+`tingra-app`, product `Tingra.app`, module `TingraApp`) rather than an SPM
+package, so the bundle, the Info.plist usage descriptions, and a stable
+code signature are build settings rather than scripts — which is what lets one
+TCC grant for Screen Recording, Camera, and Microphone survive a rebuild. It
+links fifteen of the `packages/` libraries as local package references, among
+them `TingraJSONRPC`, `TingraMCP`, and `TingraAppPlugInKit` for the app tier,
+recording the program to a local file through the
+same `TingraRecordingPlugIns` `RecordingService` the CLI's `--record` drives, in
+its own session so it starts and stops independently of the stream. User-facing strings are
+localized (`Localizable.xcstrings`, en/de/es).
+
+The same project also builds the first-party **Notes** plug-in (`tingra-notes`,
+product `TingraNotes.appex`) as an ExtensionKit extension embedded in
+`Tingra.app/Contents/Extensions`: the app is the host of the app tier (see
+[PLUGINS.md](PLUGINS.md)) — it discovers extensions against its extension
+point, hosts their panes in the trailing sidebar and the Settings window, and
+speaks MCP to each over XPC — and Notes, linking `TingraAppPlugInKit` alone
+from its own sandboxed process, is the proof a third-party plug-in follows.
+The app embeds the two kit frameworks in `Contents/Frameworks`, which Notes
+loads from too. A third target, `tingra-fixture-plugin`, builds
+`FixturePlugIn.tingraplugin` for the tests alone — never embedded in the app —
+so the host tier's bundle loader is proven against a real bundle.
+
+To build a signed, runnable copy, copy `apps/tingra-app/Local.xcconfig.example`
+to `Local.xcconfig` (git-ignored) and set your own Apple Developer Team ID; the
+tracked project file carries no one's team, so an unsigned
+`CODE_SIGNING_ALLOWED=NO` build needs nothing at all.
+The app is not sandboxed and uses the hardened runtime instead, so
+`tingra-app/tingra-app.entitlements` grants camera and audio-input resource
+access plus `disable-library-validation` — the same combination
+`apps/tingra-cli` and `apps/tingra-cameras` need, and without which a camera's
+CMIOExtension never starts streaming. Notarizing the `.app` for release is
+deferred packaging, tracked alongside the CLI's distribution recipe.
 
 An app, so it exposes no public API beyond its `@main` entry; its internal
 surface is:
@@ -511,6 +749,14 @@ surface is:
   - `SnapshotPreferences` — where the snapshots folder persists.
   - `SnapshotMonitorMenu` — the Save Snapshot menu every monitor wears.
   - `SnapshotBadge` — the feedback badge a monitor shows.
+- **Monitor overlays** (`MonitorOverlays/`) — what a monitor draws for the
+  operator alone:
+  - `MonitorOverlayTarget` — the monitors whose overlays a project saves.
+  - `MonitorOverlayCatalog` — every registered monitor overlay, in menu order.
+  - `MonitorOverlayLineup` — the monitor overlays one monitor draws.
+  - `MonitorOverlayMenu` — a monitor's Overlays submenu.
+  - `MonitorOverlayMeters` — where a monitor's VU meters read their levels.
+  - `MonitorOverlaySettingsView` — the Overlay Settings window.
 - `StatusBarView` — the status bar: recording, on-air, and format readings.
 - `StatusBarCommands` — the View-menu Show/Hide Status Bar item, ⌘/.
 - `SidebarVisibilityCommands` — the View-menu Show/Hide Sidebar item, ⌃⌘S.
@@ -542,6 +788,7 @@ surface is:
 - `EditedShot` — the pure rule for which shot the layer editor follows.
 - `LayerTreeEdit` — the pure layer edit operations over a `Shot`.
 - `LayerHandlesOverlay` — direct manipulation of the selected layer.
+- `LayerHandleMirror` — maps the handles onto a mirrored monitor.
 - `LayerHandle` — one of the eight resize handles and the edges it moves.
 - `LayerFrameGesture` — the pure move, resize, and nudge geometry.
 - `LayerSnap` — the pure smart guides a dragged layer snaps onto.
@@ -578,6 +825,9 @@ surface is:
   - `ProgramStreamStopTool` — `program_stream_stop`.
   - `ProgramRecordStartTool` — `program_record_start`.
   - `ProgramRecordStopTool` — `program_record_stop`.
+  - `MonitorOverlayToolsPlugIn` — registers the monitor overlay tool.
+  - `MonitorOverlayControlling` — the seam the monitor overlay tool acts on.
+  - `MonitorOverlaySetTool` — `monitor_overlay_set`: an overlay on or off.
   - `AppPlugInHost` — discovers app-tier plug-ins and starts them on demand.
   - `AvailabilityCounts` — the enabled, disabled, and unapproved counts.
   - `DiscoveredPlugIn` — an extension identity with its manifest.
@@ -735,6 +985,26 @@ surface is:
 - `AppUptime` — the pure uptime wording the About pane prints.
 
 ## `apps/tingra-cameras`
+
+A standalone "Tingra Cameras" macOS app: a camera picker — a compact window with
+a camera pop-up over a live-camera preview over the camera's controls, or,
+switched to from the Window menu, a standard window with a sidebar listing the
+available cameras, a large preview, and the controls in a sidebar on the right.
+Each window shows its own camera. A native Xcode project
+(`tingra-cameras.xcodeproj`, single app target) that drives the engine packages
+(`TingraHost`, `TingraCapturePlugIns`) through the `Input` seam, and styled with the
+standard SwiftUI Liquid Glass look rather than any bespoke theme (see its own
+[CLAUDE.md](../apps/tingra-cameras/CLAUDE.md)). User-facing strings are localized
+(`Localizable.xcstrings`, en/de/es).
+
+It releases on its own version, separately from the engine. Install it with
+Homebrew, or download the disk image from a `cameras-v<x.y.z>` release and
+drag the app to Applications. It needs an Apple Silicon Mac running macOS 26
+(Tahoe) or later:
+
+```sh
+brew install --cask larryaasen/tingra/tingra-cameras
+```
 
 An app, so it exposes no public API beyond its `@main` entry; its internal
 surface is:

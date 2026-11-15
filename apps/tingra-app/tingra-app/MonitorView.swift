@@ -183,6 +183,11 @@ struct MonitorView: NSViewRepresentable {
     /// operator glances at.
     var maximumFramesPerSecond: Int?
 
+    /// The monitor overlays drawn over the fitted picture (ARCHITECTURE.md,
+    /// "Monitor overlays"): the project's choices for this monitor, and
+    /// nothing for a monitor without any (a shot bank tile, a layer row).
+    var overlays: MonitorOverlayLineup = .none
+
     /// The rate a thumbnail tile samples at: enough to read as live, a
     /// quarter of a 60 Hz display's refreshes and an eighth of a ProMotion
     /// display's.
@@ -240,6 +245,7 @@ struct MonitorView: NSViewRepresentable {
     /// input (found on the Library's first use, 2026-09-10).
     func updateNSView(_ nsView: MTKView, context: Context) {
         context.coordinator.source = source
+        context.coordinator.overlays = overlays
         nsView.layer?.cornerRadius = cornerRadius
         nsView.preferredFramesPerSecond = Self.framesPerSecond(maximum: maximumFramesPerSecond)
     }
@@ -269,6 +275,11 @@ struct MonitorView: NSViewRepresentable {
         /// input's last frame.
         var source: any MonitorFrameSource
 
+        /// The monitor overlays drawn over the picture, replaced by
+        /// ``MonitorView/updateNSView(_:context:)`` when the project's
+        /// choices change.
+        var overlays: MonitorOverlayLineup = .none
+
         /// The device, queue, and Core Image context shared by every
         /// monitor in the app.
         private let renderContext = MonitorRenderContext.shared
@@ -286,6 +297,17 @@ struct MonitorView: NSViewRepresentable {
         /// nothing new to show and skips the draw.
         private var drawnPictureState: (any Equatable)?
 
+        /// The overlays drawn with ``drawnPictureState``: the half of the
+        /// drawn state the source cannot know, so a refresh after an overlay
+        /// is turned on or off draws again even though the picture has not
+        /// changed (ARCHITECTURE.md, "Monitor overlays").
+        private var drawnOverlays: MonitorOverlayLineup?
+
+        /// The audio levels drawn with ``drawnPictureState``: empty unless an
+        /// overlay meters the monitor's sound, so only then does a change in
+        /// the sound draw a still picture again.
+        private var drawnAudioLevels: [MonitorOverlayContext.AudioLevel] = []
+
         /// Creates a coordinator sampling the given source.
         init(source: any MonitorFrameSource) {
             self.source = source
@@ -295,6 +317,7 @@ struct MonitorView: NSViewRepresentable {
         /// at its new size even though the source has not changed.
         func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {
             drawnPictureState = nil
+            drawnOverlays = nil
         }
 
         /// Renders the source's current frame, aspect-fit and centered, into
@@ -317,10 +340,17 @@ struct MonitorView: NSViewRepresentable {
         func draw(in view: MTKView) {
             guard let commandQueue = renderContext.commandQueue else { return }
             let pictureState = source.pictureState
-            if let drawnPictureState, Self.isEqual(pictureState, drawnPictureState) { return }
+            let audioLevels = overlays.audioLevels()
+            if let drawnPictureState, Self.isEqual(pictureState, drawnPictureState), drawnOverlays == overlays,
+                drawnAudioLevels == audioLevels
+            {
+                return
+            }
             guard let pixelBuffer = source.latest else {
                 if clearIfNeeded(view, commandQueue: commandQueue) {
                     drawnPictureState = pictureState
+                    drawnOverlays = overlays
+                    drawnAudioLevels = audioLevels
                 }
                 return
             }
@@ -345,6 +375,15 @@ struct MonitorView: NSViewRepresentable {
                     )
                 )
             let bounds = CGRect(origin: .zero, size: target)
+            let fitted = image.transformed(by: transform)
+            // The monitor overlays draw after the fit, at the drawable's
+            // resolution, and only here: nothing they draw reaches the
+            // program or a snapshot, which reads the source, not this.
+            // They get the picture before the black goes under it, so Show
+            // Alpha can show the frame's transparency.
+            let pictureRect = CGRect(
+                x: (target.width - scaledWidth) / 2, y: (target.height - scaledHeight) / 2,
+                width: scaledWidth, height: scaledHeight)
             // Over opaque black covering the whole drawable: Core Image
             // writes only where the image has pixels, and a drawable is
             // reused from the swap chain, so a picture smaller than the
@@ -352,11 +391,14 @@ struct MonitorView: NSViewRepresentable {
             // transparent pixels (a Frame's rounded corners) would
             // otherwise leave the previous draws showing through as
             // ghosts. Every pixel is now defined on every draw.
-            let fitted = image.transformed(by: transform)
-                .composited(over: CIImage(color: CIColor(red: 0, green: 0, blue: 0)).cropped(to: bounds))
+            let drawn = overlays.render(
+                over: fitted, canvasSize: source.size, pictureRect: pictureRect, drawableRect: bounds,
+                backingScale: view.bounds.width > 0 ? target.width / view.bounds.width : 1, audioLevels: audioLevels
+            )
+            .composited(over: CIImage(color: CIColor(red: 0, green: 0, blue: 0)).cropped(to: bounds))
 
             renderContext.ciContext.render(
-                fitted,
+                drawn,
                 to: drawable.texture,
                 commandBuffer: commandBuffer,
                 bounds: bounds,
@@ -366,6 +408,8 @@ struct MonitorView: NSViewRepresentable {
             commandBuffer.commit()
             hasPresentedFrame = true
             drawnPictureState = pictureState
+            drawnOverlays = overlays
+            drawnAudioLevels = audioLevels
         }
 
         /// Presents one drawable holding only the view's clear color, if a
@@ -431,7 +475,10 @@ struct MonitorTile<Overlay: View>: View {
     /// "Tally"). The main window's two monitors pass nil: their position
     /// and their labels already say which bus is which, so a border would
     /// carry no information there. Multiview tiles are interchangeable, so
-    /// the border is what makes an on-air input findable at a glance.
+    /// the border is what makes an on-air input findable at a glance. The
+    /// bus monitors' tally edge, when the operator wants one, is the Tally
+    /// Border monitor overlay instead, drawn into the picture through
+    /// ``overlays``.
     var borderTint: Color?
 
     /// A state badge shown opposite the label, or nil for none — the
@@ -464,6 +511,13 @@ struct MonitorTile<Overlay: View>: View {
     /// a project setting").
     let aspectRatio: Double
 
+    /// The monitor overlays drawn into the picture (ARCHITECTURE.md,
+    /// "Monitor overlays"): the program and preview monitors, the input
+    /// tiles, and the layer monitor pass their choices
+    /// (``EngineModel/monitorOverlayLineup(for:tally:)``); the shot bank
+    /// and the layer rows draw none.
+    var monitorOverlays: MonitorOverlayLineup = .none
+
     /// Interactive content drawn over the video — the layer handles the
     /// main window's monitors carry (``LayerHandlesOverlay``). It sits on
     /// the fitted program-shaped rect, *inside* the tile's flexible frame,
@@ -483,6 +537,8 @@ struct MonitorTile<Overlay: View>: View {
     ///   - cornerRadius: The picture's corner radius (default 8).
     ///   - maximumFramesPerSecond: The most samples a second, or nil for the
     ///     display's rate (default).
+    ///   - monitorOverlays: The monitor overlays drawn into the picture
+    ///     (default: none).
     ///   - overlay: The content drawn over the fitted video rect.
     init(
         source: any MonitorFrameSource,
@@ -493,6 +549,7 @@ struct MonitorTile<Overlay: View>: View {
         statusBadge: Text? = nil,
         cornerRadius: CGFloat = 8,
         maximumFramesPerSecond: Int? = nil,
+        monitorOverlays: MonitorOverlayLineup = .none,
         @ViewBuilder overlay: @escaping () -> Overlay
     ) {
         self.source = source
@@ -503,43 +560,47 @@ struct MonitorTile<Overlay: View>: View {
         self.statusBadge = statusBadge
         self.cornerRadius = cornerRadius
         self.maximumFramesPerSecond = maximumFramesPerSecond
+        self.monitorOverlays = monitorOverlays
         self.overlay = overlay
     }
 
     /// The monitor: video (rounded on its own layer — see
     /// ``MonitorView/cornerRadius``), its overlay, tally border, then badge.
     var body: some View {
-        MonitorView(source: source, cornerRadius: cornerRadius, maximumFramesPerSecond: maximumFramesPerSecond)
-            .aspectRatio(aspectRatio, contentMode: .fit)
-            .overlay { overlay() }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(.black)
-            .clipShape(.rect(cornerRadius: cornerRadius))
-            .overlay {
-                if let borderTint {
-                    RoundedRectangle(cornerRadius: cornerRadius).strokeBorder(borderTint, lineWidth: 3)
-                }
+        MonitorView(
+            source: source, cornerRadius: cornerRadius, maximumFramesPerSecond: maximumFramesPerSecond,
+            overlays: monitorOverlays
+        )
+        .aspectRatio(aspectRatio, contentMode: .fit)
+        .overlay { overlay() }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(.black)
+        .clipShape(.rect(cornerRadius: cornerRadius))
+        .overlay {
+            if let borderTint {
+                RoundedRectangle(cornerRadius: cornerRadius).strokeBorder(borderTint, lineWidth: 3)
             }
-            .overlay(alignment: .topLeading) {
-                if let label {
-                    label
-                        .font(.caption.weight(.semibold))
-                        .padding(6)
-                        .background(badgeTint.opacity(0.85), in: .capsule)
-                        .foregroundStyle(.white)
-                        .padding(8)
-                }
+        }
+        .overlay(alignment: .topLeading) {
+            if let label {
+                label
+                    .font(.caption.weight(.semibold))
+                    .padding(6)
+                    .background(badgeTint.opacity(0.85), in: .capsule)
+                    .foregroundStyle(.white)
+                    .padding(8)
             }
-            .overlay(alignment: .topTrailing) {
-                if let statusBadge {
-                    statusBadge
-                        .font(.caption.weight(.semibold))
-                        .padding(6)
-                        .background(.red.opacity(0.85), in: .capsule)
-                        .foregroundStyle(.white)
-                        .padding(8)
-                }
+        }
+        .overlay(alignment: .topTrailing) {
+            if let statusBadge {
+                statusBadge
+                    .font(.caption.weight(.semibold))
+                    .padding(6)
+                    .background(.red.opacity(0.85), in: .capsule)
+                    .foregroundStyle(.white)
+                    .padding(8)
             }
+        }
     }
 }
 
@@ -557,6 +618,8 @@ extension MonitorTile where Overlay == EmptyView {
     ///   - cornerRadius: The picture's corner radius (default 8).
     ///   - maximumFramesPerSecond: The most samples a second, or nil for the
     ///     display's rate (default).
+    ///   - monitorOverlays: The monitor overlays drawn into the picture
+    ///     (default: none).
     init(
         source: any MonitorFrameSource,
         label: Text?,
@@ -565,11 +628,13 @@ extension MonitorTile where Overlay == EmptyView {
         borderTint: Color? = nil,
         statusBadge: Text? = nil,
         cornerRadius: CGFloat = 8,
-        maximumFramesPerSecond: Int? = nil
+        maximumFramesPerSecond: Int? = nil,
+        monitorOverlays: MonitorOverlayLineup = .none
     ) {
         self.init(
             source: source, label: label, badgeTint: badgeTint, aspectRatio: aspectRatio, borderTint: borderTint,
-            statusBadge: statusBadge, cornerRadius: cornerRadius, maximumFramesPerSecond: maximumFramesPerSecond
+            statusBadge: statusBadge, cornerRadius: cornerRadius, maximumFramesPerSecond: maximumFramesPerSecond,
+            monitorOverlays: monitorOverlays
         ) {
             EmptyView()
         }

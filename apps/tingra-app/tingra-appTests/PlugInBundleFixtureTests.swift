@@ -68,23 +68,29 @@ struct PlugInBundleFixtureTests {
     }
 
     /// A context over fresh registries and the given bus.
-    private func context(eventBus: EventBus, inputs: InputRegistry) -> PlugInContext {
+    private func context(
+        eventBus: EventBus, inputs: InputRegistry, monitorOverlays: MonitorOverlayRegistry = MonitorOverlayRegistry()
+    ) -> PlugInContext {
         PlugInContext(
             eventBus: eventBus, clock: HostClock(), inputs: inputs, outputs: OutputRegistry(),
-            effects: EffectRegistry(), tools: ToolRegistry())
+            effects: EffectRegistry(), tools: ToolRegistry(), media: UnavailableMediaRegistry(),
+            monitorOverlays: monitorOverlays)
     }
 
-    @Test("the fixture loads through the production loader and its input lands in the host's registry")
+    @Test(
+        "the fixture loads through the production loader and its input and monitor overlay land in the host's registries"
+    )
     func fixtureLoadsAndActivates() async throws {
         let folder = try stagedFolder(codesignArguments: ["--sign", "-", "--force"])
         defer { try? FileManager.default.removeItem(at: folder) }
         let eventBus = EventBus()
         let events = eventBus.events()
         let inputs = InputRegistry()
+        let monitorOverlays = MonitorOverlayRegistry()
 
         let activated = await PlugInLoader().activate(
             [], thenBundlesFrom: PlugInBundleLoader(folders: [folder], stateDirectory: stateDirectory(in: folder)),
-            in: context(eventBus: eventBus, inputs: inputs)
+            in: context(eventBus: eventBus, inputs: inputs, monitorOverlays: monitorOverlays)
         ).activated
         eventBus.shutdown()
         var received: [EventBusEvent] = []
@@ -94,6 +100,8 @@ struct PlugInBundleFixtureTests {
 
         #expect(activated.map(\.id.rawValue) == [fixtureID])
         #expect(await inputs.allInputs.map(\.id.rawValue) == ["com.moonwink.tingra.fixture.input"])
+        #expect(
+            await monitorOverlays.allProviders.map(\.id.rawValue) == ["com.moonwink.tingra.fixture.overlay"])
         #expect(received.filter { $0.name == "plugin.bundle" }.isEmpty)
         let activation = received.first { $0.name == "plugin.activated" }
         #expect(activation?.params?["id"] == .string(fixtureID))

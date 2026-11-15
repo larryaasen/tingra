@@ -357,6 +357,7 @@ Every `error` event the CLI emits carries a stable, machine-readable `identifier
 | `destinationAmbiguous` | — | A `destination` name selector matches more than one saved destination; the message lists the matches. MCP-only on the same terms as `destinationNotFound`. |
 | `shotNotFound` | — | No shot of the active preset matches a `shot` selector on the app's program tools (`shot_take`, `preview_set`; MCP.md, "Resources and the program tools"); the message points at the `tingra://program` resource. MCP-only, and app-only: no CLI command addresses a shot. |
 | `shotAmbiguous` | — | A `shot` name selector matches more than one shot of the active preset; the message lists the matches. MCP-only on the same terms as `shotNotFound`. |
+| `monitorOverlayNotFound` | — | No registered monitor overlay matches the `overlay` selector of the app's `monitor_overlay_set` tool, or a name matches two; the message lists every overlay's id and name. MCP-only, and app-only: no CLI command has a monitor. |
 
 ### `tingra-cli serve` and `tingra-cli mcp`
 
