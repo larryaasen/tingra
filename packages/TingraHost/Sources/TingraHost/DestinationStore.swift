@@ -71,7 +71,7 @@ public struct StoredDestination: Sendable, Equatable, Codable, Identifiable {
 
 /// A failure from ``DestinationStore``. Every case is recoverable and
 /// developer/agent-facing — the store never crashes the host over a bad file
-/// or a Keychain hiccup (CLAUDE.md, never-crash rule) — and no case carries a
+/// or a Keychain hiccup (the never-crash rule) — and no case carries a
 /// stream key or any part of one.
 public enum DestinationStoreError: Error, Equatable, CustomStringConvertible {
     /// No saved destination matches the selector.
@@ -173,7 +173,7 @@ extension DestinationStoreError: IdentifiedError {}
 /// the app, the CLI, and the MCP daemon — resolves "my Twitch" against
 /// (DESTINATIONS.md).
 ///
-/// A **host service**, not a plug-in, by the boundary test in CLAUDE.md:
+/// A **host service**, not a plug-in, by the boundary test:
 /// removing it breaks destination resolution for every surface, not one
 /// capability. It sits in Platform/Infrastructure beside ``SecureStorage``,
 /// which it builds on.

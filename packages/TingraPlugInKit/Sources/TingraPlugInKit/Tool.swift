@@ -44,8 +44,8 @@ public struct ToolError: Error, Equatable, Sendable {
 /// first-party tools register through the same path a third party will use,
 /// so the agent-facing API and the plug-in API stay the same shape.
 ///
-/// A tool's `name` and its input schema are a stable scripting contract
-/// (see the Data Models rules in CLAUDE.md): append-only, camelCase result
+/// A tool's `name` and its input schema are a stable scripting contract:
+/// append-only, camelCase result
 /// keys, never renamed casually. A rename is a breaking change.
 public protocol Tool: Sendable {
     /// The tool's machine name, unique in the registry, e.g. `devices_list`

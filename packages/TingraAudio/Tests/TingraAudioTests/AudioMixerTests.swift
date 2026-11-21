@@ -38,7 +38,7 @@ private struct SyntheticClock: EngineClock {
 
 /// A trivial audio input that yields scripted PCM buffers then finishes,
 /// standing in for a microphone under a synthetic clock — no hardware, no
-/// TCC (CLAUDE.md, Testing).
+/// TCC.
 private final class FakeAudioInput: Input, Sendable {
     let id: InputID
     let name: String

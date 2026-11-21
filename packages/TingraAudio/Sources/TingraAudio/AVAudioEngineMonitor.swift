@@ -103,7 +103,7 @@ public actor AVAudioEngineMonitor: AudioMonitor {
 
     /// Installs the Core Audio listener that reports device-list changes, so
     /// a connected or disconnected device reaches the caller as an event
-    /// rather than through a poll loop (CLAUDE.md). Installed once, on the
+    /// rather than through a poll loop. Installed once, on the
     /// first ``deviceUpdates()`` consumer.
     private func installDeviceListenerIfNeeded() {
         guard !isListeningForDevices else { return }

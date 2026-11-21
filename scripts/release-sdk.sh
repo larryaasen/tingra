@@ -109,7 +109,7 @@ tools_version() {
 }
 
 # Reads the Xcode version the SDK's workflow pins with DEVELOPER_DIR: the
-# toolchain floor (CLAUDE.md, "Toolchain & CI"), and the one place it is set.
+# toolchain floor, and the one place it is set.
 toolchain_floor() {
     sed -nE 's|.*DEVELOPER_DIR: /Applications/Xcode_([0-9.]+)\.app/.*|\1|p' "$WORKFLOW" | sed -n 1p
 }

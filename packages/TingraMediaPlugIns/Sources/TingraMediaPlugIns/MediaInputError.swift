@@ -11,7 +11,7 @@ import CoreVideo
 import Foundation
 
 /// Errors a media input throws from ``Input/start()`` — all recoverable,
-/// all descriptive, per the never-crash rule (CLAUDE.md). A file that
+/// all descriptive, per the never-crash rule. A file that
 /// cannot be played is reported and its layers contribute nothing; it
 /// never takes down the host.
 public enum MediaInputError: Error, Equatable {

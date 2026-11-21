@@ -18,7 +18,7 @@ These stand, and this plan builds on them rather than reopening them:
 
 - **`Tingra.app` bundles the CLI; one Homebrew cask; the `tingra-cli` formula stays as the headless path** (decided 2026-07-11; DONE.md).
 - **A bare helper in `Contents/MacOS` is not an option.** A provisioning profile belongs to a bundle's main executable, so a helper beside it is SIGKILLed at `exec` exactly as `tingra-cli` v0.1.1 was. The daemon joins the keychain group only as its own bundle with its own profile (DESTINATIONS.md, "What the probe measured").
-- **Identifiers live under `com.moonwink.tingra.*`**, the app is `com.moonwink.tingra.app`, and nothing personal to one developer is committed (CLAUDE.md, "Signing").
+- **Identifiers live under `com.moonwink.tingra.*`**, the app is `com.moonwink.tingra.app`, and nothing personal to one developer is committed (AGENTS.md, "Signing").
 - **Apple Silicon only, macOS 15.0+, Developer ID signed with the hardened runtime, notarized, not sandboxed.**
 
 ## What makes the app harder than the CLI
@@ -56,7 +56,7 @@ The CLI release signs one bare Mach-O and two frameworks with `codesign`. The ap
 
 **9. No updater in the first release.** The cask is the update path (`brew upgrade --cask tingra`); a direct download is replaced by hand. An updater is a later decision of its own. The likely answer is Sparkle behind an app-only seam, under design principle 4 (adopt the thankless parts), since a self-replacing signed app is security work Tingra should not write. It is not decided here, and nothing in slice 1 forecloses it: Sparkle consumes the same signed disk image.
 
-**10. The deployment floor stays at macOS 15.0.** CLAUDE.md, "Platform Support" says to revisit the app's floor when phase 3 begins. The app builds and runs there today, so nothing argues for raising it.
+**10. The deployment floor stays at macOS 15.0.** AGENTS.md, "Platform Support" says to revisit the app's floor when phase 3 begins. The app builds and runs there today, so nothing argues for raising it.
 
 **11. The logo is not a gate.** TODO.md, "Tingra needs a logo" stays open. A 0.x release ships with whatever `AppIcon` holds; the disk image has no artwork to redo when the mark arrives.
 
@@ -83,7 +83,7 @@ Run on Larry's Mac with his Developer ID identity, before any script is written.
 
 **The certificate expires on 2027-02-01, and the profile goes with it.** A profile names the certificate it was issued for, so the 2044 date is not the one that matters: on renewing the Developer ID Application certificate, regenerate this profile against the new one and replace the `TINGRA_APP_PROFILE` secret in the same sitting. Apps already signed and timestamped keep running past the expiry; only new signing stops. `packaging/README.md`'s rotation recipe gains this step when the secret is added.
 
-**Row B, first half, 2026-10-13: the Release configuration did not link, and now does.** The first `xcodebuild archive` stopped at the linker with libsrt's symbols undefined *for x86_64*. An archive builds for a generic Mac destination, so a Release build without an explicit architecture is universal, and the prebuilt libsrt HaishinKit's SRT output carries is arm64 only. Nothing had built that way before: every development and test build names `arch=arm64` in its destination. `ARCHS = arm64` in `Tingra.xcconfig` makes the project say what CLAUDE.md already required, for every target and configuration. With it, both archives build:
+**Row B, first half, 2026-10-13: the Release configuration did not link, and now does.** The first `xcodebuild archive` stopped at the linker with libsrt's symbols undefined *for x86_64*. An archive builds for a generic Mac destination, so a Release build without an explicit architecture is universal, and the prebuilt libsrt HaishinKit's SRT output carries is arm64 only. Nothing had built that way before: every development and test build names `arch=arm64` in its destination. `ARCHS = arm64` in `Tingra.xcconfig` makes the project say what AGENTS.md already required, for every target and configuration. With it, both archives build:
 
 - **Development-signed** (automatic signing, `Local.xcconfig` present): arm64 only, the hardened runtime, the keychain group in its entitlements, a development profile embedded, Notes in `Contents/Extensions`, both kit frameworks, no fixture, no coverage section, and `--version` prints `0.1.4-dev`.
 - **Unsigned** (`CODE_SIGNING_ALLOWED=NO`, the CI shape): the same contents, but the linker's ad-hoc signature carries **no entitlements**. Whether the export restores them from the project or ships without them is the second half of row B.
@@ -136,7 +136,7 @@ Not designed here; recorded so slice 1 does nothing that blocks it.
 5. `scripts/release-app-package.sh`, run unsigned and then signed on Larry's Mac.
 6. The renames of decision 7; the publish step uploads the image and renders the cask; `packaging/homebrew/tingra.rb`.
 7. `release.yml`: the profile secret, the app packaging step. `format-test.yml` is unchanged.
-8. Docs in the same change: CLAUDE.md (scripts, workflows, the build table), CLI.md "Distribution" (the shared version and the renamed scripts), `packaging/README.md` (the profile secret and its rotation), README.md (installing the app).
+8. Docs in the same change: AGENTS.md (scripts, workflows, the build table), CLI.md "Distribution" (the shared version and the renamed scripts), `packaging/README.md` (the profile secret and its rotation), README.md (installing the app).
 9. Larry: add the `TINGRA_APP_PROFILE` secret; cut 0.2.0; verify from a consumer's position with `brew install --cask`.
 
 ## The decisions, as approved 2026-10-13
@@ -170,7 +170,7 @@ Measured 2026-10-31: `xcodebuild archive` with `CODE_SIGNING_ALLOWED=NO`, into t
 - **Its identity is unfinished:** `com.moonwink.tingra-cameras`, version `1.0`, build `1`, minimum system `26.5`.
 - **It has no icon.** `AppIcon.appiconset` holds only `Contents.json`.
 - **Archiving warns** that no App Category is set.
-- **CI never builds it.** `format-test.yml` builds `apps/tingra-cli` and `apps/tingra-app` but not this app, though CLAUDE.md says every app gets a warning-clean build. The project also has no test target, so the test command in its `CLAUDE.md` has nothing to run.
+- **CI never builds it.** `format-test.yml` builds `apps/tingra-cli` and `apps/tingra-app` but not this app, though AGENTS.md says every app gets a warning-clean build. The project also has no test target, so the test command in its `AGENTS.md` has nothing to run.
 
 ## The decisions
 
@@ -184,7 +184,7 @@ Measured 2026-10-31: `xcodebuild archive` with `CODE_SIGNING_ALLOWED=NO`, into t
 
 **C5. `ARCHS = arm64` in this app's `Tingra.xcconfig`,** as in Tingra.app's, and an `LSApplicationCategoryType` of `public.app-category.video` to clear the archive warning.
 
-**C6. The floor is macOS 26.0, not 26.5.** `.glassEffect` sets the floor at 26, which this app's `CLAUDE.md` already states. Nothing found in the code asks for 26.5, and the compiler will name anything that does. Unlike Tingra.app (Decision 10), this app keeps a higher floor than the engine's macOS 15.
+**C6. The floor is macOS 26.0, not 26.5.** `.glassEffect` sets the floor at 26, which this app's `AGENTS.md` already states. Nothing found in the code asks for 26.5, and the compiler will name anything that does. Unlike Tingra.app (Decision 10), this app keeps a higher floor than the engine's macOS 15.
 
 **C7. Xcode signs, as row B established:** archive with manual signing and the Developer ID Application identity, then export with the `developer-id` method. An unsigned archive records no entitlements, so export would ship an app without camera access. There is no profile, so no `PROVISIONING_PROFILE_SPECIFIER` and no new secret. The Developer ID certificate's 2027-02-01 expiry applies, but with nothing to regenerate.
 
@@ -210,7 +210,7 @@ Measured 2026-10-31: `xcodebuild archive` with `CODE_SIGNING_ALLOWED=NO`, into t
 
 **`ARCHS` in the xcconfig does not reach the kits (amends C5).** A project's xcconfig applies to its own targets, not to Swift package targets, so the archive's app was arm64 while both kit frameworks stayed `x86_64 arm64`. Passing `ARCHS=arm64` on the `xcodebuild archive` command line makes all three arm64, so **the packaging script must pass it**, keeping the xcconfig line for ordinary builds. Decision 8 asserts the same for Tingra.app and has the same exposure: row B's "arm64 only" may have read only the app's binary. Check the kits there too.
 
-**The Team ID came out of the project file.** Both project-level configurations carried a literal `DEVELOPMENT_TEAM`, which CLAUDE.md forbids and which overrode the xcconfig's `$(TINGRA_DEVELOPMENT_TEAM)`. The commit that last re-added it is 82b9582, so it is in the public history. Xcode re-adds this line when a team is picked in the Signing tab, so watch for it in diffs.
+**The Team ID came out of the project file.** Both project-level configurations carried a literal `DEVELOPMENT_TEAM`, which AGENTS.md forbids and which overrode the xcconfig's `$(TINGRA_DEVELOPMENT_TEAM)`. The commit that last re-added it is 82b9582, so it is in the public history. Xcode re-adds this line when a team is picked in the Signing tab, so watch for it in diffs.
 
 **C13, 2026-11-01.** Both apps' `AppIcon` sets now hold their icon, every size scaled from the masters in `docs/logos`. The masters are opaque, full-bleed squares, and macOS 26 masked both when asked for the built bundles' icons. **macOS 15 is unchecked:** Tingra.app's floor is lower than the system that adds the mask, so its icon may show as a hard-edged square there. Check on a macOS 15 install before Tingra.app ships. Tingra Cameras needs macOS 26, so it is not exposed.
 
@@ -303,5 +303,5 @@ Checksums of `~/Library/Application Support/Tingra` taken before row E match the
 5. ~~C10: `release-app-package.sh`, run unsigned and then signed on Larry's Mac.~~ Built 2026-11-06; see "Built so far".
 6. ~~C9, C10: the cask template, `release-cameras.sh`, and `release-cameras.yml`.~~ Built 2026-11-07; see "Built so far". First run against GitHub for 0.1.0, item 9.
 7. ~~C12: the CI build.~~ Built 2026-11-07: `format-test.yml`'s `cameras` job builds the app unsigned and warning-clean, so every release's gate builds it too.
-8. ~~Docs in the same changes: root and app `CLAUDE.md` (scripts, workflows, the build table), `packaging/README.md`, README.md (installing it), and `apps/tingra-cameras/CLAUDE.md`'s test command.~~ Done 2026-11-07. The app's `CLAUDE.md` now says it has no test target and points at `TingraHost`'s tests.
+8. ~~Docs in the same changes: root and app `AGENTS.md` (scripts, workflows, the build table), `packaging/README.md`, README.md (installing it), and `apps/tingra-cameras/AGENTS.md`'s test command.~~ Done 2026-11-07. The app's `AGENTS.md` now says it has no test target and points at `TingraHost`'s tests.
 9. ~~Larry: cut 0.1.0; verify from a consumer's position with `brew install --cask larryaasen/tingra/tingra-cameras`.~~ Released and installed 2026-11-07; see "Built so far".

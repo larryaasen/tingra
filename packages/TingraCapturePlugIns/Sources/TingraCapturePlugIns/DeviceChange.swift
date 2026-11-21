@@ -12,7 +12,7 @@ import TingraEventBus
 import TingraPlugInKit
 
 /// One device connection or disconnection, as observed by the capture
-/// plug-in — a normal event, never an error (CLAUDE.md, Data Flow Rules).
+/// plug-in — a normal event, never an error.
 struct DeviceChange: Sendable, Equatable {
     /// Which way the device went.
     enum Kind: Sendable {
@@ -34,8 +34,7 @@ struct DeviceChange: Sendable, Equatable {
 /// each change as a `device.connected` / `device.disconnected` event on
 /// the bus — the events `stream` sessions and `devices --watch` both
 /// consume (CLI.md). Event driven end to end: the production stream is
-/// AVFoundation's connect/disconnect notifications, never polling
-/// (CLAUDE.md, General Guidelines).
+/// AVFoundation's connect/disconnect notifications, never polling.
 struct DeviceEventReporter: Sendable {
     /// The changes to report; injected so tests script the timeline.
     private let changes: AsyncStream<DeviceChange>

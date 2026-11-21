@@ -249,7 +249,7 @@ final class CaptureEngine {
                 runningCameras[input.id.rawValue] = nil
             }
             if !(error is CancellationError) {
-                // Report the failure on the bus (CLAUDE.md: report errors as
+                // Report the failure on the bus (report errors as
                 // `error` events; code never logs directly) in addition to
                 // the windows' previews, so a denied/unavailable camera is
                 // visible in the console, not just silently reflected.
@@ -366,7 +366,7 @@ final class CaptureEngine {
 
     /// Rebuilds the device lists from the registry whenever a device
     /// connects or disconnects — a normal event, never an error, and never a
-    /// poll loop (CLAUDE.md; the capture plug-in keeps the registry current).
+    /// poll loop (the capture plug-in keeps the registry current).
     private func startObservingDeviceChanges() {
         guard deviceEventsTask == nil else { return }
         deviceEventsTask = Task { [weak self] in

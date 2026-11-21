@@ -64,7 +64,7 @@ struct PrivateAggregateTests {
 
     @Test("a composition carrying something unreadable in the private slot is kept")
     func unreadableFlagIsKept() {
-        // Never crash the host over a device property (CLAUDE.md): an
+        // Never crash the host over a device property: an
         // unexpected value means "not known to be private", which keeps a
         // real device visible rather than hiding it.
         #expect(!AVAudioEngineMonitor.isPrivateComposition([privateKey: "yes"]))

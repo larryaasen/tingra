@@ -16,7 +16,7 @@ import Foundation
 /// four GLOSSARY.md transition kinds.
 ///
 /// A plain `Codable` value type — the same project-file contract as
-/// ``Preset``/``Shot`` (CLAUDE.md, "Data Models"): stable camelCase keys, so
+/// ``Preset``/``Shot``: stable camelCase keys, so
 /// a transition round-trips exactly wherever it is persisted — a shot's
 /// ``Shot/defaultTransition``. ``Compositor/take(shotID:transition:)`` still
 /// takes one directly per call; resolving a shot's default against an

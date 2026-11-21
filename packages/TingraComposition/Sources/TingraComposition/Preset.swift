@@ -33,8 +33,8 @@ public struct PresetID: RawRepresentable, Hashable, Sendable, Codable {
 /// holds the shots the operator cuts among on program.
 ///
 /// A preset is a plain `Codable` value type — it is the persisted document,
-/// so its JSON keys are a stable project / scripting contract (CLAUDE.md,
-/// "Data Models") and it round-trips exactly. It deliberately holds no
+/// so its JSON keys are a stable project / scripting contract
+/// and it round-trips exactly. It deliberately holds no
 /// "active shot": which shot is currently on program is live **session**
 /// state owned by the ``Compositor`` (GLOSSARY.md, "Session"), not part of the
 /// saved document. Loading a preset (``Compositor/loadPreset(_:)``) never

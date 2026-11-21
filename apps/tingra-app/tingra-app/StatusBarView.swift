@@ -257,7 +257,7 @@ struct StatusBarView: View {
     /// How long the current recording has been rolling.
     ///
     /// A once-a-second redraw of a label — the ``RecordingPanel`` timeline,
-    /// and never a poll of engine state (CLAUDE.md): the start instant comes
+    /// and never a poll of engine state: the start instant comes
     /// from the model, and only the *clock* ticks. It exists only while a
     /// recording does, so an idle app redraws nothing.
     private var elapsedTime: some View {

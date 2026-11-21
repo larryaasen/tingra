@@ -29,7 +29,7 @@ struct CaptureDevice: Sendable, Equatable {
 ///
 /// Public so front ends (the CLI's `stream`) can map the cases to their
 /// stable error identifiers. Device disconnection after a successful start
-/// is a normal event, never an error (CLAUDE.md, Data Flow Rules).
+/// is a normal event, never an error.
 public enum CaptureInputError: Error, Equatable {
     /// TCC denied access to the device's kind (camera, microphone, or
     /// display and window — Screen Recording).

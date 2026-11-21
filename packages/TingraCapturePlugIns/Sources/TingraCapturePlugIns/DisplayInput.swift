@@ -44,7 +44,7 @@ import TingraPlugInKit
 /// the capture itself is injected (``DisplayCaptureStarter``), so the
 /// interruption and resume rules are unit-tested without ScreenCaptureKit
 /// or the Screen Recording TCC prompt; the real capture is a hardware path
-/// and gets this seam, not unit tests (CLAUDE.md, Testing).
+/// and gets this seam, not unit tests.
 final class DisplayInput: Input, Sendable {
     /// The discovered display this input captures from.
     private let display: DisplayDevice
@@ -215,8 +215,7 @@ final class DisplayInput: Input, Sendable {
                             // The display left, and a wake arrived with its
                             // leaving, as one does for most disconnections.
                             // The plug-in reports `device.disconnected`; a
-                            // disconnection is never an error (CLAUDE.md,
-                            // Data Flow Rules).
+                            // disconnection is never an error.
                         } catch {
                             report.resumeFailed(error)
                         }
@@ -275,8 +274,8 @@ final class DisplayInput: Input, Sendable {
             ["id": .string(id.rawValue), "name": .string(name)]
         }
 
-        /// The capture stopped — a normal event, like a disconnection
-        /// (CLAUDE.md, Data Flow Rules): the layer holds its last frame.
+        /// The capture stopped — a normal event, like a disconnection:
+        /// the layer holds its last frame.
         ///
         /// - Parameters:
         ///   - reason: Why: `displaySleep`, `streamStopped`, or

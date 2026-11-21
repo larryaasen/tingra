@@ -38,8 +38,7 @@ import TingraPlugInKit
 ///    — the session's reconnect machinery therefore does not fire on an SRT
 ///    outage in this iteration. Deferred, recorded in DONE.md; SRT's own ARQ
 ///    retransmission already rides out ordinary packet loss below this layer,
-///    so the gap is only the hard-timeout case. Never a poll loop
-///    (CLAUDE.md).
+///    so the gap is only the hard-timeout case. Never a poll loop.
 /// 3. **No frame-rate counter in the library.** `SRTStream` exposes no
 ///    `currentFPS`, so this service counts video appends itself and derives
 ///    the rate over the interval between ``statistics()`` reads.

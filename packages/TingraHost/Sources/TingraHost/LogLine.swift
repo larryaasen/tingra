@@ -71,7 +71,7 @@ public struct LogLineFormatter: Sendable {
     private let timeZone: TimeZone
 
     /// The verbatim timestamp style — `Date.FormatStyle`, never a legacy
-    /// formatter (CLAUDE.md), and verbatim so log output is
+    /// formatter, and verbatim so log output is
     /// locale-independent.
     private let timestampStyle: Date.VerbatimFormatStyle
 

@@ -43,7 +43,7 @@
 # No provisioning profile and no installer identity: this app carries no
 # restricted entitlement (Decision C7), and it ships as a disk image, not a .pkg.
 #
-# Nothing personal is committed (CLAUDE.md "Signing"): the Team ID reaches the
+# Nothing personal is committed: the Team ID reaches the
 # job only inside TINGRA_SIGN_ID, which Actions masks in the public log, and
 # release-app-package.sh reads the team from its suffix and writes the export
 # options into the git-ignored build folder. Never echo an identity list.
@@ -150,7 +150,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.TINGRA_RELEASE_TOKEN }}
         run: |
-          # The Actions bot identity, not a person's: CLAUDE.md "Signing" keeps
+          # The Actions bot identity, not a person's: the signing rule keeps
           # anything personal to one developer out of tracked files.
           # release-cameras.sh authors the tap commit with whatever is
           # configured here.

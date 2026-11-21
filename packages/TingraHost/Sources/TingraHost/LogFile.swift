@@ -211,7 +211,7 @@ public struct LogFileChunk: Equatable, Sendable {
 }
 
 /// What ``LogFile`` can refuse to do, with the cause and the fix in the
-/// message (CLAUDE.md, "Never crash the process").
+/// message.
 public enum LogFileError: Error, Equatable, CustomStringConvertible {
     /// A snapshot was asked of a log that does not exist or holds nothing —
     /// there is nothing to share yet.

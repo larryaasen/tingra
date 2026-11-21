@@ -39,7 +39,7 @@
 #
 # No notarization credentials: a library nobody launches is not notarized.
 #
-# Nothing personal is committed (CLAUDE.md "Signing"): the Team ID reaches the
+# Nothing personal is committed: the Team ID reaches the
 # job only inside TINGRA_SIGN_ID, which Actions masks in the public log. Never
 # echo an identity list.
 
@@ -119,7 +119,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.TINGRA_RELEASE_TOKEN }}
         run: |
-          # The Actions bot identity, not a person's (CLAUDE.md "Signing").
+          # The Actions bot identity, not a person's.
           # release-sdk.sh authors the SDK repo's commit with it.
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"

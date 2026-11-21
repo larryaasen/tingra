@@ -21,7 +21,7 @@ import TingraHost
 /// saves it after each change, and reports on the event bus, since the app
 /// is what knows a clear was the operator's.
 ///
-/// **Driven by the stream's own events, never polled** (CLAUDE.md): the
+/// **Driven by the stream's own events, never polled**: the
 /// ``EngineModel`` calls ``begin(destinations:width:height:frameRate:at:)``
 /// when the session reports `stream.started` and ``end(reason:at:)`` when it
 /// reports `stream.stopped` or the app quits on air, each with the event's

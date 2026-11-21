@@ -2,7 +2,7 @@
 # (SIMULATOR.md; scripts/integration-test.sh): tingra-cli with generators →
 # MediaMTX, verified server side with ffprobe. A separate workflow from
 # format-test.yml, run on streaming/output changes rather than blocking every PR
-# (CLAUDE.md "Toolchain & CI"; docs/TODO.md "CI follow-ups").
+# (docs/TODO.md "CI follow-ups").
 #
 # Generators need no camera, microphone, or TCC authorization, so the
 # scenarios run unmodified on runners.

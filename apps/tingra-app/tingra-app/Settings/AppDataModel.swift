@@ -13,7 +13,7 @@ import TingraEventBus
 /// The model behind the Data settings pane: the inventory of what Tingra has
 /// saved on this Mac, and the one action that removes it.
 ///
-/// **Refreshed on events, never polled** (CLAUDE.md): the inventory is read
+/// **Refreshed on events, never polled**: the inventory is read
 /// when the pane appears and again after a removal — the two moments the
 /// pane is looking and the answer can have changed. Nothing else in the app
 /// writes to disk while the operator reads a settings pane that a refresh

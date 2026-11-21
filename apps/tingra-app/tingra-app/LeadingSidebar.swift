@@ -24,8 +24,8 @@ import TingraPlugInKit
 /// Liquid Glass material automatically from being a standard component
 /// compiled against the current SDK. Nothing here applies a glass material by
 /// hand, and nothing should: the HIG's rule is that the system draws the
-/// sidebar's material, and the app's deployment floor is macOS 15 (CLAUDE.md,
-/// "Platform Support"), where `glassEffect` does not exist at all — so a
+/// sidebar's material, and the app's deployment floor is macOS 15,
+/// where `glassEffect` does not exist at all — so a
 /// hand-rolled version would be both wrong on 26 and unavailable on 15.
 ///
 /// **Every section collapses, and stays that way.** Each is a `Section` over
@@ -107,7 +107,7 @@ import TingraPlugInKit
 /// event bus — `device.connected`/`device.disconnected` for the capture
 /// devices (``EngineModel/readDeviceLists()``) and the monitor's Core Audio
 /// device stream for the outputs — so a device that comes or goes reaches the
-/// sidebar as an event rather than a poll (CLAUDE.md). Listing a device also
+/// sidebar as an event rather than a poll. Listing a device also
 /// starts nothing: a name in a list needs no frames, so nothing here lights a
 /// camera indicator or opens a microphone — a camera starts when a shot
 /// references it, including the transient one a click on its row stages, and

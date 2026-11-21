@@ -22,7 +22,7 @@ import TingraPlugInKit
 ///
 /// The engine machinery is a hardware path: it gets this seam, not unit
 /// tests; the buffer conversion and the authorization-denied path are the
-/// testable parts (CLAUDE.md, Testing).
+/// testable parts.
 final class MicrophoneInput: Input, Sendable {
     /// The discovered device this input captures from.
     private let device: CaptureDevice

@@ -289,8 +289,8 @@ struct DisplayEventReporterTests {
         #expect(received.count == 2)
         #expect(received.map(\.name) == ["device.connected", "device.disconnected"])
         #expect(received.allSatisfy { $0.group == .event })
-        // A display coming or going is never a failure (CLAUDE.md, Data Flow
-        // Rules) — the same rule the camera/microphone reporter follows.
+        // A display coming or going is never a failure
+        // — the same rule the camera/microphone reporter follows.
         #expect(received.allSatisfy { $0.group != .error })
         #expect(received.first?.params?["name"] == .string("Display 2"))
         #expect(received.first?.params?["kind"] == .string("display"))

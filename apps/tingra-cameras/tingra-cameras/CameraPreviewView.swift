@@ -112,7 +112,7 @@ final class SampleBufferHostView: NSView {
     private var displayLayer: AVSampleBufferDisplayLayer {
         // The backing layer is created by `makeBackingLayer`; fall back to a
         // fresh layer rather than force-unwrapping so a misconfigured view
-        // can never trap the host (CLAUDE.md, never-crash rule).
+        // can never trap the host (the never-crash rule).
         layer as? AVSampleBufferDisplayLayer ?? AVSampleBufferDisplayLayer()
     }
 

@@ -20,8 +20,8 @@ import VideoToolbox
 /// (``VideoCodecSettings``/``AudioCodecSettings``) and the identical append
 /// forms (an uncompressed video `CMSampleBuffer`, and LPCM audio as
 /// `AVAudioPCMBuffer` + `AVAudioTime`), so the conversion is transport-neutral
-/// and lives here once rather than being duplicated per service (CLAUDE.md,
-/// DRY). The seam facts these build on were verified by the de-risking spike
+/// and lives here once rather than being duplicated per service.
+/// The seam facts these build on were verified by the de-risking spike
 /// (DONE.md): uncompressed video keeps its session-timeline PTS through the
 /// encoder, and LPCM audio must enter as `AVAudioPCMBuffer` + `AVAudioTime`
 /// (HaishinKit's `CMSampleBuffer` audio path drops LPCM when the output codec

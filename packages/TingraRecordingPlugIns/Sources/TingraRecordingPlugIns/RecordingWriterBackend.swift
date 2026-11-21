@@ -14,7 +14,7 @@ import TingraPlugInKit
 /// Abstracting the concrete `AVAssetWriter` behind this seam is what makes
 /// ``AVAssetWriterRecordingService``'s lifecycle — open, append, finalize,
 /// failure — unit-testable with a mock, so tests never touch the disk or the
-/// hardware encoder (CLAUDE.md, Testing: prefer mocks; no real file I/O that
+/// hardware encoder (prefer mocks; no real file I/O that
 /// would make CI flaky). The real `AVAssetWriter` path is exercised end to
 /// end by the streaming integration tests (recording a generator to a temp
 /// file, verified with `ffprobe`).

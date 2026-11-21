@@ -174,7 +174,7 @@ struct AppDataRemovalFailure: Equatable, Identifiable, Sendable {
 /// its own failure recorded (``AppDataRemovalFailure``), so a Keychain that
 /// refuses this binary does not leave the project document in place, and
 /// the operator is told exactly which kind is still there. The store never
-/// throws and never traps (CLAUDE.md, "Never crash the process").
+/// throws and never traps.
 ///
 /// The Application Support directory itself is removed only if it is empty
 /// afterwards — the daemon's socket lives there too, and a socket is not the

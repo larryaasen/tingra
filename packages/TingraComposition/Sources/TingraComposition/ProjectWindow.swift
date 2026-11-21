@@ -14,7 +14,7 @@ import TingraPlugInKit
 /// "Input"): the document's record of it, from which the app makes the
 /// window input on each launch (ARCHITECTURE.md, "Window capture").
 ///
-/// Part of the **project / scripting contract** (CLAUDE.md, "Data Models"):
+/// Part of the **project / scripting contract**:
 /// stable camelCase keys, exact round-trip. A window has no identifier that
 /// outlives it, so the record is a **description** — the owning application
 /// and the title the window had when it was added — and the capture finds

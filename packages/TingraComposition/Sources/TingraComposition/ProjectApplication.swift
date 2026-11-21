@@ -15,7 +15,7 @@ import TingraPlugInKit
 /// makes the application input on each launch (ARCHITECTURE.md,
 /// "Application audio", A1).
 ///
-/// Part of the **project / scripting contract** (CLAUDE.md, "Data Models"):
+/// Part of the **project / scripting contract**:
 /// stable camelCase keys, exact round-trip. An application is found again by
 /// its bundle identifier; the ``id`` is the project's own — the ``InputID``
 /// the input reports, so the channel strip keeps its settings while the

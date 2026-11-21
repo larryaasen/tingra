@@ -17,7 +17,7 @@ import TingraPlugInKit
 /// round-trips through JSON exactly, keeps stable keys, decodes forgivingly
 /// where fields are optional, and a `Preset`'s optional `audioChannels` key
 /// follows the destination rule — absent when unauthored, exact when set
-/// (CLAUDE.md, "Data Models"; ARCHITECTURE.md, "Per-strip routing").
+/// (ARCHITECTURE.md, "Per-strip routing").
 @Suite("AudioChannel persistence")
 struct AudioChannelTests {
     /// A fully authored channel, no field at its default.

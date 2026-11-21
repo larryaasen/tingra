@@ -71,7 +71,7 @@ struct RecordingPreferences {
 
     /// The folder recordings are written into.
     ///
-    /// Stored as a plain path: the app is not sandboxed (CLAUDE.md), so a
+    /// Stored as a plain path: the app is not sandboxed, so a
     /// folder the operator picks needs no security-scoped bookmark to stay
     /// reachable across launches.
     var folder: URL {

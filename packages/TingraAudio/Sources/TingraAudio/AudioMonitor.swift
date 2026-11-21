@@ -108,7 +108,7 @@ public protocol AudioMonitor: Sendable {
 
     /// A stream yielding the full device list whenever the system's output
     /// devices change — a device connected or disconnected. Event-driven:
-    /// the caller never polls for device changes (CLAUDE.md). A new call
+    /// the caller never polls for device changes. A new call
     /// replaces the previous consumer, finishing its stream — the
     /// one-consumer contract the engine's media streams use.
     ///

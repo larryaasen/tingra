@@ -17,7 +17,7 @@
 ///
 /// A resource renders value types and identifiers only, never an engine
 /// object — its document is a scripting contract on the same terms as a
-/// tool's result (camelCase keys, append-only; CLAUDE.md, "Data Models").
+/// tool's result (camelCase keys, append-only).
 /// The host's `ResourceRegistry` holds them; the app fills it from its
 /// model, and a plug-in-contributed resource seam follows (PLUGINS.md,
 /// Phase 4).

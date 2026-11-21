@@ -16,7 +16,7 @@ import TingraPlugInKit
 
 /// Verifies the persisted project contract: `Preset`, `Shot`, and `Layer`
 /// round-trip through JSON exactly, keep stable keys, and decode forgivingly
-/// where fields are optional (CLAUDE.md, "Data Models").
+/// where fields are optional.
 @Suite("Preset persistence")
 struct PresetCodableTests {
     /// A layer with a non-default frame and opacity, for round-trip coverage.

@@ -30,7 +30,7 @@ public struct PlugInLoader: Sendable {
     ///
     /// A plug-in that throws is reported as an `error` event and skipped;
     /// the remaining plug-ins load normally — a plug-in must never take
-    /// down the host or another plug-in (CLAUDE.md, never-crash rule).
+    /// down the host or another plug-in (the never-crash rule).
     ///
     /// Both events carry `tier: "host"`: the app emits the same event names
     /// with `tier: "app"` for its out-of-process app-tier plug-ins (see

@@ -78,7 +78,7 @@ public actor OutputRegistry {
     ///
     /// Throws ``OutputRegistryError/duplicateScheme(_:existing:)`` if
     /// another provider already serves one of its schemes — a plug-in
-    /// defect surfaces as a thrown error, never a trap (CLAUDE.md,
+    /// defect surfaces as a thrown error, never a trap (the
     /// never-crash rule). Schemes match case-insensitively.
     ///
     /// Also throws ``OutputRegistryError/templateSchemeNotServed(templateID:scheme:provider:)``
@@ -108,7 +108,7 @@ public actor OutputRegistry {
     ///
     /// Throws ``OutputRegistryError/duplicateFileExtension(_:existing:)`` if
     /// another recording provider already serves one of its extensions — a
-    /// plug-in defect surfaces as a thrown error, never a trap (CLAUDE.md,
+    /// plug-in defect surfaces as a thrown error, never a trap (the
     /// never-crash rule). Extensions match case-insensitively.
     public func register(_ provider: any RecordingServiceProvider) throws {
         let extensions = provider.fileExtensions.map { $0.lowercased() }

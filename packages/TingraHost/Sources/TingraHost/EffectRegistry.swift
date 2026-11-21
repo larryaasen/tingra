@@ -75,7 +75,7 @@ public actor EffectRegistry {
     ///
     /// Throws ``EffectRegistryError/duplicateAudioEffect(_:)`` if another
     /// audio effect already uses its id — a plug-in defect surfaces as a
-    /// thrown error, never a trap (CLAUDE.md, never-crash rule).
+    /// thrown error, never a trap (the never-crash rule).
     public func register(_ provider: any AudioEffectProvider) throws {
         guard audioProvidersByID[provider.id] == nil else {
             throw EffectRegistryError.duplicateAudioEffect(provider.id)

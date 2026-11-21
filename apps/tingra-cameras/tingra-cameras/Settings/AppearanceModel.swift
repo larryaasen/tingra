@@ -14,8 +14,8 @@ import Observation
 /// install an appearance.
 ///
 /// A protocol seam rather than a direct `NSApplication` reference, the same
-/// rule every framework boundary in this repo follows (CLAUDE.md, "Dependency
-/// Injection Pattern"). It earns its keep immediately: a test can watch what
+/// rule every framework boundary in this repo follows.
+/// It earns its keep immediately: a test can watch what
 /// the model installs without repainting the test host — and repainting a
 /// shared `NSApplication` from suites that run in parallel is exactly the
 /// kind of global mutation that makes a test flaky.

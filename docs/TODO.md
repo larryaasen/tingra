@@ -404,7 +404,7 @@ the rule each of these breaks or leaves unbuilt.
 
 ## CI follow-ups
 
-Jobs promised in CLAUDE.md "Toolchain & CI" that were deliberately left out of
+Jobs promised in AGENTS.md "Toolchain & CI" that were deliberately left out of
 the first `.github/workflows/ci.yml` because their prerequisites don't exist yet.
 Each lists its trigger condition:
 

@@ -16,8 +16,8 @@ import Synchronization
 /// per XPC message, in both directions. Both sides export an object
 /// implementing it and call the other's through the remote proxy. It is a
 /// byte channel, not a second RPC protocol — every method name on the wire
-/// is JSON-RPC inside the payload (CLAUDE.md, "Never add a second internal
-/// RPC protocol"; PLUGINS.md, Decision 14). A payload may have an
+/// is JSON-RPC inside the payload
+/// (PLUGINS.md, Decision 14). A payload may have an
 /// `IOSurface` attached, the one value JSON cannot carry: the payload still
 /// names the method and describes the surface.
 ///

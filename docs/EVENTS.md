@@ -152,7 +152,7 @@ Two layers, strongest first:
 1. **Secrets never become event params.** Stream keys and secure storage contents are referenced by identifier or fingerprint (`live_xx…` at most), never by value. This is the policy; the bus does not inspect or alter params — a heuristic key-name matcher (`key`, `streamKey`, `token`, `password`, …) was tried and dropped: it cannot be made bullet proof (it both over-matches innocuous keys and under-matches spellings it doesn't anticipate), so it added false confidence without a real guarantee. Emitters are the only correct place to keep a secret off the bus.
 2. **OSLog privacy.** Params interpolate `.private` by default in the OSLog sink, so anything that shouldn't have been a param in the first place still stays out of retrievable logs on release builds.
 
-This implements the "never log secrets" rule in CLAUDE.md end to end.
+This implements the "never log secrets" rule in AGENTS.md end to end.
 
 ## Package and porting notes
 
@@ -162,7 +162,7 @@ The bus ships as a **zero dependency leaf package** under `packages/`. The plug-
 
 None of this argues the pattern was not worth having: it supplied the group taxonomy, the sink idea, and the tap line format, which is most of the design. Carrying the Swift 6 lessons *back* into `EventBusBasics` stays worthwhile — as that package's own work, on its own schedule, with no coupling to Tingra.
 
-The table is therefore a provenance record rather than a list of changes to upstream — what the pattern contributed, and what Tingra's rules in CLAUDE.md changed:
+The table is therefore a provenance record rather than a list of changes to upstream — what the pattern contributed, and what Tingra's rules in AGENTS.md changed:
 
 | `EventBusBasics` today | Tingra port |
 | :---- | :---------- |

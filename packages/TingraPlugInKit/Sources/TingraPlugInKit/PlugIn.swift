@@ -159,7 +159,7 @@ public protocol PlugIn: Sendable {
     ///
     /// Throws a descriptive error if the plug-in cannot activate; the host
     /// reports it as an `error` event and the remaining plug-ins load
-    /// normally — a plug-in must never take down the host (CLAUDE.md,
+    /// normally — a plug-in must never take down the host (the
     /// never-crash rule).
     func activate(in context: PlugInContext) async throws
 }

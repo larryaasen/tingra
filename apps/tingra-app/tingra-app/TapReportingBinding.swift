@@ -30,8 +30,7 @@ extension Binding where Value: Sendable {
     ///
     /// - Parameters:
     ///   - eventBus: The bus the tap goes to.
-    ///   - name: The control's tap name — per control, never per screen
-    ///     (CLAUDE.md).
+    ///   - name: The control's tap name — per control, never per screen.
     ///   - domain: The emitting area.
     ///   - params: The tap's params, built from the value the operator chose.
     ///     Defaults to none. `@Sendable` because SwiftUI's binding setter is,

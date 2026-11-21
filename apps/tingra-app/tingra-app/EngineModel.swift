@@ -289,7 +289,7 @@ final class EngineModel {
 
     /// The audio output devices the monitor picker offers, refreshed from
     /// the monitor's device-update stream as devices come and go — never
-    /// polled (CLAUDE.md).
+    /// polled.
     private(set) var monitorDevices: [AudioMonitorDevice] = []
 
     /// The device the operator monitors through, or nil for no monitoring —
@@ -1568,7 +1568,7 @@ final class EngineModel {
 
     /// The host's Keychain-backed secret store: the stream key lives only
     /// here, keyed by the destination URL — never the project document, never
-    /// an event, never a log (CLAUDE.md, "Error Handling").
+    /// an event, never a log.
     ///
     /// Filed in the shared keychain access group the app's entitlement
     /// declares, which is what makes the item reachable by a second Tingra
@@ -1950,7 +1950,7 @@ final class EngineModel {
 
     /// The task draining the monitor's device-list updates, so a device
     /// connected or disconnected reaches the picker as an event rather than
-    /// a poll (CLAUDE.md).
+    /// a poll.
     @ObservationIgnored private var monitorDeviceTask: Task<Void, Never>?
 
     /// The log sinks' drain tasks — console, OSLog, and file — retained so
@@ -2524,7 +2524,7 @@ final class EngineModel {
     ///
     /// Every other event is ignored, so this shares the bus consumer with the
     /// stream-status handler at no cost. Device connection and disconnection
-    /// are **normal events, never errors** (CLAUDE.md, Data Flow Rules), so
+    /// are **normal events, never errors**, so
     /// there is nothing to surface as a failure — the lists simply change.
     ///
     /// - Parameter event: An event drained from the bus.
@@ -2787,7 +2787,7 @@ final class EngineModel {
     /// Every other tally change follows an operator action the model
     /// already handles, but a transition ends on a compositor tick with
     /// nothing observable attached — so a take schedules a single refresh
-    /// for its own known duration. This is **not** a poll (CLAUDE.md): it is
+    /// for its own known duration. This is **not** a poll: it is
     /// one shot, derived from the duration the take was made with, and a
     /// second take supersedes it by cancelling the first. A cut schedules
     /// nothing — it has already landed.
@@ -3048,7 +3048,7 @@ final class EngineModel {
     /// and if the device being monitored through has gone away, monitoring
     /// stops while **keeping the selection** — the device reappearing
     /// resumes it, the dormant-strip semantic one path over. A device coming
-    /// and going is a normal event, never an error (CLAUDE.md).
+    /// and going is a normal event, never an error.
     ///
     /// - Parameter devices: The system's output devices now.
     private func monitorDevicesChanged(_ devices: [AudioMonitorDevice]) async {
@@ -5217,7 +5217,7 @@ final class EngineModel {
     ///
     /// Called when the folder or container changes and when a recording ends
     /// — the moments the answer can have changed — never on a timer
-    /// (CLAUDE.md: no polling).
+    /// (no polling).
     func refreshRecordingCapacity() {
         recordingCapacity = RecordingCapacity.measure(at: recordingFolder)
     }

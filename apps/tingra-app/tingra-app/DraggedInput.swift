@@ -41,7 +41,7 @@ nonisolated struct DraggedInput: Codable, Sendable, Equatable, Transferable {
 extension UTType {
     /// The exported type a ``DraggedInput`` travels under —
     /// `com.moonwink.tingra.input`, one of the app's `com.moonwink.tingra.*`
-    /// identifiers (CLAUDE.md, "Toolchain & CI").
+    /// identifiers.
     nonisolated static let tingraInput = UTType(exportedAs: "com.moonwink.tingra.input")
 
     /// The project document's type (`.tingraproject`, JSON inside), declared

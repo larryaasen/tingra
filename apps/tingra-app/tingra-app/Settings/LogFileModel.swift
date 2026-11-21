@@ -17,7 +17,7 @@ import TingraHost
 /// snapshot to share, and clear it (ARCHITECTURE.md, "The log file and the
 /// Logging settings pane").
 ///
-/// **Refreshed on events, never polled** (CLAUDE.md): the size is read when
+/// **Refreshed on events, never polled**: the size is read when
 /// the pane appears and again after each action the pane takes — the moments
 /// the pane is looking and the answer has changed by more than a line. The
 /// file grows by one line per event while the pane is open, and a size that

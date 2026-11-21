@@ -109,7 +109,7 @@ struct PlugInBundleCandidate: Sendable {
 /// principal class cast to `BundledPlugIn`, one instance made, its id
 /// compared with the declared one, and the instance handed to activation. A
 /// refusal is reported and skipped; the scan goes on. Nothing here traps: a
-/// bundle that dyld refuses arrives as a thrown error (CLAUDE.md,
+/// bundle that dyld refuses arrives as a thrown error (the
 /// never-crash rule).
 ///
 /// **One bundle at a time, under a marker.** Before a bundle's code loads,

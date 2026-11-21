@@ -11,8 +11,8 @@ import Foundation
 import Security
 
 /// The host's secret store: hardware-backed, Keychain-first storage for
-/// stream keys and any other sensitive value (CLAUDE.md, "Error Handling":
-/// secrets live only in the host's Keychain-backed secure storage, never in
+/// stream keys and any other sensitive value
+/// (secrets live only in the host's Keychain-backed secure storage, never in
 /// plaintext config, events, or logs).
 ///
 /// A protocol seam so the same callers (the app storing a stream key, the
@@ -69,7 +69,7 @@ public protocol SecureStorage: Sendable {
 }
 
 /// A failure from ``SecureStorage``. Recoverable and developer-facing — the
-/// engine never crashes over a Keychain hiccup (CLAUDE.md, never-crash rule);
+/// engine never crashes over a Keychain hiccup (the never-crash rule);
 /// a store or read failure surfaces so the caller can fall back to the
 /// in-memory secret it already holds.
 public enum SecureStorageError: Error, Equatable, CustomStringConvertible {
@@ -154,7 +154,7 @@ public struct KeychainSecureStorage: SecureStorage {
     ///
     /// Only the suffix is a constant. The full group string carries the team
     /// identifier prefix, which a public repository must never hold in a
-    /// tracked file (CLAUDE.md, "Signing") — hence ``sharedAccessGroup()``,
+    /// tracked file — hence ``sharedAccessGroup()``,
     /// which reads the already-expanded value out of the running binary.
     public static let sharedAccessGroupSuffix = "com.moonwink.tingra.shared"
 

@@ -67,7 +67,7 @@ public enum ShotOrigin: String, Sendable, Equatable, Codable, CaseIterable {
 /// A shot carries a stable ``id`` and a user-facing ``name`` so it can live in
 /// a ``Preset``, be listed in a switcher, and be taken to program by id. It is
 /// a plain `Codable` value type — the persistence format is a project /
-/// scripting contract (CLAUDE.md, "Data Models"), so its JSON keys are stable
+/// scripting contract, so its JSON keys are stable
 /// camelCase and it round-trips exactly.
 ///
 /// Layers are ordered **bottom to top**: `layers[0]` is drawn first (nearest

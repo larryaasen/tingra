@@ -15,8 +15,8 @@ import TingraPlugInKit
 
 /// Verifies the persisted project document contract: `Project` round-trips
 /// through JSON exactly, keeps stable keys, requires its format version, and
-/// refuses a document newer than this build understands (CLAUDE.md, "Data
-/// Models"; ARCHITECTURE.md, "Project save/load").
+/// refuses a document newer than this build understands
+/// (ARCHITECTURE.md, "Project save/load").
 @Suite("Project persistence")
 struct ProjectCodableTests {
     /// A project with one preset holding one single-layer shot, for

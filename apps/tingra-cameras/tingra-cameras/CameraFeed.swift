@@ -135,7 +135,7 @@ final class CameraFeed {
     ///
     /// Passing `nil` (or an identifier no longer registered) shows no
     /// camera. Authorization denial and device unavailability surface
-    /// through ``onPreviewError`` rather than crashing (CLAUDE.md,
+    /// through ``onPreviewError`` rather than crashing (the
     /// never-crash rule).
     ///
     /// The latest call wins: a camera still starting when another is chosen

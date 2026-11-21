@@ -23,7 +23,7 @@ import TingraPlugInKit
 /// It is `Codable` as part of the persisted ``Shot`` document: the `frame` is
 /// flattened to explicit `x`/`y`/`width`/`height` keys rather than the nested
 /// arrays a `CGRect` would synthesize, keeping the JSON a clean, stable
-/// project contract (CLAUDE.md, "Data Models").
+/// project contract.
 public struct Layer: Sendable, Equatable, Codable {
     /// The input whose latest frame fills this layer. If that input has not
     /// produced a frame yet (or has stalled), the layer contributes nothing

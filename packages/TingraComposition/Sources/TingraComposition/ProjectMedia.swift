@@ -39,7 +39,7 @@ public struct MediaID: RawRepresentable, Hashable, Sendable, Codable {
 /// the input that plays it on each launch (ARCHITECTURE.md, "Media inputs
 /// and the Library's Media tab").
 ///
-/// Part of the **project / scripting contract** (CLAUDE.md, "Data Models"):
+/// Part of the **project / scripting contract**:
 /// stable camelCase keys, exact round-trip. The file is referenced by its
 /// **absolute path**, not a security-scoped bookmark: the app is not
 /// sandboxed, and a legible path in a document the operator can read beats

@@ -18,7 +18,7 @@ import TingraPlugInKit
 /// operator-wide file every front end's bundle loader reads (PLUGINS.md,
 /// Decisions 34 and 36).
 ///
-/// **Read when the pane appears, never polled** (CLAUDE.md): `tingra-cli
+/// **Read when the pane appears, never polled**: `tingra-cli
 /// plug-ins enable|disable` can change the file while the app runs, and the
 /// pane appearing is the moment that answer matters. Every read goes to the
 /// file, the store's own rule, so a toggle never writes back a stale record.

@@ -1,5 +1,5 @@
-# Formatting, builds, and unit tests for the Tingra monorepo (see CLAUDE.md
-# "Toolchain & CI"): the formatting check, warning-clean builds, and unit tests
+# Formatting, builds, and unit tests for the Tingra monorepo:
+# the formatting check, warning-clean builds, and unit tests
 # for every package and app. Tests use generators and mocks only — no camera,
 # microphone, or TCC authorization is needed on runners.
 #
@@ -117,7 +117,7 @@ jobs:
         run: |
           set -o pipefail
           swift build --build-tests --enable-code-coverage 2>&1 | tee "$RUNNER_TEMP/build.log"
-          # Warning-clean per CLAUDE.md "Strict Compilation"; dependency
+          # Warning-clean; dependency
           # checkouts under .build/ are excluded from the check.
           if grep "warning:" "$RUNNER_TEMP/build.log" | grep -v "/.build/"; then
             echo "::error::swift build produced warnings (listed above)"
@@ -204,7 +204,7 @@ jobs:
             -derivedDataPath "$RUNNER_TEMP/DerivedData" \
             -enableCodeCoverage YES \
             CODE_SIGNING_ALLOWED=NO 2>&1 | tee "$RUNNER_TEMP/app-build.log"
-          # Warning-clean per CLAUDE.md "Strict Compilation". Three exclusions,
+          # Warning-clean. Three exclusions,
           # none of them our code: package checkouts under SourcePackages (the
           # matrix job above already builds each package warning-clean),
           # appintentsmetadataprocessor's note that the app declares no App
@@ -269,7 +269,7 @@ jobs:
             -destination 'platform=macOS,arch=arm64' \
             -derivedDataPath "$RUNNER_TEMP/DerivedData" \
             CODE_SIGNING_ALLOWED=NO 2>&1 | tee "$RUNNER_TEMP/cameras-build.log"
-          # Warning-clean per CLAUDE.md "Strict Compilation", with the app
+          # Warning-clean, with the app
           # job's exclusions that apply here: package checkouts under
           # SourcePackages, and appintentsmetadataprocessor's note that the
           # app declares no App Intents.

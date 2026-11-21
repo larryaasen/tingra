@@ -20,8 +20,7 @@ import ArgumentParser
 /// - **The plug-in protocol package (`TingraPlugInKit`) and `TingraEventBus`
 ///   SemVer independently** under prefixed tags (`plugin-kit-<x.y.z>`,
 ///   `event-bus-<x.y.z>`), so the API-stability diff pins the right baseline in
-///   a monorepo that ships several products from one tag (CLAUDE.md, "Plug-in
-///   API stability and versioning").
+///   a monorepo that ships several products from one tag.
 /// - **Between releases** `main` carries the next version with a `-dev`
 ///   suffix; tagging a release drops the suffix, and the next commit bumps to
 ///   the following `-dev`.

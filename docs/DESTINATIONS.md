@@ -34,7 +34,7 @@ The host's `KeychainSecureStorage` already uses the data-protection keychain (`k
 
 Two constraints this respects:
 
-- **Nothing personal in a tracked file** (CLAUDE.md, "Signing"): the entitlement carries a build variable — `$(AppIdentifierPrefix)` since 2026-08-30, see below — never a literal prefix. CI builds with `CODE_SIGNING_ALLOWED=NO` are unaffected — entitlements bind at signing, and unit tests use the in-memory `SecureStorage` mock as they do now.
+- **Nothing personal in a tracked file** (AGENTS.md, "Signing"): the entitlement carries a build variable — `$(AppIdentifierPrefix)` since 2026-08-30, see below — never a literal prefix. CI builds with `CODE_SIGNING_ALLOWED=NO` are unaffected — entitlements bind at signing, and unit tests use the in-memory `SecureStorage` mock as they do now.
 - **A binary that declares no group** — which, after the amendment, is every `tingra-cli` build and every app build, signed or not — cannot join one. The store degrades honestly: names and URLs resolve (the JSON document needs no entitlement), and a key the process cannot read reports `hasKey: false` with a structured error explaining the split if the destination is used to stream. This was scoped as a development-only seam; the amendment makes it the shipped CLI's normal state.
 
 ### What v0.1.1 settled about the CLI and restricted entitlements
@@ -117,7 +117,7 @@ Five findings, in the order they change the design:
 - **The app had the same problem.** Its bundle carried no `application-identifier` and no embedded profile — automatic signing embeds neither when no restricted entitlement asks for one — so every `setSecret` since the app became an Xcode project was rejected with −34018, reported as a `securestore.write` error and then carried in memory for the session. The "keys did not move and did not need re-entry" note under "What step 4 settled" is therefore describing keys that were never persisted.
 - **Candidate one does not work as written.** "Ship `tingra-cli` inside a bundle" fails: a helper in `Contents/MacOS` beside the main executable does not inherit the bundle's profile, and is SIGKILLed exactly as v0.1.1 was. A provisioning profile belongs to a bundle's *main executable*. The daemon can only join by becoming its own bundle.
 - **The original access-group design was right.** Two separately signed bundles sharing `<prefix>.com.moonwink.tingra.shared` read each other's items cleanly. Only the packaging of the party that had to join it was wrong.
-- **Candidate two has no safe form, so it is rejected outright.** The legacy file-based keychain does not rescue it: same-team partitioning does not grant access, because the item's ACL trusts only its creator. Sharing there needs deprecated `SecTrustedApplication` ACLs keyed by absolute path — which breaks across Homebrew and app-bundle install paths, and is barred by CLAUDE.md twice over (no deprecated APIs, no secrets outside Keychain-backed storage).
+- **Candidate two has no safe form, so it is rejected outright.** The legacy file-based keychain does not rescue it: same-team partitioning does not grant access, because the item's ACL trusts only its creator. Sharing there needs deprecated `SecTrustedApplication` ACLs keyed by absolute path — which breaks across Homebrew and app-bundle install paths, and is barred by AGENTS.md twice over (no deprecated APIs, no secrets outside Keychain-backed storage).
 
 ## The decision, in two halves
 

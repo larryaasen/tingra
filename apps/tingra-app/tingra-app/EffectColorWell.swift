@@ -99,7 +99,7 @@ struct EffectColorWell: View {
 /// An `NSColorWell` in its minimal style, hosted in SwiftUI: a swatch that
 /// opens a popover at the well, and continuous change delivery through
 /// `onChange`. AppKit where SwiftUI does not yet cover the need
-/// (CLAUDE.md) — SwiftUI's `ColorPicker` cannot choose the well's style.
+/// — SwiftUI's `ColorPicker` cannot choose the well's style.
 struct ColorWellRepresentable: NSViewRepresentable {
     /// The color the well shows.
     let color: ParameterColor

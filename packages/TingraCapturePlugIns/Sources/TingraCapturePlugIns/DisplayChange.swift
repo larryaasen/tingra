@@ -14,7 +14,7 @@ import TingraEventBus
 import TingraPlugInKit
 
 /// One display connection or disconnection, as observed by the capture
-/// plug-in — a normal event, never an error (CLAUDE.md, Data Flow Rules).
+/// plug-in — a normal event, never an error.
 ///
 /// The display counterpart to ``DeviceChange``, deliberately the same shape:
 /// both feed the same `device.connected` / `device.disconnected` event names,
@@ -43,7 +43,7 @@ struct DisplayChange: Sendable, Equatable {
 /// image: same registry-before-event ordering, same event names with
 /// `kind=display`, same injected-stream test seam. Event driven end to end —
 /// the production stream is CoreGraphics' display reconfiguration callback,
-/// never polling (CLAUDE.md, General Guidelines).
+/// never polling.
 struct DisplayEventReporter: Sendable {
     /// The changes to report; injected so tests script the timeline.
     private let changes: AsyncStream<DisplayChange>
@@ -198,7 +198,7 @@ private enum DisplayReconfiguration {
         if needsInstall {
             // A failure to register is reported by the caller's absence of
             // events rather than by a trap: never crash the host over an
-            // optional capability (CLAUDE.md).
+            // optional capability.
             CGDisplayRegisterReconfigurationCallback(displayReconfigured, nil)
         }
         return token

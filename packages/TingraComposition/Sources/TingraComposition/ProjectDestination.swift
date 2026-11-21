@@ -43,8 +43,8 @@ public struct ProjectDestinationID: RawRepresentable, Hashable, Sendable, Codabl
 /// shape documents what those keys meant.
 ///
 /// Deliberately **key-free**: the stream key is a secret and lives only in
-/// the host's Keychain-backed secure storage (CLAUDE.md, "Error Handling";
-/// EVENTS.md, Redaction), filed under this destination's ``id``. The plug-in
+/// the host's Keychain-backed secure storage
+/// (EVENTS.md, Redaction), filed under this destination's ``id``. The plug-in
 /// seam's `Destination` (in TingraPlugInKit) carries the key at stream time
 /// and is *not* `Codable` for exactly that reason; this document type is
 /// `Codable` precisely *because* it holds no secret — the two are separate

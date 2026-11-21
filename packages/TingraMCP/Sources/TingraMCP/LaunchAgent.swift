@@ -57,7 +57,7 @@ public enum LaunchAgentError: Error, CustomStringConvertible {
 /// agent app that connected — the deciding reason for the launchd design.
 public struct LaunchAgent {
     /// The LaunchAgent label (also the plist file's basename), stable under
-    /// `com.moonwink.tingra.*` per CLAUDE.md.
+    /// `com.moonwink.tingra.*`.
     public static let label = "com.moonwink.tingra.serve"
 
     /// The absolute path to the `tingra-cli` executable launchd runs. Under

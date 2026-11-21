@@ -63,7 +63,7 @@
 # key into the throwaway keychain below, and points the packaging script at it
 # with TINGRA_NOTARY_KEYCHAIN.
 #
-# Nothing personal is committed (CLAUDE.md "Signing"): the Team ID reaches the
+# Nothing personal is committed: the Team ID reaches the
 # job only inside TINGRA_SIGN_ID / TINGRA_INSTALLER_SIGN_ID, which Actions masks
 # in the public log. Never echo an identity list.
 #
@@ -181,7 +181,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.TINGRA_RELEASE_TOKEN }}
         run: |
-          # The Actions bot identity, not a person's: CLAUDE.md "Signing" keeps
+          # The Actions bot identity, not a person's: the signing rule keeps
           # anything personal to one developer out of tracked files, and an
           # address is exactly that. release-cli-publish.sh authors the tap
           # commit with whatever is configured here.

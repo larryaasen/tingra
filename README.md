@@ -217,9 +217,9 @@ in [ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 **Apps**
 
-- [`tingra-cli`](docs/TYPES.md#appstingra-cli) — the headless front end: inputs, streaming, recording, and the daemon.
+- [`tingra-cli`](docs/TYPES.md#appstingra-cli) — the CLI: inputs, streaming, recording, and the MCP daemon, headless.
 - [`ingest-simulator`](docs/TYPES.md#appsingest-simulator) — a local RTMP and SRT server for the integration tests.
-- [`tingra-app`](docs/TYPES.md#appstingra-app) — Tingra.app, the SwiftUI and AppKit switcher.
+- [`tingra-app`](docs/TYPES.md#appstingra-app) — the Tingra macOS app, the SwiftUI and AppKit switcher.
 - [`tingra-cameras`](docs/TYPES.md#appstingra-cameras) — Tingra Cameras, a standalone camera picker with live preview.
 
 ## License

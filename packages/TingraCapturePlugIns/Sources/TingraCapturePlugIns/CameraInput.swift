@@ -30,7 +30,7 @@ import TingraPlugInKit
 /// `@unchecked Sendable` (the frame ownership rule covers the frames
 /// themselves). The capture machinery is a hardware path: it gets this
 /// seam, not unit tests; the injected authorization check keeps the denied
-/// path testable without TCC (CLAUDE.md, Testing).
+/// path testable without TCC.
 ///
 /// **A start is only reported once a frame has actually arrived.**
 /// `AVCaptureSession.startRunning()` neither throws nor returns a status,
@@ -478,7 +478,7 @@ final class CameraInput: Input, Sendable {
         // The observer therefore lives as long as the session does: it is
         // what turns a graph that never came up into a rejected start, and a
         // device that dies mid-show into a reported, released input, instead
-        // of either silently reporting success (CLAUDE.md: never silently
+        // of either silently reporting success (never silently
         // succeed; provide a detailed, developer facing message).
         let observer = NotificationCenter.default.addObserver(
             forName: AVCaptureSession.runtimeErrorNotification,

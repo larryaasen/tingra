@@ -31,7 +31,7 @@ DEVELOPMENT_TEAM = $(TINGRA_DEVELOPMENT_TEAM)
 //  a -dev suffix, as the product version does.
 TINGRA_CAMERAS_VERSION = 0.1.1-dev
 
-//  Apple Silicon only, in every configuration (CLAUDE.md, "Platform Support").
+//  Apple Silicon only, in every configuration.
 //  Without this a Release build for a generic Mac destination, which is what
 //  `xcodebuild archive` uses, is universal (RELEASE.md, Decision C5).
 ARCHS = arm64

@@ -42,7 +42,7 @@ public struct ProjectID: RawRepresentable, Hashable, Sendable, Codable {
 /// iterations.
 ///
 /// A project is a plain `Codable` value type — the serialized form is the
-/// project / scripting contract (CLAUDE.md, "Data Models"), so its JSON keys
+/// project / scripting contract, so its JSON keys
 /// are stable camelCase and it round-trips exactly. The document carries a
 /// required ``version`` so a future format can migrate older documents, and
 /// decoding a document **newer** than this build understands throws rather

@@ -88,7 +88,7 @@ there.
     `EngineClock`, `PlugIn`), `TingraHost` (`HostClock`, `InputRegistry`),
     `tingra-cli` skeleton (`devices` stub, `version`).
   - [x] Review of package names, type names, and conventions (Larry, approved
-    2026-07-03) — final names recorded in CLAUDE.md "Project Structure" and
+    2026-07-03) — final names recorded in AGENTS.md "Project Structure" and
     ARCHITECTURE.md "Repository structure".
   - [x] Camera and microphone **input discovery** behind the `Input` seam:
     `packages/TingraCapturePlugIns` (`AVFoundationCapturePlugIn`, AVFoundation
@@ -190,7 +190,7 @@ there.
   recorded follow-up under "Release mechanics"; manual mode ships now)*.
   - [x] **Dependency decided:** hand-rolled JSON-RPC/MCP layer, not the official
     swift-sdk (see "Decisions to settle" above; recorded in MCP.md and
-    CLAUDE.md).
+    AGENTS.md).
   - [x] `packages/TingraMCP`: the MCP/Control service. The tool seam (`Tool`,
     `ToolError`, `ToolRegistering`, `JSONValue`, `IdentifiedError`) landed in
     `TingraPlugInKit`; the host grew `ToolRegistry` and `StatusSink`;
@@ -369,7 +369,7 @@ there.
     - [x] **The effect seam decision** *(decided 2026-07-19, flagged for
       Larry's veto — see "Decisions to settle" and ARCHITECTURE.md, "The
       effect seam"; no code lands until the veto clears)* — effects are
-      plug-ins (CLAUDE.md), so the seam lands in `TingraPlugInKit` under
+      plug-ins (AGENTS.md), so the seam lands in `TingraPlugInKit` under
       the plug-in API stability contract (SemVer, the
       default-implementation rule, the diagnose-api-breaking-changes check
       once tags exist) — the one call that had to be made and recorded in
@@ -576,7 +576,7 @@ there.
     reconnect machinery does not fire on an SRT mid-stream outage in this
     iteration — SRT's own ARQ retransmission rides out ordinary packet loss
     below this layer, so the gap is only the hard-timeout case; never a poll
-    loop (CLAUDE.md). **Simulator fix:** MediaMTX's SRT listener was rebound
+    loop (AGENTS.md). **Simulator fix:** MediaMTX's SRT listener was rebound
     to IPv4 loopback (`srtAddress: 127.0.0.1:8890`) — HaishinKit's
     `SRTSocketURL` builds only an IPv4 `sockaddr_in` and cannot reach an
     IPv6 (`*:8890`) SRT socket the way the TCP listeners accept IPv4-mapped
@@ -1771,7 +1771,7 @@ there.
   `Project.applications`, `AuthorizationPermission.systemAudioRecording` with
   the `unknown` status and its Permissions row, the usage string, the Add
   Application sheet and the Audio Inputs rows, README.md, TYPES.md,
-  GLOSSARY.md, and CLAUDE.md. Unit-tested with fakes; the real process list
+  GLOSSARY.md, and AGENTS.md. Unit-tested with fakes; the real process list
   was read on the development Mac. Record: ARCHITECTURE.md, "Application
   audio", "Built".
 - [x] **Larry: checked in the running app** *(Larry, 2026-11-12)*. Added the
@@ -2229,7 +2229,7 @@ there.
   setting rather than a script, and it is the trigger the UI-package deferral
   named: once the app builds via `xcodebuild`, code in a package keeps fast
   `swift test` and full warning visibility (Xcode hides package warnings —
-  CLAUDE.md, "Strict Compilation").
+  AGENTS.md, "Strict Compilation").
 
   **The shell already exists, unfinished.** `apps/tingra-app` was created
   2026-07-12 (Xcode 26.6, folder-synchronized groups, so files dropped into
@@ -2254,7 +2254,7 @@ there.
   verify the `de`/`es` entries survive; move `Tests/TingraTests/` onto the unit
   test target, where `@testable import Tingra` becomes `@testable import
   TingraApp`; replace the shell's two package references (`../tingra` and a lone
-  `TingraAudio`) with the nine from CLAUDE.md's dependency graph and link their
+  `TingraAudio`) with the nine from AGENTS.md's dependency graph and link their
   products; update `.github/workflows/ci.yml` so the app's step becomes
   `xcodebuild build`/`test` (scheme `tingra-app`,
   `-destination 'platform=macOS,arch=arm64'`, `CODE_SIGNING_ALLOWED=NO`) while
@@ -2263,7 +2263,7 @@ there.
   green. **End state: one app folder, `apps/tingra-app`.**
 
   **Two loose ends to close in the same pass.** `apps/tingra-app` is an Xcode
-  project missing from both README's listing and CLAUDE.md's project tree, and
+  project missing from both README's listing and AGENTS.md's project tree, and
   its Xcode user-state files (`UserInterfaceState.xcuserstate`,
   `xcschememanagement.plist`) are **tracked** — they need `git rm --cached`
   alongside the ignore rule, since ignoring a tracked file does nothing.
@@ -2336,7 +2336,7 @@ there.
   an *optional* include, so a checkout without the git-ignored `Local.xcconfig`
   still builds, which is exactly what CI does. `Local.xcconfig.example` is
   committed beside it. `sign-app.sh` no longer names a certificate holder. The
-  policy is written into CLAUDE.md, "Signing: nothing personal in a tracked
+  policy is written into AGENTS.md, "Signing: nothing personal in a tracked
   file", including the trap that Xcode silently re-adds `DEVELOPMENT_TEAM` to
   the `.pbxproj` whenever a team is picked in Signing & Capabilities. Audited
   the rest of the tree at the same time: no keys, no absolute home paths, no
@@ -2509,12 +2509,12 @@ there.
   nothing requires one yet, and none exists. The app's reusable, model-free
   views (`MonitorTile`/`MonitorFrameSource`, `StripMeter`) stay in the app
   target until one of two triggers fires: the shared design-tokens file
-  CLAUDE.md anticipates, or a second consuming surface. Extracting now would
+  AGENTS.md anticipates, or a second consuming surface. Extracting now would
   buy a package boundary with one consumer at the cost of the public-API and
   documentation burden a package carries; extracting at the trigger also
   restores fast `swift test` and full package-warning visibility for that
   code once the app builds via `xcodebuild` (Xcode hides package warnings —
-  CLAUDE.md, "Strict Compilation"). Recorded in ARCHITECTURE.md,
+  AGENTS.md, "Strict Compilation"). Recorded in ARCHITECTURE.md,
   "Repository structure".
 
 - [x] **Multiview: the buses-and-monitoring slice, third iteration — the one
@@ -2600,7 +2600,7 @@ there.
   observable attached, so a live-derived tally would have stayed unioned
   forever. A take now schedules **one** refresh for its own known duration
   plus a tick of margin (`EngineModel.scheduleTallyRefresh(after:)`),
-  cancelled and replaced by a later take: not a poll (CLAUDE.md), one shot
+  cancelled and replaced by a later take: not a poll (AGENTS.md), one shot
   derived from the duration the take was made with. The margin is
   deliberate — a lamp lit a frame too long is honest, one that darkens early
   is not. (2) **Generalizing `MonitorView` over a `MonitorFrameSource` paid
@@ -3166,7 +3166,7 @@ there.
   a change to the sink itself.
 
 - [x] **MCP implementation dependency.** Decided 2026-07-05 (recorded in MCP.md,
-  "Implementation: a hand-rolled JSON-RPC layer", and CLAUDE.md's dependency
+  "Implementation: a hand-rolled JSON-RPC layer", and AGENTS.md's dependency
   paragraph): **hand-roll** the JSON-RPC/MCP layer in `packages/TingraMCP` rather
   than adopt the official `modelcontextprotocol/swift-sdk`. The SDK is
   license-compatible (Apache-2.0/MIT) and Swift 6 strict-concurrency clean, but
@@ -3181,14 +3181,14 @@ there.
   HTTP, resource subscriptions, sampling).
 
 - [x] **Sanction `swift-argument-parser` explicitly.** Done 2026-07-04: added to
-  CLAUDE.md's sanctioned third-party dependency list (Apple-authored, effectively
+  AGENTS.md's sanctioned third-party dependency list (Apple-authored, effectively
   first party; confined to the CLI target, no seam required). CLI.md already
   committed to it.
 
 - [x] **Finalize package names.** Approved as scaffolded (2026-07-03):
   `TingraEventBus`, `TingraPlugInKit`, `TingraHost` under `packages/`,
   `apps/tingra-cli`. Recorded in ARCHITECTURE.md "Repository structure" and
-  CLAUDE.md "Project Structure".
+  AGENTS.md "Project Structure".
 
 - [x] **EventBusBasics identity — decided 2026-08-05** (recorded in EVENTS.md,
   "Package and porting notes"). **Keep the Tingra-named port**; do not evolve
@@ -3209,7 +3209,7 @@ there.
 
   The cost on Tingra's side is the decisive one: it would convert a **zero
   dependency leaf package** into an external dependency of a public, notarized
-  product whose CLAUDE.md sanctions exactly three third-party dependencies, and
+  product whose AGENTS.md sanctions exactly three third-party dependencies, and
   put a coordinated two-repository release in front of every plug-in API
   change. The SemVer/API-diff obligation lands on `TingraEventBus`, which is
   where CI already points it. A corroborating signal: `EventBusBasics` already
@@ -3919,5 +3919,5 @@ there.
 - [x] **Fix the dangling "the Tingra plan" references in CLI.md** ("decided in
   the Tingra plan", "tracked in the plan") — done 2026-07-04: the pre-repo
   planning document is never referenced from this repo (rule recorded in
-  CLAUDE.md "Documentation"); the two sentences now point at MCP.md and this
+  AGENTS.md "Documentation"); the two sentences now point at MCP.md and this
   file's "Decisions to settle".

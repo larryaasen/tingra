@@ -60,7 +60,7 @@ public actor InputRegistry {
     ///
     /// Throws ``InputRegistryError/duplicateInput(_:)`` if the identifier is
     /// already taken — a plug-in defect surfaces as a thrown error, never a
-    /// trap (CLAUDE.md, never-crash rule).
+    /// trap (the never-crash rule).
     ///
     /// An input whose ``Input/media`` is empty registers *successfully* but
     /// is reported as an `error` event: it will be offered for no media role

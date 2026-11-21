@@ -13,7 +13,7 @@ import Testing
 @testable import TingraComposition
 
 /// Verifies ``Transition``'s equality and its persisted-project-contract
-/// Codable round-trip (CLAUDE.md, "Data Models"), matching the coverage
+/// Codable round-trip, matching the coverage
 /// `PresetCodableTests` gives `Preset`/`Shot`/`Layer`.
 @Suite("Transition")
 struct TransitionTests {

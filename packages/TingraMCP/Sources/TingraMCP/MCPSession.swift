@@ -317,7 +317,7 @@ public actor MCPSession {
         } catch {
             // Any non-ToolError escaping a tool is an internal pipeline fault;
             // it still reaches the agent as a structured, identifier-keyed
-            // result rather than taking anything down (CLAUDE.md never-crash).
+            // result rather than taking anything down (the never-crash rule).
             let toolError = ToolError(identifier: .pipelineError, message: String(describing: error))
             return .success(id: id, result: MCPToolResult.failure(toolError).resultValue)
         }

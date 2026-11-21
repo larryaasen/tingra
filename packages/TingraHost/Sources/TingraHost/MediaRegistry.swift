@@ -12,7 +12,7 @@ import TingraPlugInKit
 import UniformTypeIdentifiers
 
 /// Errors the media registry throws — all recoverable, all descriptive, per
-/// the never-crash rule (CLAUDE.md).
+/// the never-crash rule.
 public enum MediaRegistryError: Error, Equatable {
     /// A provider with the same identifier is already registered. The fix is
     /// for the plug-in to give every provider it contributes a distinct,
@@ -76,7 +76,7 @@ public actor MediaRegistry {
     ///
     /// Throws ``MediaRegistryError/duplicateProvider(_:)`` if the identifier
     /// is already taken — a plug-in defect surfaces as a thrown error, never
-    /// a trap (CLAUDE.md, never-crash rule). Overlapping content types are
+    /// a trap (the never-crash rule). Overlapping content types are
     /// **not** an error: resolution order settles them, and refusing a
     /// second image provider would cost the host a capability over a
     /// declaration that may be intentional (a RAW-only provider declaring

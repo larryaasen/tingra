@@ -32,8 +32,8 @@
   must name the prefix the provisioning profile actually grants, which is the
   App ID prefix; $(TeamIdentifierPrefix) fails the build with "Provisioning
   profile ... doesn't match the entitlements file's value". Either way no
-  literal prefix appears in this file: the variable expands at signing
-  (CLAUDE.md, "Signing"), and KeychainSecureStorage.sharedAccessGroup() reads
+  literal prefix appears in this file: the variable expands at signing,
+  and KeychainSecureStorage.sharedAccessGroup() reads
   the expanded value back out of the running binary, matching on the suffix so
   it never has to know which prefix it got.
 

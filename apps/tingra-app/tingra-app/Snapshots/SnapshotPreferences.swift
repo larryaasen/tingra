@@ -48,7 +48,7 @@ struct SnapshotPreferences {
     /// The folder snapshots are written into — the default until the
     /// operator chooses one, and again for a stored path that is empty.
     ///
-    /// Stored as a plain path: the app is not sandboxed (CLAUDE.md), so a
+    /// Stored as a plain path: the app is not sandboxed, so a
     /// folder the operator picks needs no security-scoped bookmark.
     var folder: URL {
         get {

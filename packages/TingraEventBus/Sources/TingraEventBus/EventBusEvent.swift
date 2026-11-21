@@ -60,7 +60,7 @@ public struct EventBusEvent: Sendable, Codable, Equatable {
     }
 
     /// The stable JSON key for each property. JSON keys are a scripting
-    /// contract (CLAUDE.md, Data Models): mapped explicitly, never via a
+    /// contract: mapped explicitly, never via a
     /// key-conversion strategy.
     private enum CodingKeys: String, CodingKey {
         case date

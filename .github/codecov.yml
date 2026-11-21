@@ -3,7 +3,7 @@
 # tingra-app, ...), limited to that target's own sources.
 #
 # Coverage is informational: PRs must pass formatting, build, and unit tests
-# before merge (CLAUDE.md, "Toolchain & CI"), and coverage is not one of the
+# before merge, and coverage is not one of the
 # gates, so neither status ever fails a PR.
 
 coverage:

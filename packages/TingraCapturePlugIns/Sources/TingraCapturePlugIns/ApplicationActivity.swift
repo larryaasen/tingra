@@ -15,7 +15,7 @@ import Synchronization
 /// input whose window was missing looks for it again.
 ///
 /// macOS posts no notification when a window opens, and reading the window
-/// list on a timer is the polling this engine does not do (CLAUDE.md). What
+/// list on a timer is the polling this engine does not do. What
 /// it does post is an application launching and an application becoming
 /// active, and an operator who opens the window they want captured does one
 /// or the other on the way. So those two are the events a waiting window

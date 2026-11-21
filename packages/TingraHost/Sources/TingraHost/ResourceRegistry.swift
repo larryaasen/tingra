@@ -55,7 +55,7 @@ public actor ResourceRegistry {
     /// - Parameter resource: The resource.
     /// - Throws: ``ResourceRegistryError/duplicateResource(_:)`` if the URI
     ///   is already taken — a defect surfaces as a thrown error, never a
-    ///   trap (CLAUDE.md, never-crash rule).
+    ///   trap (the never-crash rule).
     public func register(_ resource: any Resource) throws {
         guard resourcesByURI[resource.uri] == nil else {
             throw ResourceRegistryError.duplicateResource(resource.uri)

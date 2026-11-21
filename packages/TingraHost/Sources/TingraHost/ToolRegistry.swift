@@ -53,7 +53,7 @@ public actor ToolRegistry {
     ///
     /// Throws ``ToolRegistryError/duplicateTool(_:)`` if the name is already
     /// taken — a plug-in defect surfaces as a thrown error, never a trap
-    /// (CLAUDE.md, never-crash rule).
+    /// (the never-crash rule).
     public func register(_ tool: any Tool) throws {
         guard toolsByName[tool.name] == nil else {
             throw ToolRegistryError.duplicateTool(tool.name)

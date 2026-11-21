@@ -4,7 +4,7 @@ How AI agents control Tingra, and how the pieces of `tingra-cli` talk to each ot
 
 ## Design principles
 
-1. **One protocol.** The daemon speaks [MCP](https://modelcontextprotocol.io) JSON-RPC natively. There is no separate internal control protocol that MCP translates into — the MCP tool schemas (a stable contract per the Data Models rules in CLAUDE.md) are the only control schema. Nothing can drift, because there is nothing to drift from.
+1. **One protocol.** The daemon speaks [MCP](https://modelcontextprotocol.io) JSON-RPC natively. There is no separate internal control protocol that MCP translates into — the MCP tool schemas (a stable contract per the Data Models rules in AGENTS.md) are the only control schema. Nothing can drift, because there is nothing to drift from.
 2. **One owner.** `tingra-cli serve` is the only process that owns the engine: the session, the pipeline, and the TCC identity. Everything else is a client.
 3. **Thin edges.** `tingra-cli mcp` is a transparent proxy, not a smart client. All intelligence lives in the daemon.
 4. **No network listener.** v1 exposes a Unix domain socket only — never a TCP port. Remote control (MCP Streamable HTTP) is a possible later opt-in, out of scope for v1.
@@ -51,7 +51,7 @@ A TCP listener on 127.0.0.1 is reachable by every local process **and by browser
 
 The daemon speaks MCP JSON-RPC through a small, first-party protocol layer in `packages/TingraMCP`, not the official [`modelcontextprotocol/swift-sdk`](https://github.com/modelcontextprotocol/swift-sdk) (decided 2026-07-05; TODO.md carried the open question). The SDK is a fine piece of work — Apache-2.0/MIT (license-compatible), Swift 6 with strict concurrency, and a `Transport` seam that could in principle carry our UDS — but adopting it is the wrong trade for Tingra:
 
-- **Dependency weight against the grain.** The SDK pulls in SwiftNIO, swift-log, swift-system, and an SSE `eventsource` client transitively. That is a server-side networking stack for a Mac-only app that CLAUDE.md says "never runs server side," and it drags **swift-log** back in — the exact dependency EVENTS.md rejected by name ("a third dependency for zero gain"). Our OSLog sink stays the system of record; nothing should smuggle swift-log underneath it.
+- **Dependency weight against the grain.** The SDK pulls in SwiftNIO, swift-log, swift-system, and an SSE `eventsource` client transitively. That is a server-side networking stack for a Mac-only app that AGENTS.md says "never runs server side," and it drags **swift-log** back in — the exact dependency EVENTS.md rejected by name ("a third dependency for zero gain"). Our OSLog sink stays the system of record; nothing should smuggle swift-log underneath it.
 - **The subset we need is tiny.** v1 speaks newline-delimited JSON-RPC 2.0 over a UDS — `initialize`, `tools/list`, `tools/call`, and one notification. That is a few hundred lines behind the MCP/Control seam, fully under our Swift 6 strict-concurrency and warning-clean rules, with no custom-transport impedance mismatch against a library built around its own async model.
 - **We owe direct socket clients a documented wire format regardless.** MCP.md commits to letting users script the engine over the raw socket without the proxy (see "The transport"). Owning the framing and message types makes that contract explicit and unit-testable rather than an emergent property of a third-party library.
 
@@ -106,7 +106,7 @@ Many MCP sessions, one engine session (GLOSSARY.md: the session is the live runn
 
 ## The app tier: the same MCP over XPC
 
-App-tier plug-ins (PLUGINS.md, decided 2026-09-13) are ExtensionKit extensions the app hosts out of process, and they speak to the app the way an agent speaks to the daemon: the extension is an MCP client, the app an MCP endpoint. Nothing new travels the wire — the JSON-RPC 2.0 types, `MessageTransport`, and the message coder moved from `TingraMCP` into `TingraJSONRPC` (re-exported by `TingraMCP`, so direct socket clients see no change), and `XPCMessageTransport` carries one JSON payload per XPC message over the `NSXPCConnection` ExtensionKit hands each side. The one Objective-C protocol on that connection, `TingraXPCMessageChannel`, has two methods — `open()` and `deliver(_:)` — and is a byte channel, not a second RPC protocol (CLAUDE.md). `open()` exists because an XPC connection is established on its first message, and a pane's connection is one the extension only ever reads on until the app speaks.
+App-tier plug-ins (PLUGINS.md, decided 2026-09-13) are ExtensionKit extensions the app hosts out of process, and they speak to the app the way an agent speaks to the daemon: the extension is an MCP client, the app an MCP endpoint. Nothing new travels the wire — the JSON-RPC 2.0 types, `MessageTransport`, and the message coder moved from `TingraMCP` into `TingraJSONRPC` (re-exported by `TingraMCP`, so direct socket clients see no change), and `XPCMessageTransport` carries one JSON payload per XPC message over the `NSXPCConnection` ExtensionKit hands each side. The one Objective-C protocol on that connection, `TingraXPCMessageChannel`, has two methods — `open()` and `deliver(_:)` — and is a byte channel, not a second RPC protocol (AGENTS.md). `open()` exists because an XPC connection is established on its first message, and a pane's connection is one the extension only ever reads on until the app speaks.
 
 The app's endpoint is `MCPSession` itself, now public, over the app's own `ToolRegistry` and status sink, with a `SessionMethodHandler` serving the methods the app tier adds beside MCP's own:
 
@@ -173,7 +173,7 @@ The `shot` selector follows the rule the input and destination selectors teach: 
 
 The MCP surface is a shipping feature for end users, so it carries product obligations:
 
-- **Stable contract.** Tool names, input schemas, and result shapes follow the Data Models rules in CLAUDE.md: camelCase, stable across releases, round-trip tested. Renames are breaking changes.
+- **Stable contract.** Tool names, input schemas, and result shapes follow the Data Models rules in AGENTS.md: camelCase, stable across releases, round-trip tested. Renames are breaking changes.
 - **Version skew.** After an upgrade a stale daemon may still be running. Clients compare the `initialize` build version with their own and surface a clear advisory; the stable contract keeps mismatched-but-compatible versions working meanwhile.
 - **Errors that teach.** Tool errors are structured and actionable — what failed, why, and what to do (e.g. authorization denied → which permission and how to grant it in System Settings). Exit-code semantics from CLI.md map to error identifiers, not message wording.
 - **TCC never bypassed.** Authorization prompts appear on the Mac's screen for the user; an agent cannot self-approve. Tools report authorization state (`GLOSSARY.md: authorization`) so agents can explain to the user what to do rather than failing opaquely.

@@ -994,7 +994,7 @@ Each window shows its own camera. A native Xcode project
 (`tingra-cameras.xcodeproj`, single app target) that drives the engine packages
 (`TingraHost`, `TingraCapturePlugIns`) through the `Input` seam, and styled with the
 standard SwiftUI Liquid Glass look rather than any bespoke theme (see its own
-[CLAUDE.md](../apps/tingra-cameras/CLAUDE.md)). User-facing strings are localized
+[AGENTS.md](../apps/tingra-cameras/AGENTS.md)). User-facing strings are localized
 (`Localizable.xcstrings`, en/de/es).
 
 It releases on its own version, separately from the engine. Install it with

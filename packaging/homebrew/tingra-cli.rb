@@ -29,7 +29,7 @@ class TingraCli < Formula
   sha256 "REPLACE_WITH_ZIP_SHA256_FROM_release-cli-package.sh"
   license "MIT"
 
-  # Apple Silicon (arm64), macOS 15+ only (see Platform Support in CLAUDE.md).
+  # Apple Silicon (arm64), macOS 15+ only.
   depends_on macos: :sequoia
   on_intel do
     odie "tingra-cli ships for Apple Silicon (arm64) only."

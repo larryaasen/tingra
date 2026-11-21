@@ -16,7 +16,7 @@ import TingraHost
 /// Permissions settings pane, and the engine's own record of what TCC
 /// currently allows.
 ///
-/// **Refreshed on events, never polled** (CLAUDE.md). macOS offers no
+/// **Refreshed on events, never polled**. macOS offers no
 /// notification when a TCC grant changes, but it does not need one: a grant
 /// changes in exactly one place, System Settings, and coming back from there
 /// is an app activation. So the model re-reads every permission on

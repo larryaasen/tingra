@@ -32,7 +32,7 @@ DEVELOPMENT_TEAM = $(TINGRA_DEVELOPMENT_TEAM)
 //  next version with a -dev suffix, as they do.
 TINGRA_VERSION = 0.1.4-dev
 
-//  Apple Silicon only, in every configuration (CLAUDE.md, "Platform Support").
+//  Apple Silicon only, in every configuration.
 //  Without this a Release build for a generic Mac destination — which is what
 //  `xcodebuild archive` uses — is universal, and its x86_64 slice cannot link:
 //  the prebuilt libsrt HaishinKit's SRT output carries is arm64 only. Day-to-day
