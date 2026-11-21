@@ -712,6 +712,7 @@ surface is:
 - `EffectColorWell` — the color well drawn for a color parameter.
 - `ColorWellRepresentable` — the `NSColorWell` wrapper beneath it.
 - `MixerStrip` — the pure strip state built from the authored channels.
+- `InputClaims` — which pass needs each input running; starts and stops follow.
 - `MuteLabel` — the fixed-size speaker label every mute toggle shares.
 - `StripMeter` — one strip's pre-fader meter capsule beside its fader.
 - `PeakReadout` — a meter's peak-hold readout; a click resets the hold.

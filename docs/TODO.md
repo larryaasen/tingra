@@ -306,15 +306,6 @@ are the checks still open from those, pointing at their records there.
     delivers, whether the grant survives a rebuild of the team-signed app,
     and any hardened-runtime entitlement.
 
-- [ ] **Muting a movie's strip probably stops its picture** (found reading
-  the code 2026-11-09, not reproduced). `EngineModel` starts and stops one
-  input object from two owners that do not know about each other — the video
-  pass (`activeInputs`) and the audio pass (`activeAudioInputs`). Muting a
-  movie's strip makes `applyAudioConfiguration()` call `stop()` on an input a
-  layer is still showing, and the video pass never restarts it, since it
-  still holds the input as active. Reproduce it with a test first; the likely
-  fix is one rule — an input runs while a layer or an unmuted strip needs it.
-
 - [ ] **Dynamics effects: what is left open** (built 2026-11-11; record in
   ARCHITECTURE.md, "Dynamics effects: gate, compressor, limiter").
   - [ ] Tune the gate, compressor, and limiter defaults by listening, on a

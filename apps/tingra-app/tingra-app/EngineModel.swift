@@ -1967,6 +1967,13 @@ final class EngineModel {
     /// indicator goes dark), unmuting starts it again.
     @ObservationIgnored private var activeAudioInputs: [InputID: any Input] = [:]
 
+    /// Which pass needs each input running, so an input both need — a video
+    /// file with sound, shown by a layer and heard on an unmuted strip — is
+    /// started by the first and stopped only by the last (``InputClaims``).
+    /// ``activeInputs`` and ``activeAudioInputs`` say what each pass is
+    /// using; these claims alone decide `start()` and `stop()`.
+    @ObservationIgnored private var inputClaims = InputClaims()
+
     /// The task draining the compositor's program stream into the relay.
     @ObservationIgnored private var programTask: Task<Void, Never>?
 
@@ -2652,8 +2659,11 @@ final class EngineModel {
         // lie the moment the app started reacting to disconnections.
         let registeredIDs = Set(await registry.allInputs.map(\.id))
         for (id, input) in activeInputs where desired[id] == nil {
-            await input.stop()
             activeInputs[id] = nil
+            // A video file with sound that an unmuted strip still hears keeps
+            // running for the strip; only the last claim stops it.
+            guard inputClaims.release(id, by: .picture) else { continue }
+            await input.stop()
             eventBus.event(
                 "input.stopped",
                 domain: .capture,
@@ -2663,14 +2673,24 @@ final class EngineModel {
                 ]
             )
         }
-        var pending = desired.filter { activeInputs[$0.key] == nil }
-        for id in pending.keys where silentInputs.contains(id) {
-            pending[id] = nil
-            eventBus.event(
-                "input.skipped",
-                domain: .capture,
-                params: ["id": .string(id.rawValue), "reason": .string("silentSinceLastAttempt")]
-            )
+        var pending: [InputID: any Input] = [:]
+        for (id, input) in desired where activeInputs[id] == nil {
+            // An input a strip already runs joins the program as it is; the
+            // silent-input skip is about starting a device, so it does not
+            // apply.
+            if !inputClaims.isClaimed(id, by: .sound), silentInputs.contains(id) {
+                eventBus.event(
+                    "input.skipped",
+                    domain: .capture,
+                    params: ["id": .string(id.rawValue), "reason": .string("silentSinceLastAttempt")]
+                )
+                continue
+            }
+            if inputClaims.claim(id, by: .picture) {
+                pending[id] = input
+            } else {
+                activeInputs[id] = input
+            }
         }
         // Each input joins the program the moment its first frame is proven,
         // not when the slowest device in the pass gives up: the compositor's
@@ -2678,6 +2698,8 @@ final class EngineModel {
         await startConcurrently(pending) { [self] id, input in
             activeInputs[id] = input
             publishActiveInputs()
+        } onRefused: { [self] id in
+            _ = inputClaims.release(id, by: .picture)
         }
         publishActiveInputs()
         reportActiveInputs()
@@ -3212,8 +3234,11 @@ final class EngineModel {
         }
 
         for (id, input) in activeAudioInputs where desired[id] == nil {
-            await input.stop()
             activeAudioInputs[id] = nil
+            // A video file with sound that a layer still shows keeps running
+            // for the layer; its strip simply leaves the mix.
+            guard inputClaims.release(id, by: .sound) else { continue }
+            await input.stop()
             // An audio input stops here only because its strip is muted or
             // gone — the honest-microphone policy, where a muted strip
             // releases the device so its capture indicator goes out.
@@ -3223,8 +3248,20 @@ final class EngineModel {
                 params: ["id": .string(id.rawValue), "reason": .string("stripMutedOrRemoved")]
             )
         }
-        let pending = desired.filter { activeAudioInputs[$0.key] == nil }
-        await startConcurrently(pending) { [self] id, input in activeAudioInputs[id] = input }
+        var pending: [InputID: any Input] = [:]
+        for (id, input) in desired where activeAudioInputs[id] == nil {
+            // An input a layer already runs joins the mix as it is.
+            if inputClaims.claim(id, by: .sound) {
+                pending[id] = input
+            } else {
+                activeAudioInputs[id] = input
+            }
+        }
+        await startConcurrently(pending) { [self] id, input in
+            activeAudioInputs[id] = input
+        } onRefused: { [self] id in
+            _ = inputClaims.release(id, by: .sound)
+        }
 
         // The mixer gets every strip whose device is running, with its
         // current level, pan, and mute — the engine-side strips of the mix.
@@ -3313,9 +3350,13 @@ final class EngineModel {
     ///   - inputs: The inputs to start, by identifier.
     ///   - onStarted: Called on the main actor for each input that started,
     ///     before its `input.started` event.
+    ///   - onRefused: Called on the main actor for each input that could not
+    ///     start, before its `input.start` error, so the caller can drop the
+    ///     claim it made (``InputClaims``).
     private func startConcurrently(
         _ inputs: [InputID: any Input],
-        onStarted: (InputID, any Input) -> Void
+        onStarted: (InputID, any Input) -> Void,
+        onRefused: (InputID) -> Void
     ) async {
         await withTaskGroup(of: (InputID, Result<any Input, any Error>).self) { group in
             for (id, input) in inputs {
@@ -3338,6 +3379,7 @@ final class EngineModel {
                         params: ["id": .string(id.rawValue), "name": .string(input.name)]
                     )
                 case .failure(let error):
+                    onRefused(id)
                     if case CaptureInputError.startedSilent = error { silentInputs.insert(id) }
                     eventBus.error(
                         "input.start",
@@ -3412,13 +3454,19 @@ final class EngineModel {
             return
         }
         let id = InputID(rawValue: rawID)
-        if let input = activeInputs.removeValue(forKey: id) {
+        // Both passes let go at once, and the input is stopped once: its
+        // capture is already gone, so the next claim must start it afresh.
+        let shown = activeInputs.removeValue(forKey: id)
+        let heard = activeAudioInputs.removeValue(forKey: id)
+        inputClaims.forget(id)
+        if let input = shown ?? heard {
             await input.stop()
+        }
+        if shown != nil {
             publishActiveInputs()
             reportActiveInputs()
         }
-        if let input = activeAudioInputs.removeValue(forKey: id) {
-            await input.stop()
+        if heard != nil {
             await reconfigureAudio()
         }
         eventBus.event(

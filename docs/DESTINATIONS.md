@@ -34,7 +34,7 @@ The host's `KeychainSecureStorage` already uses the data-protection keychain (`k
 
 Two constraints this respects:
 
-- **Nothing personal in a tracked file** (AGENTS.md, "Signing"): the entitlement carries a build variable — `$(AppIdentifierPrefix)` since 2026-08-30, see below — never a literal prefix. CI builds with `CODE_SIGNING_ALLOWED=NO` are unaffected — entitlements bind at signing, and unit tests use the in-memory `SecureStorage` mock as they do now.
+- **Nothing personal in a tracked file** (apps/AGENTS.md, "Signing"): the entitlement carries a build variable — `$(AppIdentifierPrefix)` since 2026-08-30, see below — never a literal prefix. CI builds with `CODE_SIGNING_ALLOWED=NO` are unaffected — entitlements bind at signing, and unit tests use the in-memory `SecureStorage` mock as they do now.
 - **A binary that declares no group** — which, after the amendment, is every `tingra-cli` build and every app build, signed or not — cannot join one. The store degrades honestly: names and URLs resolve (the JSON document needs no entitlement), and a key the process cannot read reports `hasKey: false` with a structured error explaining the split if the destination is used to stream. This was scoped as a development-only seam; the amendment makes it the shipped CLI's normal state.
 
 ### What v0.1.1 settled about the CLI and restricted entitlements

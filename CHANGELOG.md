@@ -10,6 +10,7 @@
 - sdk: Added the monitor overlay seam, so a plug-in can draw on any monitor for the operator alone.
 - app: You can now flip, show blue only, zebra stripes, or alpha on any monitor, input tiles included.
 - app: You can now set overlay colors and line widths, show VU meters, and turn overlays on over MCP.
+- app: Muting a video file's channel strip no longer freezes its picture in the shot.
 
 - engine: Added TingraApplicationAudio, a standalone library capturing an application's sound by process tap.
 - engine: Added the optional applications key to the project document.

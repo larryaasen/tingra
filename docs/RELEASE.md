@@ -18,7 +18,7 @@ These stand, and this plan builds on them rather than reopening them:
 
 - **`Tingra.app` bundles the CLI; one Homebrew cask; the `tingra-cli` formula stays as the headless path** (decided 2026-07-11; DONE.md).
 - **A bare helper in `Contents/MacOS` is not an option.** A provisioning profile belongs to a bundle's main executable, so a helper beside it is SIGKILLed at `exec` exactly as `tingra-cli` v0.1.1 was. The daemon joins the keychain group only as its own bundle with its own profile (DESTINATIONS.md, "What the probe measured").
-- **Identifiers live under `com.moonwink.tingra.*`**, the app is `com.moonwink.tingra.app`, and nothing personal to one developer is committed (AGENTS.md, "Signing").
+- **Identifiers live under `com.moonwink.tingra.*`**, the app is `com.moonwink.tingra.app`, and nothing personal to one developer is committed (apps/AGENTS.md, "Signing").
 - **Apple Silicon only, macOS 15.0+, Developer ID signed with the hardened runtime, notarized, not sandboxed.**
 
 ## What makes the app harder than the CLI

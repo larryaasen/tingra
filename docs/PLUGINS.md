@@ -157,7 +157,7 @@ The app is the host of the app tier: **its registries, its extension host model,
 - Settings: `SettingsPane` becomes an identifier-backed struct so the source list can append registered settings panes, each a remote view like any pane.
 - The MCP endpoint: `XPCMessageTransport` in `TingraMCP`, the app's `ToolRegistry` fed by `ControlToolsPlugIn`, and the `tingra/*` methods. Per-connection identity: the app knows which `PlugInID` is on each connection from the identity it launched, so a storage call cannot reach another plug-in's data.
 - The project document: `Project.plugInData` (`TingraComposition`), with `ProjectStore` and the dirty-tracking path carrying it.
-- Localization: an extension carries its own catalog; a third-party plug-in's strings are its own business. First-party extension targets follow the AGENTS.md `de`/`es` rule.
+- Localization: an extension carries its own catalog; a third-party plug-in's strings are its own business. First-party extension targets follow the apps/AGENTS.md `de`/`es` rule.
 
 ### The first-party proof: Notes
 
