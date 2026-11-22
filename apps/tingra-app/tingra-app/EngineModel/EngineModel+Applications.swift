@@ -41,16 +41,14 @@ extension EngineModel {
         ApplicationChoice.isAdded(application, to: applications)
     }
 
-    /// Adds an application to the project as an audio input and puts its
-    /// channel strip on the mixer, muted with audio follows video off
-    /// (``MixerStrip/added(_:hasPicture:)``) — an application input exists
-    /// only to be heard, so adding it is adding its strip. Nothing is
-    /// captured, and the application keeps playing to its speakers, until
-    /// the operator unmutes the strip. An application the project already
-    /// holds is left alone. The document autosaves when one was added.
+    /// Adds an application to the project as an audio input and, since it
+    /// exists only to be heard, puts its channel strip on the mixer, muted
+    /// with audio follows video off (``MixerStrip/added(_:hasPicture:)``).
+    /// Nothing is captured, and the application keeps playing to its
+    /// speakers, until the operator unmutes the strip. An application the
+    /// project already holds is left alone.
     ///
-    /// - Parameter application: The application to add, as the picker listed
-    ///   it.
+    /// - Parameter application: The application to add, as the picker lists it.
     func addApplication(_ application: CaptureApplication) async {
         guard !isApplicationAdded(application) else { return }
         let record = ApplicationChoice.record(for: application)
@@ -70,11 +68,10 @@ extension EngineModel {
         scheduleAutosave()
     }
 
-    /// Removes an application from the project, its strip from the mixer,
-    /// and its input from the registry; the audio pass stops it if it was
-    /// capturing, which makes the application heard on its speakers again.
-    /// The strip goes too because nothing could bring it back: adding the
-    /// application again makes a new input.
+    /// Removes an application from the project, its strip from the mixer, and
+    /// its input from the registry; the audio pass stops a running capture,
+    /// so the application is heard on its speakers again. The strip goes too
+    /// because adding the application again makes a new input.
     ///
     /// - Parameter id: The application input to remove.
     func removeApplication(_ id: InputID) async {

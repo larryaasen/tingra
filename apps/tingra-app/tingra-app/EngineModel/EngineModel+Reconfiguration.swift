@@ -18,14 +18,10 @@ import TingraPlugInKit
 /// Starting and stopping inputs so the running set matches what the shots and the mixer need.
 extension EngineModel {
     /// Brings the running inputs in line with the show: starts what its shots
-    /// reference, stops what they no longer do.
-    ///
-    /// Called once at boot and after anything that can change that set — an
-    /// edit binding a new input, a device event, a permission grant. It
-    /// **coalesces**: only one pass runs at a time (the pass suspends at
-    /// `input.start()`/`stop()`), and a request arriving mid-pass makes the
-    /// running pass loop once more with the latest state — so a burst of
-    /// requests never overlaps and races the input start/stop.
+    /// reference, stops what they no longer do. Called at boot and after
+    /// anything that can change that set. Coalesces: one pass runs at a time,
+    /// and a request arriving mid-pass makes it loop once more with the
+    /// latest state, so a burst never races the input start/stop.
     func reconfigure() async {
         reconfigureRequested = true
         guard !reconfiguring else { return }
@@ -37,44 +33,31 @@ extension EngineModel {
         }
     }
 
-    /// One reconfigure pass: starts newly needed inputs, stops no-longer-needed
-    /// ones, and hands the active set to the compositor; on the first pass it
-    /// also establishes the session preset (loading it into the compositor,
-    /// seeding a fresh project when no file supplied one).
+    /// One reconfigure pass: starts newly needed inputs, stops unneeded ones,
+    /// and hands the active set to the compositor. The first pass also
+    /// establishes the session preset, seeding a fresh project when no file
+    /// supplied one.
     ///
-    /// An input that cannot start (authorization denied, device gone) is
-    /// reported on the bus and left out — the program keeps showing whatever
-    /// else is available, never a failure state. One that started silent last
-    /// time is skipped, with an `input.skipped` event, until something that
-    /// could have changed it happens (``silentInputs``).
-    ///
-    /// The running set is every input the active preset's shots reference —
-    /// transient shots included, so the shot the operator is looking at on
-    /// preview has its input running — plus whatever the program is holding,
-    /// and on a fresh project's first pass the first discovered display and
-    /// camera the seed is laid out around. Nothing runs for monitoring alone:
-    /// the shot bank's
-    /// thumbnails read inputs the show already references, and the multiview
-    /// window tiles only what is running (ARCHITECTURE.md, "The shot bank").
+    /// An input that cannot start is reported on the bus and left out; one
+    /// that started silent last time is skipped with `input.skipped` until
+    /// something that could change it happens (``silentInputs``). The running
+    /// set is every input the active preset's shots reference, transient
+    /// shots included, plus whatever the program is holding. Nothing runs for
+    /// monitoring alone (ARCHITECTURE.md, "The shot bank").
     private func applyConfiguration() async {
         let isFirstPass = !hasAppliedConfiguration
 
-        // A loaded project's preset goes into the compositor **before** any
-        // input is waited on: the shots reference inputs by id and render
-        // whatever of them is running, so nothing about the preset depends on
-        // which starts succeed. Waiting would put the whole verification
-        // window — ten seconds for a camera macOS lists but has switched off
-        // — between launch and the first program frame (observed 2026-09-06,
-        // lid closed: the preset loaded at 6.3 s while every available input
-        // was live at 1.5 s). Only a fresh project's seed still waits, because
-        // its shots are laid out around which of its devices actually started.
+        // A loaded project's preset goes into the compositor before any input
+        // is waited on: its shots render whichever referenced inputs are
+        // running, and waiting would put a slow device's verification window
+        // between launch and the first program frame. Only a fresh project's
+        // seed waits, because it is laid out around the devices that started.
         let presetEstablishedEarly = isFirstPass && hasSessionPreset
         if presetEstablishedEarly { establishSessionPreset() }
 
         var desired: [InputID: any Input] = [:]
-        // A fresh project has no shots yet to say what should run, so its
-        // first pass starts the first discovered display and camera — what
-        // the seed is laid out around, once it knows which of them started.
+        // A fresh project has no shots to say what should run, so its first
+        // pass starts the first discovered display and camera for the seed.
         if isFirstPass, !hasSessionPreset {
             for id in [displays.first?.id, cameras.first?.id].compactMap({ $0 }) {
                 if let input = await registry.input(withID: id) {
@@ -82,10 +65,9 @@ extension EngineModel {
                 }
             }
         }
-        // Keep every input the active preset's layer trees reference running
-        // — plus whatever the program is actually rendering, which after a
-        // preset switch can be a held snapshot from outside the loaded pool
-        // (see ``switchPreset(to:)``).
+        // Keep running every input the active preset's shots reference, plus
+        // whatever the program is rendering: after a preset switch that can
+        // be a held snapshot from outside the pool (``switchPreset(to:)``).
         var referenced = Set(shots.flatMap { $0.layers.map(\.input) })
         referenced.formUnion(compositor.programShot.layers.map(\.input))
         for id in referenced where desired[id] == nil {
@@ -94,10 +76,8 @@ extension EngineModel {
             }
         }
 
-        // Which inputs still exist at all, so a stop can say *why*. An input
-        // the registry no longer holds was unplugged; one it still holds is
-        // merely no longer referenced. Reporting both as "unreferenced" was a
-        // lie the moment the app started reacting to disconnections.
+        // Which inputs still exist, so a stop can say why: one the registry
+        // no longer holds was unplugged, one it still holds is unreferenced.
         let registeredIDs = Set(await registry.allInputs.map(\.id))
         for (id, input) in activeInputs where desired[id] == nil {
             activeInputs[id] = nil
@@ -117,8 +97,7 @@ extension EngineModel {
         var pending: [InputID: any Input] = [:]
         for (id, input) in desired where activeInputs[id] == nil {
             // An input a strip already runs joins the program as it is; the
-            // silent-input skip is about starting a device, so it does not
-            // apply.
+            // silent-input skip only concerns starting a device.
             if !inputClaims.isClaimed(id, by: .sound), silentInputs.contains(id) {
                 eventBus.event(
                     "input.skipped",
@@ -134,8 +113,7 @@ extension EngineModel {
             }
         }
         // Each input joins the program the moment its first frame is proven,
-        // not when the slowest device in the pass gives up: the compositor's
-        // set is republished per start, and reported once at the end.
+        // so the compositor's set is republished per start and reported once.
         await startConcurrently(pending) { [self] id, input in
             activeInputs[id] = input
             publishActiveInputs()
@@ -152,9 +130,8 @@ extension EngineModel {
 
     /// Applies the current strips to the audio engine: starts newly unmuted
     /// strips' devices, stops newly muted ones, and hands the running set to
-    /// the mixer. Coalesced exactly like ``reconfigure()`` — the pass
-    /// suspends at `input.start()`/`stop()`, so a burst of mute toggles
-    /// never overlaps and races the device lifecycle.
+    /// the mixer. Coalesced like ``reconfigure()``, so a burst of mute
+    /// toggles never races the device lifecycle.
     func reconfigureAudio() async {
         audioReconfigureRequested = true
         guard !reconfiguringAudio else { return }
@@ -167,10 +144,9 @@ extension EngineModel {
     }
 
     /// One audio reconfigure pass: the unmuted strips' devices are the
-    /// desired set; anything else stops. An input that cannot start
-    /// (authorization denied, device gone) is reported on the bus and left
-    /// out — its strip stays on the panel and simply contributes silence,
-    /// never a failure state.
+    /// desired set, and anything else stops. An input that cannot start is
+    /// reported on the bus and left out; its strip stays on the panel and
+    /// contributes silence.
     private func applyAudioConfiguration() async {
         var desired: [InputID: any Input] = [:]
         for strip in mixerStrips where !strip.isMuted {
@@ -185,9 +161,8 @@ extension EngineModel {
             // for the layer; its strip simply leaves the mix.
             guard inputClaims.release(id, by: .sound) else { continue }
             await input.stop()
-            // An audio input stops here only because its strip is muted or
-            // gone — the honest-microphone policy, where a muted strip
-            // releases the device so its capture indicator goes out.
+            // A muted or removed strip releases its device, so the capture
+            // indicator goes out (the honest-microphone policy).
             eventBus.event(
                 "input.stopped",
                 domain: .capture,
@@ -209,24 +184,20 @@ extension EngineModel {
             _ = inputClaims.release(id, by: .sound)
         }
 
-        // The mixer gets every strip whose device is running, with its
-        // current level, pan, and mute — the engine-side strips of the mix.
+        // The mixer gets every strip whose device is running.
         let strips = mixerStrips.compactMap { strip -> ChannelStrip? in
             guard let input = activeAudioInputs[strip.id] else { return nil }
             return ChannelStrip(input: input, level: strip.level, pan: strip.pan, isMuted: strip.isMuted)
         }
         // Program presence first (audio follows video): it is keyed apart
-        // from the strips, so setting it before they join the mix means no
-        // tick ever mixes a newly running AFV strip whose input is off
-        // program — and a strip whose AFV resolved since the last pass (a
-        // device discovered, a preset adopted) picks it up here.
+        // from the strips, so no tick mixes a newly running AFV strip whose
+        // input is off program, and a strip whose AFV resolved since the
+        // last pass picks it up here.
         syncProgramPresence()
         mixer.setChannelStrips(strips)
-        // Each running strip's authored chain is instantiated fresh and
-        // handed to its mixer channel (a reconfigure is rare — a mute
-        // toggle, a preset switch — so re-instantiating the chain's few
-        // milliseconds of filter memory is inaudible; parameter drags go
-        // through the in-place path instead).
+        // Each running strip's authored chain is instantiated fresh. A
+        // reconfigure is rare, so losing the chain's few milliseconds of
+        // filter memory is inaudible; parameter drags use the in-place path.
         for strip in mixerStrips where activeAudioInputs[strip.id] != nil && !strip.effects.isEmpty {
             mixer.setEffects(await makeEffectChain(strip.effects), forInput: strip.id)
         }
@@ -238,17 +209,12 @@ extension EngineModel {
     }
 
     /// Hands the running input set to the compositor and the multiview
-    /// list — the one place the active set becomes the program's, so a pass,
-    /// a per-start publish, and a mid-show release cannot do it differently.
-    /// Silent: a pass calls this once per started input and reports the set
-    /// once at the end with ``reportActiveInputs()``.
-    ///
-    /// Multiview tiles exactly what is running — never what is merely
-    /// discovered — in a stable name order, so a tile does not jump when
-    /// another device connects. A tile shows picture, so the filter is the
-    /// media question: everything running that produces video, which now
-    /// includes the video generators (ARCHITECTURE.md, "The `Input` media
-    /// capability").
+    /// list: the one place the active set becomes the program's. Silent: a
+    /// pass calls it per started input and reports the set once with
+    /// ``reportActiveInputs()``. Multiview tiles what is running and produces
+    /// video, never what is merely discovered, in a stable name order so a
+    /// tile does not jump when another device connects (ARCHITECTURE.md,
+    /// "The `Input` media capability").
     private func publishActiveInputs() {
         compositor.setInputs(Array(activeInputs.values))
         multiviewInputs =
@@ -270,35 +236,24 @@ extension EngineModel {
     }
 
     /// Starts every given input at once, handing each one to the caller the
-    /// moment it is proven live.
+    /// moment it is proven live. Concurrently, never one after another: a
+    /// device whose start stalls (a camera timing out for ten seconds) would
+    /// otherwise hold every other input, and the active preset, behind it.
     ///
-    /// **Concurrently, never one after another** — the sequential loop this
-    /// replaces let a single device stall the whole pass. Observed 2026-09-06:
-    /// a USB camera whose stream start timed out inside IOKit held
-    /// `input.start()` for ten seconds, and because every other input waited
-    /// behind it, the compositor received no input set and the active preset
-    /// did not load until that timeout expired, while the two Continuity
-    /// Cameras that had already started backed up their CoreMedia I/O queues
-    /// for the duration. A device's start now costs only that device.
-    ///
-    /// Each outcome is reported on the bus as it lands, in completion order,
-    /// so the log's timestamps say when each device actually came up, and
-    /// `onStarted` runs in that same order — which is what lets a caller put
-    /// a fast device into the program while a slow one is still verifying.
-    /// An input that cannot start (authorization denied, device gone, a
-    /// session that reported a runtime error) is reported as an `input.start`
-    /// error and left out — the caller keeps whatever else is available,
-    /// never a failure state. One that started but stayed silent is reported
-    /// the same way and remembered in ``silentInputs``, so the next pass does
-    /// not pay its verification window again.
+    /// Each outcome is reported on the bus in completion order, and
+    /// `onStarted` runs in that order, so a caller can put a fast device into
+    /// the program while a slow one is still verifying. An input that cannot
+    /// start is reported as an `input.start` error and left out; one that
+    /// started but stayed silent is also remembered in ``silentInputs``, so
+    /// the next pass does not pay its verification window again.
     ///
     /// - Parameters:
     ///   - inputs: The inputs to start, by identifier.
     ///   - onStarted: Called on the main actor for each input that started,
     ///     before its `input.started` event.
     ///   - onRefused: Called on the main actor for each input that could not
-    ///     start, before its `input.start` error, so the caller can drop the
-    ///     claim it made (``InputClaims``).
+    ///     start, before its `input.start` error, so the caller can drop its
+    ///     claim (``InputClaims``).
     private func startConcurrently(
         _ inputs: [InputID: any Input],
         onStarted: (InputID, any Input) -> Void,
@@ -340,17 +295,12 @@ extension EngineModel {
         }
     }
 
-    /// Starts the inputs a permission grant has just unblocked.
-    ///
-    /// A display input denied Screen Recording at boot stays out of the
-    /// active set until a reconfigure pass tries it again, and before this
-    /// existed that pass only came along with a picker change or a device
-    /// event — so a grant made in System Settings looked like it had done
-    /// nothing (observed 2026-09-06). The video pass covers the camera and
-    /// Screen Recording grants; the audio pass covers the microphone, whose
-    /// strips start their devices. Both coalesce, and both skip an input
-    /// already running, so calling this with a grant that changed nothing
-    /// costs a registry read.
+    /// Starts the inputs a permission grant has just unblocked. A denied
+    /// input stays out of the active set until a pass tries it again, so
+    /// without this a grant made in System Settings would appear to do
+    /// nothing. The video pass covers the camera and Screen Recording grants,
+    /// the audio pass the microphone; both coalesce and skip an input
+    /// already running.
     ///
     /// - Parameter granted: The permissions that newly became granted, as
     ///   ``PermissionsModel/refresh()`` reports them; an empty set does
@@ -368,10 +318,9 @@ extension EngineModel {
     }
 
     /// Records System Audio Recording as granted when an application input
-    /// reports its first audio — the `input.format` event with `kind:
-    /// application`. macOS has no read for that permission, so the audio
-    /// arriving is the only proof there is (ARCHITECTURE.md, "Application
-    /// audio", A10).
+    /// reports its first audio (`input.format` with `kind: application`).
+    /// macOS has no read for that permission, so the audio arriving is the
+    /// only proof (ARCHITECTURE.md, "Application audio", A10).
     ///
     /// - Parameter event: An event drained from the bus.
     func handleApplicationAudioArrived(_ event: EventBusEvent) {
@@ -382,17 +331,11 @@ extension EngineModel {
     }
 
     /// Releases an input whose capture session died after a successful
-    /// start, on its `input.runtimeError` event.
-    ///
-    /// The input has already torn its session down and finished its frame
-    /// stream by the time the event is on the bus (``CameraInput``); what
-    /// remains is the engine's bookkeeping. Dropping it from the active set
-    /// is what lets the next reconfigure pass — a picker change, a device
-    /// event — try the device again, and handing the compositor the reduced
-    /// set is what takes the frozen last frame out of the program rather
-    /// than leaving a dead input rendering. No automatic retry here: a
-    /// device that dies on every start would otherwise loop, and the pass
-    /// that retries it is one the operator or a device event asks for.
+    /// start, on its `input.runtimeError` event. The input has already torn
+    /// its session down (``CameraInput``); dropping it from the active set
+    /// lets the next reconfigure pass try the device again, and takes its
+    /// frozen last frame out of the program. No automatic retry: a device
+    /// that dies on every start would loop.
     ///
     /// - Parameter event: An event drained from the bus.
     func handleInputRuntimeError(_ event: EventBusEvent) async {

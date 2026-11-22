@@ -15,12 +15,10 @@ import TingraPlugInKit
 
 /// Audio effect chains on the mixer's channel strips.
 extension EngineModel {
-    /// Appends an effect to a strip's chain at its neutral settings (an
-    /// empty payload — every parameter at its declared default). A
-    /// document edit like a layer add: the chain re-instantiates into the
-    /// mixer, the debounced autosave carries it to the project file, and
-    /// the Add Effect menu's `tap` event carries the observability
-    /// (EVENTS.md).
+    /// Appends an effect to a strip's chain at its neutral settings: an empty
+    /// payload, every parameter at its declared default. The chain
+    /// re-instantiates into the mixer, the autosave is debounced, and the Add
+    /// Effect menu's `tap` carries the observability (EVENTS.md).
     ///
     /// - Parameters:
     ///   - effectID: The effect to append.
@@ -48,10 +46,9 @@ extension EngineModel {
         scheduleAutosave()
     }
 
-    /// Moves one slot of a strip's chain to a new position — order is
-    /// signal order, so a move is an audible routing change. The
-    /// destination is clamped to the chain's bounds; a move to the slot's
-    /// current position, or of an unknown slot, is a no-op.
+    /// Moves one slot of a strip's chain. Order is signal order, so a move is
+    /// an audible routing change. The destination is clamped; a move to the
+    /// same position, or of an unknown slot, does nothing.
     ///
     /// - Parameters:
     ///   - effectIndex: The slot to move.
@@ -71,11 +68,9 @@ extension EngineModel {
     }
 
     /// Sets one parameter of one slot in a strip's chain, applied to the
-    /// mixer's live instance in place — the gesture-rate path (a slider
-    /// drag calls it many times a second), so the instance keeps its
-    /// processing state, this reports nothing itself (the slider's
-    /// drag-end `tap` carries the observability — EVENTS.md), and the
-    /// autosave is debounced like the level's.
+    /// mixer's live instance in place so it keeps its processing state.
+    /// Gesture-rate: it reports nothing itself (the slider's drag-end `tap`
+    /// does, EVENTS.md) and the autosave is debounced.
     ///
     /// - Parameters:
     ///   - value: The parameter's new value.
@@ -109,9 +104,8 @@ extension EngineModel {
     }
 
     /// The user-facing name of a registered audio effect, for the chain
-    /// editor's rows — falls back to the raw identifier for an effect this
-    /// build has no provider for (a document can name effects from a
-    /// missing plug-in; the chain entry survives untouched).
+    /// editor's rows. Falls back to the raw identifier for an effect with no
+    /// provider: a document can name effects from a missing plug-in.
     ///
     /// - Parameter id: The effect's stable identifier.
     func effectName(for id: EffectID) -> String {
@@ -127,13 +121,11 @@ extension EngineModel {
         audioEffectChoices.first { $0.id == id }?.parameters ?? []
     }
 
-    /// Instantiates a strip's authored chain through the effect registry,
-    /// one instance per slot in signal order. A configuration whose effect
-    /// has no registered provider is reported once and instantiated as a
-    /// pass-through — never dropped, so the chain's slot indices stay
-    /// aligned with the strip's configurations (the in-place parameter
-    /// path addresses slots by index) and the authored entry keeps its
-    /// place for the provider's return.
+    /// Instantiates a strip's authored chain through the effect registry, one
+    /// instance per slot in signal order. A configuration whose effect has no
+    /// registered provider is reported and instantiated as a pass-through,
+    /// never dropped: the in-place parameter path addresses slots by index,
+    /// and the authored entry keeps its place for the provider's return.
     ///
     /// - Parameter configurations: The strip's authored chain.
     /// - Returns: The live effect instances, in signal order.
@@ -155,10 +147,9 @@ extension EngineModel {
     }
 
     /// Re-instantiates one strip's chain into its mixer channel after a
-    /// structural chain edit (add, remove, move). A strip whose device is
-    /// not running is skipped by the mixer (unknown ids are ignored); its
-    /// chain lands on the next audio reconfigure pass when the device
-    /// starts.
+    /// structural chain edit (add, remove, move). The mixer ignores a strip
+    /// whose device is not running; its chain lands on the next audio
+    /// reconfigure pass, when the device starts.
     ///
     /// - Parameter id: The strip's input id.
     private func pushEffectChain(forStrip id: InputID) async {
@@ -168,8 +159,7 @@ extension EngineModel {
 }
 
 /// The stand-in for a chain slot whose effect has no registered provider:
-/// passes the block through unchanged, holding the slot's index so the
-/// chain stays aligned with its authored configurations (see
+/// passes the block through unchanged, holding the slot's index (see
 /// `EngineModel.makeEffectChain(_:)`).
 private struct PassthroughAudioEffect: AudioEffect {
     /// Ignores every payload — there is nothing to configure.

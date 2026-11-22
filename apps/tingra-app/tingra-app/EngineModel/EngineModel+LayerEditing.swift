@@ -18,12 +18,10 @@ import TingraPlugInKit
 /// Layer editing: the followed shot's layers, their frames, effects, clipboard, and undo.
 extension EngineModel {
     /// The frame a new layer bound to the given input takes: the whole
-    /// program, as always — except a media input whose picture size the
-    /// app read when the file was added, which is **fitted**: letterboxed or
-    /// pillarboxed to show the picture whole, never stretched (found on the
-    /// Library's first use, 2026-09-10; ARCHITECTURE.md, "Media inputs and
-    /// the Library's Media tab"). A camera keeps the full frame: its shape
-    /// is unknown until it delivers, and Match Input is the way back.
+    /// program, except a media input whose picture size the app read when
+    /// the file was added, which is fitted, never stretched (ARCHITECTURE.md,
+    /// "Media inputs and the Library's Media tab"). A camera's shape is
+    /// unknown until it delivers, so Match Input is its way back.
     ///
     /// - Parameter id: The input the layer binds to.
     /// - Returns: The layer's normalized frame.
@@ -46,10 +44,9 @@ extension EngineModel {
         return (index, layers[index])
     }
 
-    /// An input's frame aspect ratio, width over height in pixels, read
-    /// from its latest frame — or nil while it has not delivered one. The
-    /// inspector's Match Input uses it to undo an accidental stretch
-    /// (``LayerFrameGesture/matchingAspect(_:inputAspect:programAspect:)``).
+    /// An input's aspect ratio, width over height in pixels, from its latest
+    /// frame, or nil before it delivers one. Match Input undoes a stretch with
+    /// it (``LayerFrameGesture/matchingAspect(_:inputAspect:programAspect:)``).
     ///
     /// - Parameter id: The input to read.
     /// - Returns: The aspect ratio, or nil.
@@ -67,13 +64,10 @@ extension EngineModel {
     }
 
     /// A layer's picture aspect ratio, width over height in pixels: the
-    /// input's latest frame handed through the layer's effect chain, so a
-    /// cropped layer answers with the crop's proportion, not the camera's
-    /// (ARCHITECTURE.md, "The Crop effect"). Nil while the input has not
-    /// delivered a frame, or when the chain leaves no picture. The chain
-    /// is resolved against the same provider snapshot the renderer uses,
-    /// a slot with no provider counting as pass-through — exactly as it
-    /// renders.
+    /// input's latest frame through the layer's effect chain, so a cropped
+    /// layer answers with the crop's proportion (ARCHITECTURE.md, "The Crop
+    /// effect"). Nil before the input's first frame, or when the chain leaves
+    /// no picture.
     ///
     /// - Parameter layer: The layer to measure.
     /// - Returns: The aspect ratio, or nil.
@@ -84,9 +78,8 @@ extension EngineModel {
         return picture.width / picture.height
     }
 
-    /// A layer's persisted chain as live video effects in signal order,
-    /// a slot with no provider left out (it renders as pass-through) —
-    /// the chain Match Input and the frame-following crop rule measure.
+    /// A layer's persisted chain as live video effects in signal order. A
+    /// slot with no provider is left out, since it renders as pass-through.
     ///
     /// - Parameter layer: The layer whose chain to resolve.
     /// - Returns: The live effects.
@@ -95,10 +88,9 @@ extension EngineModel {
     }
 
     /// One persisted chain slot as a live video effect at its settings, or
-    /// nil when this build has no provider for it (the slot is then
-    /// pass-through, exactly as it renders) — resolved against the same
-    /// provider snapshot the renderer's factory reads, so the inspector's
-    /// Match Input and the layer monitor see the chain the program does.
+    /// nil when this build has no provider for it. Reads the provider
+    /// snapshot the renderer's factory reads, so Match Input and the layer
+    /// monitor see the chain the program does.
     ///
     /// - Parameter configuration: The chain slot.
     /// - Returns: The live effect, or nil.
@@ -123,8 +115,7 @@ extension EngineModel {
     }
 
     /// Marks the start of a gesture-rate edit (a slider or handle drag),
-    /// snapshotting the followed shot so the drag undoes as one step — the
-    /// one-`tap`-per-gesture rule applied to undo.
+    /// snapshotting the followed shot so the drag undoes as one step.
     func beginLayerGesture() {
         layerGestureSnapshot = editedShot?.shot
     }
@@ -154,16 +145,11 @@ extension EngineModel {
         undoManager.setActionName(action.title)
     }
 
-    /// Puts a shot back as it was — the undo of a layer-tree edit, and the
-    /// redo of an undo, since a restore registers its own inverse.
-    ///
-    /// Restored **by id**, whether or not the shot is still followed, so an
-    /// undo stays correct after the operator stages something else
-    /// (Keynote's undo does not depend on the selection); a shot no longer
-    /// in the pool — removed, or another preset made active — is left
-    /// alone. The restore takes the edit path: the compositor shows it at
-    /// the next tick, the tally re-reads it, the autosave picks it up, and a
-    /// change to the set of bound inputs reconfigures so they start or stop.
+    /// Puts a shot back as it was: the undo of a layer-tree edit, and its
+    /// redo, since a restore registers its own inverse. Restored by id,
+    /// followed or not, so an undo stays correct after the operator stages
+    /// something else; a shot no longer in the pool is left alone. Takes the
+    /// edit path, and reconfigures when the set of bound inputs changes.
     ///
     /// - Parameters:
     ///   - shot: The shot to put back.
@@ -188,9 +174,8 @@ extension EngineModel {
     }
 
     /// Adds a layer bound to the given input on top of the edited shot's
-    /// layer tree, then reconfigures so the input is running — a layer bound
-    /// to a not-yet-started input contributes nothing until its first frame
-    /// arrives, so the edit is visible on program the moment frames flow.
+    /// layer tree, then reconfigures so the input is running: a layer bound
+    /// to an input not yet started contributes nothing until its first frame.
     ///
     /// - Parameter input: The input the new layer binds to.
     func addLayer(boundTo input: InputID) async {
@@ -274,12 +259,10 @@ extension EngineModel {
         selectedLayer != nil
     }
 
-    /// Whether Paste has somewhere to put a layer and a layer to put
-    /// there: a shot is followed and the pasteboard holds one.
-    ///
-    /// Reads ``layerPasteboardChangeCount`` so a view that draws a Paste
-    /// item from this — the layer row's context menu — is redrawn when the
-    /// app copies a layer; the pasteboard itself is not observable.
+    /// Whether Paste has somewhere to put a layer and a layer to put there:
+    /// a shot is followed and the pasteboard holds one. Reads
+    /// ``layerPasteboardChangeCount`` so a view drawing a Paste item is
+    /// redrawn when the app copies a layer; the pasteboard is not observable.
     ///
     /// - Parameter pasteboard: The pasteboard to look at.
     func canPasteLayer(from pasteboard: NSPasteboard = .general) -> Bool {
@@ -287,10 +270,9 @@ extension EngineModel {
         return editedShot != nil && LayerPasteboard.containsLayer(pasteboard)
     }
 
-    /// Copies the selected layer to the pasteboard — Edit > Copy. The shot
-    /// is untouched, so there is nothing to undo; the `tap` records the
-    /// operator's action, since the Edit menu's items are the system's
-    /// (the reasoning under ``restoreShot(_:_:)``'s `layerEdit.undo`).
+    /// Copies the selected layer to the pasteboard (Edit > Copy). The shot is
+    /// untouched, so there is nothing to undo; the `tap` records the
+    /// operator's action, since the Edit menu's items are the system's.
     ///
     /// - Parameter pasteboard: The pasteboard to write.
     /// - Returns: Whether a layer was copied.
@@ -316,10 +298,9 @@ extension EngineModel {
         return writeLayer(layers[index], to: pasteboard)
     }
 
-    /// Cuts the selected layer — Edit > Cut: copies it, then removes it
-    /// from the followed shot as one undo step, and reconfigures so an
-    /// input no shot references anymore is stopped. A layer that could not
-    /// be copied is not removed.
+    /// Cuts the selected layer (Edit > Cut): copies it, removes it from the
+    /// followed shot as one undo step, and reconfigures so an input no shot
+    /// references anymore stops. A layer that could not be copied stays.
     ///
     /// - Parameter pasteboard: The pasteboard to write.
     func cutSelectedLayer(to pasteboard: NSPasteboard = .general) async {
@@ -331,16 +312,13 @@ extension EngineModel {
         await reconfigure()
     }
 
-    /// Pastes the pasteboard's layer on top of the followed shot — Edit >
-    /// Paste — and selects it, so the inspector and the handles are on the
-    /// layer that just arrived. One undo step; then a reconfigure so the
-    /// layer's input is running, as after ``addLayer(boundTo:)``. A layer
-    /// bound to an input this project cannot see lands dormant.
+    /// Pastes the pasteboard's layer on top of the followed shot (Edit >
+    /// Paste) and selects it, then reconfigures so its input is running. A
+    /// layer bound to an input this project cannot see lands dormant.
     ///
     /// - Parameters:
     ///   - pasteboard: The pasteboard to read.
-    ///   - tapName: The `tap` recording which control asked — the Edit
-    ///     menu's by default.
+    ///   - tapName: The `tap` recording which control asked.
     func pasteLayer(from pasteboard: NSPasteboard = .general, reporting tapName: String = "layerEdit.paste") async {
         guard let followed = editedShot, let layer = LayerPasteboard.layer(on: pasteboard) else { return }
         eventBus.tap(
@@ -378,9 +356,8 @@ extension EngineModel {
         }
     }
 
-    /// Nudges the layer at the given bottom-to-top index one step — an
-    /// arrow key on the monitor. A discrete edit: each press is its own
-    /// undo step, as in Keynote.
+    /// Nudges the layer at the given bottom-to-top index one step (an arrow
+    /// key on the monitor). Each press is its own undo step.
     ///
     /// - Parameters:
     ///   - index: The layer's index in the shot's `layers` array.
@@ -396,15 +373,14 @@ extension EngineModel {
     }
 
     /// Sets the frame of the edited shot's layer at the given bottom-to-top
-    /// index — its position and size in normalized, top-left-origin program
-    /// coordinates. Applied live, so a slider drag is visible on program
-    /// tick by tick.
+    /// index, in normalized, top-left-origin program coordinates. Applied
+    /// live, so a slider drag is visible on program tick by tick.
     ///
     /// - Parameters:
     ///   - frame: The new normalized destination rect.
     ///   - index: The layer's index in the shot's `layers` array.
-    ///   - action: What the edit did, for the Undo item's name — a resize
-    ///     by default; a position field or a placement anchor says move.
+    ///   - action: What the edit did, for the Undo item's name: a resize by
+    ///     default; a position field or a placement anchor says move.
     func setLayerFrame(_ frame: CGRect, at index: Int, as action: LayerUndoAction = .resizeLayer) {
         applyShotEdit(action) { LayerTreeEdit.settingFrame(frame, ofLayerAt: index, in: $0) }
     }
@@ -419,12 +395,11 @@ extension EngineModel {
         applyShotEdit(.changeOpacity) { LayerTreeEdit.settingOpacity(opacity, ofLayerAt: index, in: $0) }
     }
 
-    /// Appends a video effect to the edited shot's layer at the given
-    /// index, at its neutral settings. A layer-tree edit like any other:
-    /// live on program at the next tick and autosaved debounced; the Add
-    /// Effect menu's `tap` carries the observability (EVENTS.md). Every
-    /// chain edit — this and the three below — trims the layer's frame to
-    /// follow the picture's extent (``followingPictureExtent(ofLayerAt:from:to:)``).
+    /// Appends a video effect to the edited shot's layer at the given index,
+    /// at its neutral settings. The Add Effect menu's `tap` carries the
+    /// observability (EVENTS.md). Every chain edit, this and the three below,
+    /// trims the layer's frame to follow the picture's extent
+    /// (``followingPictureExtent(ofLayerAt:from:to:)``).
     ///
     /// - Parameters:
     ///   - effect: The effect to append.
@@ -465,11 +440,10 @@ extension EngineModel {
     }
 
     /// Sets one parameter of one slot in the edited shot's layer's effect
-    /// chain, applied live tick by tick like the frame and opacity
-    /// sliders. Gesture-rate, so it reports nothing itself — the slider's
-    /// drag-end `tap` carries the observability (EVENTS.md). A crop inset
-    /// trims the frame with it, tick by tick, so the kept picture never
-    /// stretches (``followingPictureExtent(ofLayerAt:from:to:)``).
+    /// chain, applied live tick by tick. Gesture-rate, so it reports nothing
+    /// itself: the slider's drag-end `tap` carries the observability
+    /// (EVENTS.md). A crop inset trims the frame with it, so the kept picture
+    /// never stretches (``followingPictureExtent(ofLayerAt:from:to:)``).
     ///
     /// - Parameters:
     ///   - value: The parameter's new value.
@@ -501,16 +475,13 @@ extension EngineModel {
     }
 
     /// The edited shot with one layer's frame trimmed to follow its chain:
-    /// when a chain edit moves the picture's extent — a crop dialed in,
-    /// eased back, removed, or reordered — the frame follows by the same
-    /// mapping, so what stays visible stays where it was at the same scale
-    /// and a crop never re-stretches the picture it keeps
+    /// when a chain edit moves the picture's extent, the frame follows by the
+    /// same mapping, so what stays visible keeps its place and scale
     /// (``LayerFrameGesture/following(_:from:to:)``; ARCHITECTURE.md, "A
-    /// crop trims the frame"). Both chains are measured the way Match
-    /// Input measures — against the input's latest frame, or against the
-    /// program's own size before one arrives, an equivalent yardstick for
-    /// insets that are fractions of the picture. Applied inside the one
-    /// edit, so the chain change and the frame change are one undo step.
+    /// crop trims the frame"). Measured against the input's latest frame, or
+    /// the program's size before one arrives, equivalent for insets that are
+    /// fractions of the picture. Runs inside the one edit, so chain and frame
+    /// are one undo step.
     ///
     /// - Parameters:
     ///   - index: The layer's index in the shot's `layers` array.
@@ -530,9 +501,8 @@ extension EngineModel {
         return LayerTreeEdit.settingFrame(frame, ofLayerAt: index, in: after)
     }
 
-    /// The user-facing name of a registered video effect, for the layer
-    /// chain editor's rows — falls back to the raw identifier for an
-    /// effect this build has no provider for.
+    /// The user-facing name of a registered video effect, or the raw
+    /// identifier for an effect this build has no provider for.
     ///
     /// - Parameter id: The effect's stable identifier.
     func videoEffectName(for id: EffectID) -> String {
@@ -548,19 +518,14 @@ extension EngineModel {
     }
 
     /// Applies one layer-tree edit to the shot the editor follows
-    /// (``editedShot``: staged on preview, else on program): transforms it,
-    /// stores the edited shot back into the session preset (so it survives
-    /// shot switches — GLOSSARY.md, "Preset"), pushes it through the
-    /// compositor so a shot on program shows the change at the next tick,
-    /// and schedules the debounced autosave so it reaches the project file.
-    /// A no-op edit (out-of-range index, no shot followed, no actual change)
-    /// touches nothing. A real edit to a **transient** shot promotes it: the
-    /// operator is composing in it, which is authorship (ARCHITECTURE.md,
-    /// "The shot bank").
-    ///
-    /// Every real edit registers the shot it replaced as one undo step —
-    /// unless a gesture is in progress, in which case the gesture's end
-    /// registers the whole drag (``endLayerGesture(_:)``).
+    /// (``editedShot``: staged on preview, else on program): stores the
+    /// edited shot in the session preset so it survives shot switches
+    /// (GLOSSARY.md, "Preset"), pushes it through the compositor, and
+    /// schedules the autosave. A no-op edit touches nothing. A real edit
+    /// promotes a transient shot, since composing in it is authorship
+    /// (ARCHITECTURE.md, "The shot bank"), and registers the shot it replaced
+    /// as one undo step, unless a gesture is in progress: its end registers
+    /// the whole drag (``endLayerGesture(_:)``).
     ///
     /// - Parameters:
     ///   - action: What the edit does, for the Undo item's name.

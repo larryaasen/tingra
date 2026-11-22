@@ -44,11 +44,10 @@ extension EngineModel {
         effectiveMonitorOverlays[target.monitor]
     }
 
-    /// Whether a monitor overlay has anything to show on a monitor: the
-    /// Overlays submenus disable one that does not. The overlay is asked
-    /// about the kind of monitor, and, for program and preview, about the
-    /// program format; an input tile's or the layer monitor's canvas varies
-    /// by tile and by layer, so its draw makes that check.
+    /// Whether a monitor overlay has anything to show on a monitor; the
+    /// Overlays submenus disable one that does not. Asks about the kind of
+    /// monitor and, for program and preview, the program format; an input
+    /// tile's or the layer monitor's canvas varies, so its draw checks that.
     ///
     /// - Parameters:
     ///   - provider: The overlay's provider.
@@ -61,10 +60,9 @@ extension EngineModel {
     }
 
     /// Turns a monitor overlay on or off for a monitor. Saved with the
-    /// project like any project change, and reported as
-    /// `monitorOverlay.changed`, but never undoable: undoing a layer move
-    /// must not turn a guide off (PLUGINS.md, Decision 55). The menu item
-    /// that calls this reports its own `tap` first.
+    /// project and reported as `monitorOverlay.changed`, but never undoable:
+    /// undoing a layer move must not turn a guide off (PLUGINS.md, Decision
+    /// 55). The calling menu item reports its own `tap` first.
     ///
     /// - Parameters:
     ///   - id: The overlay.
@@ -81,18 +79,16 @@ extension EngineModel {
         scheduleAutosave()
     }
 
-    /// The monitor overlays one monitor draws, made from the catalog with
-    /// the project's values: what `MonitorTile` hands its monitor. An
-    /// overlay whose plug-in is not loaded is left out but stays in the
-    /// project.
+    /// The overlays one monitor draws, made from the catalog with the
+    /// project's values: what `MonitorTile` hands its monitor. One whose
+    /// plug-in is not loaded is left out but stays in the project.
     ///
     /// - Parameters:
     ///   - target: The monitor.
     ///   - tally: The monitor's tally, or nil for the target's default
-    ///     (``MonitorOverlayTarget/defaultTally``); an input tile passes
-    ///     its input's.
-    ///   - input: The input an input tile shows, whose strip its meters
-    ///     read; nil for every other monitor.
+    ///     (``MonitorOverlayTarget/defaultTally``).
+    ///   - input: An input tile's input, whose strip its meters read; nil
+    ///     for every other monitor.
     /// - Returns: The monitor's overlays, in drawing order.
     func monitorOverlayLineup(
         for target: MonitorOverlayTarget, tally: MonitorOverlayContext.Tally? = nil, input: InputID? = nil
@@ -136,9 +132,8 @@ extension EngineModel {
 
     /// Changes one of a monitor overlay's values, on every monitor it is
     /// drawn on (PLUGINS.md, Decision 55). Saved with the project and not
-    /// undoable, like turning an overlay on; the control that calls this
-    /// reports its own `tap` when the change settles, so a slider's drag
-    /// does not report every step.
+    /// undoable, like turning an overlay on. The calling control reports its
+    /// own `tap` when the change settles, not on every step of a drag.
     ///
     /// - Parameters:
     ///   - value: The new value.
@@ -168,9 +163,8 @@ extension EngineModel {
     }
 
     /// Whether a monitor shows its picture mirrored: Flip Horizontal is on
-    /// there and its plug-in is loaded. The monitor's layer handles mirror
-    /// with the picture, so a drag still moves the layer the way the
-    /// pointer goes.
+    /// there and its plug-in is loaded. The layer handles mirror with the
+    /// picture, so a drag still moves the layer the way the pointer goes.
     ///
     /// - Parameter target: The monitor.
     /// - Returns: Whether the picture there is mirrored.
@@ -179,8 +173,7 @@ extension EngineModel {
         return isMonitorOverlayOn(flip, on: target) && monitorOverlayCatalog.provider(withID: flip) != nil
     }
 
-    /// A monitor's overlay list with one overlay added at the end or
-    /// removed.
+    /// A monitor's overlay list with one overlay added at the end or removed.
     ///
     /// - Parameters:
     ///   - list: The list.

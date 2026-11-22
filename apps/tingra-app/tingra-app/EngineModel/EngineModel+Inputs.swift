@@ -33,19 +33,15 @@ extension EngineModel {
             .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
 
-    /// The inputs a new layer can bind to: everything that produces video.
-    /// Generators are in — the exclusion that stood here was never about
-    /// generators as such, only about `InputKind` being unable to say
-    /// whether one produced video or audio (see ARCHITECTURE.md, "The
-    /// `Input` media capability").
+    /// The inputs a new layer can bind to: everything that produces video,
+    /// generators included (ARCHITECTURE.md, "The `Input` media capability").
     var layerInputChoices: [InputChoice] {
         videoInputs
     }
 
-    /// Whether a layer's input is currently discovered — a layer bound to a
-    /// device that went away stays bound and dormant, and the editor's list
-    /// draws it dimmed (ARCHITECTURE.md, "Direct manipulation, drag-to-reorder,
-    /// and undo in the layer-tree editor").
+    /// Whether a layer's input is currently discovered. A layer whose device
+    /// went away stays bound, dormant, and dimmed (ARCHITECTURE.md, "Direct
+    /// manipulation, drag-to-reorder, and undo in the layer-tree editor").
     ///
     /// - Parameter id: The layer's input.
     /// - Returns: Whether that input can contribute frames now.
@@ -53,9 +49,8 @@ extension EngineModel {
         layerInputChoices.contains { $0.id == id }
     }
 
-    /// The sidebar's symbol for an input's kind, so a layer row and the
-    /// inspector's header read like the sidebar row the input came from —
-    /// and a warning for a layer whose input is not discovered.
+    /// The sidebar's symbol for an input's kind, or a warning symbol for a
+    /// layer whose input is not discovered.
     ///
     /// - Parameter id: The layer's input.
     /// - Returns: An SF Symbol name.
@@ -67,9 +62,8 @@ extension EngineModel {
         case .generator: "rectangle.checkered"
         case .microphone: "mic"
         case .application: "app"
-        // A media input's symbol says what kind of file it is, resolved
-        // from the item's content type (ARCHITECTURE.md, "Media inputs and
-        // the Library's Media tab").
+        // A media input's symbol comes from the file's content type
+        // (ARCHITECTURE.md, "Media inputs and the Library's Media tab").
         case .media:
             LibraryItem.kind(of: mediaItem(forInput: id).flatMap { MediaRegistry.contentType(of: $0.url) }).symbol
         case nil: "exclamationmark.triangle"
@@ -79,21 +73,15 @@ extension EngineModel {
         }
     }
 
-    /// Rebuilds every device list from the input registry.
-    ///
-    /// **From the registry, never from a device event's params** — the whole
-    /// reason this is sound. The capture plug-ins update the registry *before*
-    /// they emit `device.connected`/`device.disconnected`, so a listener
-    /// reacting to the event always sees the registry already reflecting it;
-    /// rebuilding from it therefore cannot drift, and one code path serves
-    /// both boot and every later change. This is what `devices --watch` does
+    /// Rebuilds every device list from the input registry, never from a
+    /// device event's params. The capture plug-ins update the registry before
+    /// they emit `device.connected`/`device.disconnected`, so a rebuild cannot
+    /// drift, and one code path serves boot and every later change
     /// (ARCHITECTURE.md, "Live device lists in the app").
     func readDeviceLists() async {
         let inputs = await registry.allInputs
-        // The camera and display pickers ask a *provenance* question —
-        // "choose a camera" — so they filter on kind; listing a generator
-        // among the cameras would be wrong. The two media-role lists below
-        // ask "what does this produce" and filter on media instead.
+        // A device picker asks for a kind ("choose a camera"), so it filters
+        // on kind; the two media-role lists filter on what an input produces.
         cameras = inputs.filter { $0.kind == .camera }
             .map { InputChoice(id: $0.id, name: $0.name, kind: .camera) }
             .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
@@ -109,17 +97,14 @@ extension EngineModel {
         await applyInputParameters(to: inputs)
     }
 
-    /// Records which inputs declare parameters and hands each of them the
-    /// project's stored values. An input the project stores nothing for gets
-    /// the values it reports holding itself (`Input.currentParameters`): an
-    /// input whose settings live only in the host reports none, so the empty
-    /// payload restores its declared defaults and an input tuned by the
-    /// previous project is not left tuned; a device that keeps its own
-    /// settings — a UVC camera — reports them, so applying them changes
-    /// nothing and opening a project never resets the camera's picture
-    /// (docs/UVC.md). Runs with every device-list rebuild, because a device
-    /// that reconnects is a fresh input instance that knows nothing of the
-    /// project's settings.
+    /// Records which inputs declare parameters and hands each the project's
+    /// stored values. An input with none stored gets the values it reports
+    /// holding (`Input.currentParameters`). One whose settings live only in
+    /// the host reports none, so its declared defaults return and the
+    /// previous project's tuning does not linger; a device that keeps its
+    /// own settings, such as a UVC camera, reports them, so opening a project
+    /// never resets its picture (docs/UVC.md). Runs with every device-list
+    /// rebuild, because a reconnected device is a fresh input instance.
     ///
     /// - Parameter inputs: The inputs currently in the registry.
     private func applyInputParameters(to inputs: [any Input]) async {
@@ -159,12 +144,10 @@ extension EngineModel {
         await applyInputParameters(to: registry.allInputs)
     }
 
-    /// Sets one declared parameter of one input — the settings popover's
-    /// slider, field, or color well — storing the value with the project
-    /// and applying the whole payload to the input, live. A gesture-rate
-    /// control like the effect parameters: the value reaches the input at
-    /// once, no event is reported (the control reports its own `tap`), and
-    /// the autosave is debounced.
+    /// Sets one declared parameter of one input from the settings popover:
+    /// stored with the project, and the whole payload applied to the input
+    /// live. Gesture-rate, so no event is reported (the control reports its
+    /// own `tap`) and the autosave is debounced.
     ///
     /// - Parameters:
     ///   - value: The parameter's new payload value.
@@ -187,13 +170,8 @@ extension EngineModel {
     }
 
     /// Records every discovered input's current name, so a picker can still
-    /// label a selection whose device has since gone away.
-    ///
-    /// Only ever *adds* — a departed device keeps the name it was last seen
-    /// under, which is exactly when the cache is needed. Session-scoped
-    /// deliberately: a device name is not part of the show, so it never
-    /// enters the project document, and an unknown id simply falls back to the
-    /// raw identifier the way the layer editor's rows already do.
+    /// label a selection whose device has gone away. Only ever adds, and is
+    /// session-scoped: a device name never enters the project document.
     ///
     /// - Parameter inputs: The inputs currently in the registry.
     private func rememberInputNames(from inputs: [any Input]) {
@@ -202,21 +180,15 @@ extension EngineModel {
         }
     }
 
-    /// Refreshes the device lists after a `device.connected` /
+    /// Refreshes the device lists after a `device.connected` or
     /// `device.disconnected` event, then reruns both reconfigure passes.
-    ///
-    /// Every other event is ignored, so this shares the bus consumer with the
-    /// stream-status handler at no cost. Device connection and disconnection
-    /// are **normal events, never errors**, so
-    /// there is nothing to surface as a failure — the lists simply change.
+    /// Both are normal events, never errors; every other event is ignored.
     ///
     /// - Parameter event: An event drained from the bus.
     func handleDeviceEvent(_ event: EventBusEvent) async {
         guard event.name == "device.connected" || event.name == "device.disconnected" else { return }
-        // A connection is a topology change, and the one a silent input
-        // needs: a lid opening connects the built-in display, a hub
-        // re-enumerating brings a stalled camera back. Every silent input is
-        // retried on the next pass; a disconnection changes nothing for them.
+        // A connection is the topology change a silent input needs (a lid
+        // opening, a hub re-enumerating), so each is retried on the next pass.
         if event.name == "device.connected" { silentInputs.removeAll() }
         await readDeviceLists()
         await refreshMixerStrips()
@@ -226,12 +198,9 @@ extension EngineModel {
         await reconfigure()
     }
 
-    /// The user-facing name of an input, for the editor's layer rows and for
-    /// the inspector's entry for a device that has gone away.
-    ///
-    /// Falls back through the name discovery last reported, then the raw
-    /// identifier — an edited layer can outlive its device (see
-    /// ``lastKnownInputNames``).
+    /// The user-facing name of an input. Falls back to the name discovery
+    /// last reported (``lastKnownInputNames``), then the raw identifier,
+    /// since an edited layer can outlive its device.
     ///
     /// - Parameter id: The input's stable identifier.
     func inputName(for id: InputID) -> String {

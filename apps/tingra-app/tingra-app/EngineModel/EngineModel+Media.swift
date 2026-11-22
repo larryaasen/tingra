@@ -20,10 +20,9 @@ import UniformTypeIdentifiers
 
 /// Media inputs: the images, video and audio files, and text a project holds.
 extension EngineModel {
-    /// Whether a media item's input is registered — what the Library draws
-    /// a row as present on. Asked of both media-role lists, because an
-    /// audio file is an input no layer can bind to: ``isInputAvailable(_:)``
-    /// answers for layers and would call every audio file missing.
+    /// Whether a media item's input is registered, for the Library's rows.
+    /// Asks both media-role lists: no layer can bind to an audio file, so
+    /// ``isInputAvailable(_:)`` would call every audio file missing.
     ///
     /// - Parameter id: The media item's input.
     /// - Returns: Whether that input is discovered, as picture or as sound.
@@ -41,9 +40,8 @@ extension EngineModel {
     }
 
     /// Adds files to the project as media: each becomes an item and, when a
-    /// registered provider opens it, an input the sidebar lists and a layer
-    /// can bind to. A file no provider opens, or that cannot be read, is
-    /// reported and skipped. The document autosaves when anything was added.
+    /// registered provider opens it, an input. A file no provider opens, or
+    /// that cannot be read, is reported and skipped.
     ///
     /// - Parameter urls: The files to add.
     func addMedia(urls: [URL]) async {
@@ -69,10 +67,9 @@ extension EngineModel {
         scheduleAutosave()
     }
 
-    /// Removes a media item from the project and its input from the
-    /// registry; the reconfigure pass stops it if it was playing. **Never
-    /// edits shots**: a layer bound to the item stays bound and dormant, the
-    /// removed-device semantic, and the file itself is untouched.
+    /// Removes a media item from the project and its input from the registry;
+    /// the reconfigure pass stops it if it was playing. Never edits shots: a
+    /// bound layer stays bound and dormant, and the file is untouched.
     ///
     /// - Parameter id: The item to remove.
     func removeMedia(_ id: MediaID) async {
@@ -107,10 +104,9 @@ extension EngineModel {
     /// movie's or an audio file's duration for the Library.
     ///
     /// - Parameter item: The item to register.
-    /// - Returns: Whether the input registered. A missing file is reported
-    ///   as `media.unavailable` (an ordinary event: the file moved, the
-    ///   disconnected-device case); a file no provider opens, or one the
-    ///   registry refuses, as a `media.add` error.
+    /// - Returns: Whether the input registered. A missing file reports
+    ///   `media.unavailable`, an ordinary event; one no provider opens or the
+    ///   registry refuses reports a `media.add` error.
     private func registerMedia(_ item: ProjectMedia) async -> Bool {
         let url = item.url
         guard FileManager.default.isReadableFile(atPath: item.path) else {
@@ -150,8 +146,7 @@ extension EngineModel {
 
     /// A media file's picture size in pixels, read without decoding it: an
     /// image's properties with the EXIF orientation applied, a movie's video
-    /// track size with its preferred transform applied, or the text canvas
-    /// for a document. Nil when the file says nothing usable.
+    /// track size with its preferred transform, or a document's text canvas.
     ///
     /// - Parameters:
     ///   - url: The file.

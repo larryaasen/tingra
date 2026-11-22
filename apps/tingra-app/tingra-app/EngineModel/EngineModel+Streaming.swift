@@ -18,21 +18,14 @@ import TingraPlugInKit
 extension EngineModel {
     /// Offers to go live again when the last run ended while it was live,
     /// and acts on the answer (ARCHITECTURE.md, "Offering to resume a stream
-    /// after the app dies").
-    ///
-    /// The marker is removed before anything else happens, so a second crash
-    /// before the answer cannot ask twice about the same stream. A marker
-    /// naming another project, or destinations that are no longer enabled
-    /// and streamable, asks nothing and is reported as
-    /// `stream.resumeSkipped`. The click goes on the bus before its effect,
-    /// then `stream.resumeOffered` with the number of destinations named —
-    /// counts only, never a URL or a key. Resuming is an ordinary
-    /// ``startStreaming(only:)`` narrowed to the destinations the question
-    /// named, so one added or enabled since stays off air.
+    /// after the app dies"). The marker is removed first, so a second crash
+    /// before the answer cannot ask twice. A marker naming another project,
+    /// or destinations no longer enabled and streamable, asks nothing and is
+    /// reported as `stream.resumeSkipped`. Resuming is
+    /// ``startStreaming(only:)`` narrowed to the destinations it named.
     ///
     /// - Parameter ask: Asks the operator, naming the destinations and when
-    ///   the stream went live (the alert by default; a scripted answer in
-    ///   tests).
+    ///   the stream went live (the alert by default, scripted in tests).
     func offerStreamResume(
         ask: @MainActor (_ destinations: [String], _ wentLive: Date) -> StreamResumeOffer.Answer = {
             StreamResumeAlert.ask(destinations: $0, wentLive: $1)
@@ -56,30 +49,19 @@ extension EngineModel {
     }
 
     /// Puts the program on air: resolves every enabled destination to its
-    /// streaming provider, reads each key from secure storage, and drives one
-    /// ``StreamSession`` fanning the compositor's program frames and the
-    /// mixer's program audio out to all of them — reusing the CLI's proven
-    /// reconnect/stability/stats machinery (ARCHITECTURE.md, "Streaming the
-    /// program", "Multiple destinations"). One active session (the v1 rule,
-    /// now one session with N legs): a second call while streaming is ignored.
+    /// streaming provider and drives one ``StreamSession`` fanning the
+    /// program out to all of them (ARCHITECTURE.md, "Streaming the program",
+    /// "Multiple destinations"). Ignored while already streaming.
     ///
-    /// The start is **best effort**: a destination that refuses the
-    /// connection is reported and skipped while the others go live; only a
-    /// clean sweep of refusals fails the run.
-    ///
-    /// Each stream key is read from secure storage, where the Streaming
-    /// settings pane filed it as it was typed (``setStreamKey(_:for:)``), and
-    /// used only to build its ``Destination``; none ever becomes an event
-    /// param, a log line, or part of the project document. A destination with
-    /// no stored key streams keyless (some servers embed the key in the URL
-    /// path). Until 2026-09-08 the keys arrived as a value collected from the
-    /// main window's rows at the click; the rows now live in the settings
-    /// window, and a click in one window cannot read fields in another.
+    /// The start is best effort: a destination that refuses the connection
+    /// is reported and skipped, and only a clean sweep of refusals fails the
+    /// run. Each stream key is read from secure storage
+    /// (``setStreamKey(_:for:)``) and used only to build its
+    /// ``Destination``, never an event param, a log line, or the project
+    /// document. A destination with no stored key streams keyless.
     ///
     /// - Parameter only: The destinations to stream to, or `nil` for every
-    ///   streamable one. A resume names the ones its offer did
-    ///   (``offerStreamResume(ask:)``), so a destination added or enabled
-    ///   since cannot go on air unannounced.
+    ///   streamable one, as a resume names (``offerStreamResume(ask:)``).
     func startStreaming(only: Set<ProjectDestinationID>?) async {
         guard streamSession == nil else { return }
         let streamable = DestinationEdit.streamable(in: destinations, only: only)
@@ -93,10 +75,9 @@ extension EngineModel {
             return
         }
 
-        // The stream always carries the program mix — an all-muted mixer
-        // streams silence, the way an empty shot streams the background
-        // canvas (ARCHITECTURE.md, "The audio mixer"). Every leg encodes with
-        // these settings; per-destination compression is a later iteration.
+        // The stream always carries the program mix: an all-muted mixer
+        // streams silence (ARCHITECTURE.md, "The audio mixer"). Every leg
+        // shares these settings; per-destination compression comes later.
         let configuration = streamConfiguration
 
         var legs: [StreamSession.DestinationLeg] = []
@@ -123,12 +104,9 @@ extension EngineModel {
             )
         }
 
-        // Tee the program into a fresh stream: the drains in `start()` forward
-        // each composited frame and each mixed block here while the
-        // continuations are set.
-        // Bounded like the bus streams they mirror: the newest frame, and
-        // the newest second of audio — a session that falls behind drops,
-        // never queues (ARCHITECTURE.md, "Bounded frame streams").
+        // Tee the program into a fresh stream, bounded like the bus streams
+        // it mirrors: a session that falls behind drops, never queues
+        // (ARCHITECTURE.md, "Bounded frame streams").
         let (programStream, continuation) = AsyncStream.makeStream(
             of: CapturedFrame.self, bufferingPolicy: .bufferingNewest(1))
         let (programAudioStream, audioContinuation) = AsyncStream.makeStream(
@@ -192,17 +170,13 @@ extension EngineModel {
         await startStreaming(only: nil)
     }
 
-    /// Takes the program off air: requests a clean stop of the active session
-    /// (flush compression, close the connection). The `stream.stopped` event
-    /// settles the status; ``teardownStream()`` releases the plumbing when
-    /// `run()` returns. A no-op when not streaming, or when a stop is
-    /// already under way.
+    /// Takes the program off air with a clean stop of the active session.
+    /// `stream.stopped` settles the status and ``teardownStream()`` releases
+    /// the plumbing. A no-op when not streaming or already stopping.
     ///
-    /// The status moves to ``StreamStatus/stopping`` **before** the request,
-    /// because the session takes a few seconds to close and says nothing
-    /// until it has: without it, a click on Stop Streaming looked ignored.
-    /// The headline counters go with it — they describe delivery, and
-    /// delivery is ending.
+    /// The status moves to ``StreamStatus/stopping`` before the request,
+    /// because the session takes seconds to close and says nothing until it
+    /// has. The headline counters clear with it, since delivery is ending.
     func stopStreaming() async {
         guard let streamSession, streamStatus != .stopping else { return }
         streamStatus = .stopping
@@ -212,9 +186,8 @@ extension EngineModel {
     }
 
     /// Changes the audio bit rate the stream is compressed at, persisting
-    /// the choice. Ignored while a stream session exists: the compressor is
-    /// configured once, at Start. A rate off the menu becomes the nearest
-    /// one on it.
+    /// the choice. Ignored while a stream session exists, since compression
+    /// is configured once at Start. A rate off the menu snaps to the nearest.
     ///
     /// - Parameter bitsPerSecond: The audio bit rate in bits per second.
     func setStreamAudioBitsPerSecond(_ bitsPerSecond: Int) {
@@ -232,18 +205,15 @@ extension EngineModel {
         streamStatisticsTask = nil
         streamSession = nil
         streamTask = nil
-        // `stream.stopped` clears these too; clearing them here as well
-        // covers a session that ended without emitting it — a start that
-        // threw after a destination had already reported its state.
+        // `stream.stopped` clears these too; this covers a start that threw
+        // after a destination had already reported its state.
         destinationStates = [:]
     }
 
-    /// Shows one reading of the session's live statistics in the panel.
-    ///
-    /// The readings only fill in numbers; whether a destination is on air is
-    /// the bus's to say (``handleStreamStatusEvent(_:)``). So a reading that
-    /// crossed a reconnect or the stream's end on its way here never brings a
-    /// row back to Live.
+    /// Shows one reading of the session's live statistics in the panel. The
+    /// readings only fill in numbers; whether a destination is on air is the
+    /// bus's to say (``handleStreamStatusEvent(_:)``), so a late reading
+    /// never brings a row back to Live.
     ///
     /// - Parameter readings: One reading of every delivering leg.
     private func applyLiveStatistics(_ readings: [StreamSession.LegStatistics]) {
@@ -262,18 +232,14 @@ extension EngineModel {
     }
 
     /// The panel's figures from one reading of the session's live statistics:
-    /// each live destination's own, and the headline — the first live
-    /// destination's, never an average across destinations that describes
-    /// none of them.
-    ///
-    /// A reading for a destination that is not live by its own events is
-    /// dropped, so the readout can never contradict the destination's state.
+    /// each live destination's own, and the headline, which is the first live
+    /// destination's, never an average. A reading for a destination not live
+    /// by its own events is dropped, so the readout never contradicts it.
     ///
     /// - Parameters:
     ///   - readings: One reading of every delivering leg.
     ///   - destinationStates: Each destination's state from its bus events.
-    ///   - destinationOrder: The destinations in the panel's order, which
-    ///     decides the first live one.
+    ///   - destinationOrder: The destinations in the panel's order.
     /// - Returns: The figures for each live destination read, and the
     ///   headline when the first live destination was among them.
     static func panelStats(
@@ -296,26 +262,16 @@ extension EngineModel {
     }
 
     /// Updates ``streamStatus`` and the per-destination state from a
-    /// `stream.*` bus event — the event-driven status the CLI's
-    /// `StreamSession` already emits (`stream.started`, the per-leg
-    /// `stream.destination.*`, `stream.reconnecting`, `stream.reconnected`,
-    /// `stream.stopped`); no polling. Non-stream events are ignored.
-    ///
-    /// The session-level status answers "are we on air"; a leg's own events
-    /// answer "is *this* destination on air", so one destination reconnecting
-    /// colors its row without claiming the whole stream is in trouble
-    /// (ARCHITECTURE.md, "Multiple destinations").
-    ///
-    /// The stream session's `stream.started` and `stream.stopped` also keep
-    /// the ``LiveStreamRecord``: written when the stream goes live, removed
-    /// when it stops, whatever the reason. The recording session's events
-    /// never touch it. Not private, so a test can hand it a stop.
+    /// `stream.*` bus event; other events are ignored. The session-level
+    /// status says whether the stream is on air and a leg's own events say
+    /// whether its destination is (ARCHITECTURE.md, "Multiple destinations").
+    /// `stream.started` and `stream.stopped` also write and remove the
+    /// ``LiveStreamRecord``. Not private, so a test can hand it a stop.
     ///
     /// - Parameter event: An event drained from the bus.
     func handleStreamStatusEvent(_ event: EventBusEvent) {
-        // The recording runs its own session, which reports its own life with
-        // the same two session-level event names. Its events belong to the
-        // Record control, never to the streaming panel.
+        // The recording session reports with the same session-level event
+        // names; its events belong to the Record control, not this panel.
         if event.params?["session"].flatMap(Self.stringValue) == Self.recordSessionLabel {
             handleRecordingSessionEvent(event)
             return
@@ -326,12 +282,9 @@ extension EngineModel {
         case "stream.started":
             setActiveStreamStatus(.live)
             streamStartedAt = event.date
-            // On air from here: a run that ends before `stream.stopped` is
-            // one the next launch offers to resume. IDs only, never a URL
-            // or a key. The legs are the streamable destinations, which
-            // cannot be edited while live, less any that rejected the
-            // connection: the session reports those before it reports
-            // itself started, and they were never on air.
+            // A run that ends before `stream.stopped` is one the next launch
+            // offers to resume. IDs only, never a URL or a key, and none for a
+            // destination that rejected the connection: it was never on air.
             liveStreamRecord.write(
                 LiveStreamRecord.Contents(
                     project: projectURL,
@@ -351,11 +304,8 @@ extension EngineModel {
             // leg still down keeps its own row's state.
             setActiveStreamStatus(.live)
             setDestinationState(.live, for: destination)
-        // `stream.stats` carries no figure the panel reads: the app's line is
-        // the log's once-a-minute window summary, and the panel reads the
-        // session's live statistics instead (``applyLiveStatistics(_:)``).
-        // It is what says the stream is still on air, though, so the history
-        // stamps its open entry with it.
+        // Not a figure the panel reads (``applyLiveStatistics(_:)``), but it
+        // says the stream is still on air, so the history stamps its entry.
         case "stream.stats":
             if !isRemovingData { streamHistory.markOnAir(at: event.date) }
         case "stream.reconnecting":
@@ -390,9 +340,8 @@ extension EngineModel {
             // Off air, no destination has a state: a row left reading Live
             // after the stop is what clearing them here prevents.
             destinationStates = [:]
-            // Whatever the reason: a stream that ended on its own was not
-            // cut short by the app dying, and offering to restart it would
-            // be wrong.
+            // Whatever the reason: a stream that ended on its own was not cut
+            // short by the app dying, so there is nothing to offer to resume.
             liveStreamRecord.remove()
             recordStreamEnded(
                 reason: reason == StreamSession.Outcome.connectionLost.rawValue ? .connectionLost : .stopped,
@@ -402,15 +351,10 @@ extension EngineModel {
         }
     }
 
-    /// Enters the session that just went on air in the stream history: the
-    /// destinations it went on air to — every streamed destination but those
-    /// that refused the connection, whose `stream.destination.rejected`
-    /// precedes `stream.started` — and the program format, both of which the
-    /// session holds locked until it has closed.
-    ///
-    /// Nothing is recorded once ``removeAllData()`` has run, the rule
-    /// autosave follows: a history the operator just removed is not written
-    /// back by the stream that is still on air.
+    /// Enters the session that just went on air in the stream history, with
+    /// the program format and every streamed destination but those that
+    /// refused the connection. Nothing is recorded once ``removeAllData()``
+    /// has run, so a removed history is not written back by a live stream.
     ///
     /// - Parameter date: When the session reported going on air.
     private func recordStreamStarted(at date: Date) {
@@ -435,11 +379,9 @@ extension EngineModel {
         streamHistory.end(reason: reason, at: date)
     }
 
-    /// Moves the stream status to a running state reported by the session —
-    /// unless a stop is under way, which only the stream's end
-    /// (`stream.stopped`, or a start-time failure) settles. A leg that
-    /// finishes connecting, or recovers, while the session closes must not
-    /// flip Stopping… back to Live.
+    /// Moves the stream status to a running state the session reported,
+    /// unless a stop is under way: a leg that finishes connecting or recovers
+    /// while the session closes must not flip Stopping… back to Live.
     ///
     /// - Parameter status: The running state the session reported.
     private func setActiveStreamStatus(_ status: StreamStatus) {

@@ -15,16 +15,12 @@ import TingraPlugInKit
 
 /// Destinations: the list a stream goes to, their stream keys, and their edits.
 extension EngineModel {
-    /// The stream key stored for a destination, or nil when none is stored.
-    ///
-    /// Read from secure storage so the Streaming settings pane can prefill
-    /// its key fields, and so ``startStreaming()`` can carry each key to its
-    /// destination, without the key ever passing through the project
-    /// document. A read failure is reported and treated as "no stored key" —
-    /// never a crash.
+    /// The stream key stored for a destination, read from secure storage for
+    /// the settings pane and ``startStreaming()`` so it never passes through
+    /// the project document. A read error is reported and treated as none.
     ///
     /// - Parameter id: The destination's stable id.
-    /// - Returns: The stored stream key, or nil.
+    /// - Returns: The stored stream key, or nil when none is stored.
     func storedStreamKey(for id: ProjectDestinationID) -> String? {
         do {
             return try secureStorage.secret(forAccount: Self.secureStorageAccount(for: id))
@@ -39,12 +35,9 @@ extension EngineModel {
     }
 
     /// Merges the operator's saved destinations with this project's
-    /// references into the panel's rows (DESTINATIONS.md).
-    ///
-    /// Runs once at boot, after the document is read: the store is an actor
-    /// and answers asynchronously, while the document arrives synchronously.
-    /// A store that cannot be read is reported and treated as empty — the show
-    /// still opens, with no destinations, rather than not opening at all.
+    /// references into the panel's rows (DESTINATIONS.md). Runs at boot after
+    /// the document is read, since the store is an actor. A store that
+    /// cannot be read is reported and treated as empty, so the show opens.
     func loadDestinations() async {
         do {
             let saved = try await destinationStore.destinations()
@@ -60,13 +53,9 @@ extension EngineModel {
         projectDestinationReferences = nil
     }
 
-    /// Writes one row through to the operator's store, adding it when new and
-    /// updating it otherwise.
-    ///
-    /// A row whose URL is not yet usable is **not** written: a half-typed
-    /// `rtm` is not a destination, and the store is shared with every other
-    /// project and the daemon. The row keeps its place in the panel until the
-    /// URL resolves, then lands.
+    /// Writes one row through to the operator's store, adding or updating it.
+    /// A row whose URL is not yet usable is not written, because the store is
+    /// shared with every other project and the daemon.
     ///
     /// - Parameter edit: The row to write.
     private func syncDestinationToStore(_ edit: DestinationEdit) async {
@@ -87,16 +76,10 @@ extension EngineModel {
     }
 
     /// Stores the stream key the operator typed for a destination, or clears
-    /// the stored key when the text is empty — the Streaming settings pane's
-    /// write path, called as the key field changes.
-    ///
-    /// The Keychain is the only place a key lives once the destination rows
-    /// moved out of the main window (2026-09-08): the toolbar's Start
-    /// Streaming reads each key back from here at the click rather than
-    /// collecting field text across windows, so the key never becomes model
-    /// state, project content, or an event param. Best effort, like every
-    /// secure-storage write: a Keychain error is reported on the bus and the
-    /// field keeps its text.
+    /// it when the text is empty. The Keychain is the only place a key
+    /// lives: Start Streaming reads it back from there, so the key never
+    /// becomes model state, project content, or an event param. Best effort:
+    /// a Keychain error is reported on the bus and the field keeps its text.
     ///
     /// - Parameters:
     ///   - streamKey: The key as typed, or empty to clear the stored key.
@@ -105,29 +88,24 @@ extension EngineModel {
         persistStreamKey(streamKey, for: id)
     }
 
-    /// Adds an empty destination to the list and autosaves.
-    ///
-    /// The new row reaches neither the store nor the project file until its
-    /// URL is usable (``DestinationEdit/storedDestination``), so an abandoned
-    /// row never becomes an operator-global destination.
+    /// Adds an empty destination to the list and autosaves. The row reaches
+    /// neither the store nor the project file until its URL is usable
+    /// (``DestinationEdit/storedDestination``), so an abandoned row never
+    /// becomes an operator-global destination.
     func addDestination() {
         destinations.append(DestinationEdit())
         eventBus.event("destination.added", domain: .output, params: ["destinations": .int(destinations.count)])
         scheduleAutosave()
     }
 
-    /// Adds a destination started from a template — the service's name and
-    /// URL filled in — and autosaves (DESTINATIONS.md, "What the app does
-    /// with it").
-    ///
-    /// Unlike an empty row, its URL is usable from the start, so it is
-    /// written through to the operator's store at once, like any edit that
-    /// completes a URL.
+    /// Adds a destination started from a template, with the service's name
+    /// and URL filled in, and autosaves (DESTINATIONS.md, "What the app does
+    /// with it"). Its URL is usable from the start, so it is written through
+    /// to the operator's store at once.
     ///
     /// - Parameter template: The service to start from.
     /// - Returns: The new destination's id, so the pane can put the cursor in
-    ///   its stream key field — the one thing the operator still has to
-    ///   fetch from the service.
+    ///   its stream key field.
     @discardableResult
     func addDestination(from template: DestinationTemplate) -> ProjectDestinationID {
         let destination = DestinationEdit(template: template)
@@ -142,13 +120,10 @@ extension EngineModel {
         return destination.id
     }
 
-    /// Removes a destination and clears its stored stream key — deleting a
-    /// destination should not leave its secret behind in the Keychain.
-    ///
-    /// **Removes it for every project**, not just this one: destinations are
-    /// operator-global, so this deletes the saved record itself. The panel's
-    /// confirmation is what makes that safe (ARCHITECTURE.md, "Multiple
-    /// destinations").
+    /// Removes a destination and clears its stored stream key, so no secret
+    /// stays in the Keychain. Removes it for every project: destinations are
+    /// operator-global, so this deletes the saved record, which the panel's
+    /// confirmation makes safe (ARCHITECTURE.md, "Multiple destinations").
     ///
     /// - Parameter id: The destination to remove.
     func removeDestination(_ id: ProjectDestinationID) {
@@ -170,10 +145,8 @@ extension EngineModel {
         }
     }
 
-    /// Updates a destination's typed URL and autosaves.
-    ///
-    /// The id is untouched, so the destination keeps the stream key already
-    /// filed under it — the reason keys are keyed by id and not by URL.
+    /// Updates a destination's typed URL and autosaves. The id is untouched,
+    /// so the destination keeps the stream key filed under it.
     ///
     /// - Parameters:
     ///   - text: The URL as typed.
@@ -192,8 +165,7 @@ extension EngineModel {
     }
 
     /// Enables or disables a destination and autosaves. A disabled
-    /// destination keeps everything it has but contributes no leg to the next
-    /// stream.
+    /// destination keeps everything it has but adds no leg to the next stream.
     ///
     /// - Parameters:
     ///   - isEnabled: Whether it is streamed to.
@@ -227,26 +199,21 @@ extension EngineModel {
     }
 
     /// The secure-storage account a destination's stream key is filed under.
-    ///
-    /// Keyed by the destination's **id**, not its URL: two destinations can
-    /// share an ingest URL with different keys, and editing a URL would
-    /// orphan a key stored under the old one (ARCHITECTURE.md, "Multiple
-    /// destinations"). The prefix keeps these items distinct from any other
-    /// secret the host files later.
+    /// Keyed by the destination's id, not its URL: two destinations can share
+    /// a URL with different keys, and editing a URL would orphan a key stored
+    /// under the old one (ARCHITECTURE.md, "Multiple destinations").
     ///
     /// - Parameter id: The destination's stable id.
     /// - Returns: The account string.
     private static func secureStorageAccount(for id: ProjectDestinationID) -> String {
-        // Delegated rather than duplicated: the daemon files keys under the
-        // store's convention, and a second copy of the format here is exactly
-        // how the two would drift apart.
+        // Delegated, not duplicated: the daemon files keys under the store's
+        // convention, and a second copy of the format would drift from it.
         DestinationStore.secureStorageAccount(for: DestinationID(rawValue: id.rawValue))
     }
 
     /// Stores the stream key for a destination, or clears it when the key is
-    /// empty — best effort. A secure-storage error is reported on the bus (no
-    /// secret in the message) and swallowed: the in-memory key still drives
-    /// this session's stream.
+    /// empty. Best effort: a secure-storage error is reported on the bus,
+    /// with no secret in the message, and swallowed.
     ///
     /// - Parameters:
     ///   - streamKey: The key to store, or empty to clear the stored key.

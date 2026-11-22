@@ -17,26 +17,19 @@ import TingraPlugInKit
 
 /// Projects: opening, creating, and saving them, recent projects, and the session they restore.
 extension EngineModel {
-    /// Whether the open project can be replaced right now — the File menu's
-    /// New, Open, and Open Recent items are enabled while it can
-    /// (``ProjectSwitch``).
+    /// Whether the open project can be replaced right now, which enables the
+    /// File menu's New, Open, and Open Recent items (``ProjectSwitch``).
     var canReplaceProject: Bool {
         ProjectSwitch.refusal(isStreaming: isStreaming, isRecording: isRecording) == nil
     }
 
-    /// Opens a project file the operator chose, replacing the open show
-    /// with it — File ▸ Open…, Open Recent, or a document double-clicked in
-    /// the Finder (ARCHITECTURE.md, "Projects as documents").
-    ///
-    /// **Refused while streaming or recording**, as a program format change
-    /// is, and for the larger reason: a switch tears down the shot pool, the
-    /// media inputs, and the destination list, and the sinks are delivering
-    /// them. The File menu's items are disabled then; this refusal — a
-    /// `project.open` error event carrying the `reason` — is the rule. A
-    /// file that is missing or not a project document is reported the same
-    /// way and the open show stays exactly as it was; nothing is set aside,
-    /// since the file is the operator's. Opening the project already open
-    /// changes nothing.
+    /// Opens a project file the operator chose from the File menu or the
+    /// Finder, replacing the open show (ARCHITECTURE.md, "Projects as
+    /// documents"). Refused while streaming or recording, since a switch
+    /// tears down the shot pool, the media inputs, and the destination list
+    /// the sinks are delivering: a `project.open` error carries the `reason`.
+    /// A file that is missing or not a project document is reported the same
+    /// way and the open show stays as it was.
     ///
     /// - Parameter url: The project document to open.
     func openProject(at url: URL) async {
@@ -83,10 +76,9 @@ extension EngineModel {
         )
     }
 
-    /// Opens a project the Finder handed the app, whenever the engine is
-    /// ready for it: a document double-clicked while the app runs opens at
-    /// once; one that launched the app becomes the project the boot loads,
-    /// and one arriving mid-boot waits for ``start(launch:)`` to finish.
+    /// Opens a project the Finder handed the app once the engine is ready:
+    /// at once while the app runs, as the project the boot loads when it
+    /// launched the app, or after ``start(launch:)`` when it arrives mid-boot.
     ///
     /// - Parameter url: The project document to open.
     func openProjectWhenReady(_ url: URL) async {
@@ -99,11 +91,9 @@ extension EngineModel {
         }
     }
 
-    /// Makes a new project at a location the operator chose — the built-in
-    /// arrangement around the cast devices that are running, as a fresh
-    /// install is seeded — writes it at once so the file exists from the
-    /// moment it is made, and opens it. Refused while streaming or recording
-    /// like ``openProject(at:)``, as a `project.new` error.
+    /// Makes a new project at a location the operator chose, seeded as a
+    /// fresh install is, writes it at once so the file exists, and opens it.
+    /// Refused like ``openProject(at:)``, as a `project.new` error.
     ///
     /// - Parameter url: Where the new project document goes.
     func newProject(at url: URL) async {
@@ -124,10 +114,9 @@ extension EngineModel {
     }
 
     /// Writes the open show to a new file and makes that file the open
-    /// project — Save As… on an autosaving document: from here on the edits
-    /// land there, and the previous file keeps what it had. Allowed while
-    /// live, since nothing on air changes. A write that cannot land is
-    /// reported as `project.save` and the open project stays where it was.
+    /// project: later edits land there, and the previous file keeps what it
+    /// had. Allowed while live, since nothing on air changes. A write that
+    /// cannot land is reported as `project.save` and the project stays put.
     ///
     /// - Parameter url: The new project document's location.
     func saveProjectAs(to url: URL) {
@@ -167,17 +156,13 @@ extension EngineModel {
         recentProjectURLs = NSDocumentController.shared.recentDocumentURLs
     }
 
-    /// Replaces the open show with a document — the runtime counterpart of
-    /// the boot load, against an engine that already has a show on air.
-    ///
-    /// The outgoing show's last edits are flushed to its file first, so the
-    /// file cannot change under a pending autosave. Its media and window
-    /// inputs are unregistered — they were the document's, and the sidebar
-    /// and the layer editor must stop listing them — and its transient shots
-    /// go with the pool, since they were session state of a show that is no
-    /// longer open. Then the document is adopted, its media and windows
-    /// registered, its destinations merged with the operator's store, and its preset put on
-    /// the buses (``activatePreset(recorded:)``).
+    /// Replaces the open show with a document: the runtime counterpart of
+    /// the boot load, against an engine that already has a show on air. The
+    /// outgoing show's last edits are flushed first, so its file cannot
+    /// change under a pending autosave, and its inputs are unregistered so
+    /// the sidebar and the layer editor stop listing them. Then the document
+    /// is adopted and its preset put on the buses
+    /// (``activatePreset(recorded:)``).
     ///
     /// - Parameters:
     ///   - project: The document to open.
@@ -212,16 +197,12 @@ extension EngineModel {
     }
 
     /// Puts an adopted document's preset on the buses: the recorded preset
-    /// when the document holds it, else its first — seeding the built-in
-    /// arrangement into a document that has none, since a show cannot have
-    /// no preset — with the recorded program and staged shots restored where
-    /// they still exist (``restoreSessionPosition(in:)``). When nothing is
-    /// recorded, the compositor's by-id rule holds a shot the new pool also
-    /// has — a copy made by Save As switches seamlessly — and otherwise the
-    /// outgoing show leaves the air with a cut to the first shot, the
-    /// preset-removal rule. Then the inputs reconfigure around the new
-    /// show, and the mixer takes the preset's authored audio channels as a
-    /// boot does, the seed policy as its fallback.
+    /// when the document holds it, else its first, seeding the built-in
+    /// arrangement when it has none. Recorded program and staged shots are
+    /// restored where they still exist (``restoreSessionPosition(in:)``);
+    /// otherwise the compositor's by-id rule holds a shot the new pool also
+    /// has, or the program cuts to the first shot. The mixer takes the
+    /// preset's authored audio channels, the seed policy as its fallback.
     ///
     /// - Parameter recorded: The position recorded for the adopted project.
     private func activatePreset(recorded: SessionPosition) async {
@@ -255,10 +236,8 @@ extension EngineModel {
     }
 
     /// The built-in arrangement seeded around whichever discovered display
-    /// and camera are running, as a preset — a fresh install's first show,
-    /// and a new project's (``ProgramLayout``). The bars generator is
-    /// discovered rather than started: a generator needs no authorization, so
-    /// the seed can reference it before it runs.
+    /// and camera are running, as a preset (``ProgramLayout``). A generator
+    /// needs no authorization, so the seed can reference bars before it runs.
     private struct SeededShow {
         /// The seeded preset, named Main.
         let preset: Preset
@@ -269,12 +248,8 @@ extension EngineModel {
     }
 
     /// Seeds the built-in arrangement around the first discovered display
-    /// and camera that are running.
-    ///
-    /// The preset is named **Main** (2026-09-27; it was "Default", which read
-    /// as the project's name once both sat in the window's title bar — the
-    /// default project's file was `Default.tingraproject` — and as "the
-    /// fallback" rather than the show's first preset).
+    /// and camera that are running. The preset is named Main, which reads as
+    /// the show's first preset, not as a fallback or the project's name.
     ///
     /// - Returns: The seeded preset.
     private func seededShow() -> SeededShow {
@@ -289,17 +264,12 @@ extension EngineModel {
         return SeededShow(preset: preset, referencesBars: barsID != nil)
     }
 
-    /// Completes the first configuration pass: when no project file supplied
+    /// Completes the first configuration pass. When no project file supplied
     /// a preset, seeds one from the built-in ``ProgramLayout`` arrangement
-    /// (the first discovered display and camera, where they actually
-    /// started, plus a bars shot when the
-    /// bars generator is registered — which requests one more reconfigure
-    /// pass to start it) and saves the fresh
-    /// project immediately so the file exists from first launch; then loads
-    /// the active preset into the compositor, which cuts to its first shot —
-    /// nothing is on program yet, the one case where loading cuts (the active
-    /// shot, like the active preset, is session state, never part of the
-    /// document).
+    /// and saves the fresh project at once, so the file exists from first
+    /// launch. Then loads the active preset into the compositor, which cuts
+    /// to its first shot: nothing is on program yet, the one case where
+    /// loading cuts.
     func establishSessionPreset() {
         if !hasSessionPreset {
             let seeded = seededShow()
@@ -334,16 +304,12 @@ extension EngineModel {
     }
 
     /// Puts the last run's program and staged shots back, once, on the first
-    /// load of a document's preset — the position ``loadProject()`` read
-    /// (ARCHITECTURE.md, "Restoring the operator's position").
-    ///
-    /// The program shot is taken with a cut: nothing is on air yet, so there
-    /// is nothing to transition from, and the compositor's own first load
-    /// cut the same way. Each shot is restored only while it still exists in
-    /// the pool (``SessionPosition/shots(validIn:)``); a missing one leaves
-    /// the established rule for that bus — the first shot on program,
-    /// ``ensurePreviewStaged()``'s pick on preview. A seeded fresh project
-    /// never has a position to restore.
+    /// load of a document's preset: the position ``loadProject()`` read
+    /// (ARCHITECTURE.md, "Restoring the operator's position"). The program
+    /// shot is taken with a cut, since nothing is on air to transition from.
+    /// A shot is restored only while it still exists in the pool
+    /// (``SessionPosition/shots(validIn:)``); a missing one leaves that bus
+    /// its usual pick.
     ///
     /// - Parameter preset: The preset the compositor just loaded.
     private func restoreSessionPosition(in preset: Preset) {
@@ -368,18 +334,13 @@ extension EngineModel {
         )
     }
 
-    /// Records the operator's position for the next launch — called from the
+    /// Records the operator's position for the next launch. Called from the
     /// observers of ``activePresetID``, ``activeShotID``, ``previewShotID``,
-    /// ``takeTransitionKind``, ``wipeEdge``, ``shaderName``, and
-    /// ``takeTransitionDuration``, so no path that moves a bus or arms a
-    /// transition can forget to. Silent while data
-    /// is being removed, so the preferences the operator just cleared are not
-    /// written back by the quit that follows. Silent too while a recorded
-    /// position is waiting to be restored (``restoredPosition``): until
-    /// ``restoreSessionPosition(in:)`` runs, the buses hold placeholders, and
-    /// recording them would overwrite the position the launch is about to put
-    /// back — for good, if the process ends in that window (a kill mid-boot,
-    /// a crash, a test host torn down).
+    /// and the transition settings, so no path that moves a bus or arms a
+    /// transition can forget to. Silent while data is being removed, so
+    /// cleared preferences are not written back, and while a recorded
+    /// position waits to be restored (``restoredPosition``): the buses hold
+    /// placeholders until then, and recording them would overwrite it.
     func recordSessionPosition() {
         guard !isRemovingData, restoredPosition == nil else { return }
         sessionPreferences.position = SessionPosition(
@@ -393,11 +354,6 @@ extension EngineModel {
         )
     }
 
-    /// Saves the project document now — every preset in switcher order, the
-    /// active one refreshed with its live layer-tree edits first — cancelling
-    /// any pending autosave. A save that cannot write is reported on the bus
-    /// and the session continues: the edits are still live on program, only
-    /// unsaved.
     /// The project-scoped value an app-tier plug-in has stored in the open
     /// project, or nil when it has none (PLUGINS.md, Decision 7).
     ///

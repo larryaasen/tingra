@@ -24,14 +24,12 @@ extension EngineModel {
         return media.first { $0.path == path }
     }
 
-    /// Moves a snapshot to the Trash — recoverable, never a permanent
-    /// delete. When the project uses the file as media, its input is
-    /// unregistered so its layers show nothing, the missing-media semantic
-    /// the confirmation described; the item stays in the project, dormant.
+    /// Moves a snapshot to the Trash, never a permanent delete. When the
+    /// project uses the file as media, its input is unregistered so its layers
+    /// show nothing (the missing-media semantic); the item stays, dormant.
     ///
     /// - Parameter url: The snapshot file.
-    /// - Returns: Nil when the file is in the Trash, or the reason it is not,
-    ///   in the operator's words.
+    /// - Returns: Nil on success, or the reason in the operator's words.
     func trashSnapshot(at url: URL) async -> String? {
         await trashLibraryFile(
             at: url, errorName: "snapshot.trash", trashedName: "snapshot.trashed", domain: .composition,
@@ -39,15 +37,14 @@ extension EngineModel {
     }
 
     /// Moves a recording to the Trash, on the snapshots' terms
-    /// (``trashSnapshot(at:)``) — except the take being written, which is
+    /// (``trashSnapshot(at:)``), except the take being written, which is
     /// refused: trashing a file under its writer would lose the take and
     /// leave the session writing into the Trash (ARCHITECTURE.md, "The
-    /// Recordings tab"). The Library disables the item for that row; the
-    /// refusal here is for any other caller.
+    /// Recordings tab"). The Library disables that row's item, so the refusal
+    /// here is for any other caller.
     ///
     /// - Parameter url: The recording file.
-    /// - Returns: Nil when the file is in the Trash, or the reason it is not,
-    ///   in the operator's words.
+    /// - Returns: Nil on success, or the reason in the operator's words.
     func trashRecording(at url: URL) async -> String? {
         guard !isBeingRecorded(url) else {
             eventBus.error(
@@ -79,10 +76,9 @@ extension EngineModel {
         return false
     }
 
-    /// Moves a file one of the Library's file tabs lists to the Trash — the
-    /// one path snapshots and recordings share, so the two tabs cannot differ
-    /// in what trashing does. Recoverable, never a permanent delete; the
-    /// events name the file, never its folder (the media rule). When the
+    /// Moves a file one of the Library's file tabs lists to the Trash: the one
+    /// path snapshots and recordings share, so the two tabs cannot differ.
+    /// The events name the file, never its folder (the media rule). When the
     /// project uses the file as media, its input is unregistered at once.
     ///
     /// - Parameters:
@@ -91,8 +87,7 @@ extension EngineModel {
     ///   - trashedName: The event reported when the file is in the Trash.
     ///   - domain: The domain both events belong to.
     ///   - revision: The counter the tab re-reads on.
-    /// - Returns: Nil when the file is in the Trash, or the reason it is not,
-    ///   in the operator's words.
+    /// - Returns: Nil on success, or the reason in the operator's words.
     private func trashLibraryFile(
         at url: URL, errorName: String, trashedName: String, domain: EventDomain,
         revision: ReferenceWritableKeyPath<EngineModel, Int>

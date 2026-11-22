@@ -16,20 +16,14 @@ import TingraRecordingPlugIns
 
 /// Recording: starting and stopping a recording, its settings, and its status.
 extension EngineModel {
-    /// Starts recording the program to a local file: resolves the recording
-    /// provider by the chosen container's extension and drives a **second**
-    /// `StreamSession` carrying no destinations, fed by the same program tee
-    /// the stream is (ARCHITECTURE.md, "Recording in the app").
-    ///
-    /// Independent of streaming by construction: recording can start before,
-    /// during, or after a stream, and stopping one never stops the other. A
-    /// second call while already recording is ignored.
-    ///
-    /// The file is named for the moment it starts and never overwrites an
-    /// earlier take (see ``RecordingFilename``). A folder that cannot be
-    /// created, or a volume without room for a usable take, surfaces as a
-    /// recoverable error rather than a crash — the free-space refusal comes
-    /// from the recording service itself, so the CLI enforces the same rule.
+    /// Starts recording the program to a local file by driving a second
+    /// `StreamSession` with no destinations, fed by the same program tee the
+    /// stream is (ARCHITECTURE.md, "Recording in the app"). Independent of
+    /// streaming, and ignored while already recording. The file is named for
+    /// the moment it starts and never overwrites an earlier take
+    /// (``RecordingFilename``). A folder that cannot be created or a volume
+    /// without room surfaces as a recoverable error; the free-space refusal
+    /// is the recording service's, so the CLI shares it.
     func startRecording() async {
         guard recordSession == nil else { return }
 
@@ -43,9 +37,8 @@ extension EngineModel {
             return
         }
 
-        // Create the folder if the operator has picked one that is not there
-        // yet; a folder that cannot be created is reported rather than
-        // silently falling back to somewhere they did not choose.
+        // A folder that cannot be created is reported, never silently
+        // replaced by one the operator did not choose.
         do {
             try FileManager.default.createDirectory(at: recordingFolder, withIntermediateDirectories: true)
         } catch {
@@ -77,9 +70,8 @@ extension EngineModel {
             eventBus: eventBus,
             recording: provider.makeRecordingService(configuration: configuration),
             recordingFile: RecordingFile(url: url, container: recordingContainer),
-            // Both sessions emit `stream.started`/`stream.stopped` for their
-            // own life; the label is what keeps the streaming panel from
-            // reading the recording's.
+            // Both sessions emit `stream.started`/`stream.stopped`; the label
+            // keeps the streaming panel from reading the recording's.
             label: Self.recordSessionLabel
         )
         recordSession = session
@@ -92,17 +84,15 @@ extension EngineModel {
                 // A clean end settles through the `recording.stopped`
                 // observer, like the stream's.
             } catch {
-                // A setup failure — an unwritable folder, or a volume without
-                // room — throws before any media is written.
+                // A setup failure throws before any media is written.
                 self?.reportRecordingError(String(describing: error))
             }
             self?.teardownRecording()
         }
     }
 
-    /// Stops the recording: finalizes the file so it is playable. The
-    /// `recording.stopped` event settles the status. A no-op when not
-    /// recording.
+    /// Stops the recording and finalizes the file so it is playable.
+    /// `recording.stopped` settles the status. A no-op when not recording.
     func stopRecording() async {
         guard recordSession != nil else { return }
         recordingStatus = .finalizing
@@ -110,11 +100,8 @@ extension EngineModel {
     }
 
     /// Stops a recording in flight and waits for the file to be finalized.
-    ///
-    /// The waiting is the point, and it is why quitting is not simply
-    /// ``stopRecording()``: `stop()` only *requests* the end, where the file
-    /// becomes playable when the session's teardown finishes writing the
-    /// index. A no-op when not recording.
+    /// Quitting needs the wait: ``stopRecording()`` only requests the end,
+    /// and the file is playable once teardown has written its index.
     func finishRecording() async {
         guard let task = recordTask else { return }
         await stopRecording()
@@ -144,9 +131,8 @@ extension EngineModel {
         recordSession = nil
         recordTask = nil
         recordingStartedAt = nil
-        // `recording.stopped` clears this too; clearing it here as well
-        // means a session that ended without emitting it cannot leave the
-        // Library believing a take is still being written.
+        // `recording.stopped` clears this too; this covers a session that
+        // ended without it, which would leave a take marked as being written.
         fileBeingRecorded = nil
         refreshRecordingCapacity()
     }
@@ -177,9 +163,8 @@ extension EngineModel {
     }
 
     /// Changes the video codec recordings are compressed with, persisting
-    /// the choice. Ignored while recording: a file is one codec from its
-    /// first frame to its last. The room left is re-read, since the codec
-    /// changes the video bit rate the estimate is computed from.
+    /// the choice. Ignored while recording: a file is one codec throughout.
+    /// The room left is re-read, since the codec sets the video bit rate.
     ///
     /// - Parameter codec: The video codec.
     func setRecordingVideoCodec(_ codec: StreamConfiguration.VideoCodec) {
@@ -189,9 +174,8 @@ extension EngineModel {
         refreshRecordingCapacity()
     }
 
-    /// Changes the audio bit rate recordings are compressed at, persisting
-    /// the choice. Ignored while recording. A rate off the menu becomes the
-    /// nearest one on it.
+    /// Changes the audio bit rate recordings are compressed at and persists
+    /// it. Ignored while recording. A rate off the menu snaps to the nearest.
     ///
     /// - Parameter bitsPerSecond: The audio bit rate in bits per second.
     func setRecordingAudioBitsPerSecond(_ bitsPerSecond: Int) {
@@ -202,26 +186,19 @@ extension EngineModel {
         refreshRecordingCapacity()
     }
 
-    /// Re-reads how much recording the chosen folder's volume holds.
-    ///
-    /// Called when the folder or container changes and when a recording ends
-    /// — the moments the answer can have changed — never on a timer
-    /// (no polling).
+    /// Re-reads how much recording the chosen folder's volume holds, when a
+    /// recording setting changes or a recording ends, never on a timer.
     func refreshRecordingCapacity() {
         recordingCapacity = RecordingCapacity.measure(at: recordingFolder)
     }
 
     /// Settles the Record control from the recording session's own
-    /// session-level events — the events the streaming panel must not read.
+    /// session-level events, which the streaming panel must not read. Its
+    /// `stream.stopped` is the recording's end, and the reason tells a clean
+    /// stop from the sink dying (`recordingFailed`). The `recording.*`
+    /// events are handled in ``handleRecordingEvent(_:)``.
     ///
-    /// `stream.stopped` from this session is the recording's own end, and
-    /// its reason distinguishes a clean stop from the sink dying with nothing
-    /// left to feed (`recordingFailed`, the record-only outcome). The
-    /// `recording.*` events that carry the file's own news are handled in
-    /// ``handleRecordingEvent(_:)``.
-    ///
-    /// - Parameter event: An event drained from the bus carrying the record
-    ///   session's label.
+    /// - Parameter event: A bus event carrying the record session's label.
     func handleRecordingSessionEvent(_ event: EventBusEvent) {
         guard event.name == "stream.stopped" else { return }
         let reason = event.params?["reason"].flatMap(Self.stringValue)
@@ -245,12 +222,9 @@ extension EngineModel {
     }
 
     /// Updates the Record control from the `recording.*` events the session
-    /// emits for the file itself — event-driven, never polled, and the same
-    /// events the CLI's `--json` output carries — and has the Library's
-    /// Recordings tab re-read when a take appears and when it is finalized.
-    ///
-    /// Internal rather than private so tests drive it with a synthetic event
-    /// instead of booting the engine.
+    /// emits for the file itself, and has the Library's Recordings tab
+    /// re-read when a take appears and when it is finalized. Internal rather
+    /// than private so tests can drive it with a synthetic event.
     ///
     /// - Parameter event: An event drained from the bus.
     func handleRecordingEvent(_ event: EventBusEvent) {

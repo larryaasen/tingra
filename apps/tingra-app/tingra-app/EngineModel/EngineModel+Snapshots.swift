@@ -16,21 +16,16 @@ import TingraPlugInKit
 /// Snapshots: saving a still image of a monitor.
 extension EngineModel {
     /// Saves the frame a monitor is showing as a PNG in the snapshots folder
-    /// (ARCHITECTURE.md, "Snapshots").
-    ///
-    /// Reads the monitor's own ``MonitorFrameSource`` with the two calls a
-    /// draw makes — `latest`, then `image(for:)` — so what is saved is what
-    /// the monitor shows by construction. The frame is read here, on the
-    /// main actor as a draw reads it, and handed to the writer's off-main
-    /// render, which lets go of it before the encode. A monitor showing
-    /// nothing writes nothing: a `snapshot.unavailable` trace and a No
-    /// Picture to Save badge. The outcome is a badge on the monitor, never
-    /// a sound or a flash.
+    /// (ARCHITECTURE.md, "Snapshots"). Reads the monitor's own
+    /// ``MonitorFrameSource`` as a draw does, so what is saved is what the
+    /// monitor shows; the writer renders it off the main actor. A monitor
+    /// showing nothing writes nothing: a `snapshot.unavailable` trace and a
+    /// No Picture to Save badge. The outcome is a badge on the monitor,
+    /// never a sound or a flash.
     ///
     /// - Parameter subject: The monitor to save.
     func saveSnapshot(_ subject: SnapshotSubject) async {
-        // The moment of the request names the file, not the moment of the
-        // write.
+        // The request time names the file, not the write time.
         let requestedAt = Date.now
         let subjectName = snapshotSubjectName(for: subject)
         var params = snapshotParams(for: subject)
@@ -62,10 +57,9 @@ extension EngineModel {
         }
     }
 
-    /// The frame source a subject's monitor draws — the same one, so a
-    /// snapshot and a draw cannot disagree. The layer's is a **fresh**
-    /// ``LayerMonitorSource``, whose effect instances are its own, so a
-    /// snapshot never advances the on-screen monitor's chain state.
+    /// The frame source a subject's monitor draws, so a snapshot and a draw
+    /// cannot disagree. The layer's is a fresh ``LayerMonitorSource`` with its
+    /// own effect instances, so a snapshot never advances the monitor's chain.
     ///
     /// - Parameter subject: The monitor.
     /// - Returns: Its frame source.
@@ -87,8 +81,7 @@ extension EngineModel {
     func snapshotSubjectName(for subject: SnapshotSubject) -> String {
         switch subject {
         case .program:
-            // The same key and comment as the monitor's badge, so the
-            // catalog keeps one entry for the one word.
+            // Same key and comment as the monitor's badge: one catalog entry.
             String(localized: "Program", comment: "Name of the program bus — labels its monitor and its switcher row")
         case .preview:
             String(localized: "Preview", comment: "Name of the preview bus — labels its monitor and its switcher row")

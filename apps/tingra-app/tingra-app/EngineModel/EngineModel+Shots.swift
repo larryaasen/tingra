@@ -15,9 +15,7 @@ import TingraPlugInKit
 /// Shots: taking, staging on preview, transitions, fade to black, and editing the shot bank.
 extension EngineModel {
     /// Sets the length of the next timed take, clamped to
-    /// ``takeTransitionDurationRange`` — so a typed "60" becomes ten seconds
-    /// and a stepped-past-zero value stays zero, and the field shows what was
-    /// kept.
+    /// ``takeTransitionDurationRange``, so the field shows what was kept.
     ///
     /// - Parameter seconds: The requested length in seconds.
     func setTakeTransitionDuration(_ seconds: TimeInterval) {
@@ -35,32 +33,19 @@ extension EngineModel {
         return min(max(seconds, takeTransitionDurationRange.lowerBound), takeTransitionDurationRange.upperBound)
     }
 
-    /// Takes the whole program off air — or brings it back — over
-    /// `duration`, and latches there (GLOSSARY.md, "Fade to black").
-    ///
-    /// **One control drives both engine surfaces**, and it lives here
-    /// because it has to: `TingraComposition` and `TingraAudio` depend on
-    /// each other in neither direction, so nothing in the engine can own a
-    /// state that spans them. The picture fades on the compositor's program
-    /// tick and the master on the mixer's block cadence — two ramps from one
-    /// duration, landing within a tick of each other (ARCHITECTURE.md,
-    /// "Fade to black").
-    ///
-    /// **Video and audio are coupled by default**, because Tingra's program
-    /// is defined as picture *and* sound: a black picture over live room
-    /// audio is dead air, which is the thing the operator reached for this
-    /// control to avoid. A video-only fade would be this method without the
-    /// mixer line.
-    ///
-    /// Everything fed from program inherits it by construction — every
-    /// streaming destination, any recording, and the app's own program
-    /// monitor. Preview, multiview, and the strip meters stay live, so the
-    /// operator keeps working behind the fade.
+    /// Takes the whole program off air, or brings it back, over `duration`,
+    /// and latches there (GLOSSARY.md, "Fade to black"). One control drives
+    /// both engine surfaces from here, because `TingraComposition` and
+    /// `TingraAudio` depend on each other in neither direction: the picture
+    /// fades on the compositor's program tick and the master on the mixer's
+    /// block cadence, landing within a tick of each other (ARCHITECTURE.md,
+    /// "Fade to black"). Video and audio are coupled because a black picture
+    /// over live room audio is dead air. Everything fed from program inherits
+    /// the fade; preview, multiview, and the strip meters stay live.
     ///
     /// - Parameters:
     ///   - faded: `true` to take the program down, `false` to bring it up.
-    ///   - duration: The ramp length in seconds (default: the
-    ///     broadcast-typical half second both engine surfaces default to).
+    ///   - duration: The ramp length in seconds (default: half a second).
     func setFadeToBlack(_ faded: Bool, duration: TimeInterval = Transition.defaultDissolveDuration) {
         isFadedToBlack = faded
         compositor.setFadeToBlack(faded, duration: duration)
@@ -68,15 +53,11 @@ extension EngineModel {
     }
 
     /// Takes the shot with the given id to program with the transition the
-    /// switcher currently selects — ``takeTransitionKind``, plus ``wipeEdge``
-    /// for a wipe; on Default, the taken shot's own ``Shot/defaultTransition``
-    /// (GLOSSARY.md, "Transition"). Driven by the shot switcher button; the
-    /// compositor renders it starting the next tick.
-    ///
-    /// Reports no `tap` event itself — the switcher button's action closure
-    /// in `ContentView` reports the tap before calling this, right where the
-    /// user action is executed (EVENTS.md, "The `tap` convention"); the
-    /// compositor's `program.take` event carries the resolved transition.
+    /// switcher selects: ``takeTransitionKind``, plus ``wipeEdge`` for a
+    /// wipe; on Default, the shot's own ``Shot/defaultTransition``
+    /// (GLOSSARY.md, "Transition"). Reports no `tap` itself: the switcher
+    /// button's action closure does (EVENTS.md, "The `tap` convention"), and
+    /// the compositor's `program.take` event carries the resolved transition.
     ///
     /// - Parameter shotID: The id of the shot to take to program.
     func take(_ shotID: ShotID) {
@@ -96,25 +77,16 @@ extension EngineModel {
         }
     }
 
-    /// Stages a shot on preview — the staging bus, where the next shot is
-    /// composed and checked before being taken to program (GLOSSARY.md,
-    /// "Preview"). Staging is **not** taking: the program is untouched.
-    /// Staging the shot already staged leaves it staged: a desk's preview
-    /// bus is a radio row, and pressing the lit button is not a way to turn
-    /// preview off (the toggle this once had was dropped 2026-09-07 —
-    /// ARCHITECTURE.md, "The preview bus").
-    ///
-    /// Nothing to autosave: every shot of the active preset already has its
-    /// inputs running (``applyConfiguration()`` references the whole pool),
-    /// and what is staged is session state that never enters the project
-    /// document. The one thing staging can change in the engine is a
-    /// **transient** shot losing its place — the shot that was staged, if the
-    /// app made it to show a clicked input, is discarded now that the
-    /// operator has looked away (``reconcileTransientShots()``), and a
-    /// reconfigure stops an input only it referenced.
-    ///
-    /// Reports no `tap` event itself — the tile's or row's action closure
-    /// reports it (EVENTS.md, "The `tap` convention").
+    /// Stages a shot on preview, the bus where the next shot is composed and
+    /// checked before it is taken (GLOSSARY.md, "Preview"). Staging is not
+    /// taking: the program is untouched. Staging the shot already staged
+    /// leaves it staged, since a preview bus is a radio row (ARCHITECTURE.md,
+    /// "The preview bus"). Nothing to autosave or start: the whole pool's
+    /// inputs already run (``applyConfiguration()``), and what is staged is
+    /// session state. The one engine change is a transient shot that was
+    /// staged being discarded (``reconcileTransientShots()``); a reconfigure
+    /// then stops an input only it referenced. The tile's or row's action
+    /// closure reports the `tap` (EVENTS.md, "The `tap` convention").
     ///
     /// - Parameter shotID: The id of the shot to stage.
     func setPreview(_ shotID: ShotID) {
@@ -128,16 +100,11 @@ extension EngineModel {
 
     /// Keeps a shot staged whenever the pool has one: if preview is empty
     /// after a bus change, stages ``ShotEdit/previewRefill(in:activeShotID:)``'s
-    /// pick — the first shot not on program, else the program shot itself.
-    ///
-    /// The compositor is honest about an empty preview (a take that replaced
-    /// a held snapshot, a removed or preset-switched staged shot, a pool that
-    /// was empty until now), and the app's answer is the same as at boot: a
-    /// desk's preview bus always has a button lit, so the operator is never
-    /// one click further from the next take than they need to be. Only an
-    /// empty pool leaves preview empty, and then program is empty too. Called
-    /// after every path that mirrors ``previewShotID`` from the compositor,
-    /// before the tally is synced, so the lamps show the refill.
+    /// pick, the first shot not on program, else the program shot itself, so
+    /// the operator is never a click further from the next take than needed.
+    /// Only an empty pool leaves preview empty. Called after every path that
+    /// mirrors ``previewShotID`` from the compositor, before the tally is
+    /// synced, so the lamps show the refill.
     func ensurePreviewStaged() {
         guard previewShotID == nil, let refill = ShotEdit.previewRefill(in: shots, activeShotID: activeShotID)
         else { return }
@@ -147,44 +114,29 @@ extension EngineModel {
 
     /// Takes the staged shot to program, swapping the buses: what was on
     /// program lands on preview, ready to be taken back (ARCHITECTURE.md,
-    /// "The preview bus"). Uses the same transition the switcher selects as a
-    /// direct take does — ``takeTransitionKind``, resolving Default to the
-    /// taken shot's own ``Shot/defaultTransition``.
-    ///
-    /// Does nothing while nothing is staged; the Take button is disabled
-    /// then, and the compositor reports the miss as a recoverable error if it
-    /// is called anyway.
-    ///
-    /// Reports no `tap` event itself — the Take button's action closure
-    /// reports it; the compositor's `program.take` event carries the resolved
-    /// transition and names preview as its source.
+    /// "The preview bus"). Uses the transition a direct take does
+    /// (``takeTransitionKind``, Default resolving to the shot's own
+    /// ``Shot/defaultTransition``). Does nothing while nothing is staged.
+    /// Reports no `tap` itself: the Take button's action closure does, and
+    /// the compositor's `program.take` event records it as taken from preview.
     func takePreview() {
         guard let staged = previewShotID else { return }
         performTakePreview(transition: resolvedTransition(for: staged))
     }
 
-    /// Takes the staged shot to program with a **hard cut**, whatever the
-    /// switcher's transition picker selects — the switcher's CUT beside its
-    /// AUTO, and the one take an operator must be able to reach without first
+    /// Takes the staged shot to program with a hard cut, whatever the
+    /// transition picker selects: the one take an operator can reach without
     /// checking which transition is armed (⇧⌘↩, see ``ProductionShortcut``).
-    ///
-    /// Identical to ``takePreview()`` in every other respect: the buses swap,
-    /// and nothing happens while nothing is staged.
-    ///
-    /// Reports no `tap` event itself — the Cut button's action closure
-    /// reports it (EVENTS.md, "The `tap` convention").
+    /// Otherwise identical to ``takePreview()``. Reports no `tap` itself: the
+    /// Cut button's action closure does (EVENTS.md, "The `tap` convention").
     func cutPreview() {
         guard previewShotID != nil else { return }
         performTakePreview(transition: .cut)
     }
 
-    /// The body both preview takes share: swap the buses over a stated
-    /// transition, then bring tally and the held-snapshot bookkeeping back in
-    /// line.
-    ///
-    /// Factored out so ``takePreview()`` and ``cutPreview()`` cannot drift on
-    /// anything except the transition — which is the only thing they differ
-    /// on.
+    /// The body both preview takes share, so ``takePreview()`` and
+    /// ``cutPreview()`` differ only in the transition: swaps the buses, then
+    /// brings tally and the held-snapshot bookkeeping back in line.
     ///
     /// - Parameter transition: The transition to take the staged shot with.
     private func performTakePreview(transition: Transition) {
@@ -206,13 +158,11 @@ extension EngineModel {
         }
     }
 
-    /// Sets — or, passed nil, clears — a shot's default transition: the
-    /// transition the shot is taken with while the switcher's transition
-    /// picker is on Default (ARCHITECTURE.md, "Per-shot default
-    /// transitions"). A document edit like a rename: it flows through the
-    /// compositor's `updateShot` path and autosaves through the
-    /// project-document path; the context menu's `tap` event carries the
-    /// observability (EVENTS.md).
+    /// Sets, or clears when passed nil, a shot's default transition: the one
+    /// it is taken with while the transition picker is on Default
+    /// (ARCHITECTURE.md, "Per-shot default transitions"). A document edit
+    /// like a rename; the context menu's `tap` carries the observability
+    /// (EVENTS.md).
     ///
     /// - Parameters:
     ///   - transition: The new default transition, or nil for none (an
@@ -229,11 +179,9 @@ extension EngineModel {
         scheduleAutosave()
     }
 
-    /// Adds a new, empty user-authored shot (fresh UUID, localized default
-    /// name, no layers over black — see ``ShotEdit/newShot()``) at the end of
-    /// the switcher order. Adding is not taking: the program is untouched
-    /// until the operator takes the new shot (ARCHITECTURE.md, "Shot
-    /// management"). The edit autosaves through the project-document path.
+    /// Adds a new, empty user-authored shot (``ShotEdit/newShot()``) at the
+    /// end of the switcher order and autosaves. Adding is not taking
+    /// (ARCHITECTURE.md, "Shot management").
     func addShot() {
         guard hasSessionPreset else { return }
         let shot = ShotEdit.newShot()
@@ -245,33 +193,18 @@ extension EngineModel {
         scheduleAutosave()
     }
 
-    /// Stages an **input** on the preview bus — what clicking a camera,
-    /// display, or video generator row in the sidebar does.
-    ///
-    /// Preview stages a **shot**, never an input (GLOSSARY.md), so an input
-    /// the operator clicks has to be resolved to one. The rule is that
-    /// **clicking an input previews that input** — the shot staged shows the
-    /// clicked input full frame and nothing else. The operator picked a
-    /// camera, not a composition; a shot is what the shot bank and the
-    /// sidebar's shot rows are for (Larry, 2026-08-08).
-    ///
-    /// So the shot reused is the one that *is* that input: a shot whose layer
-    /// tree matches the one this method would create — a single full-frame
-    /// layer bound to the input, no crop, no overlay, no effect chain. A shot
-    /// that merely *contains* the input does not match: a camera shot
-    /// carrying a PLUGE overlay and a cropped camera layer is a composition
-    /// the operator did not ask for by clicking the camera. When nothing
-    /// matches, a **transient** shot is made for the input — appended to the
-    /// session pool and the compositor so preview can render it, shown in the
-    /// bank as a dashed tile with a Keep button, and **never saved**: it is
-    /// promoted to authored when the operator keeps, edits, or airs it, and
-    /// discarded the moment it is no longer staged
-    /// (``reconcileTransientShots()``; ARCHITECTURE.md, "The shot bank"). That
-    /// is what keeps a preset from filling with shots nobody asked for while
-    /// a clicked input is still one click from preview.
-    ///
-    /// Reports no `tap` event itself — the sidebar row's action closure
-    /// reports it (EVENTS.md, "The `tap` convention").
+    /// Stages an input on the preview bus: what clicking a camera, display,
+    /// or video generator row in the sidebar does. Preview stages a shot,
+    /// never an input (GLOSSARY.md), so the click resolves to the shot that
+    /// shows that input full frame and nothing else: the operator picked a
+    /// camera, not a composition, so a shot that merely contains the input
+    /// does not match. When nothing matches, a transient shot is made: in the
+    /// session pool and the compositor, never saved, promoted when the
+    /// operator keeps, edits, or airs it, and discarded once it is no longer
+    /// staged (``reconcileTransientShots()``; ARCHITECTURE.md, "The shot
+    /// bank"), so a preset does not fill with shots nobody asked for. Reports
+    /// no `tap` itself: the sidebar row's action closure does (EVENTS.md,
+    /// "The `tap` convention").
     ///
     /// - Parameter input: The input to stage.
     func stagePreview(showing input: InputID) async {
@@ -292,26 +225,22 @@ extension EngineModel {
         // Staging the new shot is also what discards the transient shot it
         // replaces, if the last click made one.
         setPreview(shot.id)
-        // The new shot names an input nothing may be running yet — a camera
-        // the show never referenced — so the pass that starts it has to run
-        // before its layer can contribute.
+        // The new shot may name an input nothing runs yet, so the pass that
+        // starts it has to run before its layer can contribute.
         await reconfigure()
     }
 
-    /// Adds an **authored** shot showing one input full frame, named after
-    /// it — what dropping a sidebar input on the shot bank, choosing it from
-    /// the Add Shot menu, or its row's "Add Shot Showing …" does
-    /// (ARCHITECTURE.md, "The shot bank"). The operator asked for this shot
-    /// by name, so unlike the transient shot ``stagePreview(showing:)`` makes
-    /// it persists like any shot they made. Adding is not taking: the program
-    /// is untouched. The edit autosaves through the project-document path and
-    /// reconfigures so the input starts.
+    /// Adds an authored shot showing one input full frame, named after it:
+    /// what dropping a sidebar input on the shot bank, the Add Shot menu, or
+    /// its row's "Add Shot Showing …" does (ARCHITECTURE.md, "The shot
+    /// bank"). The operator asked for it, so unlike the transient shot
+    /// ``stagePreview(showing:)`` makes, it persists. Adding is not taking.
+    /// Autosaves, and reconfigures so the input starts.
     ///
     /// - Parameters:
     ///   - input: The input the shot's one layer binds to.
     ///   - index: Where in the switcher order to insert, clamped to the pool;
-    ///     nil (the default) appends after the last authored shot — ahead of
-    ///     a transient one, which stays last as the bank's dashed tile.
+    ///     nil appends after the last authored shot, ahead of a transient one.
     func addShot(showing input: InputID, at index: Int? = nil) async {
         guard hasSessionPreset else { return }
         let shot = ShotEdit.shot(
@@ -329,9 +258,8 @@ extension EngineModel {
     }
 
     /// Keeps a transient shot: promotes it to authored, so it persists and
-    /// stays in the bank when the operator stages something else — the Keep
-    /// button on a dashed tile (ARCHITECTURE.md, "The shot bank"). A shot
-    /// that is already the operator's is unchanged.
+    /// stays in the bank when the operator stages something else: the Keep
+    /// button on a dashed tile (ARCHITECTURE.md, "The shot bank").
     ///
     /// - Parameter shotID: The id of the shot to keep.
     func keepShot(_ shotID: ShotID) {
@@ -343,17 +271,14 @@ extension EngineModel {
         scheduleAutosave()
     }
 
-    /// Brings the transient shots in line with the buses, after every change
-    /// to what is staged or on program: a transient shot **on program** is
-    /// promoted — it aired, so it is part of the show whether it got there
-    /// by Take, by Cut, or by the compositor cutting to it when the program
-    /// shot was removed — and a transient shot on **neither bus** is
+    /// Brings the transient shots in line with the buses after every change
+    /// to what is staged or on program. One on program is promoted: it aired,
+    /// so it is part of the show however it got there. One on neither bus is
     /// discarded from the pool and the compositor, since it existed only to
-    /// show a clicked input on preview and the operator has looked away.
-    /// A transient shot still staged is left alone.
+    /// show a clicked input on preview. One still staged is left alone.
     ///
-    /// - Returns: Whether a shot was discarded — its input may now be
-    ///   unreferenced, so the caller reconfigures to stop it.
+    /// - Returns: Whether a shot was discarded, so the caller reconfigures to
+    ///   stop an input that may now be unreferenced.
     @discardableResult
     private func reconcileTransientShots() -> Bool {
         var discarded = false
@@ -369,10 +294,9 @@ extension EngineModel {
         return discarded
     }
 
-    /// Duplicates a shot — the source's layer tree and background under a
-    /// fresh UUID and a "<name> copy" name — inserting the copy right after
-    /// its source in the switcher order. The duplicate references the same
-    /// inputs the source already keeps running, so no reconfigure is needed.
+    /// Inserts a copy of a shot right after it, under a fresh id and a
+    /// "<name> copy" name. No reconfigure: the copy references inputs the
+    /// original already keeps running.
     ///
     /// - Parameter shotID: The id of the shot to duplicate.
     func duplicateShot(_ shotID: ShotID) {
@@ -383,11 +307,9 @@ extension EngineModel {
         scheduleAutosave()
     }
 
-    /// Renames a shot, preserving its identity and layer tree. A rename to an
-    /// empty (or whitespace-only) name is ignored — a switcher button needs a
-    /// label (see ``ShotEdit/renaming(_:to:)``). The rename flows through the
-    /// compositor's existing `updateShot` path, so the switcher and any
-    /// on-program shot reflect it at the next tick.
+    /// Renames a shot, keeping its identity and layer tree. An empty or
+    /// whitespace-only name is ignored (``ShotEdit/renaming(_:to:)``). The
+    /// switcher and any on-program shot reflect it at the next tick.
     ///
     /// - Parameters:
     ///   - shotID: The id of the shot to rename.
@@ -401,12 +323,11 @@ extension EngineModel {
         scheduleAutosave()
     }
 
-    /// Removes a shot from the active preset. When the removed shot is on
-    /// program, the compositor cuts to the adjacent shot — never a dead
-    /// program (ARCHITECTURE.md, "Shot management") — so the model re-reads
-    /// ``Compositor/activeShotID`` rather than second-guessing which shot
-    /// that is. Then reconfigures, so an input referenced only by the removed
-    /// shot (and not by the pickers) is stopped.
+    /// Removes a shot from the active preset. When it is on program, the
+    /// compositor cuts to the adjacent shot, never a dead program
+    /// (ARCHITECTURE.md, "Shot management"), so the model re-reads
+    /// ``Compositor/activeShotID``. Then reconfigures, so an input only the
+    /// removed shot referenced (and not the pickers) is stopped.
     ///
     /// - Parameter shotID: The id of the shot to remove.
     func removeShot(_ shotID: ShotID) async {
@@ -426,15 +347,12 @@ extension EngineModel {
         await reconfigure()
     }
 
-    /// Moves a shot to a new position in the active preset's switcher order —
-    /// the shot-management reorder path (ARCHITECTURE.md, "Shot and preset
-    /// reordering"). Reordering is **not** taking: the program is untouched,
-    /// so no reconfigure is needed — every referenced input is already
-    /// running, only the switcher order changes. The move mirrors into the
-    /// compositor's pool (which reports the discrete `shot.moved` event) and
-    /// autosaves through the project-document path. The destination is clamped
-    /// to the switcher's bounds; a move to the shot's current position, or of
-    /// an unknown shot, is a no-op.
+    /// Moves a shot in the active preset's switcher order (ARCHITECTURE.md,
+    /// "Shot and preset reordering"). Reordering is not taking: the program
+    /// is untouched and no reconfigure is needed. The move mirrors into the
+    /// compositor's pool, which reports `shot.moved`, and autosaves. The
+    /// destination is clamped; a move to the same position, or of an unknown
+    /// shot, does nothing.
     ///
     /// - Parameters:
     ///   - shotID: The id of the shot to move.
@@ -451,16 +369,14 @@ extension EngineModel {
         scheduleAutosave()
     }
 
-    /// The concrete transition ``take(_:)`` passes to the compositor for the
-    /// shot being taken: the switcher's explicitly selected kind (with the
-    /// selected edge for a wipe or shader for a shader transition) — or, on
-    /// Default, the taken shot's own ``Shot/defaultTransition``, falling back
-    /// to a cut for a shot with no default (today's behavior for every shot
-    /// that never set one) — every timed kind at the panel's
-    /// ``takeTransitionDuration``. Resolution lives here in the app, not the
-    /// compositor: the override source is switcher session state, and
-    /// `take(shotID:transition:)` keeps its caller-states-the-transition
-    /// contract (ARCHITECTURE.md, "Per-shot default transitions").
+    /// The concrete transition ``take(_:)`` passes to the compositor: the
+    /// switcher's selected kind (with the edge for a wipe or the shader for a
+    /// shader transition), or on Default the shot's own
+    /// ``Shot/defaultTransition``, else a cut, every timed kind at
+    /// ``takeTransitionDuration``. Resolved here, not in the compositor: the
+    /// override is switcher session state, and `take(shotID:transition:)`
+    /// keeps its caller-states-the-transition contract (ARCHITECTURE.md,
+    /// "Per-shot default transitions").
     ///
     /// - Parameter shotID: The id of the shot being taken.
     /// - Returns: The transition to take it with.
@@ -475,9 +391,7 @@ extension EngineModel {
     }
 
     /// The pure resolution behind ``resolvedTransition(for:)``, so the rule
-    /// is unit-tested without an engine: the kind's transition, or the shot's
-    /// default (a cut when it has none), then the panel's duration applied to
-    /// whichever timed transition came out.
+    /// is unit-tested without an engine.
     ///
     /// - Parameters:
     ///   - kind: The kind armed on the panel.

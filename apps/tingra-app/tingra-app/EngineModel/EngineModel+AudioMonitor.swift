@@ -31,11 +31,9 @@ extension EngineModel {
         }
     }
 
-    /// Applies a device-list change from Core Audio: the picker refreshes,
-    /// and if the device being monitored through has gone away, monitoring
-    /// stops while **keeping the selection** — the device reappearing
-    /// resumes it, the dormant-strip semantic one path over. A device coming
-    /// and going is a normal event, never an error.
+    /// Applies a device-list change from Core Audio. When the monitored device
+    /// goes away, monitoring stops but the selection is kept, so its return
+    /// resumes monitoring. A normal event, never an error.
     ///
     /// - Parameter devices: The system's output devices now.
     private func monitorDevicesChanged(_ devices: [AudioMonitorDevice]) async {
@@ -56,14 +54,9 @@ extension EngineModel {
         }
     }
 
-    /// Refreshes ``monitorDeviceName`` from the current device list, so the
-    /// picker's label for the selection tracks the device's real name.
-    ///
-    /// Only ever *upgrades* the cached name: a device that has gone absent
-    /// keeps the name it was last seen under, because that is exactly when
-    /// the cache is needed. Nothing happens when no device is selected — the
-    /// name is cleared by ``setMonitorDevice(_:)`` instead, alongside the
-    /// selection it labels.
+    /// Refreshes ``monitorDeviceName`` from the device list. It only upgrades
+    /// the cached name: an absent device keeps the name it was last seen
+    /// under, and ``setMonitorDevice(_:)`` clears it with the selection.
     private func refreshMonitorDeviceName() {
         guard let uid = monitorDeviceUID,
             let name = monitorDevices.first(where: { $0.uid == uid })?.name,
@@ -95,16 +88,14 @@ extension EngineModel {
     }
 
     /// Opens the monitor on a device, reporting the outcome. A device that
-    /// will not open is a recoverable error: the selection is kept (the
-    /// operator may unblock it), and the program mix, the stream, and the
-    /// recording are untouched — nothing downstream of the mix is involved.
+    /// will not open is a recoverable error: the selection is kept, since the
+    /// operator may unblock it, and nothing downstream of the mix is involved.
     ///
     /// - Parameter deviceUID: The device's stable UID.
     private func openMonitor(deviceUID: String) async {
         guard let device = monitorDevices.first(where: { $0.uid == deviceUID }) else {
-            // Not connected right now: keep the selection dormant and stay
-            // quiet — the device-update stream resumes monitoring if it
-            // returns.
+            // Not connected: keep the selection dormant and stay quiet. The
+            // device-update stream resumes monitoring if it returns.
             isMonitoring = false
             return
         }
@@ -129,11 +120,10 @@ extension EngineModel {
         }
     }
 
-    /// Sets the monitor level — the operator's listening volume. Gesture-rate
-    /// like the strip faders, so it reports no event (the `setLevel` rule);
-    /// the slider's drag-end `tap` carries the observability. It scales only
-    /// what the monitor plays: the program mix, the stream, and the
-    /// recording are provably unaffected.
+    /// Sets the monitor level, the operator's listening volume. Gesture-rate,
+    /// so it reports no event (the `setLevel` rule): the slider's drag-end
+    /// `tap` records it. Scales only what the monitor plays, never the
+    /// program mix, the stream, or the recording.
     ///
     /// - Parameter level: The linear gain, `0`...`1`.
     func setMonitorLevel(_ level: Double) async {
@@ -142,12 +132,9 @@ extension EngineModel {
         await monitor.setLevel(Self.playbackLevel(level: level, isMuted: isMonitorMuted))
     }
 
-    /// Mutes or unmutes the monitor — the control room cut. The device and
-    /// the level are kept; the monitor's playback gain goes to silence and
-    /// back, instantly and with no device restart, so a cut during a break
-    /// comes back to the same setup with one click. Discrete like a strip's
-    /// mute and, like it, carried by the toggle's own `tap`; it changes
-    /// nothing the program, the stream, or the recording receive.
+    /// Mutes or unmutes the monitor, the control room cut. Only the playback
+    /// gain changes, with no device restart, so an unmute returns to the same
+    /// device and level. Like a strip's mute, reported by the toggle's `tap`.
     ///
     /// - Parameter isMuted: Whether the monitor is muted.
     func setMonitorMuted(_ isMuted: Bool) async {
@@ -156,10 +143,9 @@ extension EngineModel {
         await monitor.setLevel(Self.playbackLevel(level: monitorLevel, isMuted: isMuted))
     }
 
-    /// The gain the monitor actually plays at: the operator's level, or
-    /// silence while the monitor is muted. The one place the two combine,
-    /// so a level set while muted stays silent and an unmute restores
-    /// exactly the level shown.
+    /// The gain the monitor plays at: the operator's level, or silence while
+    /// muted. The one place the two combine, so a level set while muted stays
+    /// silent and an unmute restores the level shown.
     ///
     /// - Parameters:
     ///   - level: The operator's monitor level, `0`...`1`.

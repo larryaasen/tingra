@@ -33,9 +33,8 @@ extension EngineModel {
         try await windowProvider.availableWindows()
     }
 
-    /// Whether the project already holds an input for a window, so the
-    /// picker can say so instead of adding a second capture of the same
-    /// thing.
+    /// Whether the project already holds an input for a window, so the picker
+    /// can say so instead of adding a second capture of it.
     ///
     /// - Parameter window: A window the picker lists.
     /// - Returns: Whether a record with its application and title exists.
@@ -45,7 +44,6 @@ extension EngineModel {
 
     /// Adds a window to the project as an input the sidebar lists and a
     /// layer can bind to. A window the project already holds is left alone.
-    /// The document autosaves when one was added.
     ///
     /// - Parameter window: The window to add, as the picker listed it.
     func addWindow(_ window: CaptureWindow) async {
@@ -67,10 +65,9 @@ extension EngineModel {
         scheduleAutosave()
     }
 
-    /// Removes a window from the project and its input from the registry;
-    /// the reconfigure pass stops it if it was capturing. **Never edits
-    /// shots**: a layer bound to the window stays bound and dormant, the
-    /// removed-device semantic.
+    /// Removes a window from the project and its input from the registry; the
+    /// reconfigure pass stops a running capture. Never edits shots: a bound
+    /// layer stays bound and dormant, the removed-device semantic.
     ///
     /// - Parameter id: The window input to remove.
     func removeWindow(_ id: InputID) async {

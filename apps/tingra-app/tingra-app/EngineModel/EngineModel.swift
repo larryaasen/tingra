@@ -33,17 +33,10 @@ import UniformTypeIdentifiers
 
 /// The app's engine model: the one `@Observable` that boots the host,
 /// activates the first-party plug-ins, and drives the compositor for the
-/// on-screen program preview (roadmap step 6).
-///
-/// It mirrors the CLI's engine wiring (an `InputRegistry`, a `HostClock`, a
-/// `PlugInLoader` activating the same plug-ins through the same
-/// `PlugInContext`) but ends in the ``Compositor`` and an `MTKView` rather
-/// than a streaming service — the app takes shape around the same proven
-/// engine, not a fork of it (GLOSSARY.md, "Engine").
-///
-/// `@MainActor`, per the project's `@Observable` rule: the UI reads its
-/// published input lists and selection directly, and every plug-in and
-/// compositor call is made from here.
+/// on-screen program preview. It mirrors the CLI's engine wiring but ends
+/// in the ``Compositor`` and an `MTKView` rather than a streaming service
+/// (GLOSSARY.md, "Engine"). `@MainActor`: the UI reads its state directly,
+/// and every plug-in and compositor call is made from here.
 @MainActor
 @Observable
 final class EngineModel {
@@ -55,30 +48,23 @@ final class EngineModel {
         /// The user-facing name.
         let name: String
 
-        /// The input's provenance. Carried beside the name because a couple
-        /// of policies are about *where content comes from* rather than what
-        /// the input produces — chiefly the mixer's seed, which must never
-        /// put a synthesized tone on air by default (see
-        /// ``MixerStrip/seed(from:)``). Deliberately has no default: a
-        /// choice carrying the wrong kind would be silent bad data, and
-        /// every construction site knows the real one.
+        /// The input's provenance, which keeps the mixer's seed from putting
+        /// a synthesized tone on air (``MixerStrip/seed(from:)``). No
+        /// default value: a wrong kind would be silent bad data.
         let kind: InputKind
     }
 
-    /// One registered audio effect as the strip's Add Effect menu offers
-    /// it: the provider's identity and declared parameters, snapshotted
-    /// from the effect registry at boot so the UI never awaits the actor
-    /// per draw.
+    /// One registered audio effect as the strip's Add Effect menu offers it,
+    /// snapshotted from the effect registry at boot so the UI never awaits
+    /// the actor per draw.
     struct AudioEffectChoice: Identifiable, Equatable {
         /// The effect's stable identifier.
         let id: EffectID
 
-        /// The user-facing effect name, as the provider declares it
-        /// (runtime data, shown verbatim like a device name).
+        /// The user-facing effect name, as the provider declares it.
         let name: String
 
-        /// The parameters the effect declares, in display order — what
-        /// the chain editor draws sliders from.
+        /// The parameters the effect declares, in display order.
         let parameters: [Parameter]
     }
 
@@ -112,13 +98,9 @@ final class EngineModel {
         /// (`attempt` of `maxAttempts`).
         case reconnecting(attempt: Int, maxAttempts: Int)
 
-        /// Stop was clicked and the session is ending: flushing compression
-        /// and closing each destination's connection, which takes a few
-        /// seconds. Set by the app at the request — the session reports
-        /// nothing until `stream.stopped`, which settles it — so the
-        /// operator sees the click land at once (2026-09-26). Only the
-        /// stream's end moves the status on from here; a late `started` or
-        /// `reconnected` from a leg still closing does not.
+        /// Stop was clicked and the session is ending. Set by the app, since
+        /// the session reports nothing until `stream.stopped`; a late
+        /// `started` or `reconnected` does not move the status on.
         case stopping
 
         /// The stream stopped cleanly (Stop, or an elapsed duration).
@@ -129,10 +111,9 @@ final class EngineModel {
         /// Carries a developer-facing message (never a secret).
         case error(String)
 
-        /// Whether a session is in flight — starting, live, reconnecting, or
-        /// **stopping**. A stopping stream still counts: its session holds
-        /// the destinations and the program format until it has closed, so
-        /// the fields stay locked and a second start is refused until then.
+        /// Whether a session is in flight: starting, live, reconnecting, or
+        /// stopping. A stopping session still holds the destinations and
+        /// the program format, so a second start is refused until it closes.
         var isActive: Bool {
             switch self {
             case .starting, .live, .reconnecting, .stopping: true
@@ -141,13 +122,9 @@ final class EngineModel {
         }
     }
 
-    /// The live state of the app's local recording, derived from the
-    /// `recording.*` events its own session emits on the bus.
-    ///
-    /// Deliberately separate from ``StreamStatus``: recording runs in its own
-    /// session, so it starts and stops independently of the stream
-    /// (ARCHITECTURE.md, "Recording in the app"). Ending a stream leaves a
-    /// recording rolling, and vice versa.
+    /// The live state of the app's local recording, from its own session's
+    /// `recording.*` events. Separate from ``StreamStatus``: it runs
+    /// independently of the stream (ARCHITECTURE.md, "Recording in the app").
     enum RecordingStatus: Equatable {
         /// Not recording.
         case idle
@@ -167,9 +144,8 @@ final class EngineModel {
         case error(String)
     }
 
-    /// A snapshot of the live stream's delivery counters, from a reading of
-    /// the session's live statistics — what the panel shows beside the Live
-    /// label.
+    /// A snapshot of the live stream's delivery counters, which the panel
+    /// shows beside the Live label.
     struct StreamStats: Equatable {
         /// The current send bitrate in kilobits per second.
         let bitrateKbps: Int
@@ -179,17 +155,13 @@ final class EngineModel {
     }
 
     /// How often the app's stream writes `stream.stats` to the log, in
-    /// seconds — each line the average of the minute it covers, the first ten
-    /// seconds after going live (the session's default first window, once
-    /// delivery has settled). The panel reads the session's once-a-second
-    /// live statistics instead, so this sets the log's cadence alone
+    /// seconds. The panel reads the once-a-second live statistics instead
     /// (EVENTS.md, "Stream statistics: the readout and the log").
     static let streamStatsLogIntervalSeconds = 60
 
-    /// One destination leg's live state, derived from its own share of the
-    /// session's per-leg status events — what each row of the streaming panel
-    /// shows while the program is on air (ARCHITECTURE.md, "Multiple
-    /// destinations").
+    /// One destination leg's live state, from the session's per-leg status
+    /// events: what its row of the streaming panel shows on air
+    /// (ARCHITECTURE.md, "Multiple destinations").
     enum DestinationState: Equatable {
         /// Publishing to this destination.
         case live
@@ -220,66 +192,45 @@ final class EngineModel {
     var windowInputs: [InputChoice] = []
 
     /// Every discovered input that produces **audio**, seeding the mixer's
-    /// channel strips. Filtered on ``Input/media``, not on ``InputKind``:
-    /// the question "can this be a channel strip" is a media question, so an
-    /// audio generator belongs here beside the microphones (see
-    /// ARCHITECTURE.md, "The `Input` media capability").
+    /// channel strips. Filtered on ``Input/media``, so an audio generator
+    /// qualifies (ARCHITECTURE.md, "The `Input` media capability").
     var audioInputs: [InputChoice] = []
 
     /// Every discovered input that produces **video**, for the layer-tree
-    /// editor's add-layer choices. Filtered on ``Input/media`` for the same
-    /// reason as ``audioInputs`` — which is what admits the video
-    /// generators the editor had to exclude while `InputKind` was the only
-    /// thing to filter on.
+    /// editor's add-layer choices. Filtered on ``Input/media`` like
+    /// ``audioInputs``, which admits the video generators.
     var videoInputs: [InputChoice] = []
 
-    /// Every input's name as discovery last reported it, keyed by id — so a
-    /// picker can label a selection whose device has gone away.
-    ///
-    /// A camera that is unplugged **stays selected**, dormant, the way a
-    /// layer bound to an undiscovered input and a strip whose device is absent
-    /// both do. A SwiftUI `Picker` whose selection matches no tag is undefined
-    /// behaviour, though, so keeping the selection requires being able to draw
-    /// it — which is what this name is for (see ``inputName(for:)``).
+    /// Every input's name as discovery last reported it, keyed by id, so a
+    /// picker can label a selection whose device has gone away: a `Picker`
+    /// selection matching no tag is undefined (``inputName(for:)``).
     var lastKnownInputNames: [InputID: String] = [:]
 
-    /// The parameters each registered input declares, keyed by id, for the
-    /// inputs that declare any (PLUGINS.md, Decision 15) — snapshotted from
-    /// the registry with every device-list rebuild, so a strip's Input
-    /// Settings button knows to appear without awaiting the actor per draw.
-    /// An input that declares nothing has no entry and gets no button.
+    /// The parameters each registered input declares, keyed by id (PLUGINS.md,
+    /// Decision 15), snapshotted with every device-list rebuild so a strip's
+    /// Input Settings button appears without awaiting the actor per draw.
     var declaredInputParameters: [InputID: [Parameter]] = [:]
 
-    /// The inputs' parameter values, by input id — the document's
-    /// `inputParameters` key (`Project.inputParameters`), applied to each
-    /// input through `Input.setParameters` when the project loads and
-    /// whenever the input registers, and edited by an input's settings
-    /// popover (``setInputParameter(_:forKey:ofInput:)``). An entry for an
-    /// input this Mac does not have is kept and written back untouched.
+    /// The inputs' parameter values, by input id: the document's
+    /// `inputParameters` key, applied through `Input.setParameters` on load
+    /// and on registration, edited by ``setInputParameter(_:forKey:ofInput:)``.
+    /// An entry for an input this Mac lacks is kept and written back.
     var inputParameters: [InputID: [String: JSONValue]] = [:]
 
-    /// The values a device keeps for itself, by input id, for the inputs
-    /// the open project stores nothing for — a UVC camera's brightness and
-    /// white balance as it holds them in firmware (`Input.currentParameters`,
-    /// docs/UVC.md). What the settings popover shows, and starts its edits
-    /// from, until the operator changes one and the project stores it. Never
-    /// written to the document.
+    /// The values a device keeps for itself, by input id, such as a UVC
+    /// camera's brightness (`Input.currentParameters`, docs/UVC.md). Shown
+    /// until the project stores a value; never written to the document.
     var deviceInputParameters: [InputID: [String: JSONValue]] = [:]
 
     /// The last application of an edited input payload, chained so edits
-    /// made at gesture rate reach the input in the order they were made —
-    /// two tasks racing to the registry could otherwise leave a stale
-    /// value applied last.
+    /// made at gesture rate reach the input in order and a stale value is
+    /// never applied last.
     @ObservationIgnored var inputParameterApplyTask: Task<Void, Never>?
 
-    /// The mixer's channel strips — the level, pan, and mute the mixer panel
-    /// edits (GLOSSARY.md, "Channel strip"): the active preset's authored
-    /// audio channels merged with live discovery (see
-    /// ``MixerStrip/strips(channels:discovered:)``). Strip edits sync back
-    /// into the active preset and autosave like shot edits, so the mix
-    /// reopens as it was; a strip whose device is absent stays on the panel,
-    /// dormant, until the device returns (ARCHITECTURE.md, "Per-strip
-    /// routing").
+    /// The mixer's channel strips (GLOSSARY.md, "Channel strip"): the active
+    /// preset's authored audio channels merged with live discovery
+    /// (``MixerStrip/strips(channels:discovered:)``). A strip whose device is
+    /// absent stays, dormant (ARCHITECTURE.md, "Per-strip routing").
     var mixerStrips: [MixerStrip] = []
 
     /// The registered audio effects the strips' Add Effect menus offer,
@@ -292,22 +243,14 @@ final class EngineModel {
     /// polled.
     var monitorDevices: [AudioMonitorDevice] = []
 
-    /// The device the operator monitors through, or nil for no monitoring —
-    /// the master strip's picker. Nil on a fresh install: monitoring the
-    /// program mix through speakers beside a live microphone is a feedback
-    /// howl, so it is opt-in (ARCHITECTURE.md, "The monitor path").
+    /// The device the operator monitors through, or nil for no monitoring.
+    /// Nil on a fresh install: monitoring beside a live microphone is a
+    /// feedback howl, so it is opt-in (ARCHITECTURE.md, "The monitor path").
     var monitorDeviceUID: String?
 
-    /// The selected device's name as discovery last reported it, or nil when
-    /// nothing is selected — the label the master strip's picker shows for a
-    /// selection ``monitorDevices`` cannot currently resolve.
-    ///
-    /// That happens in two situations, and the picker must be able to render
-    /// both: for a moment at launch, before the first device list arrives
-    /// (the list fills asynchronously, while ``monitorDeviceUID`` is restored
-    /// synchronously from preferences), and for as long as a chosen device is
-    /// unplugged — which the app deliberately keeps selected so it resumes on
-    /// its return.
+    /// The selected device's name as discovery last reported it, or nil: the
+    /// picker's label while ``monitorDevices`` cannot resolve the selection,
+    /// before the first device list arrives or while the device is unplugged.
     var monitorDeviceName: String?
 
     /// The monitor level — the operator's own listening volume. It scales
@@ -315,50 +258,34 @@ final class EngineModel {
     /// cannot change what viewers hear.
     var monitorLevel: Double = MonitorPreferences.defaultLevel
 
-    /// Whether the monitor is muted — the control room cut. The device stays
-    /// selected and ``monitorLevel`` stays where it was; only what the
-    /// monitor plays goes silent, so the program mix, the stream, and the
-    /// recording are as untouched by it as by the level.
+    /// Whether the monitor is muted: the control room cut. The device and
+    /// ``monitorLevel`` stay as they were, and the program mix is untouched.
     var isMonitorMuted = false
 
-    /// Whether the master is muted — the program's sound off air while its
-    /// picture keeps going (GLOSSARY.md, "Master mute"). Unlike the monitor
-    /// mute it silences everything leaving the mixer: the stream, the
-    /// recording, and the monitor with them.
-    ///
-    /// Session state, deliberately, like ``isFadedToBlack``: it never enters
-    /// preferences or the project document, so a show never reopens with no
-    /// sound. A forgotten monitor mute fails safe — the operator hears
-    /// nothing and notices — but a forgotten master mute is a silent
-    /// recording nobody hears happening.
+    /// Whether the master is muted: the program's sound off air while its
+    /// picture keeps going (GLOSSARY.md, "Master mute"). Session state, never
+    /// saved: a forgotten master mute is a silent recording nobody hears.
     var isMasterMuted = false
 
-    /// Whether the monitor is currently playing. A selected device that is
-    /// not connected leaves this false while keeping the selection, so the
-    /// master strip can show the difference between "not monitoring" and
-    /// "monitoring through a device that has gone away".
+    /// Whether the monitor is currently playing. False while the selected
+    /// device is disconnected, so the master strip can tell "not monitoring"
+    /// from "monitoring through a device that has gone away".
     var isMonitoring = false
 
     /// The registered video effects the layer editor's Add Effect menu
-    /// offers, in the registry's stable listing order — the video mirror
-    /// of ``audioEffectChoices`` (ARCHITECTURE.md, "Per-layer video
-    /// effects").
+    /// offers, in the registry's stable listing order (ARCHITECTURE.md,
+    /// "Per-layer video effects").
     private(set) var videoEffectChoices: [VideoEffectChoice] = []
 
     /// The destinations the streaming panel edits, persisted in the project
-    /// document (the stream keys are not — they live in secure storage, filed
-    /// by destination id; see ARCHITECTURE.md, "Streaming the program" and
-    /// "Multiple destinations"). Empty until the operator adds one.
-    ///
-    /// Going live fans the one program out to every enabled destination with
-    /// a usable URL, as one session with one leg each.
+    /// document; the stream keys live in secure storage (ARCHITECTURE.md,
+    /// "Streaming the program" and "Multiple destinations"). Going live
+    /// sends the program to every enabled destination with a usable URL.
     var destinations: [DestinationEdit] = []
 
-    /// The destination templates the registered streaming outputs offer —
-    /// the well-known services the Streaming settings pane's Add Destination
-    /// menu lists and its URL field suggests — sorted by name and snapshotted
-    /// at boot like the effect choices (DESTINATIONS.md, "Destination
-    /// templates"). Empty until the engine is up.
+    /// The destination templates the registered streaming outputs offer the
+    /// Streaming settings pane, sorted by name and snapshotted at boot
+    /// (DESTINATIONS.md, "Destination templates").
     private(set) var destinationTemplates: [DestinationTemplate] = []
 
     /// Whether at least one destination is ready to stream — what the Start
@@ -371,11 +298,9 @@ final class EngineModel {
     /// the bus (never a poll) — what the Start/Stop control reflects.
     var streamStatus: StreamStatus = .idle
 
-    /// The latest delivery stats from the session's once-a-second live
-    /// statistics while live, or nil when not streaming — the panel shows
-    /// them beside the Live label. With several destinations
-    /// this is the **first live leg's**, never an average across legs that
-    /// describes none of them; each leg's own is in ``destinationStats``.
+    /// The latest delivery stats from the session's live statistics, or nil
+    /// when not streaming. With several destinations this is the first live
+    /// leg's, never an average; each leg's own is in ``destinationStats``.
     var streamStats: StreamStats?
 
     /// Whether the stream on air is being delivered well, from the same
@@ -391,17 +316,14 @@ final class EngineModel {
         return streamHealth.trouble(destinationStates: destinationStates)
     }
 
-    /// When the current stream went on air — the date of the session's
-    /// `stream.started` event — or nil when not streaming. It holds through
-    /// a reconnect, which is the same session. The status bar's elapsed time
-    /// is drawn from this at display cadence, the way the recording's is
-    /// from ``recordingStartedAt``.
+    /// When the current stream went on air (the session's `stream.started`
+    /// date), or nil when not streaming. It holds through a reconnect, and
+    /// the status bar draws its elapsed time from it at display cadence.
     var streamStartedAt: Date?
 
     /// Each streaming destination's latest delivery stats, keyed by
-    /// destination id — what the panel's per-destination rows show. Driven by
-    /// the session's once-a-second live statistics; cleared when the stream
-    /// ends.
+    /// destination id, for the panel's per-destination rows. Cleared when
+    /// the stream ends.
     var destinationStats: [ProjectDestinationID: StreamStats] = [:]
 
     /// Each streaming destination's live state, keyed by destination id —
@@ -417,10 +339,9 @@ final class EngineModel {
     /// recording — what the panel names beside the elapsed time.
     var recordingURL: URL?
 
-    /// When the current recording started on the master clock, or nil when not
-    /// recording. The panel's elapsed time is drawn from this at display
-    /// cadence rather than pushed per tick — the meters' rule, one surface
-    /// over.
+    /// When the current recording started on the master clock, or nil when
+    /// not recording. The panel draws its elapsed time from this at display
+    /// cadence rather than having it pushed per tick.
     var recordingStartedAt: Date?
 
     /// The folder recordings are written into, from machine-local preferences
@@ -443,53 +364,43 @@ final class EngineModel {
     var streamAudioBitsPerSecond: Int
 
     /// How much recording the chosen folder's volume still holds at the
-    /// program's settings, or nil when it cannot be measured — shown beside
-    /// the folder so the operator sees the room they have before pressing
-    /// Record, from the same reading the pre-flight check refuses on.
+    /// program's settings, or nil when it cannot be measured: the same
+    /// reading the pre-flight check refuses on.
     var recordingCapacity: RecordingCapacity?
 
-    /// The recording file being written right now, or nil: set by
-    /// `recording.started` and cleared by `recording.stopped`, which the
-    /// session emits only once the file is finalized. The Library's
-    /// Recordings tab marks this file's row as not yet playable, and
-    /// ``trashRecording(at:)`` refuses it (ARCHITECTURE.md, "The Recordings
-    /// tab").
+    /// The recording file being written right now, or nil, from
+    /// `recording.started` until `recording.stopped` finalizes it. The
+    /// Recordings tab marks it not yet playable, and ``trashRecording(at:)``
+    /// refuses it (ARCHITECTURE.md, "The Recordings tab").
     var fileBeingRecorded: URL?
 
-    /// Bumped whenever the recordings folder's contents or the folder itself
-    /// change by Tingra's hand — a take starting, a take finalized, a trash,
-    /// a folder choice — so the Library's Recordings tab re-reads the listing
-    /// on the event rather than watching the folder (the
-    /// ``snapshotRevision`` twin).
+    /// Bumped whenever Tingra changes the recordings folder or its contents
+    /// (a take starting or finalized, a trash, a folder choice), so the
+    /// Recordings tab re-reads the listing rather than watching the folder.
     var recordingRevision = 0
 
     /// The folder snapshots are saved into, from machine-local preferences
     /// (ARCHITECTURE.md, "Snapshots").
     var snapshotFolder: URL
 
-    /// Whether a stream or a recording holds the Mac awake for its length,
-    /// from machine-local preferences (CLOCK.md, "System sleep and App
-    /// Nap"). Live: turning it off mid-session lets the Mac sleep again at
-    /// once, and turning it on takes the hold at once (``KeepAwakeSwitch``).
+    /// Whether a stream or a recording holds the Mac awake, from
+    /// machine-local preferences (CLOCK.md, "System sleep and App Nap"). A
+    /// change takes effect at once, mid-session too (``KeepAwakeSwitch``).
     private(set) var keepsMacAwake: Bool
 
-    /// Bumped whenever the snapshots folder's contents or the folder itself
-    /// change by Tingra's hand — a save, a trash, a folder choice — so the
-    /// Library's Snapshots tab re-reads the listing on the event rather than
-    /// watching the folder.
+    /// Bumped whenever Tingra changes the snapshots folder or its contents
+    /// (a save, a trash, a folder choice), so the Snapshots tab re-reads the
+    /// listing rather than watching the folder.
     var snapshotRevision = 0
 
     /// The badge the last snapshot request put on its monitor, or nil when
     /// none is showing (``SnapshotFeedback``).
     var snapshotFeedback: SnapshotFeedback?
 
-    /// The compression settings a recording is written with — the program's
-    /// own geometry and rate, the same settings the free-space estimate is
-    /// computed from, so the room the panel shows and the room the pre-flight
-    /// check enforces cannot disagree. The codec and the audio bit rate are
-    /// the operator's choices; the video bit rate follows the format and the
-    /// codec by one rule (``CompressionChoices``), so HEVC writes a smaller
-    /// file rather than the same-size one.
+    /// The compression settings a recording is written with: the program's
+    /// geometry and rate, as the free-space estimate uses, so the panel and
+    /// the pre-flight check cannot disagree. The video bit rate follows the
+    /// format and the operator's codec (``CompressionChoices``).
     var recordingConfiguration: StreamConfiguration {
         StreamConfiguration(
             width: format.width,
@@ -505,12 +416,10 @@ final class EngineModel {
         )
     }
 
-    /// The compression settings every leg of the stream is sent with — the
-    /// program's own geometry and rate, H.264 (the codec every destination
-    /// accepts), and the operator's audio bit rate. The video bit rate
-    /// follows the format by one rule — a 4K choice must not be compressed
-    /// at 1080p's 4500k (ARCHITECTURE.md, "The program format as a project
-    /// setting").
+    /// The compression settings every leg of the stream is sent with: the
+    /// program's geometry and rate, H.264 (the codec every destination
+    /// accepts), and a video bit rate that follows the format
+    /// (ARCHITECTURE.md, "The program format as a project setting").
     var streamConfiguration: StreamConfiguration {
         StreamConfiguration(
             width: format.width,
@@ -533,9 +442,8 @@ final class EngineModel {
         }
     }
 
-    /// Whether Stop Recording was clicked and the file is still being closed
-    /// — so the control reads Finishing… and cannot be clicked until the
-    /// take is playable and a new one can start.
+    /// Whether Stop Recording was clicked and the file is still being closed,
+    /// so the control reads Finishing… and cannot be clicked.
     var isFinishingRecording: Bool {
         recordingStatus == .finalizing
     }
@@ -553,15 +461,13 @@ final class EngineModel {
         streamStatus == .stopping
     }
 
-    /// The project's presets, in switcher order — what the preset switcher
-    /// lists (ARCHITECTURE.md, "Multiple presets in the UI"). The active
-    /// preset's entry is refreshed from the live ``shots`` by
-    /// ``syncActivePreset()`` before every save, switch, and duplicate.
+    /// The project's presets, in switcher order (ARCHITECTURE.md, "Multiple
+    /// presets in the UI"). ``syncActivePreset()`` refreshes the active one
+    /// from ``shots`` before every save, switch, and duplicate.
     var presets: [Preset] = []
 
-    /// The id of the active preset — the one the shot switcher and the
-    /// layer-tree editor operate within, highlighted in the preset switcher.
-    /// Session state, like the active shot: at launch the app adopts the
+    /// The id of the active preset, which the shot switcher and layer-tree
+    /// editor operate within. Session state: at launch the app adopts the
     /// document's first preset, never a persisted "active" field.
     var activePresetID: PresetID? {
         didSet { recordSessionPosition() }
@@ -573,36 +479,23 @@ final class EngineModel {
         presets.first { $0.id == activePresetID }?.name
     }
 
-    /// The active preset's shots, in switcher order — what the shot bank
-    /// shows (roadmap step 7; ARCHITECTURE.md, "The shot bank"). The live
-    /// session copy: edits land here (and in the compositor) first, and the
-    /// **authored** ones flow back into ``presets`` on save/switch. A
-    /// **transient** shot (``ShotOrigin/automatic``) — made to stage an input
-    /// the operator clicked — lives here and in the compositor only while it
-    /// is staged, and is never written to the document; see
-    /// ``reconcileTransientShots()``.
+    /// The active preset's shots, in switcher order (ARCHITECTURE.md, "The
+    /// shot bank"). The live session copy: edits land here first, and the
+    /// authored ones flow back into ``presets``. A transient shot
+    /// (``ShotOrigin/automatic``) is not saved (``reconcileTransientShots()``).
     var shots: [Shot] = []
 
-    /// The id of the shot currently on program, so the switcher can highlight
-    /// it. `nil` when there are no shots (no input selected). Session state
-    /// that never enters the project document, remembered machine-locally so
-    /// a launch can put it back (``recordSessionPosition()``).
+    /// The id of the shot on program, or `nil` when there are no shots.
+    /// Session state, never in the project document, remembered
+    /// machine-locally (``recordSessionPosition()``).
     var activeShotID: ShotID? {
         didSet { recordSessionPosition() }
     }
 
-    /// The id of the shot staged on preview, or `nil` when nothing is staged
-    /// — the staging bus's selection, mirrored from the compositor so the
-    /// shot bank can light it. Session state: what is staged when the
-    /// app quits is not part of the show, so it never enters the project
-    /// document (ARCHITECTURE.md, "The preview bus") — but it is remembered
-    /// machine-locally, so the next launch stages it again
-    /// (``recordSessionPosition()``).
-    ///
-    /// Clearing it also empties ``previewRelay``: the compositor yields no
-    /// preview frame while nothing is staged, so without this the monitor
-    /// would keep drawing the last staged frame as if it had frozen. An
-    /// empty preview shows nothing (ARCHITECTURE.md, "The preview bus").
+    /// The id of the shot staged on preview, or `nil` when nothing is staged.
+    /// Session state like ``activeShotID`` (ARCHITECTURE.md, "The preview
+    /// bus"). Clearing it also empties ``previewRelay``, so the monitor does
+    /// not keep drawing the last staged frame.
     var previewShotID: ShotID? {
         didSet {
             previewRelay.setAccepting(previewShotID != nil)
@@ -610,36 +503,24 @@ final class EngineModel {
         }
     }
 
-    /// Whether the program is faded to black — picture *and* sound
-    /// (GLOSSARY.md, "Fade to black"). The **latch**, so it flips the moment
-    /// the operator acts rather than tracking either ramp: the button's state
-    /// and the program monitor's badge both read it, and neither should lag a
-    /// half-second behind the click.
-    ///
-    /// Session state, deliberately: it never enters the project document, so
-    /// a show never reopens black (ARCHITECTURE.md, "Fade to black").
+    /// Whether the program is faded to black, picture and sound (GLOSSARY.md,
+    /// "Fade to black"). The latch, flipped the moment the operator acts
+    /// rather than tracking either ramp. Session state, never saved.
     var isFadedToBlack = false
 
-    /// The inputs the engine is currently running, in name order — the
-    /// multiview's tiles (GLOSSARY.md, "Multiview").
-    ///
-    /// Exactly what is running, never what is merely discovered: opening a
-    /// monitoring window must not start a device, and a camera indicator
-    /// lighting up because the operator opened a window would be a defect.
-    /// A running input that has not delivered its first frame yet still
-    /// gets a tile — a black one carrying its name — so tiles do not pop in.
+    /// The inputs the engine is currently running, in name order: the
+    /// multiview's tiles (GLOSSARY.md, "Multiview"). Never what is merely
+    /// discovered, so opening a monitoring window starts no device.
     var multiviewInputs: [InputChoice] = []
 
-    /// The inputs contributing to what is on program, for the multiview
-    /// tiles' **tally** lamps (GLOSSARY.md, "Tally"). Mirrored from
-    /// ``Compositor/programInputIDs``, which unions the outgoing shot's
-    /// inputs while a transition is in progress.
+    /// The inputs on program, for the multiview's tally lamps (GLOSSARY.md,
+    /// "Tally"). Mirrored from ``Compositor/programInputIDs``, which unions
+    /// the outgoing shot's inputs during a transition.
     var programInputIDs: Set<InputID> = []
 
-    /// The inputs contributing to the shot staged on preview — the green
-    /// half of the tally (see ``programInputIDs``). Derived from the
-    /// compositor's staged shot; transitions are program-only, so there is
-    /// nothing to union here.
+    /// The inputs contributing to the shot staged on preview: the green half
+    /// of the tally (see ``programInputIDs``). Transitions are program-only,
+    /// so there is nothing to union here.
     var previewInputIDs: Set<InputID> = []
 
     /// The shot on program, as the switcher highlights it — `nil` when there
@@ -650,16 +531,10 @@ final class EngineModel {
     }
 
     /// The shot on program, as the program monitor's caption names it: the
-    /// active shot, or — while a preset switch holds the outgoing shot on
-    /// program as a snapshot from outside the loaded pool
-    /// (``Compositor/loadPreset(_:)``) — the held shot, which no id in
-    /// ``shots`` resolves. `nil` when the program is background-only: no
-    /// shot at all, or the nameless empty shot a removed preset leaves.
-    ///
-    /// Read through the compositor for the held case rather than mirrored
-    /// into a stored property, because every transition into and out of a
-    /// hold already reassigns ``activeShotID``, which this getter reads — so
-    /// the caption re-evaluates exactly when the answer can change.
+    /// active shot, or the shot a preset switch holds on program from outside
+    /// the loaded pool (``Compositor/loadPreset(_:)``). `nil` when the
+    /// program is background-only. Read through the compositor, not stored:
+    /// every change into or out of a hold already reassigns ``activeShotID``.
     var programShot: Shot? {
         if let activeShot { return activeShot }
         let rendering = compositor.programShot
@@ -667,28 +542,24 @@ final class EngineModel {
     }
 
     /// The shot staged on preview, as the preview monitor's caption names it,
-    /// or `nil` while nothing is staged. Resolved against ``shots``, which
-    /// holds the transient shot ``stagePreview(showing:)`` makes as well as
-    /// the authored ones.
+    /// or `nil` while nothing is staged. ``shots`` holds the transient shot
+    /// ``stagePreview(showing:)`` makes as well as the authored ones.
     var previewShot: Shot? {
         shots.first { $0.id == previewShotID }
     }
 
     /// The shot the layer-tree editor follows, with its tally: the shot
-    /// staged on preview, or the shot on program when nothing is staged —
-    /// ``EditedShot``'s rule over the two bus ids. `nil` when neither bus
-    /// carries a shot from ``shots`` (an empty pool, or a held program
-    /// snapshot with nothing staged, which no edit could be stored into).
+    /// staged on preview, or the shot on program when nothing is staged
+    /// (``EditedShot``). `nil` when neither bus carries a shot from ``shots``.
     var editedShot: EditedShot? {
         EditedShot.following(shots: shots, previewShotID: previewShotID, activeShotID: activeShotID)
     }
 
     // MARK: Media
 
-    /// The files the project holds as media, in the order added — the
-    /// document's list, from which each launch asks the media registry for
-    /// the inputs (ARCHITECTURE.md, "Media inputs and the Library's Media
-    /// tab"). An item whose file is missing stays listed and dormant.
+    /// The files the project holds as media, in the order added
+    /// (ARCHITECTURE.md, "Media inputs and the Library's Media tab"). An item
+    /// whose file is missing stays listed and dormant.
     var media: [ProjectMedia] = []
 
     /// Movie and audio file durations by item, loaded as each registers, so
@@ -696,10 +567,8 @@ final class EngineModel {
     var mediaDurations: [MediaID: TimeInterval] = [:]
 
     /// Each media item's picture size in pixels, read from the file as it
-    /// registers — an image's pixel size with its orientation applied, a
-    /// movie's track size with its transform applied, the text canvas —
-    /// so a layer can be fitted to the picture before the input has
-    /// delivered a frame (``newLayerFrame(forInput:)``).
+    /// registers with its orientation applied, so a layer can be fitted
+    /// before the input delivers a frame (``newLayerFrame(forInput:)``).
     var mediaSizes: [MediaID: CGSize] = [:]
 
     /// The content types the registered media providers open — what the
@@ -713,33 +582,27 @@ final class EngineModel {
 
     // MARK: Windows
 
-    /// The windows the project holds as inputs, in the order added — the
-    /// document's list, from which each launch makes the window inputs
-    /// (ARCHITECTURE.md, "Window capture"). A record whose window is not
-    /// open stays listed, its input waiting for the window.
+    /// The windows the project holds as inputs, in the order added
+    /// (ARCHITECTURE.md, "Window capture"). A record whose window is not open
+    /// stays listed, its input waiting for the window.
     var windows: [ProjectWindow] = []
 
-    /// Each window's size in points as the picker listed it when it was
-    /// added, so a new layer can be fitted to the window before the input
-    /// has delivered a frame (``newLayerFrame(forInput:)``). Session state:
-    /// a window loaded from a project is measured from its first frame
-    /// instead.
+    /// Each window's size in points as the picker listed it when added, so a
+    /// new layer can be fitted before the input delivers a frame
+    /// (``newLayerFrame(forInput:)``). Session state: a window loaded from a
+    /// project is measured from its first frame instead.
     var windowSizes: [InputID: CGSize] = [:]
 
-    /// Whether the Add Window sheet is up (``WindowPickerSheet``). Session
-    /// state held here rather than in a view because four surfaces open it
-    /// — the Windows section's heading and the Add Shot menu in the
-    /// sidebar, over the shot bank, and in the menu bar — and one view,
+    /// Whether the Add Window sheet is up (``WindowPickerSheet``). Held here
+    /// rather than in a view because several surfaces open it and one view,
     /// ``ContentView``, presents it.
     var isWindowPickerPresented = false
 
     // MARK: Applications
 
     /// The applications the project holds as audio inputs, in the order
-    /// added — the document's list, from which each launch makes the
-    /// application inputs (ARCHITECTURE.md, "Application audio"). A record
-    /// whose application is not running stays listed, its input waiting for
-    /// the application.
+    /// added (ARCHITECTURE.md, "Application audio"). A record whose
+    /// application is not running stays listed, its input waiting for it.
     var applications: [ProjectApplication] = []
 
     /// Whether the Add Application sheet is up (``ApplicationPickerSheet``).
@@ -750,83 +613,59 @@ final class EngineModel {
     // MARK: Layer editing session state
 
     /// The selected layer's index in the followed shot's bottom-to-top
-    /// `layers` array, or `nil` for no selection — session state, like what
-    /// is staged, never part of the document. It lives here rather than in
-    /// the editor because three surfaces read and write it: the layer list,
-    /// the handles on the monitor, and the Layer menu. Read it through
-    /// ``selectedLayer``, which validates it: an index the followed shot no
-    /// longer has is no selection, never a crash.
+    /// `layers` array, or `nil` for no selection. Session state, held here
+    /// because several surfaces use it. Read it through ``selectedLayer``,
+    /// which validates it: a stale index is no selection, never a crash.
     var selectedLayerIndex: Int?
 
-    /// Whether a resize keeps the selected layer's proportion — the
-    /// inspector's lock, which the handles on the monitor honor too, the
-    /// way Keynote's Constrain Proportions governs both the fields and the
-    /// drag (Shift on a handle holds it as well). **On by default**: a
-    /// resize that keeps the picture's proportion is the common one, and a
-    /// stretch is the accident (Larry, 2026-09-09). Session state, so a
-    /// launch starts locked.
+    /// Whether a resize keeps the selected layer's proportion: the
+    /// inspector's lock, which the monitor's handles honor too. On by
+    /// default, since a stretch is usually the accident. Session state.
     var holdsLayerAspect = true
 
-    /// Whether the inspector's layer monitor is disclosed. **Closed by
-    /// default** and not drawn while closed (Larry, 2026-09-10): a monitor
-    /// at display rate is a cost the column should pay only when the
-    /// operator is judging an effect, so the disclosure builds the
-    /// `MTKView` on opening and tears it down on closing. Session state,
-    /// like the inspector itself.
+    /// Whether the inspector's layer monitor is disclosed. Closed by default
+    /// and not drawn while closed: a monitor at display rate is a cost worth
+    /// paying only while judging an effect. Session state.
     var isLayerMonitorDisclosed = false
 
-    /// The main window's undo manager, handed over by `ContentView` so
-    /// every layer-tree edit can register the shot it replaced
-    /// (ARCHITECTURE.md, "Direct manipulation, drag-to-reorder, and undo in
-    /// the layer-tree editor"). Weak: the window owns it.
+    /// The main window's undo manager, so every layer-tree edit can register
+    /// the shot it replaced (ARCHITECTURE.md, "Direct manipulation,
+    /// drag-to-reorder, and undo in the layer-tree editor"). The window owns it.
     weak var undoManager: UndoManager?
 
     /// The followed shot as it was when the gesture in progress began, or
     /// nil between gestures. While set, ``applyShotEdit(_:_:)`` registers
-    /// nothing — a slider or handle drag edits at gesture rate, and the
-    /// whole drag is one undo step, registered by ``endLayerGesture(_:)``.
+    /// nothing: ``endLayerGesture(_:)`` registers the drag as one undo step.
     var layerGestureSnapshot: Shot?
 
     /// The transition kind the next shot switcher tap takes with
-    /// (GLOSSARY.md, "Transition") — session state bound from `ContentView`'s
-    /// transition picker, never part of the saved document — but remembered
-    /// machine-locally with the rest of the operator's position, so a launch
-    /// arms what was armed (``recordSessionPosition()``). Starts on
-    /// ``TakeTransitionKind/default``, so each take resolves the taken shot's
-    /// own ``Shot/defaultTransition`` until the operator overrides it with an
-    /// explicit kind (ARCHITECTURE.md, "Per-shot default transitions"). The
-    /// switcher itself still always reports the choice it used, never guesses
-    /// at intent.
+    /// (GLOSSARY.md, "Transition"). Session state, remembered machine-locally
+    /// (``recordSessionPosition()``). Starts on ``TakeTransitionKind/default``,
+    /// so each take uses the taken shot's own ``Shot/defaultTransition``
+    /// until overridden (ARCHITECTURE.md, "Per-shot default transitions").
     var takeTransitionKind: TakeTransitionKind = .default {
         didSet { recordSessionPosition() }
     }
 
-    /// The frame edge the next wipe reveals the incoming shot from — session
-    /// state bound from the switcher's edge picker, read only while
-    /// ``takeTransitionKind`` is ``TakeTransitionKind/wipe``; remembered
-    /// like ``takeTransitionKind``.
+    /// The frame edge the next wipe reveals the incoming shot from, read
+    /// only while ``takeTransitionKind`` is ``TakeTransitionKind/wipe``.
+    /// Session state, remembered like ``takeTransitionKind``.
     var wipeEdge: WipeEdge = .left {
         didSet { recordSessionPosition() }
     }
 
     /// The built-in shader the next shader transition reveals the incoming
-    /// shot with — session state bound from the switcher's shader picker,
-    /// read only while ``takeTransitionKind`` is
+    /// shot with, read only while ``takeTransitionKind`` is
     /// ``TakeTransitionKind/shader``; remembered like ``takeTransitionKind``.
     var shaderName: TransitionShader = .iris {
         didSet { recordSessionPosition() }
     }
 
-    /// The length, in seconds, of the next timed take — the panel's one
-    /// **rate** knob (2026-09-13), the AUTO rate of a hardware switcher:
-    /// every dissolve, wipe, and shader transition runs this long, whether
-    /// the kind was armed explicitly or came from the taken shot's own
-    /// ``Shot/defaultTransition`` (the shot keeps its kind, edge, and shader;
-    /// the rate is the operator's). A cut has no length, so the rate is
-    /// simply not read for one. Session state bound from the panel's
-    /// duration field and stepper, remembered like ``takeTransitionKind``.
-    /// Set through ``setTakeTransitionDuration(_:)``, which clamps to
-    /// ``takeTransitionDurationRange``.
+    /// The length, in seconds, of the next timed take: the panel's one rate
+    /// knob. Every dissolve, wipe, and shader transition runs this long,
+    /// including a taken shot's ``Shot/defaultTransition``; a cut ignores it.
+    /// Remembered like ``takeTransitionKind``; ``setTakeTransitionDuration(_:)``
+    /// clamps it to ``takeTransitionDurationRange``.
     var takeTransitionDuration: TimeInterval = Transition.defaultDissolveDuration {
         didSet { recordSessionPosition() }
     }
@@ -842,47 +681,34 @@ final class EngineModel {
     @ObservationIgnored let programRelay = ProgramFrameRelay()
 
     /// The latest preview frame, for the preview monitor to sample at display
-    /// cadence — the program relay's twin, one bus over (GLOSSARY.md,
-    /// "Preview"). Emptied whenever ``previewShotID`` goes nil, so a cleared
-    /// preview reads as empty rather than as a frozen frame.
+    /// cadence (GLOSSARY.md, "Preview"). Emptied whenever ``previewShotID``
+    /// goes nil, so a cleared preview reads as empty, not frozen.
     @ObservationIgnored let previewRelay = ProgramFrameRelay()
 
-    /// The latest mix tick's meter readings, handed to the strip meters to
-    /// draw — the audio mirror of ``programRelay``: the meter drain writes
-    /// it, ``meterDisplayLink`` samples it at display cadence, and no reading
-    /// passes through SwiftUI observation (ARCHITECTURE.md, "Per-strip
-    /// meters").
+    /// The latest mix tick's meter readings: the meter drain writes it and
+    /// ``meterDisplayLink`` samples it at display cadence, outside SwiftUI
+    /// observation (ARCHITECTURE.md, "Per-strip meters").
     @ObservationIgnored let meterRelay: MeterRelay
 
-    /// The one display link every meter and peak readout on screen shares,
-    /// reading ``meterRelay`` once a frame and moving the meters' layers
-    /// outside SwiftUI's graph (ARCHITECTURE.md, "Meters off the SwiftUI
-    /// clock"). Idle until a meter is in a window.
+    /// The one display link every meter and peak readout shares, reading
+    /// ``meterRelay`` once a frame outside SwiftUI's graph (ARCHITECTURE.md,
+    /// "Meters off the SwiftUI clock"). Idle until a meter is in a window.
     @ObservationIgnored let meterDisplayLink: MeterDisplayLink
 
-    /// The same mix ticks as app-tier plug-ins follow them: the meter drain
-    /// folds each block in, and a connection that subscribed is sent its
-    /// window of them at most ten times a second (`tingra/meters`;
-    /// PLUGINS.md, Decision 18). With no follower a block costs it one lock.
+    /// The same mix ticks as app-tier plug-ins follow them: a subscribed
+    /// connection is sent its window of them at most ten times a second
+    /// (`tingra/meters`; PLUGINS.md, Decision 18).
     @ObservationIgnored let meterFeed = MeterFeed()
 
     /// The host event bus. Its log sinks drain it (``start(launch:)``): the
-    /// host's `FileSink` appending every event to ``logFile``, always, and
-    /// one live view — the ``ConsoleEventSink`` printing the same lines to
-    /// stdout when a developer runs the app from Xcode or
-    /// `scripts/run-app.sh`, otherwise the host's `OSLogSink` as the system
-    /// of record (EVENTS.md, "Sinks").
-    ///
-    /// Not `private`: every `tap` event is reported by the UI code that
-    /// executes the action (a `Button`'s action closure, a picker's
-    /// `onChange`), not by the model on the view's behalf — so `ContentView`
-    /// calls `model.eventBus.tap(...)` directly (EVENTS.md, "The `tap`
-    /// convention").
+    /// host's `FileSink` on ``logFile``, and the ``ConsoleEventSink`` for a
+    /// developer run or the host's `OSLogSink` (EVENTS.md, "Sinks"). Not
+    /// `private`: the UI code that executes an action reports its `tap`
+    /// through `model.eventBus.tap(...)` (EVENTS.md, "The `tap` convention").
     @ObservationIgnored let eventBus = EventBus()
 
-    /// The app's one log file, `~/Library/Logs/Tingra/Tingra.log` — the file
-    /// the file sink appends to, and the one the Logging settings pane sizes,
-    /// snapshots, and clears. One locator for both, so the sink and the pane
+    /// The app's one log file, `~/Library/Logs/Tingra/Tingra.log`. One
+    /// locator for the file sink and the Logging settings pane, so they
     /// cannot name different files (EVENTS.md, "File sink").
     @ObservationIgnored let logFile = LogFile()
 
@@ -896,16 +722,14 @@ final class EngineModel {
     /// TCC reads in production, a scripted answer in tests.
     @ObservationIgnored private let authorization: any AuthorizationChecking
 
-    /// Reads the system default microphone's input id — what a fresh
-    /// project's mixer seeds its one strip on (``MixerStrip/seed(from:preferring:)``).
-    /// The capture plug-in's `SystemDefaultInputs` in production, the same
-    /// read the CLI's `--mic` default makes; a fixed answer in tests.
+    /// Reads the system default microphone's input id, which a fresh
+    /// project's mixer seeds its one strip on
+    /// (``MixerStrip/seed(from:preferring:)``). A fixed answer in tests.
     @ObservationIgnored let defaultMicrophoneID: @Sendable () -> InputID?
 
-    /// Where each system permission stands (Camera, Microphone, Screen
-    /// Recording): the Permissions settings pane's model, refreshed on every
-    /// app activation so a grant made in System Settings starts the inputs
-    /// it unblocks when the operator returns (``applyNewlyGranted(_:)``).
+    /// Where each system permission stands: the Permissions settings pane's
+    /// model, refreshed on every app activation so a grant made in System
+    /// Settings starts the inputs it unblocks (``applyNewlyGranted(_:)``).
     @ObservationIgnored private(set) lazy var permissions = PermissionsModel(
         authorization: authorization, eventBus: eventBus)
 
@@ -920,41 +744,25 @@ final class EngineModel {
     @ObservationIgnored let effects = EffectRegistry()
 
     /// The host's Keychain-backed secret store: the stream key lives only
-    /// here, keyed by the destination URL — never the project document, never
-    /// an event, never a log.
-    ///
-    /// Filed in the shared keychain access group the app's entitlement
-    /// declares, which is what makes the item reachable by a second Tingra
-    /// binary later (DESTINATIONS.md, "Key sharing between the app and the
-    /// daemon"). Named explicitly rather than left to the implicit default:
-    /// an item written with no group lands in the *first* entry of the
-    /// entitlement's list, so the group a key is filed under would otherwise
-    /// be decided by the order of an XML array — the way the two would drift
-    /// the moment a second group is ever added. ``DestinationStore`` takes
-    /// the same group by default, so both writers agree.
-    ///
-    /// Internal rather than private since 2026-09-17, so the app tier's
-    /// plug-in secrets (`PlugInSecretStore`) are filed in the same store and
-    /// the same access group as the keys, from one construction.
+    /// here, never in the project document, an event, or a log. Filed in the
+    /// shared keychain access group, so a second Tingra binary can reach the
+    /// item (DESTINATIONS.md, "Key sharing between the app and the daemon").
+    /// The group is named explicitly because an item written with no group
+    /// lands in the first entry of the entitlement's list;
+    /// ``DestinationStore`` takes the same group. Internal, so plug-in
+    /// secrets (`PlugInSecretStore`) are filed in the same store and group.
     @ObservationIgnored let secureStorage: any SecureStorage = KeychainSecureStorage(
         accessGroup: KeychainSecureStorage.sharedAccessGroup())
 
     /// The operator's saved destinations (DESTINATIONS.md). Operator-global,
-    /// not per-project: the app is the editor, and the daemon reads the same
-    /// document so an agent can resolve "my Twitch" by name.
-    ///
-    /// Held as the writer of names and URLs only. Stream keys stay on
-    /// ``secureStorage`` directly, under the account convention the store
-    /// itself publishes (``DestinationStore/secureStorageAccount(for:)``), so
-    /// the two can never disagree about where a key is filed.
+    /// not per-project: the daemon reads the same document so an agent can
+    /// resolve "my Twitch" by name. Stream keys stay on ``secureStorage``
+    /// (``DestinationStore/secureStorageAccount(for:)``).
     @ObservationIgnored lazy var destinationStore = DestinationStore(eventBus: eventBus)
 
     /// This project's destination references as loaded, held until the store
-    /// read that turns them into panel rows completes.
-    ///
-    /// The two halves arrive separately — the document synchronously, the
-    /// store from an actor — so the references wait here rather than the merge
-    /// guessing at an empty store.
+    /// read that turns them into panel rows completes: the document arrives
+    /// synchronously and the store from an actor.
     @ObservationIgnored var projectDestinationReferences: [DestinationReference]?
 
     /// The active stream session, or nil when not streaming (v1's one active
@@ -968,33 +776,25 @@ final class EngineModel {
     @ObservationIgnored var streamTask: Task<Void, Never>?
 
     /// The task reading the active session's live statistics into
-    /// ``streamStats`` and ``destinationStats``. One reading a second, kept
-    /// newest-only by the session, so it runs on the main actor without
-    /// anything queuing behind it.
+    /// ``streamStats`` and ``destinationStats``: one reading a second, kept
+    /// newest-only by the session, so nothing queues on the main actor.
     @ObservationIgnored var streamStatisticsTask: Task<Void, Never>?
 
-    /// The program tee: the one program drain (``programTask``) and the one
-    /// program-audio drain (``programAudioTask``) hand every composited frame
-    /// and mixed block here, and the tee passes them to whichever sessions
-    /// are attached — the stream session while a stream is live, the
-    /// recording session while recording — so both reuse the same program
-    /// the monitor shows without a second `Compositor.programFrames()`
-    /// consumer. Lock-guarded and nonisolated, so the drains run off the
-    /// main actor (ARCHITECTURE.md, "Bounded frame streams").
+    /// The program tee: the program drain (``programTask``) and the
+    /// program-audio drain (``programAudioTask``) hand every frame and mixed
+    /// block here for the attached stream and recording sessions, so the
+    /// compositor keeps one consumer. Lock-guarded and nonisolated, so the
+    /// drains run off the main actor (ARCHITECTURE.md, "Bounded frame streams").
     @ObservationIgnored let tee = ProgramTee()
 
     /// The task observing the bus for `stream.*` status events — the stream
     /// status is event-driven, never polled.
     @ObservationIgnored private var streamStatusTask: Task<Void, Never>?
 
-    /// The active recording session, or nil when not recording.
-    ///
-    /// A **second** `StreamSession` carrying no destinations, running beside
-    /// ``streamSession`` rather than inside it, so the recording and the
-    /// stream start and stop independently (ARCHITECTURE.md, "Recording in
-    /// the app"). This is not a second *stream*: v1's one-active-session rule
-    /// governs what is on air, and a session with no destination puts nothing
-    /// on air.
+    /// The active recording session, or nil when not recording: a second
+    /// `StreamSession` with no destinations, so the recording and the stream
+    /// start and stop independently (ARCHITECTURE.md, "Recording in the
+    /// app"). It puts nothing on air, so v1's one-active-session rule holds.
     @ObservationIgnored var recordSession: StreamSession? {
         didSet { updateKeepAwakeSwitch() }
     }
@@ -1019,11 +819,9 @@ final class EngineModel {
     /// of their own; this owns the one hold for both.
     @ObservationIgnored private let keepAwakeSwitch: KeepAwakeSwitch
 
-    /// The on-disk marker of the stream this run has on air: written when
-    /// the stream session goes live, removed when it stops and at a clean
-    /// quit, and read at the next launch to offer resuming a stream the app
-    /// died under (ARCHITECTURE.md, "Offering to resume a stream after the
-    /// app dies").
+    /// The on-disk marker of the stream this run has on air, written when it
+    /// goes live and removed when it stops or at a clean quit
+    /// (ARCHITECTURE.md, "Offering to resume a stream after the app dies").
     @ObservationIgnored let liveStreamRecord: LiveStreamRecord
 
     /// Whether the Mac is being held awake right now.
@@ -1042,10 +840,9 @@ final class EngineModel {
     /// The pending dismissal of ``snapshotFeedback``'s badge, if one is up.
     @ObservationIgnored var snapshotFeedbackTask: Task<Void, Never>?
 
-    /// The program geometry and rate — a **project setting** (ARCHITECTURE.md,
+    /// The program geometry and rate, a project setting (ARCHITECTURE.md,
     /// "The program format as a project setting"): 1080p30 until the project
-    /// loads its own, changed by ``setProgramFormat(_:)``. Observed, so the
-    /// monitors, the bank, and the status bar reshape with it.
+    /// loads its own, changed by ``setProgramFormat(_:)``.
     var format = ProgramFormat()
 
     /// The program geometry, for the layer inspector's pixel fields
@@ -1054,16 +851,10 @@ final class EngineModel {
         format
     }
 
-    /// Changes the program's size and frame rate — live, at the next tick
-    /// (``Compositor/setFormat(_:)``), and saved with the project.
-    ///
-    /// **Refused while streaming or recording**: the sinks' compression
-    /// sessions are open at a size, so the format is a session-start
-    /// setting there, as it is for the CLI. The Program menu's items are
-    /// disabled then, and this refusal — a `program.format` error event
-    /// carrying the `reason` — is what a macro or a later MCP tool meets, so
-    /// no path can slip a change under a live session. The same format again
-    /// changes nothing and saves nothing.
+    /// Changes the program's size and frame rate, live at the next tick
+    /// (``Compositor/setFormat(_:)``), and saves it with the project.
+    /// Refused with a `program.format` error event while streaming or
+    /// recording, when the sinks' compression sessions are open at a size.
     ///
     /// - Parameter newFormat: The program's new size and frame rate.
     func setProgramFormat(_ newFormat: ProgramFormat) {
@@ -1090,11 +881,9 @@ final class EngineModel {
     /// configuration pass. Nothing saves before they do.
     var hasSessionPreset: Bool { !presets.isEmpty }
 
-    /// The store of the **default project** — what a fresh install opens,
-    /// what a launch falls back to when the last project cannot be reopened,
-    /// and what the Data settings pane removes. The operator's own project
-    /// files elsewhere are theirs, like recordings (ARCHITECTURE.md,
-    /// "Projects as documents").
+    /// The store of the **default project**: what a fresh install opens, a
+    /// launch falls back to, and the Data settings pane removes
+    /// (ARCHITECTURE.md, "Projects as documents").
     @ObservationIgnored let defaultStore = ProjectStore()
 
     /// The store of the **open project** — the default one until the
@@ -1117,16 +906,14 @@ final class EngineModel {
     /// the session position is scoped by (``SessionPreferences``).
     @ObservationIgnored var projectID: ProjectID?
 
-    /// The project-scoped storage of app-tier plug-ins, by plug-in id: the
-    /// document's `plugInData` key, held opaque and written back as read so
-    /// a project opened without a plug-in loses nothing of its data
-    /// (PLUGINS.md, Decision 7; ``plugInProjectData(for:)``).
+    /// The project-scoped storage of app-tier plug-ins, by plug-in id, held
+    /// opaque and written back as read so a project opened without a plug-in
+    /// keeps its data (PLUGINS.md, Decision 7; ``plugInProjectData(for:)``).
     @ObservationIgnored var plugInData: [String: JSONValue] = [:]
 
-    /// The host's monitor overlay registry: what the first-party and
-    /// third-party overlay plug-ins register into through the plug-in
-    /// context (PLUGINS.md, Decision 53). Read once, after activation, into
-    /// ``monitorOverlayCatalog``.
+    /// The host's monitor overlay registry, which overlay plug-ins register
+    /// into through the plug-in context (PLUGINS.md, Decision 53). Read once,
+    /// after activation, into ``monitorOverlayCatalog``.
     @ObservationIgnored private let monitorOverlayRegistry = MonitorOverlayRegistry()
 
     /// Every registered monitor overlay, in the order the Overlays submenus
@@ -1134,29 +921,24 @@ final class EngineModel {
     /// (``fillMonitorOverlayCatalog(with:)``).
     var monitorOverlayCatalog = MonitorOverlayCatalog.empty
 
-    /// The open project's monitor overlays, as the document holds them, or
-    /// `nil` when the operator has never changed them, which reads as
-    /// ``defaultMonitorOverlays`` and saves as an absent key (PLUGINS.md,
-    /// Decision 55).
+    /// The open project's monitor overlays, or `nil` when the operator has
+    /// never changed them, which reads as ``defaultMonitorOverlays`` and
+    /// saves as an absent key (PLUGINS.md, Decision 55).
     var monitorOverlaySettings: MonitorOverlaySettings?
 
-    /// The host's tool registry: what the MCP endpoint app-tier plug-ins
-    /// call lists and dispatches against, and what host-tier plug-ins
-    /// register tools into through the plug-in context (PLUGINS.md,
-    /// Decision 10). The first-party program tools (`ProgramToolsPlugIn`)
-    /// register into it at boot beside the capture and generator plug-ins.
+    /// The host's tool registry: what the MCP endpoint lists and dispatches
+    /// against, and what host-tier plug-ins and the first-party program
+    /// tools register into (PLUGINS.md, Decision 10).
     @ObservationIgnored let toolRegistry = ToolRegistry()
 
-    /// The host's resource registry: what the MCP endpoint lists, reads,
-    /// and subscribes plug-ins to — the session, the program, and the
-    /// inputs, rendered from this model's state (`EngineResources`;
-    /// PLUGINS.md, Phase 2). Filled once the engine is up.
+    /// The host's resource registry: what the MCP endpoint lists, reads, and
+    /// subscribes plug-ins to, rendered from this model's state
+    /// (`EngineResources`; PLUGINS.md, Phase 2). Filled once the engine is up.
     @ObservationIgnored let resourceRegistry = ResourceRegistry()
 
     /// The projects opened, created, or saved as through the File menu, most
-    /// recent first — the Open Recent submenu's rows. Kept by the system's
-    /// document controller, which also feeds the Apple menu's Recent Items
-    /// and the Dock; mirrored here so the menu observes a change.
+    /// recent first, for the Open Recent submenu. Kept by the system's
+    /// document controller and mirrored here so the menu observes a change.
     var recentProjectURLs: [URL] = []
 
     /// A project the Finder asked the app to open while the engine was still
@@ -1169,11 +951,9 @@ final class EngineModel {
     /// the open project once its id is known.
     @ObservationIgnored var sessionPreferences = SessionPreferences()
 
-    /// The position recorded by the last run, read at the top of
-    /// ``loadProject()`` before any assignment can overwrite it, and consumed
-    /// once by ``establishSessionPreset()``; nil after that, and on every
-    /// launch that seeds a fresh project. While it is set, nothing records
-    /// the position (``recordSessionPosition()``).
+    /// The position recorded by the last run, read by ``loadProject()`` and
+    /// consumed once by ``establishSessionPreset()``. While it is set,
+    /// nothing records the position (``recordSessionPosition()``).
     @ObservationIgnored var restoredPosition: SessionPosition?
 
     /// The pending debounced autosave, if any — each edit restarts the delay
@@ -1185,16 +965,10 @@ final class EngineModel {
     /// next edit or by the quit that follows (``saveProject()``).
     @ObservationIgnored var isRemovingData = false
 
-    /// What the app has saved on this Mac, and the way to remove all of it —
-    /// the Data settings pane's model, built over the same project store,
-    /// destination store, and secret store this engine writes through, so
-    /// the pane and the engine cannot name different files
-    /// (``AppDataStore``).
-    ///
-    /// The preferences domain is the bundle identifier — the domain
-    /// `UserDefaults.standard` persists under — falling back to the process
-    /// name, which is what the standard defaults use for an unbundled
-    /// process.
+    /// What the app has saved on this Mac, and the way to remove all of it:
+    /// the Data settings pane's model, over the same stores this engine
+    /// writes through (``AppDataStore``). The preferences domain is the
+    /// bundle identifier, or the process name, as the standard defaults use.
     @ObservationIgnored private(set) lazy var appData = AppDataModel(
         store: AppDataStore(
             projectStore: defaultStore,
@@ -1218,25 +992,20 @@ final class EngineModel {
     /// the file sink appends to (``LogFileModel``).
     @ObservationIgnored private(set) lazy var logFileModel = LogFileModel(logFile: logFile, eventBus: eventBus)
 
-    /// The stream history — every streamed session and the figures over all
-    /// of them, the Streaming settings pane's history — kept in
-    /// ``streamHistoryStore`` (``StreamHistoryModel``). Lazy, so a launch
-    /// that neither streams nor opens the pane reads nothing.
+    /// The stream history: every streamed session and the figures over all
+    /// of them, kept in ``streamHistoryStore`` (``StreamHistoryModel``).
+    /// Lazy, so a launch that neither streams nor opens the pane reads none.
     @ObservationIgnored private(set) lazy var streamHistory = StreamHistoryModel(
         store: streamHistoryStore, eventBus: eventBus)
 
-    /// Where the stream history persists: beside the project store's default
-    /// document in the app, a temporary folder in tests. Injected because
-    /// the model records a session at every `stream.started` it is handed,
-    /// and a test that hands it one must not write into the operator's own
-    /// history — which one did on 2026-10-13, as a session with no
-    /// destination.
+    /// Where the stream history persists: beside the default project in the
+    /// app, a temporary folder in tests. Injected so a test's
+    /// `stream.started` never writes into the operator's own history.
     @ObservationIgnored private let streamHistoryStore: StreamHistoryStore
 
-    /// Which installed plug-ins are turned off — the Plug-ins settings
-    /// pane's model, over the same `plug-ins.json` the bundle loader reads
-    /// at every launch (``PlugInEnablementModel``, PLUGINS.md, Decisions 34
-    /// and 36).
+    /// Which installed plug-ins are turned off: the Plug-ins settings pane's
+    /// model, over the same `plug-ins.json` the bundle loader reads at every
+    /// launch (``PlugInEnablementModel``, PLUGINS.md, Decisions 34 and 36).
     @ObservationIgnored private(set) lazy var plugInEnablement = PlugInEnablementModel(
         store: PlugInEnablementStore(), eventBus: eventBus)
 
@@ -1250,13 +1019,10 @@ final class EngineModel {
     /// compositor starts.
     @ObservationIgnored let videoEffectProviders = VideoEffectProviderBox()
 
-    /// A renderer for the shot bank's thumbnails over the given Core Image
-    /// context — the monitors' shared one — resolving layer chains through
-    /// the same ``videoEffectProviders`` the compositor's renderer reads,
-    /// so a tile composes a shot exactly as program would
-    /// (ARCHITECTURE.md, "Shot thumbnails are the shot"). Its effect
-    /// instances are its own: an effect may carry state, and a monitor
-    /// never shares the compositor's.
+    /// A renderer for the shot bank's thumbnails, resolving layer chains
+    /// through the same ``videoEffectProviders`` as the compositor's, so a
+    /// tile composes a shot as program would (ARCHITECTURE.md, "Shot
+    /// thumbnails are the shot"). Its effect instances are its own.
     ///
     /// - Parameter context: The context the thumbnails will be drawn with.
     /// - Returns: The renderer.
@@ -1268,9 +1034,8 @@ final class EngineModel {
     }
 
     /// The compositor producing the program frames. Its renderer resolves
-    /// each layer's authored chain through ``videoEffectProviders``, so
-    /// `TingraComposition` never depends on the host's effect registry
-    /// (ARCHITECTURE.md, "Per-layer video effects").
+    /// layer chains through ``videoEffectProviders``, so `TingraComposition`
+    /// needs no effect registry (ARCHITECTURE.md, "Per-layer video effects").
     @ObservationIgnored lazy var compositor = Compositor(
         clock: clock,
         format: format,
@@ -1289,16 +1054,13 @@ final class EngineModel {
     @ObservationIgnored lazy var mixer = AudioMixer(clock: clock, eventBus: eventBus)
 
     /// The monitor: the engine's audio output path, playing the program mix
-    /// to the operator's chosen device (GLOSSARY.md, "Monitor"). A **sink**
-    /// on the program-audio drain's tee, never a second bus — so nothing it
-    /// does can change what viewers hear (ARCHITECTURE.md, "The monitor
-    /// path"). Nothing opens until a device is chosen.
+    /// to the operator's chosen device (GLOSSARY.md, "Monitor"). A sink,
+    /// never a second bus (ARCHITECTURE.md, "The monitor path").
     @ObservationIgnored let monitor: any AudioMonitor
 
     /// Where the monitor's device and level persist: machine-local
-    /// preferences, not the project document (a project carried to another
-    /// Mac would name a device that does not exist) and not session state
-    /// (headphones do not change between launches).
+    /// preferences, since a project carried to another Mac would name a
+    /// device that does not exist there.
     @ObservationIgnored let monitorPreferences: MonitorPreferences
 
     /// The task draining the monitor's device-list updates, so a device
@@ -1320,25 +1082,21 @@ final class EngineModel {
     /// indicator goes dark), unmuting starts it again.
     @ObservationIgnored var activeAudioInputs: [InputID: any Input] = [:]
 
-    /// Which pass needs each input running, so an input both need — a video
-    /// file with sound, shown by a layer and heard on an unmuted strip — is
-    /// started by the first and stopped only by the last (``InputClaims``).
-    /// ``activeInputs`` and ``activeAudioInputs`` say what each pass is
-    /// using; these claims alone decide `start()` and `stop()`.
+    /// Which pass needs each input running (``InputClaims``), so an input
+    /// both a layer and a strip need is started by the first and stopped
+    /// only by the last. These claims alone decide `start()` and `stop()`.
     @ObservationIgnored var inputClaims = InputClaims()
 
     /// The task draining the compositor's program stream into the relay.
     @ObservationIgnored private var programTask: Task<Void, Never>?
 
     /// The task draining the compositor's preview frames into the preview
-    /// relay. Unlike the program drain it tees nowhere: nothing on preview is
-    /// visible to viewers (GLOSSARY.md, "Preview"), so it never reaches a
-    /// stream or recording sink.
+    /// relay. It tees nowhere: nothing on preview reaches a stream or
+    /// recording sink (GLOSSARY.md, "Preview").
     @ObservationIgnored private var previewTask: Task<Void, Never>?
 
-    /// The task draining the mixer's program-audio stream, teeing each mixed
-    /// block into the active session while a stream is live (there is no
-    /// audio preview yet — that monitoring slice is a later iteration).
+    /// The task draining the mixer's program-audio stream, handing each
+    /// mixed block to the tee and the monitor.
     @ObservationIgnored private var programAudioTask: Task<Void, Never>?
 
     /// The task draining the mixer's meter stream into ``meterRelay`` — one
@@ -1355,41 +1113,29 @@ final class EngineModel {
 
     /// Why this launch is in safe mode, which loads no plug-in bundles, or
     /// `nil` for a normal launch (PLUGINS.md, Decision 31). Set once, as the
-    /// engine boots; the main window's subtitle ends in "Safe Mode" while it
-    /// is set.
+    /// engine boots.
     private(set) var safeModeTrigger: PlugInSafeModeTrigger?
 
-    /// Every host-tier plug-in this launch met — the compiled-in ones and
-    /// each bundle in the plug-in folders, in one state apiece — or `nil`
-    /// until the engine has booted. The same report `tingra-cli plug-ins`
-    /// prints; the Plug-ins settings pane lists it (PLUGINS.md, Decisions
-    /// 35 and 36). Set once, as the plug-ins activate: what loaded cannot
-    /// change until the next launch.
+    /// Every host-tier plug-in this launch met, compiled-in and bundled, or
+    /// `nil` until the engine has booted: the report `tingra-cli plug-ins`
+    /// prints (PLUGINS.md, Decisions 35 and 36). Set once per launch.
     private(set) var plugInReport: PlugInLoadReport?
 
-    /// Whether any ``applyConfiguration()`` pass has completed, so the first
-    /// pass establishes the session preset — seeding a fresh project around
-    /// whichever of the first discovered display and camera started — and
+    /// Whether any ``applyConfiguration()`` pass has completed: the first
+    /// pass establishes the session preset, seeding a fresh project, and
     /// later passes only sync inputs.
     @ObservationIgnored var hasAppliedConfiguration = false
 
-    /// Inputs whose last start attempt ended ``CaptureInputError/startedSilent(_:within:)``
-    /// — listed by macOS, started without error, and delivering nothing
-    /// (a built-in camera behind a closed lid, typically).
-    ///
-    /// A pass skips these rather than paying the verification window again
-    /// for a device nothing has changed about, and the set is cleared by the
-    /// things that can change it: any device connecting (a lid opening
-    /// connects the built-in display, so that case rides on the same event),
-    /// a permission grant, or the operator asking for the input — clicking
-    /// its sidebar row, or choosing it in the inspector's Input popup.
+    /// Inputs whose last start attempt ended
+    /// ``CaptureInputError/startedSilent(_:within:)``: started without error
+    /// but delivering nothing. A pass skips these rather than pay the
+    /// verification window again; a device connecting, a permission grant,
+    /// or the operator asking for the input clears the set.
     @ObservationIgnored var silentInputs: Set<InputID> = []
 
     /// Whether a ``reconfigure()`` pass is currently running. `reconfigure()`
     /// suspends at `input.start()`/`stop()`, so without this guard requests
-    /// arriving together — the boot call, a device event, an edit that
-    /// references a new input — would interleave and race the input
-    /// start/stop.
+    /// arriving together would interleave and race the input start/stop.
     @ObservationIgnored var reconfiguring = false
 
     /// Set whenever a reconfigure is requested while one is already running,
@@ -1405,39 +1151,22 @@ final class EngineModel {
     /// running (see ``reconfigureRequested``).
     @ObservationIgnored var audioReconfigureRequested = false
 
-    /// Creates the model. The engine boots in ``start(launch:)`` when the window
-    /// appears, not here.
+    /// Creates the model. The engine boots in ``start(launch:)`` when the
+    /// window appears, not here. Every default is the real implementation;
+    /// tests pass doubles and throwaway stores.
     ///
     /// - Parameters:
-    ///   - monitor: The audio output path the operator monitors through
-    ///     (the real `AVAudioEngine`-backed one by default; a double in
-    ///     tests, so no audio hardware is needed).
+    ///   - monitor: The audio output path the operator monitors through.
     ///   - monitorPreferences: Where the monitor device and level persist.
-    ///   - authorization: Where the system permissions are read from (the
-    ///     real TCC reads by default; a scripted answer in tests).
-    ///   - snapshotPreferences: Where the snapshots folder persists (the
-    ///     standard defaults by default; a throwaway suite in tests, so a test
-    ///     never writes into the operator's own snapshots folder).
-    ///   - recordingPreferences: Where the recordings folder and container
-    ///     persist (the standard defaults by default; a throwaway suite in
-    ///     tests, for the same reason).
-    ///   - streamingPreferences: Where the stream's compression choices
-    ///     persist (the standard defaults by default; a throwaway suite in
-    ///     tests).
-    ///   - keepAwakePreferences: Where the Keep Mac Awake choice persists
-    ///     (the standard defaults by default; a throwaway suite in tests).
-    ///   - keepAwake: What the Mac is held awake through while a session
-    ///     runs (the system-backed one by default; a double in tests, so no
-    ///     test takes a power assertion).
-    ///   - liveStreamRecord: The marker of the stream on air (the file in
-    ///     Tingra's Application Support folder by default; one over a
-    ///     temporary folder in tests).
-    ///   - streamHistoryStore: Where the stream history persists (the file
-    ///     in Tingra's Application Support folder by default; one over a
-    ///     temporary folder in tests).
-    ///   - defaultMicrophoneID: Reads the system default microphone, which a
-    ///     fresh project's mixer seeds on (the capture plug-in's read by
-    ///     default; a fixed answer in tests).
+    ///   - authorization: Where the system permissions are read from.
+    ///   - snapshotPreferences: Where the snapshots folder persists.
+    ///   - recordingPreferences: Where the recording choices persist.
+    ///   - streamingPreferences: Where the stream's compression choices persist.
+    ///   - keepAwakePreferences: Where the Keep Mac Awake choice persists.
+    ///   - keepAwake: What holds the Mac awake while a session runs.
+    ///   - liveStreamRecord: The marker of the stream on air.
+    ///   - streamHistoryStore: Where the stream history persists.
+    ///   - defaultMicrophoneID: Reads the system default microphone's input id.
     init(
         monitor: any AudioMonitor = AVAudioEngineMonitor(),
         monitorPreferences: MonitorPreferences = MonitorPreferences(),
@@ -1484,41 +1213,32 @@ final class EngineModel {
     /// activates the capture and generator plug-ins, discovers inputs, starts
     /// the compositor, and begins feeding the preview. Idempotent.
     ///
-    /// - Parameter launch: Whether this launch is in safe mode, which loads
-    ///   no plug-in bundles, and the operator's answer to the offer made
-    ///   after an unclean exit, when one was made (PLUGINS.md, Decisions 31
-    ///   and 32).
+    /// - Parameter launch: Whether this launch is in safe mode, and the
+    ///   operator's answer to the offer made after an unclean exit
+    ///   (PLUGINS.md, Decisions 31 and 32).
     func start(launch: SafeModeLaunch = .normal) async {
         guard !started else { return }
         started = true
         safeModeTrigger = launch.trigger
 
         // The log sinks, attached before the first event so none is missed
-        // (EVENTS.md, "Sinks"). The log file always, so every run records
-        // somewhere an operator can find and share. Then one live view: the
-        // log file's lines on stdout when a developer runs the app from Xcode
-        // or `scripts/run-app.sh` (``ConsoleEventSink``), and otherwise OSLog
-        // as the system of record. Never both: Xcode's console shows the
-        // unified log too, so both would print every event twice there.
+        // (EVENTS.md, "Sinks"): the log file always, then stdout or OSLog,
+        // never both, since Xcode's console would print every event twice.
         logSinkTasks = [eventBus.attach(FileSink(url: logFile.url))]
         if LaunchEnvironment.logsToConsole {
             logSinkTasks.append(eventBus.attach(ConsoleEventSink()))
         } else {
             logSinkTasks.append(eventBus.attach(OSLogSink()))
         }
-        // The first line of every log names the build it came from — the app
-        // and macOS versions and the Mac's model — so a shared log can be
-        // lined up with the report it arrived with (``LaunchDiagnostics``).
+        // The first line of every log names the build it came from, so a
+        // shared log can be matched to its report (``LaunchDiagnostics``).
         eventBus.app(LaunchDiagnostics.eventName, domain: .platform, params: LaunchDiagnostics().params)
         // The safe-mode offer's click happened before there was anywhere to
         // record it, so it goes on the bus now, ahead of its effect.
         launch.reportOfferTap(on: eventBus)
-        // Observe the bus for `stream.*` status changes before anything can
-        // stream, so no status event is missed (event-driven, never polled).
-        // One consumer, two handlers. Attached here — before the plug-ins
-        // activate — so neither a `stream.*` status change nor the session's
-        // first `device.*` event can be missed; a second subscription created
-        // later in this method could not make that promise.
+        // One bus consumer, attached before the plug-ins activate so neither
+        // a `stream.*` status change nor the first `device.*` event can be
+        // missed (event-driven, never polled).
         let busEvents = eventBus.events()
         streamStatusTask = Task { [weak self] in
             for await event in busEvents {
@@ -1529,8 +1249,7 @@ final class EngineModel {
             }
         }
         // The permissions picture goes on the bus before any input asks for
-        // one, so a session log opens with what TCC allowed at launch; from
-        // here on each app activation re-reads it (never a poll), and a grant
+        // one. Each app activation re-reads it (never a poll), and a grant
         // made in System Settings starts the inputs it unblocks.
         permissions.refresh()
         permissions.observeActivation { [weak self] granted in
@@ -1573,9 +1292,8 @@ final class EngineModel {
             }
         }
         mediaContentTypes = await mediaRegistry.acceptedContentTypes
-        // The recordings folder's free space is read once the engine is up and
-        // again whenever the folder, the container, or a finished recording
-        // can have changed the answer — never on a timer.
+        // The recordings folder's free space is read now and again whenever
+        // something can have changed the answer, never on a timer.
         refreshRecordingCapacity()
         audioEffectChoices = await effects.allAudioProviders.map {
             AudioEffectChoice(id: $0.id, name: $0.name, parameters: $0.parameters)
@@ -1596,8 +1314,7 @@ final class EngineModel {
         // inputs it tunes are handed their stored settings now.
         await applyStoredInputParameters()
         // The project's media registers after the document is read and
-        // before the lists are used: each item becomes an input the
-        // sidebar, the layer editor, and the strips then see.
+        // before the lists are used: each item becomes an input.
         if !media.isEmpty {
             await registerProjectMedia()
             await readDeviceLists()
@@ -1614,9 +1331,8 @@ final class EngineModel {
         }
         await loadDestinations()
         // The strips are the loaded preset's authored audio channels, named
-        // from discovery — the seed policy (one strip, on the system default
-        // microphone, unmuted) is the fallback when the document authored
-        // none (a fresh project, or one written before routing landed).
+        // from discovery. When the document authored none, the seed policy
+        // applies: one unmuted strip on the system default microphone.
         mixerStrips = MixerStrip.strips(
             channels: presets.first { $0.id == activePresetID }?.audioChannels,
             discovered: audioInputs,
@@ -1629,10 +1345,9 @@ final class EngineModel {
         // preview costs nothing (ARCHITECTURE.md, "The preview bus").
         let preview = compositor.previewFrames()
         compositor.start()
-        // Both drains run **off the main actor** (`Task.detached`): the relays
-        // and the tee are lock-guarded, so a frame never waits for the main
-        // thread, and a busy main thread can only cost the monitor a draw,
-        // never queue frames (ARCHITECTURE.md, "Bounded frame streams").
+        // Both drains run off the main actor (`Task.detached`), so a busy
+        // main thread can only cost the monitor a draw, never queue frames
+        // (ARCHITECTURE.md, "Bounded frame streams").
         let previewRelay = self.previewRelay
         previewTask = Task.detached {
             for await frame in preview {
@@ -1649,29 +1364,21 @@ final class EngineModel {
             var sawFrame = false
             for await frame in program {
                 programRelay.store(frame)
-                // While a stream is live, tee the same program frame into the
-                // session — one program drain feeds both the preview and the
-                // stream, so the compositor's single-consumer contract holds.
-                // The recording session is the second leaf on the same tee,
-                // fed the identical frame: both sinks record the same program
-                // (ARCHITECTURE.md, "Recording in the app").
+                // Tee the same frame into the attached stream and recording
+                // sessions, so the compositor's single-consumer contract
+                // holds (ARCHITECTURE.md, "Recording in the app").
                 tee.yield(frame)
                 if !sawFrame {
                     sawFrame = true
-                    // A one-time milestone (not per-frame traffic): confirms the
-                    // compositor is producing program frames into the preview
-                    // relay at all — the background canvas ticks from the first
-                    // frame even before an input delivers.
+                    // A one-time milestone, not per-frame traffic: confirms
+                    // the compositor is producing program frames at all.
                     eventBus.event("preview.firstFrame", domain: .composition)
                 }
             }
         }
 
-        // The program mix runs from boot like the compositor — a live canvas
-        // of silence until a strip's device delivers. Its one drain tees each
-        // mixed block into the session while a stream is live and into the
-        // monitor while the operator is listening (the audio mirror of the
-        // program-frame drain above). Both are leaves on the same tee, so
+        // The program mix runs from boot like the compositor. Its one drain
+        // hands each mixed block to the sessions and to the monitor, so
         // neither can alter the mix the other receives.
         let programAudio = mixer.programAudio()
         let monitor = self.monitor
@@ -1684,9 +1391,8 @@ final class EngineModel {
         }
 
         // The meters ride the same mix tick: one pre-fader reading per strip
-        // and the post-fader master reading per block, into the relay the
-        // meters sample at display cadence — per-block data, never the event
-        // bus (EVENTS.md).
+        // and the post-fader master per block, into the relay the meters
+        // sample at display cadence. Never the event bus (EVENTS.md).
         let meters = mixer.meterReadings()
         let meterRelay = self.meterRelay
         let meterFeed = self.meterFeed
@@ -1709,9 +1415,8 @@ final class EngineModel {
             await openProject(at: url)
         }
 
-        // Last, with the project open, its destinations merged, and the
-        // program running: the operator can see what would go on air before
-        // answering. The safe mode offer was answered before the boot.
+        // Last, with the project open and the program running, so the
+        // operator can see what would go on air before answering.
         await offerStreamResume()
     }
 
@@ -1731,9 +1436,8 @@ final class EngineModel {
 
     // MARK: Snapshots
 
-    /// Turns holding the Mac awake during a stream or a recording on or off,
-    /// persisting the choice as a machine-local preference. It takes effect
-    /// at once, on a session already running too.
+    /// Turns holding the Mac awake during a stream or a recording on or off
+    /// and persists the choice. It takes effect at once, mid-session too.
     ///
     /// - Parameter isEnabled: Whether a session should hold the Mac awake.
     func setKeepsMacAwake(_ isEnabled: Bool) {
@@ -1759,21 +1463,14 @@ final class EngineModel {
     // MARK: Lifecycle
 
     /// Records the app's shutdown on the bus and makes sure the record lands
-    /// before the process exits.
+    /// before the process exits. Called from the app delegate for every quit
+    /// (``TingraAppDelegate/applicationShouldTerminate(_:)``).
     ///
-    /// Called from the app delegate for **every** quit AppKit dispatches
-    /// (``TingraAppDelegate/applicationShouldTerminate(_:)``). It emits one
-    /// `app.terminating` event (domain `platform`) carrying the cause and
-    /// whether a recording or a stream was open, writes a pending debounced
-    /// autosave at once — an edit made in the second before the quit would
-    /// otherwise be lost with its timer — closes the stream history's entry
-    /// for a stream still on air (``StreamHistoryModel``), finalizes the
-    /// recording the way
-    /// quitting always has — an unfinalized movie is an unplayable one —
-    /// then shuts the bus down and **awaits every log sink's drain**, because
-    /// delivery is asynchronous and an event still buffered when the process
-    /// exits was never logged. Nothing else is torn down: the stream, the
-    /// inputs, and the compositor go with the process, as they did before.
+    /// It emits one `app.terminating` event, writes a pending autosave,
+    /// closes the stream history's entry for a stream still on air, and
+    /// finalizes the recording, since an unfinalized movie is unplayable. It
+    /// then shuts the bus down and awaits every log sink's drain: an event
+    /// still buffered at exit was never logged. Nothing else is torn down.
     ///
     /// - Parameter reason: What brought the quit on (``TerminationReason``).
     func shutDown(reason: TerminationReason) async {
@@ -1789,12 +1486,11 @@ final class EngineModel {
         // Before the bus shuts down, so its `project.saved` (or
         // `project.save` error) reaches the log with the rest of the quit.
         if autosaveTask != nil { saveProject() }
-        // A clean quit while live is the operator's choice: nothing to
-        // offer at the next launch, even if the stream's stop event never
-        // reaches the observer before the process exits.
+        // A clean quit while live is the operator's choice: nothing to offer
+        // at the next launch, even if the stream's stop event arrives late.
         liveStreamRecord.remove()
         // The stream goes with the process and reports no end of its own, so
-        // the history's open entry is closed here — otherwise a quit on air
+        // the history's open entry is closed here; otherwise a quit on air
         // would read as a crash at the next launch.
         if isStreaming { recordStreamEnded(reason: .appQuit, at: Date()) }
         await finishRecording()
@@ -1819,23 +1515,15 @@ final class EngineModel {
         monitorOverlaySettings ?? Self.defaultMonitorOverlays
     }
 
-    /// Removes everything the app has saved on this Mac — the project
-    /// document, the destinations, the stream keys, the preferences, and the
-    /// log session counter; never a recording — and stops the engine saving
-    /// anything further, so the caller can quit and the next launch is a
+    /// Removes everything the app has saved on this Mac except recordings,
+    /// and stops the engine saving anything further, so the next launch is a
     /// first run (ARCHITECTURE.md, "The Data settings pane").
     ///
-    /// The pending autosave is cancelled and every later save refused
-    /// **before** the files go, because the engine still holds the show in
-    /// memory: an autosave landing after the removal would write the
-    /// document straight back, and the quit's own flush would do the same.
-    /// The engine keeps running — the stream, the recording, and the
-    /// compositor go with the process, as they do on every quit — so a
-    /// recording in flight is still finalized by the quit that follows.
-    ///
-    /// Saving stays off even when a kind could not be removed: the caller
-    /// shows what remains rather than quitting, and an edit made then must
-    /// not recreate what was just removed.
+    /// The pending autosave is cancelled and later saves refused before the
+    /// files go: the engine still holds the show in memory, and an autosave
+    /// or the quit's flush would write the document straight back. Saving
+    /// stays off even when something could not be removed. The engine keeps
+    /// running, so the quit that follows still finalizes a recording.
     ///
     /// - Returns: Whether everything was removed (``AppDataModel/failures``
     ///   names what was not).
@@ -1859,10 +1547,8 @@ extension Transition {
         }
     }
 
-    /// This transition at another length: the same kind, edge, and shader
-    /// over `duration` seconds — a cut unchanged, since it has no length.
-    /// How the panel's one rate knob applies to whatever transition a take
-    /// resolved to, a shot's own default included.
+    /// This transition at another length, a cut unchanged: how the panel's
+    /// rate knob applies to whatever transition a take resolved to.
     ///
     /// - Parameter duration: The length in seconds.
     /// - Returns: The transition with its duration replaced.
@@ -1877,9 +1563,8 @@ extension Transition {
 }
 
 /// The transition kinds the shot switcher's picker offers (GLOSSARY.md,
-/// "Transition") — the UI's session-state selection, mapped to a concrete
-/// ``Transition`` (with the selected wipe edge or shader, and the panel's
-/// take duration) at take time.
+/// "Transition"), mapped to a concrete ``Transition`` with the selected
+/// wipe edge or shader and the panel's take duration at take time.
 enum TakeTransitionKind: String, CaseIterable {
     /// The taken shot's own ``Shot/defaultTransition`` (a cut when it has
     /// none) — the initial selection, so per-shot defaults are effective
@@ -1902,17 +1587,12 @@ enum TakeTransitionKind: String, CaseIterable {
 }
 
 /// The video effect providers the compositor's renderer resolves layer
-/// chains against, shared between the main actor (which fills it at boot
-/// from the effect registry) and the compositor's tick task (which reads
-/// it per chain rebuild).
+/// chains against, filled once on the main actor at boot, before the
+/// compositor starts, and read by the compositor's tick task.
 ///
-/// A reference box because the renderer factory is `@Sendable` and a
-/// `Mutex` is non-copyable, so the lock cannot be captured directly; the
-/// box is filled once, before the compositor starts.
-///
-/// `nonisolated` because the module compiles under main-actor default
-/// isolation: the box carries its own `Mutex`, and the tick task reads it
-/// off the main actor.
+/// A reference box because the renderer factory is `@Sendable` and cannot
+/// capture a non-copyable `Mutex`. `nonisolated` because the module defaults
+/// to main-actor isolation and the tick task reads it off the main actor.
 nonisolated final class VideoEffectProviderBox: Sendable {
     /// The providers, keyed by effect id.
     private let providers = Mutex<[EffectID: any VideoEffectProvider]>([:])
