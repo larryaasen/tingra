@@ -70,19 +70,19 @@ public actor SRTHaishinKitStreamingService: StreamingService {
     private var videoFrameCount = 0
 
     /// The previous ``statistics()`` sample — the frame count and the
-    /// monotonic instant it was read at — used to derive the frame rate
+    /// master clock time it was read at — used to derive the frame rate
     /// over the interval since. Nil until the first read, when the start
-    /// instant is used instead.
-    private var previousFPSSample: (count: Int, at: ContinuousClock.Instant)?
+    /// time is used instead.
+    private var previousFPSSample: (count: Int, at: CMTime)?
 
-    /// The monotonic instant of the current start, the first frame-rate
-    /// baseline. Wall-clock rate math only — never a media timestamp, so
-    /// this is not the CLOCK.md master clock (see CLOCK.md, which governs
-    /// PTS, not local rate measurement).
-    private var startInstant: ContinuousClock.Instant?
+    /// The master clock time of the current start, the first frame-rate
+    /// baseline.
+    private var startTime: CMTime?
 
-    /// The clock the frame-rate interval is measured against (monotonic).
-    private let rateClock = ContinuousClock()
+    /// The master clock the frame-rate interval is measured on (CLOCK.md).
+    /// Host time stops while the Mac sleeps, so the first reading after a
+    /// wake does not divide by the time asleep.
+    private let clock: any EngineClock
 
     /// The service's connection events; a single consumer is expected
     /// (the stream session). Finishes when the service stops.
@@ -90,11 +90,13 @@ public actor SRTHaishinKitStreamingService: StreamingService {
 
     /// Creates a service for one stream session.
     ///
-    /// - Parameter configuration: The session's compression and program
-    ///   settings.
-    public init(configuration: StreamConfiguration) {
+    /// - Parameters:
+    ///   - configuration: The session's compression and program settings.
+    ///   - clock: The master clock, which the frame rate is measured on.
+    public init(configuration: StreamConfiguration, clock: any EngineClock) {
         HaishinKitLogging.configure()
         self.configuration = configuration
+        self.clock = clock
         (self.eventStream, self.eventContinuation) = AsyncStream.makeStream(of: StreamingServiceEvent.self)
     }
 
@@ -141,7 +143,7 @@ public actor SRTHaishinKitStreamingService: StreamingService {
         active = true
         videoFrameCount = 0
         previousFPSSample = nil
-        startInstant = rateClock.now
+        startTime = clock.now
     }
 
     /// Appends one program video frame: wrapped as an uncompressed
@@ -175,18 +177,31 @@ public actor SRTHaishinKitStreamingService: StreamingService {
         // Megabits/second → bytes/second.
         let bytesPerSecond = Int((mbpsSendRate * 1_000_000) / 8)
 
-        let now = rateClock.now
-        let baseline = previousFPSSample ?? (count: 0, at: startInstant ?? now)
-        let elapsed = baseline.at.duration(to: now)
-        let seconds = Double(elapsed.components.seconds) + Double(elapsed.components.attoseconds) / 1e18
-        let framesPerSecond = seconds > 0 ? Int(Double(videoFrameCount - baseline.count) / seconds) : 0
+        let now = clock.now
+        let baseline = previousFPSSample ?? (count: 0, at: startTime ?? now)
+        let framesPerSecond = Self.framesPerSecond(
+            frames: videoFrameCount - baseline.count, over: CMTimeSubtract(now, baseline.at))
         previousFPSSample = (count: videoFrameCount, at: now)
 
         return StreamingStatistics(
             bytesSent: bytesSent,
             bytesPerSecond: bytesPerSecond,
-            framesPerSecond: max(0, framesPerSecond)
+            framesPerSecond: framesPerSecond
         )
+    }
+
+    /// The whole frames per second a count of frames makes over an interval
+    /// of master clock time: zero for an interval that is not positive or
+    /// not numeric, and never negative.
+    ///
+    /// - Parameters:
+    ///   - frames: The video frames appended during the interval.
+    ///   - elapsed: The interval's length on the master clock.
+    /// - Returns: The rate, rounded down.
+    static func framesPerSecond(frames: Int, over elapsed: CMTime) -> Int {
+        let seconds = elapsed.seconds
+        guard elapsed.isNumeric, seconds > 0 else { return 0 }
+        return max(0, Int(Double(frames) / seconds))
     }
 
     /// Stops streaming: closes the connection and finishes the events

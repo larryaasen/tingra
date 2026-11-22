@@ -36,7 +36,7 @@ public struct HaishinKitOutputPlugIn: PlugIn {
     /// keeps running.
     public func activate(in context: PlugInContext) async throws {
         try await register(RTMPStreamingServiceProvider(), in: context)
-        try await register(SRTStreamingServiceProvider(), in: context)
+        try await register(SRTStreamingServiceProvider(clock: context.clock), in: context)
     }
 
     /// Registers one provider and traces the registration.

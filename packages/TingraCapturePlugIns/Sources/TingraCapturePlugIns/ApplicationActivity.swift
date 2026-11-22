@@ -55,38 +55,53 @@ enum ApplicationActivity {
     /// others.
     private static let observers = Mutex<[UUID: @Sendable (ApplicationArrival) -> Void]>([:])
 
-    /// Whether the workspace observers have been installed.
-    private static let isInstalled = Mutex(false)
+    /// The main-actor task installing the workspace observers, started by
+    /// the first subscriber and never replaced.
+    private static let installation = Mutex<Task<Void, Never>?>(nil)
 
-    /// Adds a subscriber, installing the workspace observers on the first
-    /// one — one observer per notification for the whole process, the
-    /// ``DisplayPower`` pattern.
+    /// Adds a subscriber, starting the workspace observers' installation on
+    /// the first one — one observer per notification for the whole process,
+    /// the ``DisplayPower`` pattern.
     ///
     /// - Parameter body: Called with each arrival.
     /// - Returns: A token identifying the subscriber, for ``cancel(_:)``.
     private static func observe(_ body: @escaping @Sendable (ApplicationArrival) -> Void) -> UUID {
         let token = UUID()
         observers.withLock { $0[token] = body }
-        let needsInstall = isInstalled.withLock { installed -> Bool in
-            guard !installed else { return false }
-            installed = true
-            return true
-        }
-        if needsInstall {
-            let center = NSWorkspace.shared.notificationCenter
-            // The observers live as long as the process: removing them would
-            // race a concurrent subscription, and with no subscribers they
-            // do nothing.
-            for name in [NSWorkspace.didLaunchApplicationNotification, NSWorkspace.didActivateApplicationNotification] {
-                _ = center.addObserver(forName: name, object: nil, queue: nil) { notification in
-                    let application =
-                        notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
-                    guard let bundleIdentifier = application?.bundleIdentifier else { return }
-                    fanOut(ApplicationArrival(bundleIdentifier: bundleIdentifier))
-                }
-            }
+        installation.withLock { task in
+            guard task == nil else { return }
+            task = Task { @MainActor in installWorkspaceObservers() }
         }
         return token
+    }
+
+    /// Waits until the workspace observers are installed; returns at once
+    /// when no subscriber has started their installation. Lets a test post
+    /// a notification knowing an observer is there to receive it.
+    static func observersInstalled() async {
+        await installation.withLock { $0 }?.value
+    }
+
+    /// Installs one workspace observer per notification.
+    ///
+    /// **On the main actor:** registering for application notifications
+    /// makes Launch Services schedule them on the main run loop and log a
+    /// description of it, and describing the run loop from a cooperative
+    /// thread races the main thread mutating it and can crash the process.
+    @MainActor
+    private static func installWorkspaceObservers() {
+        let center = NSWorkspace.shared.notificationCenter
+        // The observers live as long as the process: removing them would
+        // race a concurrent subscription, and with no subscribers they do
+        // nothing.
+        for name in [NSWorkspace.didLaunchApplicationNotification, NSWorkspace.didActivateApplicationNotification] {
+            _ = center.addObserver(forName: name, object: nil, queue: nil) { notification in
+                let application =
+                    notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+                guard let bundleIdentifier = application?.bundleIdentifier else { return }
+                fanOut(ApplicationArrival(bundleIdentifier: bundleIdentifier))
+            }
+        }
     }
 
     /// Removes a subscriber.

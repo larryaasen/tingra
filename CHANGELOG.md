@@ -11,6 +11,8 @@
 - app: You can now flip, show blue only, zebra stripes, or alpha on any monitor, input tiles included.
 - app: You can now set overlay colors and line widths, show VU meters, and turn overlays on over MCP.
 - app: Muting a video file's channel strip no longer freezes its picture in the shot.
+- app: Fixed an SRT stream reporting too low a frame rate just after your Mac woke from sleep.
+- app: Fixed a crash that could happen when a window input started capturing.
 
 - engine: Added TingraApplicationAudio, a standalone library capturing an application's sound by process tap.
 - engine: Added the optional applications key to the project document.

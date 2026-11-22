@@ -27,11 +27,19 @@ public struct SRTStreamingServiceProvider: StreamingServiceProvider {
     /// The destination URL scheme this provider serves.
     public let schemes = ["srt"]
 
+    /// The master clock each service measures its frame rate on.
+    private let clock: any EngineClock
+
     /// Creates the provider.
-    public init() {}
+    ///
+    /// - Parameter clock: The master clock, handed to every service it
+    ///   creates.
+    public init(clock: any EngineClock) {
+        self.clock = clock
+    }
 
     /// Creates a HaishinKit-backed SRT service for one stream session.
     public func makeStreamingService(configuration: StreamConfiguration) -> any StreamingService {
-        SRTHaishinKitStreamingService(configuration: configuration)
+        SRTHaishinKitStreamingService(configuration: configuration, clock: clock)
     }
 }

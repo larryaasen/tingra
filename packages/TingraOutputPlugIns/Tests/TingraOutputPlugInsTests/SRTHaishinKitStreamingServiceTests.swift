@@ -124,4 +124,33 @@ struct SRTHaishinKitStreamingServiceTests {
         let configuration = StreamConfiguration(includesVideo: includesVideo, includesAudio: includesAudio)
         #expect(SRTHaishinKitStreamingService.expectedMedias(for: configuration) == expected)
     }
+
+    // MARK: - Frame rate
+
+    @Test(
+        "The frame rate divides the frames by the master clock interval, rounding down",
+        arguments: [
+            (frames: 30, elapsed: CMTime(value: 1, timescale: 1), expected: 30),
+            (frames: 60, elapsed: CMTime(value: 2, timescale: 1), expected: 30),
+            (frames: 29, elapsed: CMTime(value: 1_001, timescale: 1_000), expected: 28),
+            (frames: 15, elapsed: CMTime(value: 1, timescale: 2), expected: 30),
+        ]
+    )
+    func framesPerSecond(frames: Int, elapsed: CMTime, expected: Int) {
+        #expect(SRTHaishinKitStreamingService.framesPerSecond(frames: frames, over: elapsed) == expected)
+    }
+
+    @Test(
+        "An interval that is zero, negative, or not numeric makes a frame rate of zero",
+        arguments: [CMTime.zero, CMTime(value: -1, timescale: 1), CMTime.invalid, CMTime.positiveInfinity]
+    )
+    func framesPerSecondOverNoTime(elapsed: CMTime) {
+        #expect(SRTHaishinKitStreamingService.framesPerSecond(frames: 30, over: elapsed) == 0)
+    }
+
+    @Test("A frame count that went backward makes a frame rate of zero, never a negative one")
+    func framesPerSecondNeverNegative() {
+        #expect(
+            SRTHaishinKitStreamingService.framesPerSecond(frames: -5, over: CMTime(value: 1, timescale: 1)) == 0)
+    }
 }

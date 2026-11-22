@@ -358,12 +358,6 @@ the rule each of these breaks or leaves unbuilt.
     generator plus a server side onset check would hold this fix and catch
     the SRT offset above.
 
-- [ ] **The SRT service measures its frame rate on its own clock.**
-  `SRTHaishinKitStreamingService` keeps a `ContinuousClock` for its frames
-  per second figure: not the injected `EngineClock`, and it counts sleep, so
-  the first reading after a wake is wrong. It stamps no media. Use the
-  injected clock.
-
 - [ ] **Sync offset is designed and unbuilt.** GLOSSARY.md and CLOCK.md
   define it as a persisted setting; nothing applies or stores one, and
   comments in `CameraInput.swift` and `Input.swift` say it joins "when it

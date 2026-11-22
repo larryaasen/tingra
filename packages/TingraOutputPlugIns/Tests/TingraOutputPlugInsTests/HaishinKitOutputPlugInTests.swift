@@ -144,12 +144,12 @@ struct HaishinKitOutputPlugInTests {
 
     @Test("The SRT provider offers no destination templates")
     func srtProviderOffersNoTemplates() {
-        #expect(SRTStreamingServiceProvider().destinationTemplates.isEmpty)
+        #expect(SRTStreamingServiceProvider(clock: FixedClock()).destinationTemplates.isEmpty)
     }
 
     @Test("The SRT provider creates a fresh service per stream")
     func srtProviderCreatesFreshServices() throws {
-        let provider = SRTStreamingServiceProvider()
+        let provider = SRTStreamingServiceProvider(clock: FixedClock())
         let first = try #require(
             provider.makeStreamingService(configuration: StreamConfiguration()) as? SRTHaishinKitStreamingService
         )

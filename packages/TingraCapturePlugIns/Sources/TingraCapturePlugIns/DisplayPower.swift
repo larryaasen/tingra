@@ -56,11 +56,12 @@ enum DisplayPower {
     /// others.
     private static let observers = Mutex<[UUID: @Sendable (DisplayPowerEvent) -> Void]>([:])
 
-    /// Whether the workspace observers have been installed.
-    private static let isInstalled = Mutex(false)
+    /// The main-actor task installing the workspace observers, started by
+    /// the first subscriber and never replaced.
+    private static let installation = Mutex<Task<Void, Never>?>(nil)
 
-    /// Adds a subscriber, installing the workspace observers on the first
-    /// one.
+    /// Adds a subscriber, starting the workspace observers' installation on
+    /// the first one.
     ///
     /// **One observer per notification, for the whole process,** the
     /// ``DisplayReconfiguration`` pattern: a sleep and a wake can be posted
@@ -75,24 +76,36 @@ enum DisplayPower {
     private static func observe(_ body: @escaping @Sendable (DisplayPowerEvent) -> Void) -> UUID {
         let token = UUID()
         observers.withLock { $0[token] = body }
-        let needsInstall = isInstalled.withLock { installed -> Bool in
-            guard !installed else { return false }
-            installed = true
-            return true
-        }
-        if needsInstall {
-            let center = NSWorkspace.shared.notificationCenter
-            // The observers live as long as the process, like the
-            // CoreGraphics callback: removing them would race a concurrent
-            // subscription, and with no subscribers they do nothing.
-            _ = center.addObserver(forName: NSWorkspace.screensDidSleepNotification, object: nil, queue: nil) { _ in
-                fanOut(.slept)
-            }
-            _ = center.addObserver(forName: NSWorkspace.screensDidWakeNotification, object: nil, queue: nil) { _ in
-                fanOut(.woke)
-            }
+        installation.withLock { task in
+            guard task == nil else { return }
+            task = Task { @MainActor in installWorkspaceObservers() }
         }
         return token
+    }
+
+    /// Waits until the workspace observers are installed; returns at once
+    /// when no subscriber has started their installation. Lets a test post
+    /// a notification knowing an observer is there to receive it.
+    static func observersInstalled() async {
+        await installation.withLock { $0 }?.value
+    }
+
+    /// Installs one workspace observer per notification, on the main actor:
+    /// the workspace's notification center registers its observers with the
+    /// main run loop, which is not safe from a cooperative thread
+    /// (``ApplicationActivity`` crashed doing so).
+    @MainActor
+    private static func installWorkspaceObservers() {
+        let center = NSWorkspace.shared.notificationCenter
+        // The observers live as long as the process, like the CoreGraphics
+        // callback: removing them would race a concurrent subscription, and
+        // with no subscribers they do nothing.
+        _ = center.addObserver(forName: NSWorkspace.screensDidSleepNotification, object: nil, queue: nil) { _ in
+            fanOut(.slept)
+        }
+        _ = center.addObserver(forName: NSWorkspace.screensDidWakeNotification, object: nil, queue: nil) { _ in
+            fanOut(.woke)
+        }
     }
 
     /// Removes a subscriber.
