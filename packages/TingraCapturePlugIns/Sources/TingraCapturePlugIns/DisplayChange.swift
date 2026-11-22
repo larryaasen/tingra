@@ -173,35 +173,50 @@ struct DisplayEventReporter: Sendable {
 /// find without one. Registering once and fanning out (rather than once per
 /// observer) also means the process holds a single system callback however
 /// many streams exist.
-private enum DisplayReconfiguration {
+enum DisplayReconfiguration {
     /// The registered observers, keyed so one can be removed without
     /// disturbing the others.
     private static let observers = Mutex<[UUID: @Sendable () -> Void]>([:])
 
-    /// Whether the CoreGraphics callback has been installed. CoreGraphics
-    /// offers no way to enumerate registrations, so this is tracked here.
-    private static let isInstalled = Mutex(false)
+    /// The main-actor task installing the CoreGraphics callback, started by
+    /// the first observer and never replaced. CoreGraphics offers no way to
+    /// enumerate registrations, so this is tracked here.
+    private static let installation = Mutex<Task<Void, Never>?>(nil)
 
-    /// Adds an observer, installing the CoreGraphics callback on the first
-    /// one.
+    /// Adds an observer, starting the CoreGraphics callback's installation
+    /// on the first one.
     ///
     /// - Parameter body: Called after each reconfiguration completes.
     /// - Returns: A token identifying the observer, for ``cancel(_:)``.
     static func observe(_ body: @escaping @Sendable () -> Void) -> UUID {
         let token = UUID()
         observers.withLock { $0[token] = body }
-        let needsInstall = isInstalled.withLock { installed -> Bool in
-            guard !installed else { return false }
-            installed = true
-            return true
-        }
-        if needsInstall {
-            // A failure to register is reported by the caller's absence of
-            // events rather than by a trap: never crash the host over an
-            // optional capability.
-            CGDisplayRegisterReconfigurationCallback(displayReconfigured, nil)
+        installation.withLock { task in
+            guard task == nil else { return }
+            task = Task { @MainActor in installCallback() }
         }
         return token
+    }
+
+    /// Waits until the CoreGraphics callback is installed; returns at once
+    /// when no observer has started its installation. Lets a test drive the
+    /// fan-out knowing the installation has run.
+    static func callbackInstalled() async {
+        await installation.withLock { $0 }?.value
+    }
+
+    /// Installs the CoreGraphics callback on the main actor, as
+    /// ``DisplayPower`` and ``ApplicationActivity`` install their workspace
+    /// observers: every process-wide system registration in this package is
+    /// made on the main thread, never from the cooperative thread an
+    /// observer starts on, where registering for application notifications
+    /// crashed the app.
+    @MainActor
+    private static func installCallback() {
+        // A failure to register is reported by the caller's absence of
+        // events rather than by a trap: never crash the host over an
+        // optional capability.
+        CGDisplayRegisterReconfigurationCallback(displayReconfigured, nil)
     }
 
     /// Removes an observer. The CoreGraphics callback stays installed — it is
