@@ -233,7 +233,7 @@ final class DisplayInput: Input, Sendable {
     /// rule. It stays open across display sleep — the consumer sees no
     /// frames while the displays sleep, then the restarted capture's.
     func frames() -> AsyncStream<CapturedFrame> {
-        AsyncStream { continuation in
+        AsyncStream(bufferingPolicy: InputStreamBuffering.frames) { continuation in
             let previous = state.withLock { state in
                 let previous = state.continuation
                 state.continuation = continuation

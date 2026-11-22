@@ -379,7 +379,7 @@ final class CameraInput: Input, Sendable {
     /// finishes the previous stream and takes over, per the frame
     /// ownership rule.
     func frames() -> AsyncStream<CapturedFrame> {
-        AsyncStream { continuation in
+        AsyncStream(bufferingPolicy: InputStreamBuffering.frames) { continuation in
             let previous = state.withLock { state in
                 let previous = state.continuation
                 state.continuation = continuation

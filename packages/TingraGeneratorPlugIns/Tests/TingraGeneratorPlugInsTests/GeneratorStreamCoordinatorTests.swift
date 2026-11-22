@@ -53,7 +53,7 @@ private func run(
 ) async -> (outputs: [Int], events: [EventBusEvent]) {
     let eventBus = EventBus()
     let events = eventBus.events()
-    let coordinator = GeneratorStreamCoordinator<Int>()
+    let coordinator = GeneratorStreamCoordinator<Int>(bufferingPolicy: .unbounded)
     let stream = coordinator.makeStream(
         clock: SyntheticClock(tickTimes: tickTimes(outcomes.count)),
         tickInterval: CMTime(value: 1, timescale: 30),
@@ -160,7 +160,7 @@ struct GeneratorStreamCoordinatorTests {
 
     @Test("a coordinator without a bus skips ticks exactly as before and reports nothing")
     func coordinatorWithoutBusStillSkips() async {
-        let coordinator = GeneratorStreamCoordinator<Int>()
+        let coordinator = GeneratorStreamCoordinator<Int>(bufferingPolicy: .unbounded)
         let stream = coordinator.makeStream(
             clock: SyntheticClock(tickTimes: tickTimes(3)),
             tickInterval: CMTime(value: 1, timescale: 30),
@@ -205,7 +205,7 @@ struct GeneratorStreamAutoreleaseTests {
         // The synthetic clock buffers every tick up front, so the loop never
         // suspends between them — the case of a synthesis loop that has
         // fallen behind, where only a per-tick pool frees anything.
-        let coordinator = GeneratorStreamCoordinator<Bool>()
+        let coordinator = GeneratorStreamCoordinator<Bool>(bufferingPolicy: .unbounded)
         let stream = coordinator.makeStream(
             clock: SyntheticClock(tickTimes: tickTimes(20)),
             tickInterval: CMTime(value: 1, timescale: 30),
@@ -221,5 +221,62 @@ struct GeneratorStreamAutoreleaseTests {
         }
         #expect(freedFlags.count == 20)
         #expect(freedFlags.allSatisfy { $0 })
+    }
+}
+
+/// The count a buffering policy keeps, or nil for an unbounded policy.
+///
+/// - Parameter policy: The policy to read.
+/// - Returns: The newest-count of a `.bufferingNewest` policy, else nil.
+private func newestCount<Element>(_ policy: AsyncStream<Element>.Continuation.BufferingPolicy) -> Int? {
+    guard case .bufferingNewest(let count) = policy else { return nil }
+    return count
+}
+
+@Suite("GeneratorStreamCoordinator bounded streams")
+struct GeneratorStreamBoundTests {
+    @Test("a consumer that falls behind receives only the newest outputs its policy holds")
+    func stalledConsumerGetsTheNewestOutputs() async {
+        // The last tick's render signals and skips, so when the signal
+        // arrives every earlier output has been yielded and nothing more
+        // will be: the buffer holds exactly what the bound kept.
+        let ticks = tickTimes(9)
+        let (rendered, signal) = AsyncStream.makeStream(of: Void.self)
+        let coordinator = GeneratorStreamCoordinator<Int>(bufferingPolicy: .bufferingNewest(3))
+        let stream = coordinator.makeStream(
+            clock: SyntheticClock(tickTimes: ticks),
+            tickInterval: CMTime(value: 1, timescale: 30),
+            inputID: InputID(rawValue: "bounded"),
+            eventBus: nil,
+            makeRenderer: { () },
+            render: { (_, time) throws(GeneratorSynthesisFailure) in
+                guard time != ticks.last else {
+                    signal.yield()
+                    throw .drawingContextUnavailable
+                }
+                return Int(time.value)
+            }
+        )
+
+        var iterator = rendered.makeAsyncIterator()
+        _ = await iterator.next()
+        var outputs: [Int] = []
+        for await output in stream {
+            outputs.append(output)
+        }
+        #expect(outputs == [5, 6, 7])
+    }
+
+    @Test("a video generator's streams hold the newest frame")
+    func videoGeneratorsHoldTheNewestFrame() {
+        #expect(newestCount(GeneratorStreamCoordinator<CapturedFrame>().bufferingPolicy) == 1)
+    }
+
+    @Test("an audio generator's streams hold the newest second of the tone's buffers")
+    func audioGeneratorsHoldTheNewestSecond() throws {
+        let count = try #require(newestCount(GeneratorStreamCoordinator<CapturedAudio>().bufferingPolicy))
+        #expect(count == 48)
+        // The tone's default buffers: 1,024 samples at 48 kHz.
+        #expect(Double(count * 1024) / 48_000 >= 1)
     }
 }

@@ -81,12 +81,23 @@ public protocol Input: ParameterDescribing {
     /// The stream of captured video frames, GPU-resident, timestamped on
     /// the master clock. Finishes when the input stops. Audio-only inputs
     /// keep the default implementation, an already-finished stream.
+    ///
+    /// Bound the stream to its newest frame (`.bufferingNewest(1)`): every
+    /// consumer keeps only the latest frame, and an unbounded stream behind
+    /// a stalled consumer holds every frame produced meanwhile
+    /// (ARCHITECTURE.md, "Bounded frame streams").
     func frames() -> AsyncStream<CapturedFrame>
 
     /// The stream of captured audio buffers, timestamped on the master
     /// clock (PTS from `AVAudioTime` host time, see CLOCK.md). Finishes
     /// when the input stops. Video-only inputs keep the default
     /// implementation, an already-finished stream.
+    ///
+    /// Bound the stream to the newest second or so of buffers
+    /// (`.bufferingNewest(_:)` with a count sized to the input's buffers):
+    /// enough that a consumer that only breathes loses nothing, never so
+    /// much that a stalled one grows it without limit (ARCHITECTURE.md,
+    /// "Bounded frame streams").
     func audio() -> AsyncStream<CapturedAudio>
 
     /// Stops producing frames and releases the underlying device or

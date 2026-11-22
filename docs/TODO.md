@@ -117,11 +117,6 @@ are the checks still open from those, pointing at their records there.
       loaded (18,623 lines), and held 321 MB and growing; it is now an
       `NSTableView` (`LogLineTable`, about 11 ms a line, 32 MB — ARCHITECTURE.md,
       "The log window").
-    - [ ] **Bound the inputs' `frames()`/`audio()` streams** — generators,
-      media, capture. Their consumers are nonisolated and were healthy, but
-      the buffers are unbounded; `Input.frames()` has no policy parameter
-      (stability contract), so the bound goes inside each conformer, with
-      the generators' and media tests taught to attach before ticking.
   - [ ] **Left open from “Meters off the SwiftUI clock”** (done; record in DONE.md):
     - [ ] Every pass in the main window ran twice, about a millisecond
       apart — one in the display cycle's commit, a second in the idle step

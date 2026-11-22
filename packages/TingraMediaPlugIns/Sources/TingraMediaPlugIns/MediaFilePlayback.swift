@@ -141,7 +141,7 @@ final class MediaFilePlayback: Sendable {
     /// The stream of frames, one per tick while a file with a picture
     /// plays. Finishes any previous consumer's stream first.
     func frames() -> AsyncStream<CapturedFrame> {
-        let (stream, continuation) = AsyncStream<CapturedFrame>.makeStream()
+        let (stream, continuation) = AsyncStream<CapturedFrame>.makeStream(bufferingPolicy: InputStreamBuffering.frames)
         consumers.state.withLock { state in
             state.video?.finish()
             state.video = continuation
@@ -152,7 +152,7 @@ final class MediaFilePlayback: Sendable {
     /// The stream of audio blocks, as the file's timeline reaches them.
     /// Finishes any previous consumer's stream first.
     func audio() -> AsyncStream<CapturedAudio> {
-        let (stream, continuation) = AsyncStream<CapturedAudio>.makeStream()
+        let (stream, continuation) = AsyncStream<CapturedAudio>.makeStream(bufferingPolicy: InputStreamBuffering.audio)
         consumers.state.withLock { state in
             state.audio?.finish()
             state.audio = continuation

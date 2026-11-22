@@ -338,7 +338,7 @@ final class WindowInput: Input, Sendable {
     /// finishes the previous stream and takes over. It stays open while the
     /// window is missing and across display sleep.
     func frames() -> AsyncStream<CapturedFrame> {
-        AsyncStream { continuation in
+        AsyncStream(bufferingPolicy: InputStreamBuffering.frames) { continuation in
             let previous = state.withLock { state in
                 let previous = state.continuation
                 state.continuation = continuation

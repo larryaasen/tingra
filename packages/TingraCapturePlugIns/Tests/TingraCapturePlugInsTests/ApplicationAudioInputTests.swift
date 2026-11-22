@@ -353,6 +353,25 @@ struct ApplicationAudioInputTests {
         #expect(await audio.next() == nil)
     }
 
+    @Test("a consumer that falls behind receives only the newest 96 blocks")
+    func stalledConsumerGetsTheNewestBlocks() async throws {
+        let harness = ApplicationHarness(processes: [7])
+        let stream = harness.input.audio()
+        try await harness.input.start()
+        // Delivery reaches the stream at once, so every block is offered
+        // before the consumer reads.
+        for _ in 0..<100 {
+            harness.captures.deliver(try makeAudio(), through: 0)
+        }
+        await harness.input.stop()
+
+        var count = 0
+        for await _ in stream {
+            count += 1
+        }
+        #expect(count == 96)
+    }
+
     @Test("turning muting off rebuilds a running tap unmuted")
     func mutingChangeRebuilds() async throws {
         let harness = ApplicationHarness(processes: [7])

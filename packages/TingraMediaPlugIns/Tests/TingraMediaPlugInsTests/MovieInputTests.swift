@@ -46,14 +46,11 @@ struct MovieInputTests {
         defer { fixtures.remove() }
         let url = try await fixtures.writeMovie(frameCount: 12, frameRate: 12, withAudio: false)
         let ticks = Self.ticks(18)
-        let input = MovieInput(id: InputID(rawValue: "v1"), url: url, clock: SyntheticClock(tickTimes: ticks))
+        let clock = SteppedClock()
+        let input = MovieInput(id: InputID(rawValue: "v1"), url: url, clock: clock)
         let frames = input.frames()
         try await input.start()
-        var received: [CapturedFrame] = []
-        for await frame in frames {
-            received.append(frame)
-            if received.count == ticks.count { break }
-        }
+        let received = await steppedOutputs(of: frames, clock: clock, ticks: ticks)
         await input.stop()
         #expect(received.map(\.presentationTime) == ticks)
         let grays = received.map { Int(MediaFixtures.centerGray(of: $0.pixelBuffer)) }

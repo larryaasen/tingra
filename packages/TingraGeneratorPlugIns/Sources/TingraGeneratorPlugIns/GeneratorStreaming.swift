@@ -30,8 +30,17 @@ final class GeneratorStreamCoordinator<Output: Sendable>: Sendable {
     /// The live output streams, so ``stopAll()`` can finish every consumer.
     private let continuations = Mutex<[UUID: AsyncStream<Output>.Continuation]>([:])
 
+    /// How many un-taken outputs each stream holds (``InputStreamBuffering``).
+    let bufferingPolicy: AsyncStream<Output>.Continuation.BufferingPolicy
+
     /// Creates the coordinator for one generator instance.
-    init() {}
+    ///
+    /// - Parameter bufferingPolicy: How many un-taken outputs each stream
+    ///   holds. A generator passes its media's bound; a test that counts
+    ///   every output off a synthetic clock passes `.unbounded`.
+    init(bufferingPolicy: AsyncStream<Output>.Continuation.BufferingPolicy) {
+        self.bufferingPolicy = bufferingPolicy
+    }
 
     /// Creates a new tick-paced output stream, registering its continuation
     /// so ``stopAll()`` can finish it later.
@@ -65,7 +74,7 @@ final class GeneratorStreamCoordinator<Output: Sendable>: Sendable {
         makeRenderer: @escaping @Sendable () -> Renderer,
         render: @escaping @Sendable (Renderer, CMTime) throws(GeneratorSynthesisFailure) -> Output
     ) -> AsyncStream<Output> {
-        AsyncStream { continuation in
+        AsyncStream(bufferingPolicy: bufferingPolicy) { continuation in
             let id = UUID()
             continuations.withLock { $0[id] = continuation }
             let task = Task {
@@ -116,6 +125,22 @@ final class GeneratorStreamCoordinator<Output: Sendable>: Sendable {
         for continuation in active {
             continuation.finish()
         }
+    }
+}
+
+extension GeneratorStreamCoordinator where Output == CapturedFrame {
+    /// Creates a video generator's coordinator, its streams bounded to the
+    /// newest frame.
+    convenience init() {
+        self.init(bufferingPolicy: InputStreamBuffering.frames)
+    }
+}
+
+extension GeneratorStreamCoordinator where Output == CapturedAudio {
+    /// Creates an audio generator's coordinator, its streams bounded to the
+    /// newest second of buffers.
+    convenience init() {
+        self.init(bufferingPolicy: InputStreamBuffering.audio)
     }
 }
 

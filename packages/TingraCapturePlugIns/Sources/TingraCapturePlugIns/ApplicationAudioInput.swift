@@ -296,7 +296,7 @@ final class ApplicationAudioInput: Input, Sendable {
     /// finishes the previous stream and takes over. It stays open while the
     /// application is not running.
     func audio() -> AsyncStream<CapturedAudio> {
-        AsyncStream { continuation in
+        AsyncStream(bufferingPolicy: InputStreamBuffering.audio) { continuation in
             let previous = state.withLock { state in
                 let previous = state.continuation
                 state.continuation = continuation

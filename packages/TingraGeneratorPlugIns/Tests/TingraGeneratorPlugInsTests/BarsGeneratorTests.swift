@@ -33,19 +33,16 @@ struct BarsGeneratorTests {
     ///   - wallNow: The wall clock's reading.
     /// - Returns: The frames.
     private func collectFrames(tickTimes: [CMTime], wallNow: Date = noon) async -> [CapturedFrame] {
+        let clock = SteppedClock()
         let generator = BarsGenerator(
-            clock: SyntheticClock(tickTimes: tickTimes),
+            clock: clock,
             width: Self.width,
             height: Self.height,
             frameRate: 30,
             wallClock: { wallNow },
             timeZone: .gmt
         )
-        var frames: [CapturedFrame] = []
-        for await frame in generator.frames() {
-            frames.append(frame)
-        }
-        return frames
+        return await steppedOutputs(of: generator.frames(), clock: clock, ticks: tickTimes)
     }
 
     @Test("one frame per clock tick, stamped with the tick's master clock time")

@@ -347,7 +347,7 @@ final class MicrophoneInput: Input, Sendable {
     /// finishes the previous stream and takes over, per the frame
     /// ownership rule.
     func audio() -> AsyncStream<CapturedAudio> {
-        AsyncStream { continuation in
+        AsyncStream(bufferingPolicy: InputStreamBuffering.audio) { continuation in
             let previous = state.withLock { state in
                 let previous = state.continuation
                 state.continuation = continuation

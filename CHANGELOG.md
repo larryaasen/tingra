@@ -22,3 +22,4 @@
 - repo: Required running the unit tests of each changed package and app after every code change.
 - repo: Added scripts/test-packages.sh, which runs swift test in every package, or in the ones named.
 - repo: CI now builds and tests TingraJSONRPC and TingraAppPlugInKit, which its package list had left out.
+- engine: Bounded every input's frame and audio streams, so a stalled consumer cannot grow memory.

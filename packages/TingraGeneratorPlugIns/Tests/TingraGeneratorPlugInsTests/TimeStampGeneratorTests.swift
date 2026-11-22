@@ -131,12 +131,11 @@ struct TimeStampGeneratorTests {
     @Test("one frame per clock tick, stamped with the tick's master clock time")
     func oneFramePerTickWithTickPTS() async {
         let ticks = [seconds(0), seconds(0.5), seconds(1)]
-        let generator = Self.makeGenerator(clock: SyntheticClock(tickTimes: ticks))
+        let clock = SteppedClock()
+        let generator = Self.makeGenerator(clock: clock)
 
-        var times: [CMTime] = []
-        for await frame in generator.frames() {
-            times.append(frame.presentationTime)
-        }
+        let frames = await steppedOutputs(of: generator.frames(), clock: clock, ticks: ticks)
+        let times = frames.map(\.presentationTime)
 
         #expect(times == ticks)
     }
@@ -166,12 +165,10 @@ struct TimeStampGeneratorTests {
     @Test("frames within one second share a buffer; the next second gets a new one")
     func bufferChangesWithTheSecond() async throws {
         let ticks = [seconds(0), seconds(0.5), seconds(1)]
-        let generator = Self.makeGenerator(clock: SyntheticClock(tickTimes: ticks))
+        let clock = SteppedClock()
+        let generator = Self.makeGenerator(clock: clock)
 
-        var frames: [CapturedFrame] = []
-        for await frame in generator.frames() {
-            frames.append(frame)
-        }
+        let frames = await steppedOutputs(of: generator.frames(), clock: clock, ticks: ticks)
 
         try #require(frames.count == 3)
         #expect(frames[0].pixelBuffer === frames[1].pixelBuffer)

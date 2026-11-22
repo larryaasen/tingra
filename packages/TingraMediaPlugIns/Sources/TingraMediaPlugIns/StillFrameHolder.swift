@@ -57,7 +57,7 @@ final class StillFrameHolder: Sendable {
     /// A stream delivering the held frame once, then staying open. Finishes
     /// any previous consumer's stream first.
     func frames() -> AsyncStream<CapturedFrame> {
-        let (stream, continuation) = AsyncStream<CapturedFrame>.makeStream()
+        let (stream, continuation) = AsyncStream<CapturedFrame>.makeStream(bufferingPolicy: InputStreamBuffering.frames)
         let now = clock.now
         state.withLock { state in
             state.continuation?.finish()

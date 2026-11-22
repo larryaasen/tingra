@@ -24,17 +24,14 @@ struct BlackGeneratorTests {
 
     /// Collects every frame the generator produces for the scripted ticks.
     private func collectFrames(tickTimes: [CMTime]) async -> [CapturedFrame] {
+        let clock = SteppedClock()
         let generator = BlackGenerator(
-            clock: SyntheticClock(tickTimes: tickTimes),
+            clock: clock,
             width: Self.width,
             height: Self.height,
             frameRate: 30
         )
-        var frames: [CapturedFrame] = []
-        for await frame in generator.frames() {
-            frames.append(frame)
-        }
-        return frames
+        return await steppedOutputs(of: generator.frames(), clock: clock, ticks: tickTimes)
     }
 
     @Test("one frame per clock tick, stamped with the tick's master clock time")
@@ -114,15 +111,16 @@ struct BlackGeneratorTests {
         // `everyPixelIsOpaqueBlack` is what fails outright if the fill is
         // dropped (a never-filled buffer reads alpha 0, not 255).
         let ticks = (0..<24).map { CMTime(value: Int64($0), timescale: 30) }
+        let clock = SteppedClock()
         let generator = BlackGenerator(
-            clock: SyntheticClock(tickTimes: ticks),
+            clock: clock,
             width: Self.width,
             height: Self.height,
             frameRate: 30
         )
 
         var checked = 0
-        for await frame in generator.frames() {
+        for frame in await steppedOutputs(of: generator.frames(), clock: clock, ticks: ticks) {
             let pixels = try Self.pixels(of: frame.pixelBuffer)
             #expect(pixels.allSatisfy { $0.blue == 0 && $0.green == 0 && $0.red == 0 && $0.alpha == 255 })
             checked += 1

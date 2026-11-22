@@ -376,6 +376,24 @@ struct DisplaySleepTests {
         await harness.input.stop()
     }
 
+    @Test("a consumer that falls behind receives only the newest frame")
+    func stalledConsumerGetsTheNewestFrame() async throws {
+        let harness = SleepHarness()
+        try await harness.input.start()
+        var frames = harness.input.frames().makeAsyncIterator()
+        let delivered = try (0..<3).map { _ in try makeFrame() }
+        // Delivery reaches the stream at once, so all three are offered
+        // before the consumer reads.
+        for frame in delivered {
+            harness.captures.deliver(frame, through: 0)
+        }
+
+        let first = await frames.next()
+        #expect(first?.pixelBuffer === delivered.last?.pixelBuffer)
+        await harness.input.stop()
+        #expect(await frames.next() == nil)
+    }
+
     @Test("stopping the input stops its capture and ends its power subscription")
     func stopEndsTheSession() async throws {
         let harness = SleepHarness()

@@ -24,17 +24,14 @@ struct PlugeStrictGeneratorTests {
 
     /// Collects every frame the generator produces for the scripted ticks.
     private func collectFrames(tickTimes: [CMTime]) async -> [CapturedFrame] {
+        let clock = SteppedClock()
         let generator = PlugeStrictGenerator(
-            clock: SyntheticClock(tickTimes: tickTimes),
+            clock: clock,
             width: Self.width,
             height: Self.height,
             frameRate: 30
         )
-        var frames: [CapturedFrame] = []
-        for await frame in generator.frames() {
-            frames.append(frame)
-        }
-        return frames
+        return await steppedOutputs(of: generator.frames(), clock: clock, ticks: tickTimes)
     }
 
     @Test("one frame per clock tick, stamped with the tick's master clock time")
