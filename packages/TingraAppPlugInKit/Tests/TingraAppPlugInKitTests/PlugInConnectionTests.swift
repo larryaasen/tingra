@@ -385,7 +385,7 @@ struct PlugInConnectionTests {
     @Test("observing a resource yields it now and after each update, and stopping unsubscribes")
     func observesResource() async throws {
         let (connection, app) = makePair()
-        var iterator = await connection.observe("tingra://program").makeAsyncIterator()
+        var iterator = connection.observe("tingra://program").makeAsyncIterator()
         let first = await iterator.next()
         #expect(first?["programShot"]?.stringValue == "wide")
         #expect(app.subscriptions.withLock { $0 } == ["tingra://program"])

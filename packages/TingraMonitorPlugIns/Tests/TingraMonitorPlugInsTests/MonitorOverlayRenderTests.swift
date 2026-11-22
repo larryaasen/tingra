@@ -146,7 +146,10 @@ struct MonitorOverlayRenderTests {
     func zebra() {
         let white = CIImage(color: CIColor(red: 1, green: 1, blue: 1)).cropped(
             to: CGRect(x: 0, y: 0, width: 80, height: 90))
-        let grey = CIImage(color: CIColor(red: 0.5, green: 0.5, blue: 0.5)).cropped(to: bounds)
+        // An exact 8-bit code value, 128: 0.5 is 127.5, a rounding tie that
+        // the composite's float error tips to 127.
+        let midGrey = 128.0 / 255.0
+        let grey = CIImage(color: CIColor(red: midGrey, green: midGrey, blue: midGrey)).cropped(to: bounds)
         let drawn = ZebraOverlayProvider().makeOverlay(parameters: [:])
             .render(over: white.composited(over: grey), in: context())
         // Pixel centers sum to a multiple of the 8-pixel period at (2, 45):

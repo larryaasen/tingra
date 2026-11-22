@@ -17,3 +17,8 @@
 - repo: Added code coverage to the CI unit test jobs, reported per package and app to Codecov.
 - repo: Documented the monitor overlays design, PLUGINS.md Decisions 52 to 57.
 - engine: Added TingraMonitorPlugIns, the first-party monitor overlays, and the optional monitorOverlays key.
+- engine: Fixed the zebra render test, whose 0.5 grey sat on an 8-bit rounding tie and read back as 127.
+- app: Split the engine model's methods into one source file per area, leaving its state in the main file.
+- repo: Required running the unit tests of each changed package and app after every code change.
+- repo: Added scripts/test-packages.sh, which runs swift test in every package, or in the ones named.
+- repo: CI now builds and tests TingraJSONRPC and TingraAppPlugInKit, which its package list had left out.

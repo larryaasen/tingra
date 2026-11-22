@@ -106,7 +106,9 @@ jobs:
           - packages/TingraRecordingPlugIns
           - packages/TingraMediaPlugIns
           - packages/TingraMonitorPlugIns
+          - packages/TingraJSONRPC
           - packages/TingraMCP
+          - packages/TingraAppPlugInKit
           - apps/tingra-cli
     steps:
       - uses: actions/checkout@v7

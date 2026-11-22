@@ -37,6 +37,7 @@ The package names are final (ARCHITECTURE.md, "Repository structure"). The CLI's
 - Summary documents after changes are never needed.
 - **No Swift code changes in a cloud session.** Cloud sessions run on Linux with no Swift toolchain, so they cannot build or test. Make Swift changes only in a local session on a Mac; a cloud session may change docs and other non-Swift files.
 - Always verify compilation after making changes: `swift build` in the package you changed, `xcodebuild` for an app (see Build & Test Commands). A string-literal or resource-only edit may be verified by the relevant package build.
+- Run the unit tests after every code change, not only the build: `swift test` in each package you changed, and `xcodebuild test` for an app you changed. The app's test action runs only the app's own tests, never a package's, so a package change needs its own `swift test` even when the app passes. A change isn't done until those tests pass.
 - Follow Apple's Human Interface Guidelines for UI/UX decisions.
 - Prioritize readability and maintainability over clever code.
 - Never use periodic polling — the engine and its session state are event-driven (device connect/disconnect, stream status, etc.); model changes as events, not poll loops.
@@ -86,6 +87,7 @@ Start every Swift source file with this header. `<ModuleName>` is the containing
 |--------|---------|
 | Build a library package | `cd packages/<PackageName> && swift build` (e.g. `packages/TingraHost`) |
 | Test a library package | `cd packages/<PackageName> && swift test` |
+| Test every package | `scripts/test-packages.sh` (`swift test` in each package with tests and in `apps/tingra-cli`; name packages, e.g. `TingraHost tingra-cli`, to run only those; not the app) |
 | Build/test the CLI | `cd apps/tingra-cli && swift build` / `swift test` |
 | Run the CLI locally | `cd apps/tingra-cli && swift run tingra-cli <subcommand> [options]` (see [CLI.md](docs/CLI.md)); a `swift build` CLI carries the kits as dylibs and cannot load a plug-in bundle — `scripts/release-cli-package.sh` without credentials stages one that can, in `dist/tingra-cli/` |
 | Build the app | `cd apps/tingra-app && xcodebuild build -project tingra-app.xcodeproj -scheme tingra-app -destination 'platform=macOS,arch=arm64'` (add `CODE_SIGNING_ALLOWED=NO` if you have no `Local.xcconfig` — see Signing in [apps/AGENTS.md](apps/AGENTS.md)) |
