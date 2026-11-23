@@ -95,8 +95,9 @@ Start every Swift source file with this header. `<ModuleName>` is the containing
 | Run the app from a terminal | `scripts/run-app.sh` (builds, signs, and runs it in the foreground so the event log streams to the terminal; `--release`, `--no-run`) |
 | Start the local ingest simulator | `apps/ingest-simulator/sim.sh start` (see [SIMULATOR.md](docs/SIMULATOR.md)) |
 | Run the streaming integration tests | `scripts/integration-test.sh` (generators → simulator, verified server side with ffprobe; needs ffmpeg installed) |
+| Cut a Tingra release (tingra-cli and Tingra.app) | `scripts/release.sh` (`--dry-run` to rehearse; see [CLI.md](docs/CLI.md) "Cutting a release" and [RELEASE.md](docs/RELEASE.md)) |
 | Cut a Tingra Cameras release | `scripts/release-cameras.sh` (`--dry-run` to rehearse; see [RELEASE.md](docs/RELEASE.md)) |
-| Package an app for release | `scripts/release-app-package.sh --app cameras [version]` (into `dist/tingra-cameras/`; signs and notarizes only with `TINGRA_SIGN_ID` and `TINGRA_NOTARY_PROFILE` set, else an unsigned development build) |
+| Package an app for release | `scripts/release-app-package.sh --app tingra\|cameras [version]` (into `dist/tingra-app/` or `dist/tingra-cameras/`; signs and notarizes only with `TINGRA_SIGN_ID` and `TINGRA_NOTARY_PROFILE` set, plus `TINGRA_APP_PROFILE` for Tingra.app, else an unsigned development build) |
 | Format all Swift files | `scripts/format-swift.sh` (swift-format over every package and app; config in the root `.swift-format`) |
 | Check formatting (CI) | `scripts/check-format.sh` (read-only; exits nonzero if `format-swift.sh` would change anything) |
 

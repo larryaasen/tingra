@@ -24,8 +24,9 @@
 # There is deliberately no `push: tags` trigger. The version bump is part of the
 # release, so the tag is an output of this workflow, not an input to it.
 #
-# Required repository secrets — the same ones release-cli.yml reads, and
-# documented there and in packaging/README.md, "Release secrets":
+# Required repository secrets — the ones release.yml reads, less Tingra.app's
+# provisioning profile, and documented there and in packaging/README.md,
+# "Release secrets":
 #
 #   TINGRA_RELEASE_TOKEN    PAT with Contents: read/write on larryaasen/tingra
 #                           and larryaasen/homebrew-tingra

@@ -1,21 +1,28 @@
-# The complete tingra-cli release, run in CI (see docs/CLI.md "Distribution" and
-# "Cutting a release", and packaging/README.md). One manual dispatch does every
-# step the local `scripts/release-cli.sh` does:
+# The complete Tingra release, tingra-cli and Tingra.app at one version, run in
+# CI (see docs/CLI.md "Distribution" and "Cutting a release", docs/RELEASE.md,
+# and packaging/README.md). One manual dispatch does every step the local
+# `scripts/release.sh` does:
 #
 #   1. gate on the Format & Test workflow (reused via `workflow_call`),
-#   2. bump TingraCLIVersion.current + the embedded Info.plist together,
-#      commit that bump and push the branch,
-#   3. release build (arm64) → Developer ID sign → verify identity,
+#   2. bump TingraCLIVersion.current, the embedded Info.plist, and the app's
+#      TINGRA_VERSION together, commit that bump and push the branch,
+#   3. CLI: release build (arm64) → Developer ID sign → verify identity,
 #      entitlements, and the embedded plist → run the binary → notarize,
-#   4. tag v<version> and push it,
-#   5. create the GitHub release and upload the zip and .pkg,
-#   6. render packaging/homebrew/tingra-cli.rb with this release's version and
-#      sha256 into the larryaasen/homebrew-tingra tap and push it, and
-#   7. reopen the branch on the next -dev version.
+#   4. app: archive with the Developer ID identity and its provisioning
+#      profile → export → verify → run `Tingra --version` → notarize and
+#      staple the app → disk image → sign, notarize, and staple the image,
+#   5. tag v<version> and push it,
+#   6. create the GitHub release and upload the zip, the .pkg, and the image,
+#   7. render packaging/homebrew/tingra-cli.rb and packaging/homebrew/tingra.rb
+#      with this release's version and sha256s into the
+#      larryaasen/homebrew-tingra tap and push them, and
+#   8. reopen the branch on the next -dev version.
 #
-# The job is a thin wrapper: it prepares a throwaway signing keychain and then
-# runs `scripts/release-cli.sh --yes`, the same script used locally, so CI and a
-# hand-cut release cannot drift. Re-running with the same version resumes rather
+# It never bumps, tags, or publishes the plug-in kits; release-sdk.yml does.
+#
+# The job is a thin wrapper: it prepares a throwaway signing keychain and the
+# app's provisioning profile, and then runs `scripts/release.sh --yes`, the
+# same script used locally, so CI and a hand-cut release cannot drift. Re-running with the same version resumes rather
 # than duplicating — every script underneath is idempotent.
 #
 # There is deliberately no `push: tags` trigger. The version bump is part of the
@@ -33,6 +40,12 @@
 #   TINGRA_SIGN_ID                 "Developer ID Application: … (TEAMID)"
 #   TINGRA_NOTARY_KEY_P8           base64 of the App Store Connect API key (.p8)
 #   TINGRA_NOTARY_KEY_ID           that key's Key ID
+#   TINGRA_APP_PROFILE             base64 of Tingra.app's Developer ID
+#                                  provisioning profile (.provisionprofile),
+#                                  which authorizes its keychain group
+#                                  (docs/RELEASE.md, Decision 3). It names the
+#                                  Developer ID certificate, so it is
+#                                  regenerated and replaced with it.
 #
 # Validate a new API key locally before setting these — `xcrun notarytool
 # store-credentials <name> --key <p8> --key-id <id> [--issuer <uuid>]` answers in
@@ -69,7 +82,7 @@
 #
 # The toolchain floor is pinned exactly as in format-test.yml.
 
-name: Release tingra-cli
+name: Release Tingra
 
 on:
   workflow_dispatch:
@@ -97,7 +110,7 @@ on:
 # One release at a time; never cancel one in flight, since a cancelled run can
 # leave a pushed tag without a published release.
 concurrency:
-  group: release-cli
+  group: release
   cancel-in-progress: false
 
 env:
@@ -134,6 +147,7 @@ jobs:
           TINGRA_NOTARY_KEY_P8: ${{ secrets.TINGRA_NOTARY_KEY_P8 }}
           TINGRA_NOTARY_KEY_ID: ${{ secrets.TINGRA_NOTARY_KEY_ID }}
           TINGRA_NOTARY_ISSUER_ID: ${{ secrets.TINGRA_NOTARY_ISSUER_ID }}
+          TINGRA_APP_PROFILE: ${{ secrets.TINGRA_APP_PROFILE }}
           TINGRA_INSTALLER_CERT_P12: ${{ secrets.TINGRA_INSTALLER_CERT_P12 }}
           TINGRA_INSTALLER_SIGN_ID: ${{ secrets.TINGRA_INSTALLER_SIGN_ID }}
         run: |
@@ -143,11 +157,11 @@ jobs:
           # its TCC grants key to nothing).
           missing=()
           for name in TINGRA_RELEASE_TOKEN TINGRA_CERT_P12 TINGRA_CERT_PASSWORD \
-                      TINGRA_SIGN_ID TINGRA_NOTARY_KEY_P8 TINGRA_NOTARY_KEY_ID; do
+                      TINGRA_SIGN_ID TINGRA_NOTARY_KEY_P8 TINGRA_NOTARY_KEY_ID TINGRA_APP_PROFILE; do
             [ -n "${!name}" ] || missing+=("$name")
           done
           if [ ${#missing[@]} -gt 0 ]; then
-            echo "::error::missing required repository secrets: ${missing[*]} — see the header of .github/workflows/release-cli.yml"
+            echo "::error::missing required repository secrets: ${missing[*]} — see the header of .github/workflows/release.yml"
             exit 1
           fi
           # An issuer ID that is not a UUID reaches notarytool as a usage error
@@ -170,7 +184,7 @@ jobs:
 
       - uses: actions/checkout@v7
         with:
-          # Tags are needed: release-cli.sh refuses a version that already
+          # Tags are needed: release.sh refuses a version that already
           # shipped, and a shallow clone has none of them to check against.
           fetch-depth: 0
           # The PAT, not GITHUB_TOKEN — the same credential pushes the bump
@@ -183,7 +197,7 @@ jobs:
         run: |
           # The Actions bot identity, not a person's: the signing rule keeps
           # anything personal to one developer out of tracked files, and an
-          # address is exactly that. release-cli-publish.sh authors the tap
+          # address is exactly that. release-publish.sh authors the tap
           # commit with whatever is configured here.
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -201,6 +215,7 @@ jobs:
           NOTARY_KEY_P8: ${{ secrets.TINGRA_NOTARY_KEY_P8 }}
           NOTARY_KEY_ID: ${{ secrets.TINGRA_NOTARY_KEY_ID }}
           NOTARY_ISSUER_ID: ${{ secrets.TINGRA_NOTARY_ISSUER_ID }}
+          APP_PROFILE: ${{ secrets.TINGRA_APP_PROFILE }}
         run: |
           set -euo pipefail
           KEYCHAIN="$RUNNER_TEMP/tingra-signing.keychain-db"
@@ -262,6 +277,17 @@ jobs:
           # packaging script has to be pointed at this one.
           echo "TINGRA_NOTARY_KEYCHAIN=$KEYCHAIN" >> "$GITHUB_ENV"
 
+          # The app's provisioning profile, decoded into a file. Locally
+          # TINGRA_APP_PROFILE names the downloaded file; here it names this
+          # one, and release-app-package.sh installs it where Xcode finds it.
+          PROFILE_FILE="$RUNNER_TEMP/tingra-app.provisionprofile"
+          printf '%s' "$APP_PROFILE" | base64 --decode > "$PROFILE_FILE"
+          if ! security cms -D -i "$PROFILE_FILE" > /dev/null 2>&1; then
+            echo "::error::TINGRA_APP_PROFILE does not decode to a signed provisioning profile. Set it to the base64 of the .provisionprofile file: 'base64 -i <file> | gh secret set TINGRA_APP_PROFILE'."
+            exit 1
+          fi
+          echo "TINGRA_APP_PROFILE=$PROFILE_FILE" >> "$GITHUB_ENV"
+
       - name: Cut, publish and tap the release
         env:
           GH_TOKEN: ${{ secrets.TINGRA_RELEASE_TOKEN }}
@@ -286,7 +312,7 @@ jobs:
           if [ "$INPUT_DRY_RUN" = "true" ]; then
             args+=(--dry-run)
           fi
-          scripts/release-cli.sh "${args[@]}"
+          scripts/release.sh "${args[@]}"
 
       # A copy of what shipped, kept with the run for after-the-fact inspection.
       # The release itself already carries these; `dist/` is empty on a dry run.
@@ -294,8 +320,9 @@ jobs:
         if: ${{ always() }}
         uses: actions/upload-artifact@v7
         with:
-          name: tingra-cli-arm64
+          name: tingra-arm64
           if-no-files-found: ignore
           path: |
             dist/*.zip
             dist/*.pkg
+            dist/tingra-app/*.dmg

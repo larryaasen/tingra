@@ -9,8 +9,8 @@
 #
 # Builds, signs, verifies, runs, notarizes, staples, and images one of the
 # Tingra apps for distribution (docs/RELEASE.md, Decisions 7 and C10). One
-# pipeline for both apps, with a per-app table of what differs; only Tingra
-# Cameras is wired up so far, and Tingra.app joins it at slice 1.
+# pipeline for both apps, Tingra.app and Tingra Cameras, with a per-app table
+# of what differs.
 #
 #   archive → export → verify → run → notarize → staple → disk image → sha256
 #
@@ -22,6 +22,13 @@
 # lays the app out for notarization. The export options list names the team,
 # so it is generated here at run time and never committed. This script never
 # hand-signs an app bundle; the one thing it signs itself is the disk image.
+#
+# Tingra.app carries a restricted entitlement, its keychain group, which only
+# a Developer ID provisioning profile authorizes (Decision 3). The profile is
+# installed where Xcode finds it and named to the app target alone, through
+# TINGRA_APP_PROFILE_SPECIFIER, so its Notes extension and the kit frameworks,
+# which would refuse a profile issued for another bundle, are signed without
+# one (RELEASE.md, row B of the spike).
 #
 # The artifact is one disk image, `<Name>-<version>-arm64.dmg`, holding the
 # stapled app and an /Applications symlink; the image is then signed,
@@ -45,9 +52,11 @@
 #   TINGRA_NOTARY_PROFILE   notarytool keychain profile name
 #   TINGRA_NOTARY_KEYCHAIN  path to the keychain holding that profile (optional;
 #                           notarytool reads the login keychain when unset)
+#   TINGRA_APP_PROFILE      path to the Developer ID .provisionprofile file;
+#                           required to sign Tingra.app, unused by Tingra Cameras
 #
 # Usage:
-#   scripts/release-app-package.sh --app cameras [version]
+#   scripts/release-app-package.sh --app tingra|cameras [version]
 # The version defaults to the one the built app's Info.plist carries; when it
 # is given, the script asserts the app carries exactly that one.
 #
@@ -64,7 +73,7 @@ warn() { echo "release-app-package: WARNING: $*" >&2; }
 die()  { echo "release-app-package: ERROR: $*" >&2; exit 1; }
 
 usage() {
-    echo "usage: scripts/release-app-package.sh --app cameras [version]" >&2
+    echo "usage: scripts/release-app-package.sh --app tingra|cameras [version]" >&2
     exit 2
 }
 
@@ -110,9 +119,50 @@ done
 #   DIST_NAME          the folder under dist/ this app's run owns
 #   IMAGE_BASE         the disk image's file name before `-<version>-arm64.dmg`
 #   VOLUME_NAME        the mounted image's name
-#   ENTITLEMENTS       exactly the entitlements the signed app carries, sorted
+#   ENTITLEMENTS       the boolean entitlements the signed app carries, each true
+#   PROFILE_ENTITLEMENTS  the entitlements its provisioning profile authorizes;
+#                      empty for an app that needs no profile. Together with
+#                      ENTITLEMENTS these are exactly the signed app's keys
+#   KEYCHAIN_GROUP     the keychain group's suffix, after the App ID prefix;
+#                      set only when PROFILE_ENTITLEMENTS names a group
 #   KIT_FRAMEWORKS     the frameworks Contents/Frameworks must hold
+#   EXTENSIONS         the extensions Contents/Extensions must hold, each
+#                      sandboxed, by bundle name without `.appex`
+#   EXTENSION_IDS      their bundle identifiers, which the cleanup asks
+#                      pluginkit about
+#   FORBIDDEN_BUNDLES  bundles a development build embeds and a release must not
 case "$APP_KEY" in
+    tingra)
+        readonly APP_DIR="${ROOT}/apps/tingra-app"
+        readonly PROJECT="tingra-app.xcodeproj"
+        readonly SCHEME="tingra-app"
+        readonly PRODUCT_NAME="Tingra"
+        readonly BUNDLE_ID="com.moonwink.tingra.app"
+        readonly DIST_NAME="tingra-app"
+        readonly IMAGE_BASE="Tingra"
+        readonly VOLUME_NAME="Tingra"
+        # The camera and microphone under the hardened runtime, and library
+        # validation off for camera DAL plug-ins and third-party plug-in
+        # bundles signed by another team (the entitlements file's own comment).
+        readonly ENTITLEMENTS=(
+            "com.apple.security.cs.disable-library-validation"
+            "com.apple.security.device.audio-input"
+            "com.apple.security.device.camera"
+        )
+        # The keychain group the app's secure storage needs, and the two
+        # identifiers an embedded profile adds beside it.
+        readonly PROFILE_ENTITLEMENTS=(
+            "com.apple.application-identifier"
+            "com.apple.developer.team-identifier"
+            "keychain-access-groups"
+        )
+        readonly KEYCHAIN_GROUP="com.moonwink.tingra.shared"
+        readonly KIT_FRAMEWORKS=("TingraEventBus" "TingraPlugInKit")
+        readonly EXTENSIONS=("TingraNotes")
+        readonly EXTENSION_IDS=("com.moonwink.tingra.app.notes")
+        # The loader tests' fixture, which only the test target embeds.
+        readonly FORBIDDEN_BUNDLES=("FixturePlugIn.tingraplugin")
+        ;;
     cameras)
         readonly APP_DIR="${ROOT}/apps/tingra-cameras"
         readonly PROJECT="tingra-cameras.xcodeproj"
@@ -129,14 +179,15 @@ case "$APP_KEY" in
             "com.apple.security.cs.disable-library-validation"
             "com.apple.security.device.camera"
         )
+        readonly PROFILE_ENTITLEMENTS=()
+        readonly KEYCHAIN_GROUP=""
         readonly KIT_FRAMEWORKS=("TingraEventBus" "TingraPlugInKit")
-        ;;
-    tingra)
-        die "Tingra.app is not wired up yet: it needs its provisioning profile, the Notes extension's checks, \
-and the fixture bundle's absence (RELEASE.md, Decisions 3 and 8). Only --app cameras is supported."
+        readonly EXTENSIONS=()
+        readonly EXTENSION_IDS=()
+        readonly FORBIDDEN_BUNDLES=()
         ;;
     *)
-        die "unknown app '${APP_KEY}'; the apps are: cameras"
+        die "unknown app '${APP_KEY}'; the apps are: tingra, cameras"
         ;;
 esac
 
@@ -176,6 +227,28 @@ unregister_copies() {
     done <<<"$registered"
 }
 
+# Removes from pluginkit every registered copy of the app's extensions under
+# the same folders. Unregistering an app from Launch Services does not remove
+# its extensions, and an extra Notes copy at the development build's version
+# is enough for the system to pick it, unapproved, over the one in Xcode's
+# build (RELEASE.md, "A side effect on the development Mac"). As with the
+# apps, pluginkit is asked which copies it holds.
+unregister_extensions() {
+    local extension_id registered path
+    for extension_id in ${EXTENSION_IDS[@]+"${EXTENSION_IDS[@]}"}; do
+        registered="$(pluginkit -mAvvv -i "$extension_id" 2>/dev/null \
+            | sed -nE 's/^[[:space:]]*Path = (.*\.appex)$/\1/p' | sort -u)" || continue
+        while IFS= read -r path; do
+            [[ -n "$path" ]] || continue
+            case "$path" in
+                "${BUILD_DIR}/"*|"${DIST}/"*)
+                    pluginkit -r "$path" 2>/dev/null || true
+                    ;;
+            esac
+        done <<<"$registered"
+    done
+}
+
 # Detaches the image if this run left it mounted, then unregisters the copies.
 # Runs on every exit, so a failed check never leaves a mounted image or a
 # registered copy behind.
@@ -185,6 +258,7 @@ cleanup() {
     if grep -qF " on ${MOUNT_POINT} " <<<"$mounts"; then
         hdiutil detach "$MOUNT_POINT" -quiet 2>/dev/null || hdiutil detach "$MOUNT_POINT" -force -quiet 2>/dev/null || true
     fi
+    unregister_extensions
     unregister_copies
 }
 trap cleanup EXIT
@@ -217,9 +291,10 @@ assert_arm64_macos() {
     [[ "$build_version" == *"platform MACOS"* ]] || die "$1 is not built for macOS: ${build_version}"
 }
 
-# Prints one key of the app's Info.plist, or nothing when it is absent.
+# Prints one key of a bundle's Info.plist, or nothing when it is absent. The
+# bundle is the staged app unless a second argument names another.
 info_value() {
-    /usr/libexec/PlistBuddy -c "Print :$1" "${STAGED_APP}/Contents/Info.plist" 2>/dev/null || true
+    /usr/libexec/PlistBuddy -c "Print :$1" "${2:-$STAGED_APP}/Contents/Info.plist" 2>/dev/null || true
 }
 
 # Prints the top-level keys of a property list file, sorted, one per line.
@@ -286,6 +361,48 @@ elif (( SIGNED )); then
     warn "TINGRA_NOTARY_PROFILE unset — the app and image will be signed but NOT notarized or stapled."
 fi
 
+# --- The provisioning profile -------------------------------------------------
+#
+# Signed, and only for an app whose entitlements need one. TINGRA_APP_PROFILE
+# names the Developer ID profile file: locally wherever it was downloaded, in
+# CI the file the release workflow decodes from the secret of the same name.
+# It is checked against this team and bundle, then installed where Xcode looks
+# for profiles, under its own UUID, unless an identical copy is already there.
+# The archive and the export then name it to the app alone.
+PROFILE_NAME=""
+if (( SIGNED )) && (( ${#PROFILE_ENTITLEMENTS[@]} > 0 )); then
+    [[ -n "${TINGRA_APP_PROFILE:-}" ]] || die "TINGRA_APP_PROFILE is unset; ${PRODUCT_NAME}.app's keychain group \
+needs its Developer ID provisioning profile. Set it to the .provisionprofile file's path (packaging/README.md, \
+\"Release secrets\")."
+    [[ -f "$TINGRA_APP_PROFILE" ]] || die "TINGRA_APP_PROFILE names '${TINGRA_APP_PROFILE}', which is not a file"
+    PROFILE_PLIST="${BUILD_DIR}/profile.plist"
+    mkdir -p "$BUILD_DIR"
+    security cms -D -i "$TINGRA_APP_PROFILE" >"$PROFILE_PLIST" 2>/dev/null \
+        || die "TINGRA_APP_PROFILE is not a signed provisioning profile: ${TINGRA_APP_PROFILE}"
+    # Prints one key of the decoded profile, or nothing when it is absent.
+    profile_value() { /usr/libexec/PlistBuddy -c "Print :$1" "$PROFILE_PLIST" 2>/dev/null || true; }
+    PROFILE_NAME="$(profile_value Name)"
+    PROFILE_UUID="$(profile_value UUID)"
+    PROFILE_TEAM="$(profile_value TeamIdentifier:0)"
+    PROFILE_APP_ID="$(profile_value Entitlements:com.apple.application-identifier)"
+    PROFILE_ALL_DEVICES="$(profile_value ProvisionsAllDevices)"
+    rm -f "$PROFILE_PLIST"
+    [[ -n "$PROFILE_NAME" && -n "$PROFILE_UUID" ]] || die "the profile in TINGRA_APP_PROFILE has no name or UUID"
+    [[ "$PROFILE_TEAM" == "$TEAM" ]] || die "the profile '${PROFILE_NAME}' belongs to another team than \
+TINGRA_SIGN_ID's"
+    [[ "$PROFILE_APP_ID" == *".${BUNDLE_ID}" ]] || die "the profile '${PROFILE_NAME}' is issued for another App ID \
+than ${BUNDLE_ID}"
+    [[ "$PROFILE_ALL_DEVICES" == "true" ]] || die "the profile '${PROFILE_NAME}' is not a Developer ID profile \
+(it lists devices); create one of the Developer ID type for ${BUNDLE_ID}"
+    PROFILES_DIR="${HOME}/Library/Developer/Xcode/UserData/Provisioning Profiles"
+    INSTALLED_PROFILE="${PROFILES_DIR}/${PROFILE_UUID}.provisionprofile"
+    if ! cmp -s "$TINGRA_APP_PROFILE" "$INSTALLED_PROFILE"; then
+        mkdir -p "$PROFILES_DIR"
+        cp "$TINGRA_APP_PROFILE" "$INSTALLED_PROFILE"
+        log "installed the provisioning profile '${PROFILE_NAME}' for Xcode."
+    fi
+fi
+
 # --- 1. Archive -------------------------------------------------------------
 #
 # For a generic Mac destination, with ARCHS=arm64 on the command line so the
@@ -300,6 +417,11 @@ mkdir -p "$BUILD_DIR"
 archive_settings=(ARCHS=arm64)
 if (( SIGNED )); then
     archive_settings+=(CODE_SIGN_STYLE=Manual "CODE_SIGN_IDENTITY=${TINGRA_SIGN_ID}" "DEVELOPMENT_TEAM=${TEAM}")
+    # Read by the app target alone; PROVISIONING_PROFILE_SPECIFIER itself would
+    # reach every target, and the extension and kits refuse the app's profile.
+    if [[ -n "$PROFILE_NAME" ]]; then
+        archive_settings+=("TINGRA_APP_PROFILE_SPECIFIER=${PROFILE_NAME}")
+    fi
 else
     archive_settings+=(CODE_SIGNING_ALLOWED=NO)
 fi
@@ -321,6 +443,12 @@ if (( SIGNED )); then
     plutil -insert signingStyle -string manual "$EXPORT_OPTIONS"
     plutil -insert signingCertificate -string "$TINGRA_SIGN_ID" "$EXPORT_OPTIONS"
     plutil -insert teamID -string "$TEAM" "$EXPORT_OPTIONS"
+    # The per-bundle profile map: the app gets its profile, and every other
+    # bundle in it, left out of the map, gets none.
+    if [[ -n "$PROFILE_NAME" ]]; then
+        /usr/libexec/PlistBuddy -c "Add :provisioningProfiles dict" \
+            -c "Add :provisioningProfiles:${BUNDLE_ID} string \"${PROFILE_NAME}\"" "$EXPORT_OPTIONS"
+    fi
     xcodebuild -exportArchive -quiet -archivePath "$ARCHIVE" -exportPath "$EXPORT_DIR" \
         -exportOptionsPlist "$EXPORT_OPTIONS"
     BUILT_APP="${EXPORT_DIR}/${APP_BUNDLE}"
@@ -381,6 +509,30 @@ for kit in "${KIT_FRAMEWORKS[@]}"; do
 the target needs it in its Embed Frameworks phase (C4)"
     IMAGES+=("${FRAMEWORKS_DIR}/${kit}.framework/Versions/A/${kit}")
 done
+
+# Each extension: present, at the app's version (both read TINGRA_VERSION), and
+# its binary held to the same rules as the app's.
+readonly EXTENSIONS_DIR="${STAGED_APP}/Contents/Extensions"
+EXTENSION_PATHS=()
+for extension in ${EXTENSIONS[@]+"${EXTENSIONS[@]}"}; do
+    extension_path="${EXTENSIONS_DIR}/${extension}.appex"
+    [[ -d "$extension_path" ]] || die "${extension}.appex is not embedded in Contents/Extensions; the app target \
+needs it in its Embed ExtensionKit Extensions phase"
+    extension_version="$(info_value CFBundleShortVersionString "$extension_path")"
+    [[ "$extension_version" == "$VERSION" ]] || die "${extension}.appex carries version '${extension_version}', \
+not the app's ${VERSION}"
+    extension_executable="$(info_value CFBundleExecutable "$extension_path")"
+    [[ -n "$extension_executable" ]] || die "${extension}.appex's Info.plist names no CFBundleExecutable"
+    EXTENSION_PATHS+=("$extension_path")
+    IMAGES+=("${extension_path}/Contents/MacOS/${extension_executable}")
+done
+
+# Bundles only a development build or a test embeds.
+for forbidden in ${FORBIDDEN_BUNDLES[@]+"${FORBIDDEN_BUNDLES[@]}"}; do
+    found="$(find "$STAGED_APP" -name "$forbidden" -print -quit)"
+    [[ -z "$found" ]] || die "the app carries ${forbidden}, which only the tests embed: ${found#"${STAGED_APP}/"}"
+done
+
 for image in "${IMAGES[@]}"; do
     [[ -f "$image" ]] || die "missing binary ${image}"
     assert_arm64_macos "$image"
@@ -400,6 +552,7 @@ if (( SIGNED )); then
     for kit in "${KIT_FRAMEWORKS[@]}"; do
         SIGNED_PATHS+=("${FRAMEWORKS_DIR}/${kit}.framework")
     done
+    SIGNED_PATHS+=(${EXTENSION_PATHS[@]+"${EXTENSION_PATHS[@]}"})
     for signed in "${SIGNED_PATHS[@]}"; do
         name="$(basename "$signed")"
         authority="$(signature_field "$signed" Authority)"
@@ -419,7 +572,8 @@ runtime, which notarization requires"
     codesign -d --entitlements - --xml "$STAGED_APP" >"$ENTITLEMENTS_FILE" 2>/dev/null \
         || die "could not read the app's entitlements"
     ACTUAL_ENTITLEMENTS="$(plist_keys "$ENTITLEMENTS_FILE")"
-    EXPECTED_ENTITLEMENTS="$(printf '%s\n' "${ENTITLEMENTS[@]}" | sort)"
+    EXPECTED_ENTITLEMENTS="$(printf '%s\n' "${ENTITLEMENTS[@]}" ${PROFILE_ENTITLEMENTS[@]+"${PROFILE_ENTITLEMENTS[@]}"} \
+        | sort)"
     [[ "$ACTUAL_ENTITLEMENTS" == "$EXPECTED_ENTITLEMENTS" ]] || die "the app's entitlements are:
 ${ACTUAL_ENTITLEMENTS:-<none>}
 but exactly these were expected:
@@ -428,10 +582,42 @@ ${EXPECTED_ENTITLEMENTS}"
         [[ "$(/usr/libexec/PlistBuddy -c "Print :${entitlement}" "$ENTITLEMENTS_FILE")" == "true" ]] \
             || die "the entitlement ${entitlement} is not true"
     done
+
+    # The profile-authorized entitlements, with their build variables
+    # expanded: a literal `$(` reaches the kernel as an entitlement nothing
+    # authorizes, and the app is killed at exec (v0.1.1). The keychain group
+    # and the application identifier share the App ID prefix the profile
+    # grants, which on this account is not the team identifier, so the prefix
+    # is read, never assumed.
+    if (( ${#PROFILE_ENTITLEMENTS[@]} > 0 )); then
+        [[ -f "${STAGED_APP}/Contents/embedded.provisionprofile" ]] || die "the app has no \
+Contents/embedded.provisionprofile, so nothing authorizes its keychain group"
+        entitlement_value() { /usr/libexec/PlistBuddy -c "Print :$1" "$ENTITLEMENTS_FILE" 2>/dev/null || true; }
+        APPLICATION_ID="$(entitlement_value com.apple.application-identifier)"
+        [[ "$APPLICATION_ID" != *'$('* && "$APPLICATION_ID" == *".${BUNDLE_ID}" ]] || die "the app's \
+application identifier is '${APPLICATION_ID}', not <App ID prefix>.${BUNDLE_ID}"
+        APP_ID_PREFIX="${APPLICATION_ID%".${BUNDLE_ID}"}"
+        [[ "$(entitlement_value com.apple.developer.team-identifier)" == "$TEAM" ]] || die "the app's team \
+identifier entitlement does not name the team in TINGRA_SIGN_ID"
+        KEYCHAIN_GROUPS="$(entitlement_value keychain-access-groups | sed -nE 's/^ +([^ ].*)$/\1/p')"
+        [[ "$KEYCHAIN_GROUPS" == "${APP_ID_PREFIX}.${KEYCHAIN_GROUP}" ]] || die "the app's keychain groups are:
+${KEYCHAIN_GROUPS:-<none>}
+but exactly one was expected, ${KEYCHAIN_GROUP} under the App ID prefix the application identifier carries"
+        log "the provisioning profile is embedded and the keychain group is expanded."
+    fi
     rm -f "$ENTITLEMENTS_FILE"
+
+    # Each extension runs sandboxed: ExtensionKit requires it.
+    for extension_path in ${EXTENSION_PATHS[@]+"${EXTENSION_PATHS[@]}"}; do
+        codesign -d --entitlements - --xml "$extension_path" >"$ENTITLEMENTS_FILE" 2>/dev/null \
+            || die "could not read $(basename "$extension_path")'s entitlements"
+        [[ "$(/usr/libexec/PlistBuddy -c "Print :com.apple.security.app-sandbox" "$ENTITLEMENTS_FILE" 2>/dev/null)" \
+            == "true" ]] || die "$(basename "$extension_path") is not sandboxed, and ExtensionKit will not run it"
+        rm -f "$ENTITLEMENTS_FILE"
+    done
     log "signature, team, hardened runtime, timestamp, and entitlements verified."
 fi
-log "bundle verified: ${BUNDLE_ID} ${VERSION}, arm64, kits embedded, icon present."
+log "bundle verified: ${BUNDLE_ID} ${VERSION}, arm64, kits and extensions embedded, icon present."
 
 # --- 4. Run -----------------------------------------------------------------
 #

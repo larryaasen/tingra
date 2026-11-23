@@ -60,9 +60,24 @@ but they are not lost either: the app records them per project in
 machine-local preferences and restores them at launch, along with the armed
 transition.
 
+## Installing the app
+
+Tingra.app is distributed as a signed, notarized disk image, through the same
+Homebrew tap as the CLI:
+
+```sh
+brew install --cask larryaasen/tingra/tingra
+```
+
+`brew upgrade --cask tingra` updates it. The disk image is also attached to
+each [GitHub release](https://github.com/larryaasen/tingra/releases): open it
+and drag Tingra to Applications. The app needs an Apple Silicon Mac running
+macOS 15 (Sequoia) or later. It does not yet carry `tingra-cli` or the MCP
+server; install those with the formula below.
+
 ## Getting started: the CLI and MCP server
 
-Tingra ships first as `tingra-cli`, a headless front end over the engine. It
+`tingra-cli` is a headless front end over the engine. It
 can stream on its own, and it exposes the engine to AI agents (Claude and
 others) as an [MCP](https://modelcontextprotocol.io) server. This section
 takes a first-time user from install to controlling a stream from Claude.

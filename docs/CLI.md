@@ -52,17 +52,19 @@ Signed and notarized binary for Apple Silicon (arm64) only, distributed through 
 
 **The recipe is implemented.** `scripts/release-cli-package.sh` runs the whole pipeline (release build → sign → verify → notarized zip + stapled `.pkg` → sha256), gated on signing/notarization credentials passed as environment variables (absent creds fall back to an unsigned dev artifact). The formula template lives at `packaging/homebrew/tingra-cli.rb`, copied per release into the external `larryaasen/homebrew-tingra` tap (see `packaging/README.md`).
 
-**Releases are cut in CI.** `.github/workflows/release-cli.yml` runs every step below on a manual dispatch — the version bump, the signed and notarized build, the tag, the GitHub release, and the tap push — so a release does not depend on one developer's Mac, keychain, or `gh` login. It is a thin wrapper over the same `scripts/release-cli.sh` described next, run with `--yes`, so the CI path and a hand-cut release are the same code. The workflow's header lists the repository secrets it needs, and `packaging/README.md` ("Release secrets") carries the one-time setup and rotation recipe for each — including the Team-vs-Individual API key distinction that causes most notarization failures. Two credentials differ from a local run: the tap push needs a PAT (`TINGRA_RELEASE_TOKEN`) because `GITHUB_TOKEN` cannot reach a second repository, and notarization uses an App Store Connect API key, which the job stores as a `notarytool` keychain profile in a throwaway keychain and points the packaging script at with `TINGRA_NOTARY_KEYCHAIN` — a runner has no login keychain profile to read.
+**One release carries the CLI and the app.** Since Tingra.app gained a release path (RELEASE.md, slice 1), a product release ships `tingra-cli` and `Tingra.app` at one version, under one `v<x.y.z>` tag and one GitHub release: the CLI's zip and `.pkg` and the app's disk image, `Tingra-<version>-arm64.dmg`, with the `tingra-cli` formula and the `tingra` cask both rendered into the tap (RELEASE.md, Decisions 5 to 7). The scripts and the workflow were renamed for it: `release-cli.sh` is now `release.sh`, `release-cli-publish.sh` is `release-publish.sh`, and `release-cli.yml` is `release.yml`. `release-cli-package.sh` keeps its name and its job, and `scripts/release-app-package.sh --app tingra` packages the app beside it. The release never touches the plug-in kits' version or tags; `scripts/release-sdk.sh` alone does.
+
+**Releases are cut in CI.** `.github/workflows/release.yml` runs every step below on a manual dispatch — the version bump, the signed and notarized builds, the tag, the GitHub release, and the tap push — so a release does not depend on one developer's Mac, keychain, or `gh` login. It is a thin wrapper over the same `scripts/release.sh` described next, run with `--yes`, so the CI path and a hand-cut release are the same code. The workflow's header lists the repository secrets it needs, and `packaging/README.md` ("Release secrets") carries the one-time setup and rotation recipe for each — including the Team-vs-Individual API key distinction that causes most notarization failures, and the app's provisioning profile (`TINGRA_APP_PROFILE`). Two credentials differ from a local run: the tap push needs a PAT (`TINGRA_RELEASE_TOKEN`) because `GITHUB_TOKEN` cannot reach a second repository, and notarization uses an App Store Connect API key, which the job stores as a `notarytool` keychain profile in a throwaway keychain and points the packaging script at with `TINGRA_NOTARY_KEYCHAIN` — a runner has no login keychain profile to read.
 
 ### Cutting a release
 
-**In CI (the normal path).** Actions → *Release tingra-cli* → *Run workflow*. Leave `version` blank to take the `-dev` version on the branch with its suffix dropped, or type an explicit `MAJOR.MINOR.PATCH`. `dry_run` rehearses the whole preflight and prints the plan without changing anything; `dev_bump` (on by default) reopens the branch on the next `-dev` version afterwards; `skip_tests` bypasses the Format & Test gate, which is for resuming a release that already passed it, not for skipping a red build. Verify from a consumer's position when it finishes — step 7 below.
+**In CI (the normal path).** Actions → *Release Tingra* → *Run workflow*. Leave `version` blank to take the `-dev` version on the branch with its suffix dropped, or type an explicit `MAJOR.MINOR.PATCH`. `dry_run` rehearses the whole preflight and prints the plan without changing anything; `dev_bump` (on by default) reopens the branch on the next `-dev` version afterwards; `skip_tests` bypasses the Format & Test gate, which is for resuming a release that already passed it, not for skipping a red build. Verify from a consumer's position when it finishes — step 7 below.
 
-**Locally.** `scripts/release-cli.sh` cuts and publishes a release in one command, and is what the workflow runs. It owns the version decision — prompting for the next version number and bumping `TingraCLIVersion.current`, the embedded `Info.plist`, and the app's `TINGRA_VERSION` (RELEASE.md, Decision 6) together — then hands off to `scripts/release-cli-publish.sh` for the build, signing, notarization, tag, GitHub release, and tap update. `release-cli-publish.sh` stays non-interactive and callable on its own.
+**Locally.** `scripts/release.sh` cuts and publishes a release in one command, and is what the workflow runs. It owns the version decision — prompting for the next version number and bumping `TingraCLIVersion.current`, the embedded `Info.plist`, and the app's `TINGRA_VERSION` (RELEASE.md, Decision 6) together — then hands off to `scripts/release-publish.sh` for both builds, signing, notarization, the tag, the GitHub release, and the tap update. `release-publish.sh` packages the CLI and the app before it tags anything, so a failure in either publishes nothing. It stays non-interactive and callable on its own.
 
 **Step by step.**
 
-1. **Land the work.** The tree must be clean and the branch level with `origin/main`; both are checked before anything is written, and a dirty tree is refused outright (the tag has to name a committed state, and the script is about to write two files of its own).
+1. **Land the work.** The tree must be clean and the branch level with `origin/main`; both are checked before anything is written, and a dirty tree is refused outright (the tag has to name a committed state, and the script is about to write three files of its own).
 
 2. **Export the signing credentials** — they live only in the environment, never in a tracked file:
 
@@ -70,14 +72,15 @@ Signed and notarized binary for Apple Silicon (arm64) only, distributed through 
    export TINGRA_SIGN_ID="Developer ID Application: … (TEAMID)"
    export TINGRA_INSTALLER_SIGN_ID="Developer ID Installer: … (TEAMID)"
    export TINGRA_NOTARY_PROFILE="…"   # a notarytool store-credentials profile
+   export TINGRA_APP_PROFILE="…/Tingra Developer ID.provisionprofile"   # the app's profile
    ```
 
-   Missing credentials are a warning plus a confirmation prompt, not a hard stop, because `release-cli-package.sh` still produces a usable unsigned artifact for local inspection. Never publish that artifact: Gatekeeper rejects it and its TCC grants key to nothing.
+   Missing credentials are a warning plus a confirmation prompt, not a hard stop, because both packaging scripts still produce usable unsigned artifacts for local inspection. Never publish that artifact: Gatekeeper rejects it and its TCC grants key to nothing.
 
 3. **Run it:**
 
    ```sh
-   scripts/release-cli.sh
+   scripts/release.sh
    ```
 
 4. **Answer the version prompt.** The default is the next version: the current number with its `-dev` suffix dropped when `main` is on-scheme, otherwise the next patch. A default that is already tagged is skipped over, and an explicitly requested version that collides is refused — so a release can never overwrite a shipped tag. The version must be `MAJOR.MINOR.PATCH`; a `-dev` suffix is rejected here by design.
@@ -91,13 +94,14 @@ Signed and notarized binary for Apple Silicon (arm64) only, distributed through 
    ```sh
    brew update && brew upgrade tingra-cli && tingra-cli version
    tingra-cli serve --install    # re-point the LaunchAgent at the new binary
+   brew upgrade --cask tingra && /Applications/Tingra.app/Contents/MacOS/Tingra --version
    ```
 
 **Flags.** `--version <x.y.z>` skips the prompt; `--dry-run` runs the preflight and prints the plan without changing anything; `--no-dev-bump` skips step 6; `--yes` answers every confirmation and takes the default version, which is how the workflow drives it; `--help` prints usage. `TINGRA_RELEASE_BRANCH` overrides the expected branch (default `main`); releasing from another branch warns and asks rather than refusing.
 
-One preflight is deliberately *stricter* under `--yes` rather than looser: missing signing credentials abort instead of prompting. Interactively an unsigned artifact is still worth building for local inspection, but unattended there is nobody to decline, and the run would otherwise end with a `brew` formula pointing at a zip Gatekeeper rejects. The `Developer ID Installer` identity is the exception — it only builds the offline `.pkg`, which `release-cli-package.sh` already treats as best effort, so its absence is a warning in both modes.
+One preflight is deliberately *stricter* under `--yes` rather than looser: missing signing credentials abort instead of prompting. Interactively an unsigned artifact is still worth building for local inspection, but unattended there is nobody to decline, and the run would otherwise end with a formula and a cask pointing at artifacts Gatekeeper rejects. The `Developer ID Installer` identity is the exception — it only builds the offline `.pkg`, which `release-cli-package.sh` already treats as best effort, so its absence is a warning in both modes.
 
-**Resumable.** If a run stops partway — a notarization timeout is the usual cause — re-run it with the same `--version`. The bump and its commit are skipped when already in place, and `release-cli-publish.sh` is itself idempotent (it reuses an existing tag and clobbers uploaded artifacts), so a resumed run finishes the release rather than starting a second one.
+**Resumable.** If a run stops partway — a notarization timeout is the usual cause — re-run it with the same `--version`. The bump and its commit are skipped when already in place, and `release-publish.sh` is itself idempotent (it reuses an existing tag and clobbers uploaded artifacts), so a resumed run finishes the release rather than starting a second one.
 
 Open question tracked in TODO.md: how bundled plug-ins ship next to a bare binary (app bundle style layout, compiled in, or a plug-ins directory installed by the formula). For the CLI era they are compiled in (see ARCHITECTURE.md); the question is what changes when the external bundle loader ships.
 

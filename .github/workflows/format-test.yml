@@ -19,8 +19,8 @@
 #
 # The other workflows are integration.yml (streaming tests against the ingest
 # simulator, on streaming/output changes rather than blocking every PR) and
-# the three releases, run on demand: release-cli.yml, release-sdk.yml, and
-# release-cameras.yml. This workflow is also `workflow_call`-able, and each
+# the three releases, run on demand: release.yml (tingra-cli and Tingra.app),
+# release-sdk.yml, and release-cameras.yml. This workflow is also `workflow_call`-able, and each
 # release calls it as its pre-release gate so a release can only be cut from a
 # green tree.
 #
@@ -47,11 +47,11 @@ on:
       - "packaging/**"
       - "apps/ingest-simulator/**"
       - "scripts/integration-test.sh"
-      - "scripts/release-*.sh"
+      - "scripts/release*.sh"
       - "scripts/run-app.sh"
       - "scripts/sign-app.sh"
       - ".github/workflows/integration.yml"
-      - ".github/workflows/release-*.yml"
+      - ".github/workflows/release*.yml"
   pull_request:
     paths-ignore:
       - "docs/**"
@@ -62,12 +62,12 @@ on:
       - "packaging/**"
       - "apps/ingest-simulator/**"
       - "scripts/integration-test.sh"
-      - "scripts/release-*.sh"
+      - "scripts/release*.sh"
       - "scripts/run-app.sh"
       - "scripts/sign-app.sh"
       - ".github/workflows/integration.yml"
-      - ".github/workflows/release-*.yml"
-  # Called by release-cli.yml, release-sdk.yml, and release-cameras.yml as the
+      - ".github/workflows/release*.yml"
+  # Called by release.yml, release-sdk.yml, and release-cameras.yml as the
   # pre-release gate.
   workflow_call:
 

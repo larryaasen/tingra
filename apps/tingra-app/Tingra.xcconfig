@@ -26,7 +26,7 @@ DEVELOPMENT_TEAM = $(TINGRA_DEVELOPMENT_TEAM)
 
 //  The product version, the number `tingra-cli version` prints: the app and
 //  its embedded Notes extension take it for both CFBundleShortVersionString
-//  and CFBundleVersion (RELEASE.md, Decision 6). scripts/release-cli.sh bumps
+//  and CFBundleVersion (RELEASE.md, Decision 6). scripts/release.sh bumps
 //  this line together with TingraCLIVersion.current and the CLI's Info.plist,
 //  and refuses to go on if the three disagree. Between releases it carries the
 //  next version with a -dev suffix, as they do.

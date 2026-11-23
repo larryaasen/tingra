@@ -1,17 +1,18 @@
 #!/bin/bash
 #
-#  release-cli.sh
-#  tingra-cli
+#  release.sh
+#  tingra
 #
 #  Created by Larry Aasen on 2026-08-15.
 #  Copyright © 2026 Larry Aasen.
 #  SPDX-License-Identifier: MIT
 #
-# One command to cut a tingra-cli release from a clean checkout.
-# This is the front end over scripts/release-cli-publish.sh: it owns the *version
-# decision* — the step packaging/README.md previously left to the operator —
-# and delegates the actual build/sign/notarize/tag/publish/tap work to
-# release-cli-publish.sh, which stays non-interactive so CI can keep calling it directly.
+# One command to cut a Tingra release from a clean checkout: tingra-cli and
+# Tingra.app, at one product version, under one tag (docs/RELEASE.md,
+# Decision 6). This is the front end over scripts/release-publish.sh: it owns
+# the *version decision* and delegates the build, sign, notarize, tag,
+# publish, and tap work to release-publish.sh, which stays non-interactive so
+# CI can keep calling it directly.
 #
 # What it does, in order:
 #   1. Preflight: tools, authentication, branch, clean tree, signing env.
@@ -19,25 +20,30 @@
 #   3. Bump TingraCLIVersion.current, Info.plist's version keys, and the app's
 #      TINGRA_VERSION together.
 #   4. Commit the bump and push the branch.
-#   5. Run scripts/release-cli-publish.sh, which tags, packages, publishes, updates the tap.
+#   5. Run scripts/release-publish.sh, which packages both, tags, publishes,
+#      and updates the tap's formula and cask.
 #   6. Optionally reopen main on the next -dev version (the documented scheme).
 #
+# The plug-in kits are not part of this release: their version,
+# PlugInKitVersion.current, is never bumped here, and scripts/release-sdk.sh
+# alone tags and publishes them.
+#
 # Usage:
-#   scripts/release-cli.sh                 # prompt, default = next patch
-#   scripts/release-cli.sh --version 0.2.0 # skip the prompt
-#   scripts/release-cli.sh --dry-run       # preflight + show the plan, change nothing
-#   scripts/release-cli.sh --no-dev-bump   # skip step 6
-#   scripts/release-cli.sh --yes           # never prompt (this is what CI runs)
+#   scripts/release.sh                 # prompt, default = next patch
+#   scripts/release.sh --version 0.2.0 # skip the prompt
+#   scripts/release.sh --dry-run       # preflight + show the plan, change nothing
+#   scripts/release.sh --no-dev-bump   # skip step 6
+#   scripts/release.sh --yes           # never prompt (this is what CI runs)
 #
 # --yes answers every confirmation with yes and takes the default version when
 # --version is absent, so the whole release runs unattended — that is how
-# .github/workflows/release-cli.yml drives it. One preflight is *stricter*
+# .github/workflows/release.yml drives it. One preflight is *stricter*
 # under --yes rather than looser: missing signing credentials abort instead of
-# asking, because the unsigned fallback artifact must never reach the tap.
+# asking, because the unsigned fallback artifacts must never reach the tap.
 #
 # Resumable: if a run stops after the bump (say notarization times out), just
 # run it again with the same version — the bump and commit are skipped when
-# they are already in place, and release-cli-publish.sh is itself idempotent.
+# they are already in place, and release-publish.sh is itself idempotent.
 set -euo pipefail
 
 readonly ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -49,9 +55,9 @@ readonly INFO_PLIST="${CLI_DIR}/Info.plist"
 readonly APP_XCCONFIG="${ROOT}/apps/tingra-app/Tingra.xcconfig"
 readonly RELEASE_BRANCH="${TINGRA_RELEASE_BRANCH:-main}"
 
-log()  { echo "release-cli: $*"; }
-warn() { echo "release-cli: WARNING: $*" >&2; }
-die()  { echo "release-cli: ERROR: $*" >&2; exit 1; }
+log()  { echo "release: $*"; }
+warn() { echo "release: WARNING: $*" >&2; }
+die()  { echo "release: ERROR: $*" >&2; exit 1; }
 
 DRY_RUN=false
 DEV_BUMP=true
@@ -65,7 +71,7 @@ while [[ $# -gt 0 ]]; do
         --dry-run)      DRY_RUN=true; shift ;;
         --no-dev-bump)  DEV_BUMP=false; shift ;;
         -y|--yes)       ASSUME_YES=true; shift ;;
-        -h|--help)      sed -n '10,40p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help)      sed -n '10,46p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *)              die "unknown argument '$1' (try --help)." ;;
     esac
 done
@@ -81,7 +87,8 @@ current_version() {
 }
 
 # Reads CFBundleShortVersionString from the embedded Info.plist. Used to prove
-# the two stayed in sync, which release-cli-package.sh asserts again at package time.
+# the two stayed in sync, which release-cli-package.sh asserts again at package
+# time, as release-app-package.sh does for the app's version.
 plist_version() {
     sed -n '/<key>CFBundleShortVersionString<\/key>/{n;s/.*<string>\(.*\)<\/string>.*/\1/p;}' "$INFO_PLIST"
 }
@@ -127,7 +134,8 @@ xcconfig_version() {
 # Writes a version into Version.swift, the embedded Info.plist, and the app's
 # xcconfig, then reads them back. They are bumped together on purpose:
 # release-cli-package.sh refuses to package a binary whose plist and constant
-# disagree, and the app and the CLI carry one product version.
+# disagree, release-app-package.sh refuses an app at another version, and the
+# app and the CLI carry one product version.
 write_version() {
     local new="$1"
     sed -i '' -E "s/(static let current = \")[^\"]*(\")/\1${new}\2/" "$VERSION_SWIFT"
@@ -152,7 +160,7 @@ write_version() {
 
 [[ -f "$VERSION_SWIFT" ]] || die "not found: $VERSION_SWIFT"
 [[ -f "$INFO_PLIST" ]]    || die "not found: $INFO_PLIST"
-[[ -x "${ROOT}/scripts/release-cli-publish.sh" ]] || die "scripts/release-cli-publish.sh is missing or not executable."
+[[ -x "${ROOT}/scripts/release-publish.sh" ]] || die "scripts/release-publish.sh is missing or not executable."
 
 command -v git >/dev/null || die "git is required."
 command -v gh  >/dev/null || die "the GitHub CLI (gh) is required — 'brew install gh' then 'gh auth login'."
@@ -164,8 +172,8 @@ if [[ "$BRANCH" != "$RELEASE_BRANCH" ]]; then
     $DRY_RUN || confirm "Release from '${BRANCH}' anyway?" || die "aborted."
 fi
 
-# A dirty tree is fatal rather than a prompt: release-cli-publish.sh requires a clean tree
-# so the tag names a committed state, and this script is about to write two
+# A dirty tree is fatal rather than a prompt: release-publish.sh requires a clean tree
+# so the tag names a committed state, and this script is about to write three
 # files of its own — stray edits would be swept into the release commit.
 if [[ -n "$(git -C "$ROOT" status --porcelain)" ]]; then
     git -C "$ROOT" status --short >&2
@@ -181,24 +189,26 @@ if git -C "$ROOT" rev-parse -q --verify "origin/${RELEASE_BRANCH}" >/dev/null; t
 fi
 
 # Signing credentials live only in the environment (never a tracked file).
-# Without them release-cli-package.sh falls back to an unsigned artifact, which must
-# never reach the tap: Gatekeeper would reject it and TCC grants key to nothing.
+# Without them both packaging scripts fall back to unsigned artifacts, which must
+# never reach the tap: Gatekeeper would reject them and TCC grants key to nothing.
+# TINGRA_APP_PROFILE is the app's Developer ID provisioning profile, without
+# which its keychain group cannot be signed (RELEASE.md, Decision 3).
 # TINGRA_INSTALLER_SIGN_ID is listed separately because only the offline .pkg
 # needs it, and release-cli-package.sh already treats that pkg as best effort —
 # the tap consumes the notarized zip, so an absent installer identity costs a
 # convenience artifact, not the release.
 missing_creds=()
-for var in TINGRA_SIGN_ID TINGRA_NOTARY_PROFILE; do
+for var in TINGRA_SIGN_ID TINGRA_NOTARY_PROFILE TINGRA_APP_PROFILE; do
     [[ -n "${!var:-}" ]] || missing_creds+=("$var")
 done
 [[ -n "${TINGRA_INSTALLER_SIGN_ID:-}" ]] \
     || warn "TINGRA_INSTALLER_SIGN_ID unset — the offline .pkg will be unsigned; the tap's zip is unaffected."
 if [[ ${#missing_creds[@]} -gt 0 ]]; then
     warn "signing/notarization environment not set: ${missing_creds[*]}"
-    warn "release-cli-package.sh would fall back to an UNSIGNED artifact — do not publish that."
+    warn "the packaging scripts would fall back to UNSIGNED artifacts — do not publish them."
     # Interactively this is a question, because an unsigned artifact is still
     # useful for local inspection. Unattended there is nobody to say no, and
-    # the run ends in a `brew` formula pointing at a zip Gatekeeper rejects, so
+    # the run ends in a formula and a cask pointing at files Gatekeeper rejects, so
     # --yes turns the question into a stop.
     if $ASSUME_YES && ! $DRY_RUN; then
         die "refusing to publish unattended without ${missing_creds[*]} — an unsigned artifact must never reach the tap."
@@ -247,7 +257,8 @@ echo "  version:  ${CURRENT}  ->  ${VERSION}"
 echo "  tag:      ${TAG}  (pushed to ${TINGRA_REPO:-larryaasen/tingra})"
 echo "  branch:   ${BRANCH}  (bump commit pushed)"
 echo "  tap:      ${TINGRA_TAP_REPO:-larryaasen/homebrew-tingra}"
-echo "  artifacts: dist/tingra-cli-${VERSION}-arm64.zip and .pkg"
+echo "  artifacts: dist/tingra-cli-${VERSION}-arm64.zip and .pkg, dist/tingra-app/Tingra-${VERSION}-arm64.dmg"
+echo "  tap files: Formula/tingra-cli.rb and Casks/tingra.rb"
 echo
 
 if $DRY_RUN; then
@@ -269,7 +280,7 @@ else
     log "bumping to ${VERSION}"
     write_version "$VERSION"
     git -C "$ROOT" add "$VERSION_SWIFT" "$INFO_PLIST" "$APP_XCCONFIG"
-    git -C "$ROOT" commit -q -m "tingra-cli ${VERSION}"
+    git -C "$ROOT" commit -q -m "Tingra ${VERSION}"
     log "committed the version bump."
 fi
 
@@ -277,12 +288,12 @@ git -C "$ROOT" push -q origin "$BRANCH"
 log "pushed ${BRANCH}."
 
 # ---------------------------------------------------------------------------
-# 5. Hand off to release-cli-publish.sh (build, sign, notarize, tag, publish, tap)
+# 5. Hand off to release-publish.sh (build, sign, notarize, tag, publish, tap)
 # ---------------------------------------------------------------------------
 
-log "handing off to scripts/release-cli-publish.sh ${VERSION}"
+log "handing off to scripts/release-publish.sh ${VERSION}"
 echo
-"${ROOT}/scripts/release-cli-publish.sh" "$VERSION"
+"${ROOT}/scripts/release-publish.sh" "$VERSION"
 
 # ---------------------------------------------------------------------------
 # 6. Reopen the branch on the next -dev version
@@ -294,7 +305,7 @@ if $DEV_BUMP; then
     if confirm "Reopen ${BRANCH} on ${DEV_VERSION}?"; then
         write_version "$DEV_VERSION"
         git -C "$ROOT" add "$VERSION_SWIFT" "$INFO_PLIST" "$APP_XCCONFIG"
-        git -C "$ROOT" commit -q -m "Bumped tingra-cli to ${DEV_VERSION}."
+        git -C "$ROOT" commit -q -m "Bumped Tingra to ${DEV_VERSION}."
         git -C "$ROOT" push -q origin "$BRANCH"
         log "${BRANCH} now on ${DEV_VERSION}."
     fi
@@ -303,4 +314,5 @@ fi
 echo
 log "released ${TAG}."
 echo "  verify:  brew update && brew upgrade tingra-cli && tingra-cli version"
+echo "  verify:  brew upgrade --cask tingra && /Applications/Tingra.app/Contents/MacOS/Tingra --version"
 echo "  re-register the daemon after upgrading:  tingra-cli serve --install"

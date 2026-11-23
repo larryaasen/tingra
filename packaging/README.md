@@ -1,12 +1,13 @@
 # Packaging
 
-How `tingra-cli` and Tingra Cameras are built, signed, notarized, and
-distributed, and how `TingraPlugInSDK` is built and published. The full
-rationale lives in [docs/CLI.md](../docs/CLI.md) "Distribution",
-[docs/RELEASE.md](../docs/RELEASE.md) "Releasing Tingra Cameras", and
+How `tingra-cli`, Tingra.app, and Tingra Cameras are built, signed,
+notarized, and distributed, and how `TingraPlugInSDK` is built and published.
+The full rationale lives in [docs/CLI.md](../docs/CLI.md) "Distribution",
+[docs/RELEASE.md](../docs/RELEASE.md), and
 [docs/PLUGINS.md](../docs/PLUGINS.md), Decision 37; this directory holds the
-concrete recipe. Tingra Cameras has its own part, "Tingra Cameras", and the
-SDK's is at the end, in "The plug-in SDK".
+concrete recipe. `tingra-cli` and Tingra.app release together, at one version;
+the app's artifact is in "Tingra.app". Tingra Cameras has its own part,
+"Tingra Cameras", and the SDK's is at the end, in "The plug-in SDK".
 
 ## Artifacts
 
@@ -64,7 +65,7 @@ In CI these come from GitHub Actions secrets, never the repo.
 
 ## Release secrets
 
-The CI release reads nine repository secrets. They are set once and then only
+The CI release reads ten repository secrets. They are set once and then only
 touched when something expires or rotates, which is exactly when nobody
 remembers how they were made — so here is the whole recipe.
 
@@ -79,6 +80,7 @@ remembers how they were made — so here is the whole recipe.
 | `TINGRA_NOTARY_KEY_ID` | that key's Key ID — always the `.p8` filename, `AuthKey_<KEYID>.p8` |
 | `TINGRA_NOTARY_ISSUER_ID` | the Issuer ID **for a Team key only** (see below) |
 | `TINGRA_INSTALLER_CERT_P12` / `_PASSWORD` | not needed when one `.p12` carries both identities |
+| `TINGRA_APP_PROFILE` | `base64 -i` of Tingra.app's Developer ID provisioning profile (below) |
 
 **The certificates.** In Keychain Access → login → My Certificates, select *both*
 Developer ID identities and export them as one `.p12`. A `.p12` may hold several
@@ -116,10 +118,36 @@ base64 -i ~/tingra-signing.p12 | gh secret set TINGRA_CERT_P12 --repo larryaasen
 gh secret set TINGRA_CERT_PASSWORD --repo larryaasen/tingra          # prompts
 ```
 
+**The app's provisioning profile.** Tingra.app's keychain group is a
+restricted entitlement, and only a Developer ID provisioning profile authorizes
+it ([docs/RELEASE.md](../docs/RELEASE.md), Decision 3). In the developer
+portal, under Profiles, it is the **Developer ID** profile named "Tingra
+Developer ID", for the explicit App ID `com.moonwink.tingra.app`, issued for
+the Developer ID Application certificate in `TINGRA_CERT_P12`. Download it,
+then:
+
+```sh
+base64 -i "Tingra_Developer_ID.provisionprofile" | gh secret set TINGRA_APP_PROFILE --repo larryaasen/tingra
+```
+
+Locally, `TINGRA_APP_PROFILE` is the path of that file instead, and
+`release-app-package.sh` installs it where Xcode finds it. A double-click hands
+a `.provisionprofile` to System Settings, not to Xcode, so let the script do
+it.
+
 **Expiry.** A fine-grained PAT lasts at most 366 days. When
 `TINGRA_RELEASE_TOKEN` expires the release fails at `actions/checkout` with a git
 authentication error that does not mention the token — regenerate it with the
 same three repositories and the same single permission.
+
+**The Developer ID certificate expires on 2027-02-01, and the app's profile
+goes with it.** The profile says it lasts until 2044, but it names the
+certificate it was issued for. When the certificate is renewed: export the new
+`.p12` into `TINGRA_CERT_P12`, then regenerate the "Tingra Developer ID"
+profile against the new certificate and replace `TINGRA_APP_PROFILE` in the
+same sitting. A release signed with one and not the other stops at the
+archive, which names the profile that does not match. Apps already signed and
+timestamped keep running past the expiry; only new signing stops.
 
 ## Verifying a published release
 
@@ -152,21 +180,22 @@ Two results that look like problems and are not:
 
 ## Cutting a release
 
-**Normally, in CI:** Actions → **Release tingra-cli** → *Run workflow*
-(`.github/workflows/release-cli.yml`). That runs every step below — gate on
-Format & Test, bump, build, sign, notarize, tag, publish the GitHub release, and
-push the formula to the tap — so no developer Mac, keychain, or `gh` login is in
-the loop. The workflow's header lists the repository secrets it needs.
+**Normally, in CI:** Actions → **Release Tingra** → *Run workflow*
+(`.github/workflows/release.yml`). That runs every step below — gate on
+Format & Test, bump, build the CLI and the app, sign, notarize, tag, publish
+the GitHub release, and push the formula and the cask to the tap — so no
+developer Mac, keychain, or `gh` login is in the loop. The workflow's header
+lists the repository secrets it needs.
 
-**Locally,** `scripts/release-cli.sh` is the one command to run, and is exactly
+**Locally,** `scripts/release.sh` is the one command to run, and is exactly
 what the workflow runs. It prompts for the next version (defaulting to the next
-increment), bumps `TingraCLIVersion.current` and `Info.plist` together, commits
-and pushes that bump, then hands off to `release-cli-publish.sh` — so a release
-is:
+increment), bumps `TingraCLIVersion.current`, `Info.plist`, and the app's
+`TINGRA_VERSION` together, commits and pushes that bump, then hands off to
+`release-publish.sh` — so a release is:
 
 ```sh
 # Export the signing env (see the table above), then:
-scripts/release-cli.sh      # prompts for the version; --dry-run to rehearse
+scripts/release.sh          # prompts for the version; --dry-run to rehearse
 ```
 
 `--yes` makes it unattended: every confirmation is answered yes and the default
@@ -177,44 +206,90 @@ artifact can never be published unattended.
 Step-by-step instructions, flags, and the resume behavior are in
 [docs/CLI.md](../docs/CLI.md) "Cutting a release".
 
-`scripts/release-cli-publish.sh [version]` is the non-interactive half underneath — build,
+`scripts/release-publish.sh [version]` is the non-interactive half underneath — build,
 sign, notarize, tag, publish the GitHub release, and update the tap. Call it
-directly when the version bump is already committed (which is what CI does); it
-does **not** bump the version itself, so a bare `release-cli-publish.sh` on a tree whose
+directly when the version bump is already committed; it
+does **not** bump the version itself, so a bare `release-publish.sh` on a tree whose
 constant still names a shipped version stops at the tag-collision check.
 
 It requires a **clean working tree** (the tag must name a committed state) and the
 GitHub CLI (`gh`) authenticated with push access to both repos. Under the hood it
-runs `scripts/release-cli-package.sh`, pushes tag `v<version>`, creates the release with
-`dist/*.zip` (and `*.pkg` if produced), and renders
-[`homebrew/tingra-cli.rb`](homebrew/tingra-cli.rb) into the tap with the release's
-`version` + `sha256`. Configurable via `TINGRA_REPO`, `TINGRA_TAP_REPO`,
+runs `scripts/release-cli-package.sh`, then `scripts/release-app-package.sh --app tingra`,
+both before anything is published, pushes tag `v<version>`, creates the release with
+`dist/*.zip`, the app's disk image (and `*.pkg` if produced), and renders
+[`homebrew/tingra-cli.rb`](homebrew/tingra-cli.rb) and [`homebrew/tingra.rb`](homebrew/tingra.rb)
+into the tap, as `Formula/tingra-cli.rb` and `Casks/tingra.rb`, with the release's
+`version` and each artifact's `sha256`, in one commit. Configurable via `TINGRA_REPO`, `TINGRA_TAP_REPO`,
 `TINGRA_TAP_FORMULA`. Idempotent — safe to re-run if a step fails.
 
 Testers then install with:
 
 ```sh
+brew install --cask larryaasen/tingra/tingra
 brew install larryaasen/tingra/tingra-cli
 tingra-cli serve --install
 ```
 
-The tap never builds from source — it downloads the prebuilt, notarized zip.
+The tap never builds from source — it downloads the prebuilt, notarized zip
+and disk image.
 
-### The pieces `release-cli-publish.sh` orchestrates
+### The pieces `release-publish.sh` orchestrates
 
 The formula source of truth is [`homebrew/tingra-cli.rb`](homebrew/tingra-cli.rb).
 The **tap itself is a separate repo**, `larryaasen/homebrew-tingra`, that lives
 outside this monorepo and must exist (empty is fine) before the first release.
-To run any step by hand instead of `release-cli-publish.sh`:
+To run any step by hand instead of `release-publish.sh`:
 
 1. `scripts/release-cli-package.sh` → `dist/*.zip`, `dist/*.pkg`, and the zip's sha256.
-2. `gh release create v<version> dist/* --repo larryaasen/tingra`.
-3. Copy `homebrew/tingra-cli.rb` into the tap, setting `version` and `sha256`,
-   then commit and push the tap.
+2. `scripts/release-app-package.sh --app tingra` → `dist/tingra-app/Tingra-<version>-arm64.dmg`
+   and its sha256. It writes only `dist/tingra-app/`, so it runs after step 1,
+   which empties `dist/`.
+3. `gh release create v<version> dist/*.zip dist/*.pkg dist/tingra-app/*.dmg --repo larryaasen/tingra`.
+4. Copy `homebrew/tingra-cli.rb` and `homebrew/tingra.rb` into the tap as
+   `Formula/tingra-cli.rb` and `Casks/tingra.rb`, setting each one's `version`
+   and `sha256`, then commit and push the tap.
 
-`.github/workflows/release-cli.yml` automates all three in CI, including the tap
+`.github/workflows/release.yml` automates all four in CI, including the tap
 push — it holds a PAT with write access to both repositories, which is what
 `GITHUB_TOKEN` alone could not give it.
+
+## Tingra.app
+
+Tingra.app ships in the product release, beside `tingra-cli`, at the same
+version ([docs/RELEASE.md](../docs/RELEASE.md), Decision 6). Its version is
+`TINGRA_VERSION` in `apps/tingra-app/Tingra.xcconfig`, which `release.sh`
+bumps with the CLI's.
+
+**The artifact** is one disk image, `Tingra-<version>-arm64.dmg`, built by
+`scripts/release-app-package.sh --app tingra [version]` into
+`dist/tingra-app/`. The pipeline is the one "Tingra Cameras" describes below,
+with what this app adds:
+
+- **The provisioning profile.** Signing needs `TINGRA_APP_PROFILE` as well as
+  `TINGRA_SIGN_ID`. The script checks the profile's team and App ID, installs
+  it for Xcode, names it on the archive through `TINGRA_APP_PROFILE_SPECIFIER`
+  (read by the app target alone, since the Notes extension and the kits refuse
+  a profile issued for another bundle), and maps it to the app alone in the
+  generated export options.
+- **More checks:** the profile embedded; the application identifier, the team
+  identifier, and exactly one keychain group, `com.moonwink.tingra.shared`,
+  under the App ID prefix the profile grants, with no unexpanded `$(`; the
+  camera, microphone, and library validation entitlements; `TingraNotes.appex`
+  embedded at the app's version, sandboxed, and signed by the same team; and
+  no `FixturePlugIn.tingraplugin` anywhere in the bundle.
+- **The Notes extension is unregistered too.** Every copy of the app the run
+  built is unregistered from Launch Services on exit, and every copy of Notes
+  inside one is removed from pluginkit, so a release cut on a development Mac
+  leaves Notes working in the Xcode build.
+
+Without `TINGRA_SIGN_ID` it builds, verifies, runs, and images an unsigned
+development app, which must never be published.
+
+The cask, [`homebrew/tingra.rb`](homebrew/tingra.rb), installs the app into
+`/Applications`. Its `zap` names only the files Tingra.app alone writes. It
+never removes `~/Library/Application Support/Tingra` itself, which
+`tingra-cli` and Tingra Cameras share, or their files in it. It never touches
+the Keychain either, which its caveats say.
 
 ## Tingra Cameras
 

@@ -399,9 +399,10 @@ Nothing open.
 ## Release mechanics
 
 - [ ] **Release Tingra.app** *(all eleven decisions approved 2026-10-13;
-  [RELEASE.md](RELEASE.md))*. The app has no release path: no script, no
-  workflow, no cask. Slice 1 is the app alone, in a disk image, with a
-  `tingra` cask. Slice 2 puts the daemon and the CLI inside the app, closes
+  [RELEASE.md](RELEASE.md))*. Slice 1 is the app alone, in a disk image,
+  with a `tingra` cask; its scripts, workflow, cask, and the
+  `TINGRA_APP_PROFILE` secret are in place, and the first release waits on
+  row E. Slice 2 puts the daemon and the CLI inside the app, closes
   the Login Items item below, and gives the Claude Desktop Extension item
   its bundled CLI.
   - [x] `Tingra --version` and the shared `TINGRA_VERSION` *(built
@@ -424,10 +425,9 @@ Nothing open.
     the release bundle identifier; TCC grants move between the two
     signatures, accepted.
   - [ ] Spike row E, Larry's: a clean account's first run of the notarized
-    disk image (`dist/tingra-app/`, from row D).
-  - [ ] `scripts/release-app-package.sh`, the renames, the cask template,
-    `release.yml`, and the docs that follow them.
-  - [ ] Larry: add the `TINGRA_APP_PROFILE` secret and cut 0.2.0.
+    disk image (`dist/tingra-app/Tingra-0.1.4-dev-arm64.dmg`, built by
+    `release-app-package.sh --app tingra` on 2026-11-22).
+  - [ ] Larry: cut 0.2.0.
 
 - [ ] **Daemon shows the signer's name, not "Tingra", in Login Items & Extensions
   → App Background Activity** *(found 2026-07-11)*. macOS groups a standalone
@@ -453,7 +453,7 @@ Nothing open.
   → Extension Developer → Install Extension…, or eventually listed in Anthropic's
   extension directory. Scope: an `mcpb`-format manifest wrapping the signed
   `tingra-cli` binary with `args: ["mcp"]`, built and versioned alongside the
-  existing packaging pipeline (`scripts/release-cli-package.sh`/`release-cli-publish.sh`). Worth
+  existing packaging pipeline (`scripts/release-cli-package.sh`/`release-publish.sh`). Worth
   revisiting once `Tingra.app` exists (previous item) — the extension could point
   at the app-bundled CLI rather than a separate artifact. Not started; a real
   scoped project, not a quick add.

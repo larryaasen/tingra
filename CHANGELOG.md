@@ -26,3 +26,4 @@
 - repo: CI now builds and tests TingraJSONRPC and TingraAppPlugInKit, which its package list had left out.
 - engine: Bounded every input's frame and audio streams, so a stalled consumer cannot grow memory.
 - engine: Registered the display reconfiguration callback on the main actor, like the workspace observers.
+- repo: Added Tingra.app's release, a notarized disk image and tingra cask, cut with the CLI by release.sh.
