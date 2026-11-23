@@ -30,7 +30,7 @@ DEVELOPMENT_TEAM = $(TINGRA_DEVELOPMENT_TEAM)
 //  this line together with TingraCLIVersion.current and the CLI's Info.plist,
 //  and refuses to go on if the three disagree. Between releases it carries the
 //  next version with a -dev suffix, as they do.
-TINGRA_VERSION = 0.2.0
+TINGRA_VERSION = 0.2.1-dev
 
 //  Apple Silicon only, in every configuration.
 //  Without this a Release build for a generic Mac destination — which is what
