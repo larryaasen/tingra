@@ -3,8 +3,6 @@
 - Added CHANGELOG.md to this project.
 - sdk: Added the application input kind, for an application's sound captured as an audio input.
 - sdk: Added the monitor overlay seam, so a plug-in can draw on any monitor for the operator alone.
-- cameras: You can now collapse the compact window's controls, leaving just the camera picker and preview.
-- cameras: Tingra Cameras now quits when you close its last window.
 
 - engine: Added TingraApplicationAudio, a standalone library capturing an application's sound by process tap.
 - engine: Added the optional applications key to the project document.
@@ -18,6 +16,11 @@
 - engine: Bounded every input's frame and audio streams, so a stalled consumer cannot grow memory.
 - engine: Registered the display reconfiguration callback on the main actor, like the workspace observers.
 - repo: Added Tingra.app's release, a notarized disk image and tingra cask, cut with the CLI by release.sh.
+
+# 0.2.0 11/23/2026
+
+- cameras: You can now collapse the compact window's controls, leaving just the camera picker and preview.
+- cameras: Tingra Cameras now quits when you close its last window.
 
 # 0.2.0 11/23/2026
 
