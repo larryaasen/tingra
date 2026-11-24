@@ -1012,8 +1012,9 @@ surface is:
 
 - `TingraCamerasMain` — the `@main` entry: answers `--version` or starts it.
 - `TingraCamerasApp` — the app: the scenes, commands, and shared model.
+- `TingraCamerasAppDelegate` — quits the app when its last window closes.
 - `ContentView` — the standard window's `NavigationSplitView` layout.
-- `HostWindow` — the window a view is in, for widening it.
+- `HostWindow` — the window a view is in, for widening it or setting its height.
 - `HostWindowReader` — the invisible view that fills in a `HostWindow`.
 - `SidebarView` — the Cameras sidebar list.
 - `DeviceRow` — one tappable device row, checkmarked when active.
