@@ -8,6 +8,7 @@
 //
 
 import SwiftUI
+import TingraEventBus
 
 /// The compact window (``WindowStyle/compact``), the default: everything
 /// the standard window shows, in one narrow column, for the camera this
@@ -20,6 +21,12 @@ import SwiftUI
 /// sidebar's form) fill the rest, scrolling under the preview rather than
 /// moving it. The status bar runs across the bottom, as in the standard
 /// window.
+///
+/// The controls sit under one Controls heading (``ControlsDisclosure``)
+/// that collapses them, the compact window's Hide Inspector: collapsed, the
+/// window shrinks to the picker and the preview and can't be made taller;
+/// expanded again, it returns to the height it had before. Both are per
+/// window, in `@SceneStorage`, like the standard window's trailing sidebar.
 ///
 /// The column's width is bounded at both ends: past ``maximumWidth`` the
 /// standard window is the better window, and ``minimumWidth`` is the
@@ -45,6 +52,19 @@ struct CompactWindowView: View {
     /// The window's camera session (``WindowSession``).
     @Environment(CameraSession.self) private var session
 
+    /// The shared model, for the disclosure's `tap` record.
+    @Environment(HardwareModel.self) private var model
+
+    /// Whether the camera's controls are showing under the Controls heading.
+    @SceneStorage("controls.isExpanded") private var isControlsExpanded = true
+
+    /// The window's height when its controls were last collapsed, which
+    /// expanding them restores; zero until they have been.
+    @SceneStorage("controls.expandedHeight") private var expandedHeight: Double = 0
+
+    /// The window, which SwiftUI can't return to an earlier height itself.
+    @State private var hostWindow = HostWindow()
+
     /// The column.
     var body: some View {
         VStack(spacing: 0) {
@@ -60,11 +80,16 @@ struct CompactWindowView: View {
             if session.selectedCamera != nil {
                 Divider()
 
-                CameraControlsView()
-                    // The window's own background, so the form reads as part
-                    // of the one column rather than a panel set into it.
-                    .scrollContentBackground(.hidden)
-                    .frame(maxHeight: .infinity, alignment: .top)
+                ControlsDisclosure(isExpanded: controlsExpansion)
+
+                if isControlsExpanded {
+                    CameraControlsView()
+                        // The window's own background, so the form reads as
+                        // part of the one column rather than a panel set into
+                        // it.
+                        .scrollContentBackground(.hidden)
+                        .frame(maxHeight: .infinity, alignment: .top)
+                }
             } else {
                 Spacer(minLength: 0)
             }
@@ -72,6 +97,10 @@ struct CompactWindowView: View {
         .safeAreaInset(edge: .bottom, spacing: 0) {
             StatusBarView()
         }
+        // Collapsed, the column is exactly as tall as the picker, the preview
+        // at the column's width, and the status bar, so the window (sized by
+        // its content) shrinks to them and keeps that height.
+        .fixedSize(horizontal: false, vertical: isCollapsed)
         // The product's name in the title bar: the picker right under it
         // already names the camera. The product name is the same in every
         // language.
@@ -80,9 +109,76 @@ struct CompactWindowView: View {
             minWidth: Self.minimumWidth,
             idealWidth: Self.idealWidth,
             maxWidth: Self.maximumWidth,
-            minHeight: Self.minimumHeight,
-            idealHeight: Self.idealHeight,
-            maxHeight: .infinity
+            minHeight: isCollapsed ? nil : Self.minimumHeight,
+            idealHeight: isCollapsed ? nil : Self.idealHeight,
+            maxHeight: isCollapsed ? nil : .infinity
+        )
+        .background(HostWindowReader(host: hostWindow))
+        // After the update that expands the controls, so the window already
+        // allows the taller height; content sizing alone would stop at the
+        // minimum height.
+        .onChange(of: isControlsExpanded) { _, isExpanded in
+            guard isExpanded else { return }
+            hostWindow.setHeight(expandedHeight > 0 ? expandedHeight : Self.idealHeight)
+        }
+    }
+
+    /// Whether the controls are collapsed under their heading. A window
+    /// with no camera has no heading, so it keeps its usual height.
+    private var isCollapsed: Bool {
+        session.selectedCamera != nil && !isControlsExpanded
+    }
+
+    /// A binding to whether the controls are showing, reporting the
+    /// disclosure's own `tap` first.
+    ///
+    /// The `tap` rides the binding setter, as the sidebar sections' does, so
+    /// restoring the window's stored state records no tap nobody made.
+    private var controlsExpansion: Binding<Bool> {
+        Binding {
+            isControlsExpanded
+        } set: { isExpanded in
+            model.recordTap("compactControls.disclosure", params: ["expanded": .bool(isExpanded)])
+            // Read before collapsing, while the window still has its height.
+            if !isExpanded, let height = hostWindow.window?.frame.height {
+                expandedHeight = height
+            }
+            isControlsExpanded = isExpanded
+        }
+    }
+}
+
+/// The Controls heading over the compact window's camera controls: the
+/// heading and a disclosure chevron, the whole row clickable, as the
+/// sidebar's section headings collapse their sections.
+private struct ControlsDisclosure: View {
+    /// Whether the controls are showing.
+    @Binding var isExpanded: Bool
+
+    /// The heading row.
+    var body: some View {
+        Button {
+            isExpanded.toggle()
+        } label: {
+            HStack {
+                Text("Controls", comment: "Compact window heading that shows or hides the camera's controls")
+                    .font(.headline)
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                    .animation(.default, value: isExpanded)
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+            }
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal)
+        .padding(.vertical, 8)
+        .accessibilityValue(
+            isExpanded
+                ? Text("Expanded", comment: "Accessibility value of the compact window's open Controls heading")
+                : Text("Collapsed", comment: "Accessibility value of the compact window's closed Controls heading")
         )
     }
 }

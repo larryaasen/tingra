@@ -10,8 +10,9 @@
 import AppKit
 import SwiftUI
 
-/// The window a view is in, for the two things SwiftUI can't do: widening a
-/// window that is already open, and closing one window of a group from the
+/// The window a view is in, for the things SwiftUI can't do: widening a
+/// window that is already open, returning one to an earlier height
+/// (``CompactWindowView``), and closing one window of a group from the
 /// menu bar (``WindowStyleCommands``). Held weakly, so a view's state never keeps
 /// its own window alive.
 final class HostWindow {
@@ -28,6 +29,24 @@ final class HostWindow {
         frame.size.width = width
         if let visible = window.screen?.visibleFrame, frame.maxX > visible.maxX {
             frame.origin.x = max(visible.minX, visible.maxX - width)
+        }
+        window.setFrame(frame, display: true)
+    }
+
+    /// Sets the window's height, keeping its top edge where it is and the
+    /// window on its screen: it moves up rather than run off the bottom, and
+    /// is no taller than the screen.
+    ///
+    /// - Parameter height: The height the window takes, frame included.
+    func setHeight(_ height: CGFloat) {
+        guard let window else { return }
+        var frame = window.frame
+        let top = frame.maxY
+        frame.size.height = height
+        frame.origin.y = top - height
+        if let visible = window.screen?.visibleFrame {
+            frame.size.height = min(height, visible.height)
+            frame.origin.y = max(visible.minY, top - frame.height)
         }
         window.setFrame(frame, display: true)
     }

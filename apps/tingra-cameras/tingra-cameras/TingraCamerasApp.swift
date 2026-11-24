@@ -17,9 +17,14 @@ import SwiftUI
 /// Window menu switches to (``WindowStyle``) — File ▸ New Window opens more
 /// of the operator's style, each showing its own camera — beside the
 /// settings window (``SettingsView``), and owns the shared ``HardwareModel``
-/// for the session. It is not the `@main` entry: ``TingraCamerasMain`` is,
+/// for the session. Closing the last window quits it
+/// (``TingraCamerasAppDelegate``). It is not the `@main` entry: ``TingraCamerasMain`` is,
 /// so `--version` answers before this value and its engine exist.
 struct TingraCamerasApp: App {
+    /// The application delegate, which quits the app as its last window
+    /// closes.
+    @NSApplicationDelegateAdaptor(TingraCamerasAppDelegate.self) private var appDelegate
+
     /// The session's hardware-selection state, owned here so it persists for
     /// the window's lifetime and is injected into the view tree. The live
     /// model discovers real hardware through the Tingra engine.

@@ -222,6 +222,23 @@
         }
       }
     },
+    "Collapsed" : {
+      "comment" : "Accessibility value of the compact window's closed Controls heading",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zugeklappt"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Contraído"
+          }
+        }
+      }
+    },
     "Compact Window" : {
       "comment" : "Title of the narrow one-column camera window",
       "extractionState" : "stale",
@@ -236,6 +253,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ventana compacta"
+          }
+        }
+      }
+    },
+    "Controls" : {
+      "comment" : "Compact window heading that shows or hides the camera's controls",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Regler"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Controles"
           }
         }
       }
@@ -440,6 +474,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Todos los controles de «%@» vuelven a su valor predeterminado. Los preajustes guardados no cambian."
+          }
+        }
+      }
+    },
+    "Expanded" : {
+      "comment" : "Accessibility value of the compact window's open Controls heading",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufgeklappt"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Expandido"
           }
         }
       }

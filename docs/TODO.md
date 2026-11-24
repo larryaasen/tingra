@@ -417,11 +417,11 @@ Nothing open.
 
 - [ ] **Release Tingra.app** *(all eleven decisions approved 2026-10-13;
   [RELEASE.md](RELEASE.md))*. Slice 1 is the app alone, in a disk image,
-  with a `tingra` cask; its scripts, workflow, cask, and the
-  `TINGRA_APP_PROFILE` secret are in place, and the first release waits on
-  row E. Slice 2 puts the daemon and the CLI inside the app, closes
-  the Login Items item below, and gives the Claude Desktop Extension item
-  its bundled CLI.
+  with a `tingra` cask; it shipped as 0.2.0 on 2026-11-23 and installs
+  with `brew install --cask`, and what is left of it is the two checks
+  below. Slice 2 puts the daemon and the CLI inside the app, closes the
+  Login Items item below, and gives the Claude Desktop Extension item its
+  bundled CLI.
   - [x] `Tingra --version` and the shared `TINGRA_VERSION` *(built
     2026-10-13; app 927 tests)*.
   - [x] The Developer ID provisioning profile *(Larry, 2026-10-13)*: an
@@ -443,8 +443,16 @@ Nothing open.
     signatures, accepted.
   - [ ] Spike row E, Larry's: a clean account's first run of the notarized
     disk image (`dist/tingra-app/Tingra-0.1.4-dev-arm64.dmg`, built by
-    `release-app-package.sh --app tingra` on 2026-11-22).
-  - [ ] Larry: cut 0.2.0.
+    `release-app-package.sh --app tingra` on 2026-11-22, or the 0.2.0 image
+    from the release).
+  - [ ] Larry: with 0.2.0 installed in `/Applications`, run the Xcode build
+    and check that Notes starts instead of stalling on "Loading plug-in…".
+    The installed app registers a second Notes under the same identifier
+    (RELEASE.md, "0.2.0"); a Debug build at `0.2.1-dev` now carries the
+    higher version, which may be what the system picks. If it stalls, the
+    release build and the development build need different extension
+    identifiers or a registration step, which is a decision of its own
+    (row F).
 
 - [ ] **Daemon shows the signer's name, not "Tingra", in Login Items & Extensions
   → App Background Activity** *(found 2026-07-11)*. macOS groups a standalone
