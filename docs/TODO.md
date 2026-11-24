@@ -338,20 +338,9 @@ are the checks still open from those, pointing at their records there.
     a reset, surviving a reopen; VU Meters on program with tone running,
     and on an input tile; `monitor_overlay_set` from an MCP client.
 
-- [ ] **Taking a shot with one click** *(decided 2026-11-23)*: a Take to
-  Program mode beside Stage on Preview, so a shot click goes straight to
-  air. Design in ARCHITECTURE.md, "Taking a shot with one click". Swift work,
-  so it needs a local session on a Mac.
-  - [ ] Build: the mode in `SessionPreferences`, the pure click rule, the
-    shot bank, Shots menu, and sidebar shot rows wired to it, the panel
-    control and Program menu item, tooltips and the red cue, ⌥-click and
-    the context-menu stage, tap names, strings in `de` and `es`.
-  - [ ] Tests: the click rule for every mode and modifier pair; the setting
-    saved, loaded, and missing (falling back to Stage on Preview); a take
-    from each surface in each mode.
-  - [ ] Docs with the build: GLOSSARY.md entry for the mode, the Shortcuts
-    pane if it lists the ⌥-click, and a CHANGELOG entry.
-  - [ ] Check by hand in the running app: a click takes with the armed
+- [ ] **Left open from “Taking a shot with one click”** (built; record in
+  ARCHITECTURE.md, "Taking a shot with one click"):
+  - Check by hand in the running app: a click takes with the armed
     transition, an input row still stages, ⌥-click stages, the mode
     survives a relaunch, and the red cue shows only in Take to Program.
 

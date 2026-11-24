@@ -109,6 +109,62 @@ struct SessionPreferencesTests {
         #expect(SessionPosition.none.transitionKind == nil)
     }
 
+    @Test("the switching mode round-trips through a fresh store, in each setting")
+    func switchingModeRoundTrips() throws {
+        for mode in SwitchingMode.allCases {
+            let (preferences, defaults, name) = try makePreferences()
+            defer { defaults.removePersistentDomain(forName: name) }
+
+            preferences.position = SessionPosition(switchingMode: mode)
+
+            let read = SessionPreferences(defaults: defaults).position
+            #expect(read.switchingMode == mode)
+            #expect(read.launchSwitchingMode == mode)
+            #expect(defaults.string(forKey: "session.switchingMode") == mode.rawValue)
+        }
+    }
+
+    @Test("a switching mode that was never recorded reads nil, and the launch adopts Stage on Preview")
+    func missingSwitchingModeFallsBackToStageOnPreview() throws {
+        let (preferences, defaults, name) = try makePreferences()
+        defer { defaults.removePersistentDomain(forName: name) }
+        preferences.position = SessionPosition(transitionKind: .dissolve)
+
+        #expect(preferences.position.switchingMode == nil)
+        #expect(defaults.object(forKey: "session.switchingMode") == nil)
+        #expect(preferences.position.launchSwitchingMode == .stageOnPreview)
+        #expect(SessionPosition.none.launchSwitchingMode == .stageOnPreview)
+    }
+
+    @Test("a switching mode the app no longer knows reads nil, and the launch adopts Stage on Preview")
+    func unknownSwitchingModeFallsBackToStageOnPreview() throws {
+        let (preferences, defaults, name) = try makePreferences()
+        defer { defaults.removePersistentDomain(forName: name) }
+        defaults.set("takeEverything", forKey: "session.switchingMode")
+
+        #expect(preferences.position.switchingMode == nil)
+        #expect(preferences.position.launchSwitchingMode == .stageOnPreview)
+    }
+
+    @Test("clearing the switching mode removes its key rather than leaving Take to Program behind")
+    func clearingSwitchingModeRemovesKey() throws {
+        let (preferences, defaults, name) = try makePreferences()
+        defer { defaults.removePersistentDomain(forName: name) }
+        preferences.position = SessionPosition(switchingMode: .takeToProgram)
+
+        preferences.position = SessionPosition()
+
+        #expect(defaults.object(forKey: "session.switchingMode") == nil)
+        #expect(preferences.position.launchSwitchingMode == .stageOnPreview)
+    }
+
+    @Test("positions that differ only in switching mode compare unequal")
+    func switchingModeTakesPartInEquality() {
+        #expect(SessionPosition(switchingMode: .takeToProgram) == SessionPosition(switchingMode: .takeToProgram))
+        #expect(SessionPosition(switchingMode: .takeToProgram) != SessionPosition(switchingMode: .stageOnPreview))
+        #expect(SessionPosition(switchingMode: .stageOnPreview) != .none)
+    }
+
     @Test("a nil id clears its key rather than leaving the last one behind")
     func nilClearsKey() throws {
         let (preferences, defaults, name) = try makePreferences()
@@ -235,6 +291,18 @@ struct SessionPreferencesScopeTests {
         #expect(other.position.transitionKind == .wipe)
         #expect(other.position.wipeEdge == .left)
         #expect(other.position.transitionDuration == 2)
+        #expect(other.position.presetID == nil)
+    }
+
+    @Test("the switching mode is shared across project scopes")
+    func switchingModeIsGlobal() throws {
+        let (defaults, name) = try makeDefaults()
+        defer { defaults.removePersistentDomain(forName: name) }
+        let show = SessionPreferences(defaults: defaults, projectID: ProjectID(rawValue: "show"))
+        show.position = SessionPosition(presetID: PresetID(rawValue: "a"), switchingMode: .takeToProgram)
+
+        let other = show.scoped(to: ProjectID(rawValue: "other"))
+        #expect(other.position.switchingMode == .takeToProgram)
         #expect(other.position.presetID == nil)
     }
 

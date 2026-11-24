@@ -60,7 +60,8 @@ import SwiftUI
 /// armed transition), take the program down, the two session controls, save a
 /// still of the program, then the one window command.
 enum ProductionShortcut: String, CaseIterable, Sendable {
-    /// Stage the *n*th shot of the switcher on preview — ⌘1 through ⌘9.
+    /// Stage the *n*th shot of the switcher on preview — ⌘1 through ⌘9. In
+    /// Take to Program the same keys take it (``ShotClick``).
     case stageShot
 
     /// Take the staged shot to program with a hard cut, whatever the
@@ -215,8 +216,8 @@ enum ProductionShortcut: String, CaseIterable, Sendable {
         switch self {
         case .stageShot:
             Text(
-                "Stages the shot in that position of the switcher, ready to take.",
-                comment: "Shortcuts settings: what ⌘1–⌘9 does"
+                "Stages the shot in that position of the switcher, ready to take. In Take to Program, takes it instead.",
+                comment: "Shortcuts settings: what ⌘1–⌘9 does, in each switching mode"
             )
         case .cut:
             Text(

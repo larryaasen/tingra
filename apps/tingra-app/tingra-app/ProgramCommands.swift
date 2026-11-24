@@ -43,6 +43,11 @@ import TingraEventBus
 /// home of the bus monitors' Overlays submenus (``MonitorOverlayMenu``;
 /// PLUGINS.md, Decision 57), the same items, since the HIG wants every
 /// context-menu command in the menu bar too.
+///
+/// Then **Take Shots to Program on Click**, a checkmark item: the menu-bar
+/// home of the transition panel's switching mode (``SwitchingMode``;
+/// ARCHITECTURE.md, "Taking a shot with one click"). It carries no keyboard
+/// shortcut, so the mode is never changed by a stray key.
 struct ProgramCommands: Commands {
     /// The engine model the items change the format through, and report
     /// their `tap` to.
@@ -91,6 +96,16 @@ struct ProgramCommands: Commands {
 
             Divider()
 
+            Toggle(isOn: takeToProgramBinding) {
+                Text(
+                    "Take Shots to Program on Click",
+                    comment:
+                        "Program menu checkmark item: picking a shot takes it to program instead of staging it on preview"
+                )
+            }
+
+            Divider()
+
             Menu {
                 ForEach(ProgramSize.allCases) { size in
                     Toggle(isOn: sizeBinding(size)) {
@@ -125,6 +140,20 @@ struct ProgramCommands: Commands {
     /// rather than left to be refused.
     private var isOnAir: Bool {
         ProgramFormatChoice.refusal(isStreaming: model.isStreaming, isRecording: model.isRecording) != nil
+    }
+
+    /// The switching mode's checkmark: on in Take to Program; setting it
+    /// changes the mode, after reporting `switchingMode.menuItem` with the
+    /// mode chosen.
+    private var takeToProgramBinding: Binding<Bool> {
+        Binding {
+            model.switchingMode == .takeToProgram
+        } set: { isOn in
+            let mode: SwitchingMode = isOn ? .takeToProgram : .stageOnPreview
+            model.eventBus.tap(
+                "switchingMode.menuItem", domain: .composition, params: ["mode": .string(mode.rawValue)])
+            model.switchingMode = mode
+        }
     }
 
     /// A named size's checkmark: on when the program has its dimensions;

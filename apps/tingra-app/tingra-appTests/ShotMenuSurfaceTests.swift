@@ -16,6 +16,7 @@ struct ShotMenuSurfaceTests {
     @Test("the switcher keeps the tap names its shot buttons have always reported")
     func switcherKeepsItsNames() {
         let surface = ShotMenuSurface.switcher
+        #expect(surface.tapName(for: .stage) == "shotStage.menu")
         #expect(surface.tapName(for: .duplicate) == "shotDuplicate.menu")
         #expect(surface.tapName(for: .rename) == "shotRename.menu")
         #expect(surface.tapName(for: .defaultTransition) == "shotDefaultTransition.menu")
@@ -29,6 +30,7 @@ struct ShotMenuSurfaceTests {
     @Test("the sidebar reports its own names, moving up and down, and keeps its Delete name")
     func sidebarReportsItsOwnNames() {
         let surface = ShotMenuSurface.sidebar
+        #expect(surface.tapName(for: .stage) == "sidebarShotStage.menu")
         #expect(surface.tapName(for: .duplicate) == "sidebarShotDuplicate.menu")
         #expect(surface.tapName(for: .rename) == "sidebarShotRename.menu")
         #expect(surface.tapName(for: .defaultTransition) == "sidebarShotDefaultTransition.menu")

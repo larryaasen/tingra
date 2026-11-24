@@ -36,6 +36,10 @@ enum ShotMenuSurface: Sendable, CaseIterable {
 
     /// The actions the menu and its rename dialog report.
     enum Action: Sendable, CaseIterable {
+        /// The Stage on Preview item, offered while the switching mode is
+        /// Take to Program.
+        case stage
+
         /// The Duplicate item.
         case duplicate
 
@@ -83,6 +87,8 @@ enum ShotMenuSurface: Sendable, CaseIterable {
             case .sidebar: "sidebarShot"
             }
         switch action {
+        case .stage:
+            return "\(prefix)Stage.menu"
         case .duplicate:
             return "\(prefix)Duplicate.menu"
         case .rename:
@@ -105,7 +111,10 @@ enum ShotMenuSurface: Sendable, CaseIterable {
 
 /// One shot's context menu: duplicate, rename, set its default transition,
 /// reorder, and remove that shot (ARCHITECTURE.md, "Shot management", "Shot
-/// and preset reordering", "Per-shot default transitions").
+/// and preset reordering", "Per-shot default transitions"). While the
+/// switching mode is Take to Program it leads with **Stage on Preview**, the
+/// menu's way to preview a shot whose click now goes to air (ARCHITECTURE.md,
+/// "Taking a shot with one click").
 ///
 /// Shared by the shot bank's tiles and the sidebar's shot rows, so
 /// right-clicking a shot offers the same commands wherever the shot is
@@ -141,9 +150,25 @@ struct ShotContextMenu: View {
     let onRemove: (Shot) -> Void
 
     /// The items, in the order the preset menu uses, with the Default
-    /// Transition submenu after Rename….
+    /// Transition submenu after Rename…, led by Stage on Preview while a
+    /// click takes.
     var body: some View {
         let index = model.shots.firstIndex { $0.id == shot.id }
+
+        if model.switchingMode == .takeToProgram {
+            Button {
+                model.eventBus.tap(
+                    surface.tapName(for: .stage),
+                    domain: .composition,
+                    params: ["shot": .string(shot.id.rawValue), "name": .string(shot.name)]
+                )
+                model.setPreview(shot.id)
+            } label: {
+                SwitchingMode.stageOnPreview.title
+            }
+
+            Divider()
+        }
 
         Button {
             model.eventBus.tap(

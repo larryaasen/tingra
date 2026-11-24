@@ -3,6 +3,7 @@
 - Added CHANGELOG.md to this project.
 - sdk: Added the application input kind, for an application's sound captured as an audio input.
 - sdk: Added the monitor overlay seam, so a plug-in can draw on any monitor for the operator alone.
+- app: You can now take a shot to program with one click by setting Shot Click to Take to Program.
 
 - engine: Added TingraApplicationAudio, a standalone library capturing an application's sound by process tap.
 - engine: Added the optional applications key to the project document.
