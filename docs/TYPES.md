@@ -1088,5 +1088,6 @@ surface is:
 - `WindowStyleCommands` — Switch to Compact/Standard Window in the Window menu.
 - `NewWindowCommands` — File ▸ New Window, opening the operator's window style.
 - `CompactWindowView` — the compact window: picker, preview, and controls.
+- `CompactWindowPreferences` — the compact controls' expansion and height.
 - `CompactCameraPicker` — the compact window's camera pop-up button.
 - `CompactPresetsMenu` — the compact window's Presets pull-down button.

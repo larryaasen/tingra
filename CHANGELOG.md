@@ -4,6 +4,7 @@
 - sdk: Added the application input kind, for an application's sound captured as an audio input.
 - sdk: Added the monitor overlay seam, so a plug-in can draw on any monitor for the operator alone.
 - app: You can now take a shot to program with one click by setting Shot Click to Take to Program.
+- cameras: Fixed the compact window forgetting its collapsed controls when you quit and reopen the app.
 
 - engine: Added TingraApplicationAudio, a standalone library capturing an application's sound by process tap.
 - engine: Added the optional applications key to the project document.

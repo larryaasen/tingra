@@ -25,8 +25,8 @@ import TingraEventBus
 /// The controls sit under one Controls heading (``ControlsDisclosure``)
 /// that collapses them, the compact window's Hide Inspector: collapsed, the
 /// window shrinks to the picker and the preview and can't be made taller;
-/// expanded again, it returns to the height it had before. Both are per
-/// window, in `@SceneStorage`, like the standard window's trailing sidebar.
+/// expanded again, it returns to the height it had before. Both persist
+/// across launches (``CompactWindowPreferences``).
 ///
 /// The column's width is bounded at both ends: past ``maximumWidth`` the
 /// standard window is the better window, and ``minimumWidth`` is the
@@ -55,15 +55,27 @@ struct CompactWindowView: View {
     /// The shared model, for the disclosure's `tap` record.
     @Environment(HardwareModel.self) private var model
 
-    /// Whether the camera's controls are showing under the Controls heading.
-    @SceneStorage("controls.isExpanded") private var isControlsExpanded = true
+    /// Whether the camera's controls are showing under the Controls heading,
+    /// seeded from ``preferences`` as the window opens.
+    ///
+    /// Held in `@State` as well as in preferences so the view redraws when it
+    /// changes, as the sidebar sections' expansion is.
+    @State private var isControlsExpanded: Bool
 
-    /// The window's height when its controls were last collapsed, which
-    /// expanding them restores; zero until they have been.
-    @SceneStorage("controls.expandedHeight") private var expandedHeight: Double = 0
+    /// Where the controls' expansion and the expanded height persist.
+    private let preferences: CompactWindowPreferences
 
     /// The window, which SwiftUI can't return to an earlier height itself.
     @State private var hostWindow = HostWindow()
+
+    /// Creates the column.
+    ///
+    /// - Parameter preferences: Where the controls' expansion persists (the
+    ///   standard defaults by default).
+    init(preferences: CompactWindowPreferences = CompactWindowPreferences()) {
+        self.preferences = preferences
+        _isControlsExpanded = State(initialValue: preferences.isControlsExpanded)
+    }
 
     /// The column.
     var body: some View {
@@ -119,7 +131,7 @@ struct CompactWindowView: View {
         // minimum height.
         .onChange(of: isControlsExpanded) { _, isExpanded in
             guard isExpanded else { return }
-            hostWindow.setHeight(expandedHeight > 0 ? expandedHeight : Self.idealHeight)
+            hostWindow.setHeight(preferences.expandedHeight ?? Self.idealHeight)
         }
     }
 
@@ -141,8 +153,9 @@ struct CompactWindowView: View {
             model.recordTap("compactControls.disclosure", params: ["expanded": .bool(isExpanded)])
             // Read before collapsing, while the window still has its height.
             if !isExpanded, let height = hostWindow.window?.frame.height {
-                expandedHeight = height
+                preferences.expandedHeight = height
             }
+            preferences.isControlsExpanded = isExpanded
             isControlsExpanded = isExpanded
         }
     }
