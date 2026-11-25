@@ -690,6 +690,10 @@ surface is:
 - `ContentView` — the main window's detail column: monitors over controls.
 - `TransitionPanel` — the Cut, Take, transition, and duration controls.
 - `TakeTransitionKind` — the transition kinds the switcher's picker offers.
+- `SwitchingMode` — whether picking a shot stages it or takes it.
+- `ShotClick` — the pure rule turning a shot pick into a stage or a take.
+- `ShotClickAction` — the two things a shot pick does: stage or take.
+- `ShotClickSurface` — which surface a shot was picked on, for `tap` names.
 - `FadeToBlackButton` — the latching Fade to Black toolbar control.
 - `SettingsButton` — the toolbar gear that opens the settings window.
 - `DestinationListView` — the Streaming pane's destination list.
@@ -901,6 +905,7 @@ surface is:
 - `InputGridView` — the multiview window's grid of running inputs.
 - `ShotBankView` — the shot bank: one tile per shot of the active preset.
 - `ShotBankTile` — the pure tile derivation behind the shot bank.
+- `TakeToProgramCue` — the bank's red cue while a pick takes to program.
 - `ShotThumbnailSource` — a bank tile's frames: the whole shot composed.
 - `AddShotMenu` — the Add Shot menu beside the Shots heading.
 - `AddShotMenuItems` — the Add Shot items every surface shares.
@@ -1083,5 +1088,6 @@ surface is:
 - `WindowStyleCommands` — Switch to Compact/Standard Window in the Window menu.
 - `NewWindowCommands` — File ▸ New Window, opening the operator's window style.
 - `CompactWindowView` — the compact window: picker, preview, and controls.
+- `CompactWindowPreferences` — the compact controls' expansion and height.
 - `CompactCameraPicker` — the compact window's camera pop-up button.
 - `CompactPresetsMenu` — the compact window's Presets pull-down button.

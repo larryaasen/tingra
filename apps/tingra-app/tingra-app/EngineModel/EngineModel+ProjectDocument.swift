@@ -26,12 +26,14 @@ extension EngineModel {
     func loadProject() {
         // Read before anything below assigns a preset or a shot, since each
         // assignment records the new position over the old. The armed
-        // transition is global across projects, so it is always restored.
+        // transition and the switching mode are global across projects, so
+        // they are always restored.
         let armed = sessionPreferences.position
         if let kind = armed.transitionKind { takeTransitionKind = kind }
         if let edge = armed.wipeEdge { wipeEdge = edge }
         if let shader = armed.shaderName { shaderName = shader }
         if let duration = armed.transitionDuration { setTakeTransitionDuration(duration) }
+        switchingMode = armed.launchSwitchingMode
 
         recentProjectURLs = NSDocumentController.shared.recentDocumentURLs
         var loaded: Project?

@@ -15,7 +15,9 @@ import TingraEventBus
 /// empty shot, or a full-frame shot of any camera, display, or video
 /// generator), then one item per shot in the active preset, in switcher
 /// order, staging that shot on preview — the first nine under ⌘1–⌘9
-/// (``ProductionShortcut/stageShot``).
+/// (``ProductionShortcut/stageShot``). In Take to Program the items and their
+/// keys take the shot instead (``ShotClick``; ARCHITECTURE.md, "Taking a shot
+/// with one click").
 ///
 /// Add Shot leads because a menu named for a thing is where a Mac user looks
 /// to make one (Notes' File > New Note, Reminders' File > New Reminder), and
@@ -44,7 +46,8 @@ import TingraEventBus
 /// Every shot is listed, not only the first nine: a tenth shot has no key
 /// but is still one click away here when the sidebar is hidden.
 struct ShotCommands: Commands {
-    /// The engine model the items stage through, and report their `tap` to.
+    /// The engine model the items stage or take through, and report their
+    /// `tap` to.
     let model: EngineModel
 
     /// The menu.
@@ -63,12 +66,13 @@ struct ShotCommands: Commands {
             } else {
                 ForEach(Array(model.shots.enumerated()), id: \.element.id) { index, shot in
                     Button {
+                        let click = ShotClick(on: .menuBar, mode: model.switchingMode)
                         model.eventBus.tap(
-                            "shot.menuItem",
+                            click.tapName,
                             domain: .composition,
                             params: ["shot": .string(shot.id.rawValue), "name": .string(shot.name)]
                         )
-                        model.setPreview(shot.id)
+                        model.perform(click.action, on: shot.id)
                     } label: {
                         Text(verbatim: shot.name)
                     }

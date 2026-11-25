@@ -48,6 +48,16 @@ import TingraEventBus
 /// least one), so the same half second is 15 ticks at 30 fps and 30 at 60
 /// — the operator's setting survives a frame-rate change.
 ///
+/// Under the row, the **switching mode** (``SwitchingMode``): whether
+/// picking a shot stages it or takes it, on the panel because a live
+/// switcher keeps its state in view (ARCHITECTURE.md, "Taking a shot with one
+/// click"). On a line of its own, starting under Cut, because the take row
+/// already fills the column at ordinary window widths and a control that
+/// wraps or clips is one the operator cannot read. A pop-up like the kind's,
+/// naming the mode in force, and for one more reason: a control that sends
+/// every later click to air should take two deliberate clicks to change,
+/// where a segment beside Take takes one stray one.
+///
 /// **What the panel does not carry.** Which shot is staged and which is on
 /// program are read off the monitors' captions directly above; the panel
 /// only says what to do about it. Its one line of text appears when there is
@@ -70,7 +80,7 @@ struct TransitionPanel: View {
 
     /// The panel: heading, then the one row — Cut, Take, the transition kind
     /// (and its detail picker), the duration, and the hint while nothing is
-    /// staged.
+    /// staged — then the switching mode on its own line.
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Transition", comment: "Section heading over the Cut, Take, and transition controls")
@@ -149,6 +159,8 @@ struct TransitionPanel: View {
 
                 Spacer(minLength: 0)
             }
+
+            modePicker
         }
     }
 
@@ -222,6 +234,36 @@ struct TransitionPanel: View {
         } set: { seconds in
             model.setTakeTransitionDuration(seconds)
         }
+    }
+
+    /// The switching mode picker behind its label: Stage on Preview or Take
+    /// to Program (``SwitchingMode``). Reports `switchingMode.picker` with
+    /// the mode chosen, where the choice executes.
+    private var modePicker: some View {
+        HStack(spacing: 4) {
+            Text("Shot Click", comment: "Label before the switching mode picker on the transition panel")
+                .foregroundStyle(.secondary)
+            Picker(
+                selection: $model.switchingMode.reportingTap(
+                    to: model.eventBus, "switchingMode.picker", domain: .composition,
+                    params: { ["mode": .string($0.rawValue)] })
+            ) {
+                ForEach(SwitchingMode.allCases, id: \.self) { mode in
+                    mode.title.tag(mode)
+                }
+            } label: {
+                Text("Shot Click", comment: "Label before the switching mode picker on the transition panel")
+            }
+            .pickerStyle(.menu)
+            .labelsHidden()
+            .fixedSize()
+        }
+        .help(
+            Text(
+                "What picking a shot does: stage it on preview, or take it to program with the selected transition",
+                comment: "Tooltip on the switching mode picker"
+            )
+        )
     }
 
     /// The transition kind picker: Default (each shot's own default

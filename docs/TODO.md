@@ -338,6 +338,12 @@ are the checks still open from those, pointing at their records there.
     a reset, surviving a reopen; VU Meters on program with tone running,
     and on an input tile; `monitor_overlay_set` from an MCP client.
 
+- [ ] **Left open from “Taking a shot with one click”** (built; record in
+  ARCHITECTURE.md, "Taking a shot with one click"):
+  - Check by hand in the running app: a click takes with the armed
+    transition, an input row still stages, ⌥-click stages, the mode
+    survives a relaunch, and the red cue shows only in Take to Program.
+
 ## Clock and timing
 
 Found by the 2026-10-03 review of CLOCK.md against the code. CLOCK.md states

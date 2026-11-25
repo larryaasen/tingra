@@ -1860,6 +1860,23 @@
         }
       }
     },
+    "Clicking a shot takes it to program. Option-click to stage it on preview." : {
+      "comment" : "Tooltip on the red Take to Program cue beside the shot bank's heading",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein Klick auf eine Einstellung übernimmt sie ins Programm. Mit gedrückter Wahltaste klicken, um sie auf Vorschau vorzubereiten."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Al hacer clic en una toma, se lleva al programa. Haz clic con Opción para prepararla en previsualización."
+          }
+        }
+      }
+    },
     "Close" : {
       "comment" : "File menu item closing the frontmost window, when it is not the main window",
       "localizations" : {
@@ -7471,6 +7488,23 @@
         }
       }
     },
+    "Shot Click" : {
+      "comment" : "Label before the switching mode picker on the transition panel",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Klick auf Einstellung"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clic en toma"
+          }
+        }
+      }
+    },
     "Shot: %@" : {
       "comment" : "Inspector column title naming the shot being edited",
       "localizations" : {
@@ -7862,6 +7896,23 @@
         }
       }
     },
+    "Stage on Preview" : {
+      "comment" : "Switching mode, and the shot context menu item: picking a shot stages it on preview",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auf Vorschau vorbereiten"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Preparar en previsualización"
+          }
+        }
+      }
+    },
     "Stage Shot on Preview" : {
       "comment" : "Shortcuts settings: name of the ⌘1–⌘9 action",
       "localizations" : {
@@ -7892,6 +7943,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Prepara la toma en esa posición del mezclador, lista para tomar."
+          }
+        }
+      }
+    },
+    "Stages the shot in that position of the switcher, ready to take. In Take to Program, takes it instead." : {
+      "comment" : "Shortcuts settings: what ⌘1–⌘9 does, in each switching mode",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bereitet die Einstellung an dieser Position des Bildmischers auf Vorschau vor, bereit zur Übernahme. Bei „Ins Programm übernehmen“ wird sie stattdessen übernommen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prepara la toma en esa posición del mezclador, lista para tomar. En «Llevar al programa», la lleva al programa."
           }
         }
       }
@@ -8287,6 +8355,23 @@
         }
       }
     },
+    "Take Shots to Program on Click" : {
+      "comment" : "Program menu checkmark item: picking a shot takes it to program instead of staging it on preview",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einstellungen per Klick ins Programm übernehmen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Llevar tomas al programa con un clic"
+          }
+        }
+      }
+    },
     "Take the staged shot to program instantly" : {
       "comment" : "Tooltip on the Cut button",
       "localizations" : {
@@ -8334,6 +8419,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Saca del aire todo el programa —imagen y sonido— o lo devuelve"
+          }
+        }
+      }
+    },
+    "Take to Program" : {
+      "comment" : "Switching mode: picking a shot takes it to program",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ins Programm übernehmen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Llevar al programa"
+          }
+        }
+      }
+    },
+    "Take to program. Option-click to stage on preview." : {
+      "comment" : "Tooltip on a shot tile or sidebar shot row while the switching mode is Take to Program",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ins Programm übernehmen. Mit gedrückter Wahltaste klicken, um auf Vorschau vorzubereiten."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Llevar al programa. Haz clic con Opción para preparar en previsualización."
           }
         }
       }
@@ -9184,6 +9303,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Advertencia"
+          }
+        }
+      }
+    },
+    "What picking a shot does: stage it on preview, or take it to program with the selected transition" : {
+      "comment" : "Tooltip on the switching mode picker",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Was die Auswahl einer Einstellung bewirkt: auf Vorschau vorbereiten oder mit dem gewählten Übergang ins Programm übernehmen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Qué hace elegir una toma: prepararla en previsualización o llevarla al programa con la transición seleccionada"
           }
         }
       }

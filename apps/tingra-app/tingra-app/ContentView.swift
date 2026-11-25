@@ -250,7 +250,8 @@ struct ContentView: View {
     /// sits the **shot bank** (``ShotBankView``): one tile per shot of the
     /// active preset, so the row reads as what the operator can take rather
     /// than as every input the Mac can see (ARCHITECTURE.md, "The shot
-    /// bank").
+    /// bank"). The heading wears a red cue (``TakeToProgramCue``) while the
+    /// switching mode is Take to Program.
     ///
     /// Both parts take a definite height from the window's width — the
     /// monitors from ``monitorsHeight(forWindowWidth:)``, the bank from
@@ -320,6 +321,10 @@ struct ContentView: View {
                 Text("Shots", comment: "Heading over the shot bank beneath the monitors")
                     .font(.headline)
                 addShotMenu
+                // The bank's red cue: a click on a tile below goes to air.
+                if model.switchingMode == .takeToProgram {
+                    TakeToProgramCue()
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 

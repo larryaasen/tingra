@@ -336,8 +336,9 @@ extension EngineModel {
 
     /// Records the operator's position for the next launch. Called from the
     /// observers of ``activePresetID``, ``activeShotID``, ``previewShotID``,
-    /// and the transition settings, so no path that moves a bus or arms a
-    /// transition can forget to. Silent while data is being removed, so
+    /// the transition settings, and ``switchingMode``, so no path that moves a
+    /// bus, arms a transition, or changes the mode can forget to. Silent
+    /// while data is being removed, so
     /// cleared preferences are not written back, and while a recorded
     /// position waits to be restored (``restoredPosition``): the buses hold
     /// placeholders until then, and recording them would overwrite it.
@@ -350,7 +351,8 @@ extension EngineModel {
             transitionKind: takeTransitionKind,
             wipeEdge: wipeEdge,
             shaderName: shaderName,
-            transitionDuration: takeTransitionDuration
+            transitionDuration: takeTransitionDuration,
+            switchingMode: switchingMode
         )
     }
 

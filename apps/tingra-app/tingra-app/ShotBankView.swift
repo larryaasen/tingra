@@ -30,7 +30,9 @@ import TingraPlugInKit
 /// thumbnails are the shot"); a shot with no layers, or none delivering yet,
 /// is black over its caption. Clicking a
 /// tile stages that shot on preview — staging is not taking, and Take stays
-/// the one step to air. The tile's context menu is the shared
+/// the one step to air — unless the switching mode is Take to Program, where
+/// the click takes the shot and ⌥-click stages it (``ShotClick``;
+/// ARCHITECTURE.md, "Taking a shot with one click"). The tile's context menu is the shared
 /// ``ShotContextMenu`` on the `switcher` surface: Move Left / Move Right, and
 /// an immediate Remove Shot.
 ///
@@ -161,8 +163,8 @@ struct ShotBankView: View {
         }
     }
 
-    /// One shot's tile: the picture, staging the shot on click, over its
-    /// caption, with the shared context menu on both, and taking a dropped
+    /// One shot's tile: the picture, staging or taking the shot on click as
+    /// the switching mode says (``ShotClick``), over its caption, with the shared context menu on both, and taking a dropped
     /// input before or after itself.
     ///
     /// The picture alone is the button, so Keep and the drop outline ride
@@ -178,19 +180,20 @@ struct ShotBankView: View {
     private func shotTile(_ tile: ShotBankTile, at index: Int, width: CGFloat) -> some View {
         VStack(spacing: Self.captionSpacing) {
             Button {
+                let click = ShotClick(on: .shotBank, mode: model.switchingMode)
                 model.eventBus.tap(
-                    "shotBank.tile",
+                    click.tapName,
                     domain: .composition,
                     params: ["shot": .string(tile.id.rawValue), "name": .string(tile.name)]
                 )
-                model.setPreview(tile.id)
+                model.perform(click.action, on: tile.id)
             } label: {
                 picture(for: tile, width: width)
             }
             .buttonStyle(.plain)
-            .help(Text("Stage on preview", comment: "Tooltip on an input tile that stages it on preview"))
+            .help(model.switchingMode.shotHelp)
             // Keep rides over the button rather than inside its label, so its
-            // click is its own and never also a stage.
+            // click is its own and never also a stage or a take.
             .overlay(alignment: .bottomLeading) {
                 if tile.isTransient {
                     keepButton(for: tile)
@@ -203,7 +206,7 @@ struct ShotBankView: View {
                 }
             }
 
-            // The monitors' caption style, with the shot's stage shortcut
+            // The monitors' caption style, with the shot's shortcut
             // after the name for the first nine, so the bank answers "which
             // shot is ⌘4" where the operator is looking.
             caption(for: tile, at: index)
@@ -362,5 +365,28 @@ struct ShotBankView: View {
         )
         Task { await model.addShot(showing: input, at: index) }
         return true
+    }
+}
+
+/// The shot bank's **red cue**, beside its Shots heading while the switching
+/// mode is Take to Program: the mode's name on the on-air red, so an operator
+/// never clicks a tile without knowing it goes to program (ARCHITECTURE.md,
+/// "Taking a shot with one click"). Words on the colour rather than the
+/// colour alone, so the cue does not depend on telling red from green.
+struct TakeToProgramCue: View {
+    /// The cue: the mode's name in a red capsule.
+    var body: some View {
+        SwitchingMode.takeToProgram.title
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 2)
+            .background(MultiviewTile.Tally.onAir.badgeTint, in: .capsule)
+            .help(
+                Text(
+                    "Clicking a shot takes it to program. Option-click to stage it on preview.",
+                    comment: "Tooltip on the red Take to Program cue beside the shot bank's heading"
+                )
+            )
     }
 }

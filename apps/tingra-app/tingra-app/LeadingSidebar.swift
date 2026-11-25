@@ -53,7 +53,10 @@ import TingraPlugInKit
 /// (ARCHITECTURE.md, "The shot bank"). They all carry the same **tally** the
 /// bank's tiles do, from the shared `Tally` tints, so a lamp cannot mean red
 /// here and green there. Nothing reaches program from the sidebar: staging is
-/// not taking, and Take remains the one step to air.
+/// not taking, and Take remains the one step to air. The one exception is a
+/// shot row in Take to Program, which takes the shot as a bank tile does
+/// (``ShotClick``); an input row stages in every mode, since its click may
+/// make a transient shot (ARCHITECTURE.md, "Taking a shot with one click").
 ///
 /// **An input row is also how an input becomes a shot.** Each camera,
 /// display, and generator row is draggable (``DraggedInput``): dropped on the
@@ -406,7 +409,8 @@ struct LeadingSidebar: View {
     }
 
     /// The shot section: one row per **authored** shot in the active preset,
-    /// staging it on preview when clicked and lit with that shot's tally.
+    /// staging it on preview when clicked, or taking it in Take to Program
+    /// (``ShotClick``), and lit with that shot's tally.
     ///
     /// The transient shot the app creates to stage a clicked input is left
     /// out (``SidebarRow/rows(shots:onProgram:onPreview:)``); it is the
@@ -443,6 +447,7 @@ struct LeadingSidebar: View {
                 "No shots in this preset",
                 comment: "Sidebar placeholder when the active preset has no shots"
             ),
+            help: model.switchingMode.shotHelp,
             menu: .shot(
                 onRename: { shot in
                     shotRenameText = shot.name
@@ -453,14 +458,15 @@ struct LeadingSidebar: View {
                 onRemove: { shot in shotPendingDeletion = shot }
             )
         ) { row in
+            let click = ShotClick(on: .sidebar, mode: model.switchingMode)
             model.eventBus.tap(
-                "sidebarShot.row",
+                click.tapName,
                 domain: .composition,
                 params: ["shot": .string(row.id), "name": .string(row.name)]
             )
             // Exact: `ShotID` is a raw-string wrapper, so the row's id is the
             // shot's own identifier and nothing is inferred.
-            model.setPreview(ShotID(rawValue: row.id))
+            model.perform(click.action, on: ShotID(rawValue: row.id))
         }
     }
 

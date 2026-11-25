@@ -670,6 +670,13 @@ final class EngineModel {
         didSet { recordSessionPosition() }
     }
 
+    /// What picking a shot does: stage it on preview (the default), or take
+    /// it to program (ARCHITECTURE.md, "Taking a shot with one click").
+    /// Session state, remembered like ``takeTransitionKind``.
+    var switchingMode: SwitchingMode = .stageOnPreview {
+        didSet { recordSessionPosition() }
+    }
+
     /// The lengths a timed take may have: instant-as-a-tick (the compositor
     /// rounds a zero to its first tick) up to ten seconds, past which a
     /// transition is a hold, not a switch.

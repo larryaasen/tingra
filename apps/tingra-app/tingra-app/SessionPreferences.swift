@@ -11,8 +11,9 @@ import Foundation
 import TingraComposition
 
 /// Where the operator was standing when the app last ran: the active preset,
-/// the shot on program, the shot staged on preview, and the transition armed
-/// on the switcher — its kind, the wipe edge, the shader, and the duration.
+/// the shot on program, the shot staged on preview, the transition armed
+/// on the switcher — its kind, the wipe edge, the shader, and the duration —
+/// and the switching mode.
 ///
 /// A value rather than loose ids because the pieces are restored
 /// **together** — a staged shot is only meaningful within the preset it was
@@ -50,6 +51,10 @@ struct SessionPosition: Equatable, Sendable {
     /// is kept within the panel's range rather than trusted.
     var transitionDuration: TimeInterval?
 
+    /// The switching mode set on the switcher, or nil when none was recorded
+    /// (ARCHITECTURE.md, "Taking a shot with one click").
+    var switchingMode: SwitchingMode?
+
     /// A position with nothing recorded — a fresh install, or a removal.
     static let none = SessionPosition()
 
@@ -62,6 +67,13 @@ struct SessionPosition: Equatable, Sendable {
     /// - Returns: The preset to adopt, or nil when the document has none.
     func launchPreset(in presets: [Preset]) -> Preset? {
         presets.first { $0.id == presetID } ?? presets.first
+    }
+
+    /// The switching mode a launch adopts: the recorded one, otherwise Stage
+    /// on Preview, so a fresh install, a removal, or a value the app no
+    /// longer knows never starts a show with shot clicks going to air.
+    var launchSwitchingMode: SwitchingMode {
+        switchingMode ?? .stageOnPreview
     }
 
     /// The recorded program and preview shots that exist in a preset's pool
@@ -102,8 +114,8 @@ struct SessionPosition: Equatable, Sendable {
 /// documents"): the preset and shot ids belong to one show, so a store is
 /// made for a ``ProjectID`` and keeps that show's position under keys of
 /// its own — switching projects and back finds each where it was left. The
-/// armed transition is the switcher's setting rather than any show's, and
-/// stays global, as does ``lastProjectURL``. A store with no project scope
+/// armed transition and the switching mode are the switcher's settings
+/// rather than any show's, and stay global, as does ``lastProjectURL``. A store with no project scope
 /// reads and writes the flat keys of the one-project era, which is how a
 /// document written before projects had ids keeps its position across the
 /// launch that assigns it one.
@@ -152,6 +164,9 @@ struct SessionPreferences {
     /// The take duration's key.
     private static let transitionDurationKey = "session.transitionDuration"
 
+    /// The switching mode's key.
+    private static let switchingModeKey = "session.switchingMode"
+
     /// Creates a store over a defaults database, for one project's position.
     ///
     /// - Parameters:
@@ -165,7 +180,7 @@ struct SessionPreferences {
     }
 
     /// The same store scoped to another project — the position keys move,
-    /// the transition keys and the last project do not.
+    /// the transition keys, the switching mode, and the last project do not.
     ///
     /// - Parameter projectID: The project to scope to.
     /// - Returns: A store over the same defaults for that project.
@@ -190,9 +205,9 @@ struct SessionPreferences {
     /// The recorded position; ``SessionPosition/none`` on a fresh install.
     /// Setting a nil id removes its key, so a cleared program (a held
     /// snapshot) or an empty preview reads back as nil rather than as a
-    /// stale id. A transition value the app no longer knows reads nil
-    /// rather than trapping, and a duration that is not a number reads nil
-    /// rather than zero.
+    /// stale id. A transition value or switching mode the app no longer
+    /// knows reads nil rather than trapping, and a duration that is not a
+    /// number reads nil rather than zero.
     var position: SessionPosition {
         get {
             SessionPosition(
@@ -203,7 +218,8 @@ struct SessionPreferences {
                     TakeTransitionKind.init(rawValue:)),
                 wipeEdge: defaults.string(forKey: Self.wipeEdgeKey).flatMap(WipeEdge.init(rawValue:)),
                 shaderName: defaults.string(forKey: Self.shaderNameKey).flatMap(TransitionShader.init(rawValue:)),
-                transitionDuration: defaults.object(forKey: Self.transitionDurationKey) as? TimeInterval
+                transitionDuration: defaults.object(forKey: Self.transitionDurationKey) as? TimeInterval,
+                switchingMode: defaults.string(forKey: Self.switchingModeKey).flatMap(SwitchingMode.init(rawValue:))
             )
         }
         nonmutating set {
@@ -214,6 +230,7 @@ struct SessionPreferences {
             defaults.set(newValue.wipeEdge?.rawValue, forKey: Self.wipeEdgeKey)
             defaults.set(newValue.shaderName?.rawValue, forKey: Self.shaderNameKey)
             defaults.set(newValue.transitionDuration, forKey: Self.transitionDurationKey)
+            defaults.set(newValue.switchingMode?.rawValue, forKey: Self.switchingModeKey)
         }
     }
 }
